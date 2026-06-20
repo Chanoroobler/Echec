@@ -1,5 +1,10 @@
+using Echec.Engine.Audio;
+using Echec.Engine.Display;
 using Echec.Engine.Input;
 using Echec.Engine.Scenes;
+using Echec.Engine.Settings;
+using Echec.Engine.UI;
+using Echec.Engine.UI.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -16,22 +21,52 @@ public sealed class GameContext
         GraphicsDevice graphicsDevice,
         SpriteBatch spriteBatch,
         ContentManager content,
+        Texture2D pixel,
+        PixelFont font,
+        UiStyle style,
         InputManager input,
         SceneManager scenes,
-        GameWindow window)
+        GameWindow window,
+        GameSettings settings,
+        AudioManager audio,
+        IDisplayService display,
+        Action quit)
     {
         GraphicsDevice = graphicsDevice;
         SpriteBatch = spriteBatch;
         Content = content;
+        Pixel = pixel;
+        Font = font;
+        Style = style;
         Input = input;
         Scenes = scenes;
         Window = window;
+        Settings = settings;
+        Audio = audio;
+        Display = display;
+        Quit = quit;
     }
 
     public GraphicsDevice GraphicsDevice { get; }
     public SpriteBatch SpriteBatch { get; }
     public ContentManager Content { get; }
+
+    /// <summary>Texture 1×1 blanche partagée (rectangles, police pixel).</summary>
+    public Texture2D Pixel { get; }
+
+    /// <summary>Police bitmap pixel-art partagée.</summary>
+    public PixelFont Font { get; }
+
+    /// <summary>Style d'UI partagé (panneaux/boutons en relief).</summary>
+    public UiStyle Style { get; }
+
     public InputManager Input { get; }
     public SceneManager Scenes { get; }
     public GameWindow Window { get; }
+    public GameSettings Settings { get; }
+    public AudioManager Audio { get; }
+    public IDisplayService Display { get; }
+
+    /// <summary>Ferme l'application (fourni par la couche Game).</summary>
+    public Action Quit { get; }
 }

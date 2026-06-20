@@ -35,4 +35,7 @@ public sealed class InputManager
     public bool WasLeftClicked =>
         _currentMouse.LeftButton == ButtonState.Pressed &&
         _previousMouse.LeftButton == ButtonState.Released;
+
+    /// <summary>Vrai tant que le bouton gauche est maintenu (pour le retour visuel d'enfoncement).</summary>
+    public bool IsLeftDown => _currentMouse.LeftButton == ButtonState.Pressed;
 }

@@ -3,23 +3,48 @@ using Microsoft.Xna.Framework;
 namespace Echec.Engine.Scenes;
 
 /// <summary>
-/// Gère la scène active et les transitions entre scènes.
+/// Pile de scènes. La scène du sommet reçoit les <see cref="Update"/> ;
+/// toutes les scènes sont dessinées de bas en haut (overlay = la pause se
+/// dessine par-dessus le jeu, qui reste visible mais figé).
 /// </summary>
 public sealed class SceneManager
 {
-    private IScene? _current;
+    private readonly List<IScene> _stack = new();
 
-    public IScene? Current => _current;
+    public IScene? Current => _stack.Count > 0 ? _stack[^1] : null;
+    public int Count => _stack.Count;
 
-    /// <summary>Remplace la scène courante (décharge l'ancienne, charge la nouvelle).</summary>
+    /// <summary>Vide la pile et démarre une nouvelle scène (changement d'écran complet).</summary>
     public void Change(IScene scene)
     {
-        _current?.Unload();
-        _current = scene;
-        _current.Load();
+        while (_stack.Count > 0)
+            Pop();
+        Push(scene);
     }
 
-    public void Update(GameTime gameTime) => _current?.Update(gameTime);
+    /// <summary>Empile une scène par-dessus l'actuelle (overlay).</summary>
+    public void Push(IScene scene)
+    {
+        _stack.Add(scene);
+        scene.Load();
+    }
 
-    public void Draw(GameTime gameTime) => _current?.Draw(gameTime);
+    /// <summary>Dépile la scène du sommet.</summary>
+    public void Pop()
+    {
+        if (_stack.Count == 0)
+            return;
+
+        var top = _stack[^1];
+        _stack.RemoveAt(_stack.Count - 1);
+        top.Unload();
+    }
+
+    public void Update(GameTime gameTime) => Current?.Update(gameTime);
+
+    public void Draw(GameTime gameTime)
+    {
+        foreach (var scene in _stack)
+            scene.Draw(gameTime);
+    }
 }
