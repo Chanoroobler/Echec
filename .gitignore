@@ -1,0 +1,12 @@
+## .NET / Visual Studio
+bin/
+obj/
+*.user
+.vs/
+
+## MonoGame Content Pipeline
+src/**/Content/bin/
+src/**/Content/obj/
+
+## Rider
+.idea/
