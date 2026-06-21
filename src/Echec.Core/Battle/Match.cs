@@ -16,6 +16,10 @@ public sealed class Match
 {
     private readonly Unit?[,] _units;
 
+    // Unités essentielles posées sur le terrain (commandant joueur / boss ennemi).
+    // On garde la référence même après leur mort pour évaluer la condition de victoire.
+    private readonly List<Unit> _essential = new();
+
     public Match(int width, int height)
     {
         Width = width;
@@ -34,7 +38,22 @@ public sealed class Match
 
     public Unit? UnitAt(Cell cell) => InBounds(cell) ? _units[cell.Column, cell.Row] : null;
 
-    public void Place(Cell cell, Unit unit) => _units[cell.Column, cell.Row] = unit;
+    public void Place(Cell cell, Unit unit)
+    {
+        _units[cell.Column, cell.Row] = unit;
+        if (unit.IsEssential)
+            _essential.Add(unit);
+    }
+
+    /// <summary>Retire l'unité d'une case (utilisé en phase de placement).</summary>
+    public void Remove(Cell cell)
+    {
+        var unit = UnitAt(cell);
+        if (unit == null)
+            return;
+        _units[cell.Column, cell.Row] = null;
+        _essential.Remove(unit);
+    }
 
     public IEnumerable<(Cell Cell, Unit Unit)> Units()
     {
@@ -197,7 +216,17 @@ public sealed class Match
             else hasEnemy = true;
         }
 
-        if (!hasPlayer) Winner = Faction.Enemy;
-        else if (!hasEnemy) Winner = Faction.Player;
+        // Une unité essentielle morte décide la partie, même si son camp a d'autres unités :
+        // commandant tombé = défaite ; boss tué = victoire (combat de boss).
+        bool playerLeaderDown = false, enemyLeaderDown = false;
+        foreach (var unit in _essential)
+        {
+            if (unit.IsAlive) continue;
+            if (unit.Faction == Faction.Player) playerLeaderDown = true;
+            else enemyLeaderDown = true;
+        }
+
+        if (!hasPlayer || playerLeaderDown) Winner = Faction.Enemy;
+        else if (!hasEnemy || enemyLeaderDown) Winner = Faction.Player;
     }
 }

@@ -20,6 +20,12 @@ public sealed class Unit
     public UnitClass Class { get; }
     public int Hp { get; private set; }
 
+    /// <summary>
+    /// Unité « pivot » dont la mort décide la partie : le commandant (joueur) ou le
+    /// boss (ennemi). Voir <see cref="Match"/> pour les conditions de victoire.
+    /// </summary>
+    public bool IsEssential { get; init; }
+
     public MovementKind MovementKind => Movement.Kind(Domaine);
     public int MaxHp => Class.MaxHp;
     public int Damage => Class.Damage;

@@ -19,12 +19,26 @@ public static class DomaineCatalog
         AllowTrailingCommas = true
     };
 
-    public static IReadOnlyList<DomaineDef> FromJson(string json)
-    {
-        var config = JsonSerializer.Deserialize<UnitsConfig>(json, Options)
+    public static IReadOnlyList<DomaineDef> FromJson(string json) =>
+        Deserialize(json).Domaines.Select(ToDef).ToList();
+
+    /// <summary>Construit les unités COMMANDE (commandant/boss) depuis le même JSON.</summary>
+    public static IReadOnlyList<CommandeDef> CommandesFromJson(string json) =>
+        Deserialize(json).Commandes.Select(ToCommande).ToList();
+
+    private static UnitsConfig Deserialize(string json) =>
+        JsonSerializer.Deserialize<UnitsConfig>(json, Options)
             ?? throw new InvalidOperationException("Configuration d'unités vide ou illisible.");
 
-        return config.Domaines.Select(ToDef).ToList();
+    private static CommandeDef ToCommande(CommandeConfig c)
+    {
+        if (!Enum.TryParse<CommandeRole>(c.Role, ignoreCase: true, out var role))
+            throw new InvalidOperationException($"Role de commande inconnu dans units.json : '{c.Role}'.");
+        if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
+            throw new InvalidOperationException($"Domaine de mouvement inconnu pour la commande '{c.Name}' : '{c.Domaine}'.");
+
+        return new CommandeDef(role, domaine,
+            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange));
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

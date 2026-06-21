@@ -15,6 +15,20 @@ public sealed class InputManager
     private MouseState _previousMouse;
     private MouseState _currentMouse;
 
+    // Transformation écran réel → espace virtuel (letterbox du rendu pixel-perfect).
+    private Point _viewOffset = Point.Zero;
+    private float _viewScale = 1f;
+
+    /// <summary>
+    /// Déclare la zone d'affichage du rendu virtuel (décalage + échelle) pour que
+    /// <see cref="MousePosition"/> soit exprimée dans l'espace virtuel, comme le rendu.
+    /// </summary>
+    public void SetViewport(Point offset, float scale)
+    {
+        _viewOffset = offset;
+        _viewScale = scale <= 0f ? 1f : scale;
+    }
+
     public void Update()
     {
         _previousKeyboard = _currentKeyboard;
@@ -29,12 +43,20 @@ public sealed class InputManager
     public bool WasKeyPressed(Keys key) =>
         _currentKeyboard.IsKeyDown(key) && _previousKeyboard.IsKeyUp(key);
 
-    public Point MousePosition => _currentMouse.Position;
+    /// <summary>Position de la souris en espace virtuel (annule décalage + échelle du letterbox).</summary>
+    public Point MousePosition => new(
+        (int)((_currentMouse.Position.X - _viewOffset.X) / _viewScale),
+        (int)((_currentMouse.Position.Y - _viewOffset.Y) / _viewScale));
 
     /// <summary>Vrai uniquement à la frame du clic gauche.</summary>
     public bool WasLeftClicked =>
         _currentMouse.LeftButton == ButtonState.Pressed &&
         _previousMouse.LeftButton == ButtonState.Released;
+
+    /// <summary>Vrai uniquement à la frame où le bouton gauche est relâché (fin de glisser).</summary>
+    public bool WasLeftReleased =>
+        _currentMouse.LeftButton == ButtonState.Released &&
+        _previousMouse.LeftButton == ButtonState.Pressed;
 
     /// <summary>Vrai tant que le bouton gauche est maintenu (pour le retour visuel d'enfoncement).</summary>
     public bool IsLeftDown => _currentMouse.LeftButton == ButtonState.Pressed;

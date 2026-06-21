@@ -32,6 +32,13 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private AudioManager _audio = null!;
     private GameContext _context = null!;
 
+    // Rendu pixel-perfect : les scènes dessinent dans un canvas virtuel, agrandi d'un
+    // facteur ENTIER vers une zone 16:9 de l'écran (aucun asset n'est jamais déformé).
+    // Hauteur de référence visée pour le canvas (taille à laquelle l'UI est calibrée).
+    private const int DesignHeight = 720;
+    private RenderTarget2D? _virtualTarget;
+    private Rectangle _virtualDest;
+
     public EchecGame()
     {
         _graphics = new GraphicsDeviceManager(this);
@@ -56,7 +63,9 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
             return;
         try
         {
-            Domaines.Load(DomaineCatalog.FromJson(System.IO.File.ReadAllText(path)));
+            var json = System.IO.File.ReadAllText(path);
+            Domaines.Load(DomaineCatalog.FromJson(json));
+            Commandes.Load(DomaineCatalog.CommandesFromJson(json));
         }
         catch (System.Exception ex)
         {
@@ -79,6 +88,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
             GraphicsDevice, _spriteBatch, Content, pixel, font, style,
             _input, _scenes, Window, _settings, _audio, this, Exit);
 
+        ConfigureVirtualScreen();
         _scenes.Change(new GameplayScene(_context));
     }
 
@@ -91,8 +101,18 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void Draw(GameTime gameTime)
     {
+        // 1. Les scènes dessinent dans la cible virtuelle (résolution logique fixe).
+        GraphicsDevice.SetRenderTarget(_virtualTarget);
         GraphicsDevice.Clear(Color.Black);
         _scenes.Draw(gameTime);
+
+        // 2. On agrandit la cible vers l'écran réel (échelle entière, PointClamp = net).
+        GraphicsDevice.SetRenderTarget(null);
+        GraphicsDevice.Clear(Color.Black);
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);
+        _spriteBatch.End();
+
         base.Draw(gameTime);
     }
 
@@ -103,5 +123,60 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _graphics.PreferredBackBufferWidth = settings.Width;
         _graphics.PreferredBackBufferHeight = settings.Height;
         _graphics.ApplyChanges();
+        ConfigureVirtualScreen();
+    }
+
+    /// <summary>
+    /// (Re)calcule le canvas virtuel et sa zone d'affichage. On cale d'abord une zone
+    /// 16:9 dans l'écran (bandes noires UNIQUEMENT hors 16:9), puis on choisit un facteur
+    /// d'agrandissement ENTIER (canvas visé ≈ 720 de haut) et on définit le canvas comme
+    /// zone ÷ facteur : le blit ×facteur remplit alors EXACTEMENT la zone 16:9 — donc
+    /// aucune bande en 16:9 — tout en restant strictement entier (pixel-perfect).
+    /// </summary>
+    private void ConfigureVirtualScreen()
+    {
+        // Avant LoadContent (premier Apply via Initialize) : rien à configurer encore.
+        if (_context == null)
+            return;
+
+        var pp = GraphicsDevice.PresentationParameters;
+        int realW = pp.BackBufferWidth;
+        int realH = pp.BackBufferHeight;
+
+        // 1. Zone d'affichage en 16:9 (pilier si plus large, letterbox si plus haut).
+        const float targetAspect = 16f / 9f;
+        int stageW, stageH;
+        if ((float)realW / realH > targetAspect)
+        {
+            stageH = realH;
+            stageW = (int)(realH * targetAspect);
+        }
+        else
+        {
+            stageW = realW;
+            stageH = (int)(realW / targetAspect);
+        }
+
+        // 2. Facteur d'agrandissement entier, canvas visé ≈ DesignHeight de haut.
+        int scale = System.Math.Max(1, (int)System.Math.Round(
+            stageH / (float)DesignHeight, System.MidpointRounding.AwayFromZero));
+
+        // 3. Canvas = zone ÷ facteur → le blit ×facteur recouvre la zone 16:9.
+        int canvasW = System.Math.Max(1, stageW / scale);
+        int canvasH = System.Math.Max(1, stageH / scale);
+
+        if (_virtualTarget == null || _virtualTarget.Width != canvasW || _virtualTarget.Height != canvasH)
+        {
+            _virtualTarget?.Dispose();
+            _virtualTarget = new RenderTarget2D(GraphicsDevice, canvasW, canvasH);
+        }
+
+        int dispW = canvasW * scale;
+        int dispH = canvasH * scale;
+        var offset = new Point((realW - dispW) / 2, (realH - dispH) / 2);
+        _virtualDest = new Rectangle(offset.X, offset.Y, dispW, dispH);
+
+        _context.VirtualResolution = new Point(canvasW, canvasH);
+        _input.SetViewport(offset, scale);
     }
 }

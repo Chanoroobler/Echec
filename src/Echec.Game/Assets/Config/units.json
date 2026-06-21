@@ -18,11 +18,19 @@
     },
     {
       "domaine": "Tour",
-      "baseClass": { "name": "Sentinelle", "asset": "sentinelle", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 }
+      "baseClass": { "name": "Lancier", "asset": "lancier", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 }
     },
     {
       "domaine": "Dame",
-      "baseClass": { "name": "Capitaine", "asset": "capitaine", "hp": 12, "damage": 5, "moveRange": 3, "attackRange": 1 }
+      "baseClass": { "name": "Archer", "asset": "archer", "hp": 8, "damage": 5, "moveRange": 2, "attackRange": 3 }
     }
+  ],
+
+  // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur
+  // emprunte le motif de deplacement d'un des 5 domaines (champ "domaine"), qui peut
+  // varier d'un meneur a l'autre. role = "Commander" (joueur) ou "Boss" (ennemi).
+  "commandes": [
+    { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 6, "moveRange": 1, "attackRange": 1 },
+    { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 8, "moveRange": 1, "attackRange": 1 }
   ]
 }

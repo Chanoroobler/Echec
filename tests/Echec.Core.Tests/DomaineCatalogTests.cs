@@ -36,6 +36,31 @@ public class DomaineCatalogTests
     }
 
     [Fact]
+    public void CommandesFromJson_BuildsLeaders_WithRoleAndMovement()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Commander", "domaine": "Dame", "name": "Generale", "asset": "generale", "hp": 30, "damage": 7, "moveRange": 2, "attackRange": 1 },
+            { "role": "Boss",      "domaine": "Tour", "name": "Colosse",  "asset": "colosse",  "hp": 40, "damage": 9, "moveRange": 1, "attackRange": 2 }
+          ]
+        }
+        """;
+
+        var defs = DomaineCatalog.CommandesFromJson(json);
+
+        var commander = defs.Single(d => d.Role == CommandeRole.Commander);
+        Assert.Equal("Generale", commander.Name);
+        Assert.Equal(Domaine.Dame, commander.Movement); // emprunte le déplacement de la Dame
+        Assert.Equal(30, commander.BaseClass.MaxHp);
+
+        var boss = defs.Single(d => d.Role == CommandeRole.Boss);
+        Assert.Equal(Domaine.Tour, boss.Movement);
+        Assert.Equal(2, boss.BaseClass.AttackRange);
+    }
+
+    [Fact]
     public void Load_OverridesDefaults()
     {
         try
@@ -58,8 +83,8 @@ public class DomaineCatalogTests
       { "domaine": "Pion",     "baseClass": { "name": "Soldat",     "asset": "soldat",     "hp": 10, "damage": 4, "moveRange": 1, "attackRange": 1 } },
       { "domaine": "Fou",      "baseClass": { "name": "Eclaireur",  "asset": "eclaireur",  "hp": 8,  "damage": 4, "moveRange": 3, "attackRange": 2 } },
       { "domaine": "Cavalier", "baseClass": { "name": "Cavalier",   "asset": "cavalier",   "hp": 10, "damage": 5, "moveRange": 1, "attackRange": 1 } },
-      { "domaine": "Tour",     "baseClass": { "name": "Sentinelle", "asset": "sentinelle", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 } },
-      { "domaine": "Dame",     "baseClass": { "name": "Capitaine",  "asset": "capitaine",  "hp": 12, "damage": 5, "moveRange": 3, "attackRange": 1 } }
+      { "domaine": "Tour",     "baseClass": { "name": "Lancier",    "asset": "lancier",    "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 } },
+      { "domaine": "Dame",     "baseClass": { "name": "Archer",     "asset": "archer",     "hp": 8,  "damage": 5, "moveRange": 2, "attackRange": 3 } }
     ] }
     """;
 }

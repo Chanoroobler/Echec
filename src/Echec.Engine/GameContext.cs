@@ -45,7 +45,15 @@ public sealed class GameContext
         Audio = audio;
         Display = display;
         Quit = quit;
+        VirtualResolution = new Point(1280, 720);
     }
+
+    /// <summary>
+    /// Résolution logique dans laquelle les scènes dessinent (rendu pixel-perfect mis
+    /// à l'échelle vers l'écran réel par la couche Game). L'UI s'y réfère au lieu du
+    /// viewport réel pour rester cohérente quelle que soit la résolution d'écran.
+    /// </summary>
+    public Point VirtualResolution { get; set; }
 
     public GraphicsDevice GraphicsDevice { get; }
     public SpriteBatch SpriteBatch { get; }
