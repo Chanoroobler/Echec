@@ -29,6 +29,11 @@
     <None Include="Assets\**\*.*" CopyToOutputDirectory="Always" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Shaders : compilés via le content pipeline MonoGame (HLSL -> .xnb), chargés au
+         runtime par Content.Load&lt;Effect&gt;. Voir Content/Content.mgcb. -->
+    <MonoGameContentReference Include="Content\Content.mgcb" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.*" />
   </ItemGroup>

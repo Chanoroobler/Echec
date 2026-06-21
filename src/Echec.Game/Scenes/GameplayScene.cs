@@ -33,9 +33,13 @@ public sealed class GameplayScene : Scene
     // Panneau latéral droit (inventaire au placement, infos en combat).
     private const int RightPanelWidth = 220;
     private const int PanelPad = 12;
-    private const int CardH = 46;
-    private const int CardGap = 6;
-    private const int PanelListTop = 120;
+    // Inventaire en grille : portraits 64×64 NATIFS (jamais redimensionnés), 2 colonnes.
+    private const int InvIconSize = 64;
+    private const int InvCols = 2;
+    private const int InvGapX = 8;
+    private const int InvCellH = InvIconSize + 14; // portrait + libellé dessous
+    private const int InvGapY = 6;
+    private const int PanelListTop = 110;
 
     // Ordre des colonnes du centre vers les bords (déploiement groupé au milieu).
     private static readonly int[] CenterOut = { 3, 4, 2, 5, 1, 6, 0, 7 };
@@ -47,6 +51,9 @@ public sealed class GameplayScene : Scene
     private readonly Battlefield _battlefield = Battlefield.CreateFlat(Columns, Rows);
 
     private Texture2D _grassTile = null!;
+    private WaterRenderer _water = null!;
+    private Texture2D _waterNoise = null!;
+    private float _time;
     private PauseMenu _pauseMenu = null!;
     private PauseMenuRenderer _pauseRenderer = null!;
     private DomaineTreeRenderer _treeRenderer = null!;
@@ -85,6 +92,7 @@ public sealed class GameplayScene : Scene
     public override void Load()
     {
         _grassTile = Textures.LoadTileOrPlaceholder(Context.GraphicsDevice, AssetPath("Assets/Tiles/grass.png"));
+        _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
@@ -97,9 +105,25 @@ public sealed class GameplayScene : Scene
     public override void Unload()
     {
         _grassTile.Dispose();
+        _waterNoise.Dispose();
+        _water.Dispose();
         foreach (var sprite in _unitSprites.Values)
             sprite?.Dispose();
         _unitSprites.Clear();
+    }
+
+    /// <summary>
+    /// Charge le shader d'eau (repli silencieux si le content pipeline n'a pas produit le .xnb)
+    /// et génère la texture de bruit qui supporte le défilement du courant.
+    /// </summary>
+    private WaterRenderer LoadWater()
+    {
+        Effect? effect = null;
+        try { effect = Context.Content.Load<Effect>("Effects/Water"); }
+        catch { effect = null; }
+
+        _waterNoise = Textures.CreateNoise(Context.GraphicsDevice);
+        return new WaterRenderer(Context.GraphicsDevice, effect, _waterNoise, Context.Pixel);
     }
 
     // ── Cycle de campagne ─────────────────────────────────────────────────────────
@@ -181,6 +205,9 @@ public sealed class GameplayScene : Scene
     // ── Mise à jour ─────────────────────────────────────────────────────────────
     public override void Update(GameTime gameTime)
     {
+        // Le courant d'eau avance en continu (même en pause / menus).
+        _time += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
         // Outil dev (F1) : prioritaire, fige le reste.
         if (Context.Input.WasKeyPressed(Keys.F1) && !_pauseMenu.IsOpen)
             _showTrees = !_showTrees;
@@ -414,6 +441,10 @@ public sealed class GameplayScene : Scene
         var layout = BuildLayout();
         var viewport = VirtualViewport;
 
+        // Fond : eau animée pixel-art derrière le plateau (passes shader dédiées, hors du
+        // batch principal car elles changent d'état SpriteBatch et de render target).
+        DrawWaterBackground(sb, layout, viewport);
+
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, layout);
 
@@ -459,6 +490,36 @@ public sealed class GameplayScene : Scene
                 Context.Input.MousePosition.ToVector2(), Context.Input.IsLeftDown);
             sb.End();
         }
+    }
+
+    /// <summary>
+    /// Dessine le fond d'eau animé derrière le plateau : masque du plateau → eau plein écran →
+    /// frange d'ombre autour du plateau. Repli sur un aplat uni si le shader est indisponible.
+    /// </summary>
+    private void DrawWaterBackground(SpriteBatch sb, GridLayout layout, Viewport viewport)
+    {
+        var w = viewport.Width;
+        var h = viewport.Height;
+
+        if (!_water.Enabled)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            DrawRect(sb, new Rectangle(0, 0, w, h), WaterRenderer.FallbackColor);
+            sb.End();
+            return;
+        }
+
+        _water.BuildMask(sb, BoardRect(layout), w, h);
+        _water.DrawWater(sb, _time, w, h);
+        _water.DrawShadow(sb, _time, w, h);
+    }
+
+    /// <summary>Rectangle (en coordonnées canvas) couvert par le plateau, épaisseur des sprites comprise.</summary>
+    private static Rectangle BoardRect(GridLayout layout)
+    {
+        var pxW = Columns * layout.TileSize;
+        var pxH = (Rows - 1) * layout.RowPitch + layout.SpriteHeight;
+        return new Rectangle((int)layout.Origin.X, (int)layout.Origin.Y, pxW, pxH);
     }
 
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
@@ -534,11 +595,15 @@ public sealed class GameplayScene : Scene
     private bool IsOverPanel(Point p) =>
         p.X >= Context.VirtualResolution.X - RightPanelWidth;
 
+    /// <summary>Case 64×64 (cliquable) du portrait d'inventaire numéro <paramref name="index"/>, en grille.</summary>
     private Rectangle PanelCardRect(int index)
     {
         var panel = PanelRect();
-        return new Rectangle(panel.X + PanelPad, PanelListTop + index * (CardH + CardGap),
-            panel.Width - 2 * PanelPad, CardH);
+        var col = index % InvCols;
+        var row = index / InvCols;
+        var x = panel.X + PanelPad + col * (InvIconSize + InvGapX);
+        var y = PanelListTop + row * (InvCellH + InvGapY);
+        return new Rectangle(x, y, InvIconSize, InvIconSize);
     }
 
     private int? PanelCardAt(Point p)
@@ -576,15 +641,12 @@ public sealed class GameplayScene : Scene
         Context.Font.Draw(sb, "ENTREE : COMBATTRE", new Vector2(x, bottom + 16), 1, Palette.Cyan1);
     }
 
-    private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle rect)
+    private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
     {
-        Context.Style.DrawPanel(sb, rect);
-        var icon = new Rectangle(rect.X + 4, rect.Y + 4, rect.Height - 8, rect.Height - 8);
-        DrawChip(sb, spec.UnitClass, Faction.Player, icon);
-
-        var tx = icon.Right + 8;
-        Context.Font.Draw(sb, spec.Name.ToUpperInvariant(), new Vector2(tx, rect.Y + 9), 1, Palette.White);
-        Context.Font.Draw(sb, $"DOM {spec.Domaine}".ToUpperInvariant(), new Vector2(tx, rect.Y + 25), 1, Palette.Cyan1);
+        // Portrait 64×64 à taille native (jamais redimensionné), de FACE (présentation), nom dessous.
+        DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true);
+        Context.Font.DrawCentered(sb, spec.Name.ToUpperInvariant(),
+            new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White);
     }
 
     private void DrawBattlePanel(SpriteBatch sb)
@@ -619,13 +681,32 @@ public sealed class GameplayScene : Scene
     private string CombatTitle() =>
         _run.IsBossCombat ? "COMBAT DE BOSS" : $"COMBAT {_run.CombatNumber} / {Run.TotalCombats}";
 
-    /// <summary>Jeton/sprite d'une unité dessiné dans une zone (placeholder si pas d'asset).</summary>
-    private void DrawChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area)
+    /// <summary>
+    /// Dessine un sprite à sa TAILLE NATIVE (jamais agrandi ni rétréci), centré dans
+    /// <paramref name="area"/>. Garde-fou : si la zone est plus petite que le sprite, on réduit
+    /// uniquement par un facteur ENTIER (1/2, 1/3…) — jamais fractionnaire — pour ne pas déborder
+    /// ni déformer. Avec des boîtes de 64, le sprite 64×64 reste donc strictement intact.
+    /// </summary>
+    private static void DrawSpriteFit(SpriteBatch sb, Texture2D sprite, Rectangle area)
     {
-        var sprite = SpriteFor(cls, faction);
+        var src = sprite.Width;                       // sprites d'unité carrés (64×64)
+        var box = Math.Min(area.Width, area.Height);
+        var size = box >= src ? src : src / ((src + box - 1) / box);
+        var x = area.X + (area.Width - size) / 2;
+        var y = area.Y + (area.Height - size) / 2;
+        sb.Draw(sprite, new Rectangle(x, y, size, size), Color.White);
+    }
+
+    /// <summary>
+    /// Jeton/sprite d'une unité dessiné dans une zone (placeholder si pas d'asset).
+    /// <paramref name="front"/> = montrer la face du joueur (présentation), sinon le dos.
+    /// </summary>
+    private void DrawChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area, bool front = false)
+    {
+        var sprite = SpriteFor(cls, faction, front);
         if (sprite != null)
         {
-            sb.Draw(sprite, area, Color.White);
+            DrawSpriteFit(sb, sprite, area);
             return;
         }
 
@@ -641,7 +722,7 @@ public sealed class GameplayScene : Scene
             return;
 
         var m = Context.Input.MousePosition;
-        const int s = 56;
+        const int s = 64; // taille native du sprite → fantôme net, identique aux unités posées
         DrawChip(sb, _dragSpec.UnitClass, Faction.Player, new Rectangle(m.X - s / 2, m.Y - s / 2, s, s));
     }
 
@@ -660,7 +741,7 @@ public sealed class GameplayScene : Scene
         Context.Style.DrawPanel(sb, rect);
         var c = spec.UnitClass;
 
-        var icon = new Rectangle(rect.X + (rect.Width - 56) / 2, rect.Y + 12, 56, 56);
+        var icon = new Rectangle(rect.X + (rect.Width - 64) / 2, rect.Y + 12, 64, 64);
         DrawChip(sb, c, Faction.Player, icon);
 
         Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
@@ -763,15 +844,18 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Sprite à afficher pour une unité : variante selon le camp.
-    /// Joueur → &lt;asset&gt;_back, IA → &lt;asset&gt;_ia_front. Repli sur le PNG simple
-    /// &lt;asset&gt;, puis null (placeholder) si rien n'est trouvé.
+    /// Sprite à afficher pour une unité, selon le camp et l'orientation.
+    /// Joueur : de dos (&lt;asset&gt;_back, déployé sur le plateau) ou de face
+    /// (&lt;asset&gt;_front, présentation en inventaire). IA : toujours de face
+    /// (&lt;asset&gt;_ia_front). Repli sur le PNG simple &lt;asset&gt;, puis null (placeholder).
     /// </summary>
     private Texture2D? UnitSprite(Unit unit) => SpriteFor(unit.Class, unit.Faction);
 
-    private Texture2D? SpriteFor(UnitClass cls, Faction faction)
+    private Texture2D? SpriteFor(UnitClass cls, Faction faction, bool front = false)
     {
-        var variant = faction == Faction.Player ? $"{cls.Asset}_back" : $"{cls.Asset}_ia_front";
+        var variant = faction == Faction.Player
+            ? $"{cls.Asset}_{(front ? "front" : "back")}"
+            : $"{cls.Asset}_ia_front";
         return SpriteFor(variant) ?? SpriteFor(cls.Asset);
     }
 

@@ -41,6 +41,70 @@ public static class Textures
         return texture;
     }
 
+    /// <summary>
+    /// Bruit de valeur fBm en niveaux de gris, <b>tuilable sans couture</b> (s'échantillonne
+    /// en Wrap). Plusieurs octaves dont les fréquences divisent <paramref name="size"/> →
+    /// le motif se raccorde bord à bord. Sert de support au défilement du shader d'eau.
+    /// (Porté de CosyFarmer.)
+    /// </summary>
+    public static Texture2D CreateNoise(GraphicsDevice graphicsDevice, int size = 256, int seed = 1337)
+    {
+        int[] freqs = { 4, 8, 16, 32 };
+        float[] amps = { 0.5f, 0.28f, 0.15f, 0.07f };
+        var ampSum = 0f;
+        foreach (var a in amps) ampSum += a;
+
+        var data = new Color[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var v = 0f;
+                for (var o = 0; o < freqs.Length; o++)
+                    v += amps[o] * ValueNoise(
+                        (float)x / size * freqs[o], (float)y / size * freqs[o], freqs[o], seed + o * 101);
+                v /= ampSum;
+
+                var b = (byte)MathHelper.Clamp(v * 255f, 0f, 255f);
+                data[y * size + x] = new Color(b, b, b, (byte)255);
+            }
+
+        var texture = new Texture2D(graphicsDevice, size, size);
+        texture.SetData(data);
+        return texture;
+    }
+
+    /// <summary>Bruit de valeur bilinéaire, réseau bouclé sur <paramref name="period"/> (→ sans couture).</summary>
+    private static float ValueNoise(float x, float y, int period, int seed)
+    {
+        var xi = (int)System.MathF.Floor(x);
+        var yi = (int)System.MathF.Floor(y);
+        var u = Smooth(x - xi);
+        var v = Smooth(y - yi);
+
+        var a = NoiseHash(xi,     yi,     period, seed);
+        var b = NoiseHash(xi + 1, yi,     period, seed);
+        var c = NoiseHash(xi,     yi + 1, period, seed);
+        var d = NoiseHash(xi + 1, yi + 1, period, seed);
+        return Lerp(Lerp(a, b, u), Lerp(c, d, u), v);
+    }
+
+    private static float Smooth(float t) => t * t * (3f - 2f * t);
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    /// <summary>Valeur pseudo-aléatoire [0,1] d'un nœud du réseau, coords repliées sur la période.</summary>
+    private static float NoiseHash(int x, int y, int period, int seed)
+    {
+        x = ((x % period) + period) % period;   // repli → continuité aux bords
+        y = ((y % period) + period) % period;
+        unchecked
+        {
+            var h = x * 374761393 + y * 668265263 + seed * 362437;
+            h = (h ^ (h >> 13)) * 1274126177;
+            h ^= h >> 16;
+            return (h & 0x7fffffff) / (float)0x7fffffff;
+        }
+    }
+
     /// <summary>Charge un PNG depuis le disque, ou renvoie <c>null</c> s'il est absent/illisible.</summary>
     public static Texture2D? LoadPngOrNull(GraphicsDevice graphicsDevice, string path)
     {
