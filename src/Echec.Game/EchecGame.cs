@@ -30,6 +30,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     private SpriteBatch _spriteBatch = null!;
     private AudioManager _audio = null!;
+    private SoundBank _sounds = null!;
     private GameContext _context = null!;
 
     // Rendu pixel-perfect : les scènes dessinent dans un canvas virtuel, agrandi d'un
@@ -78,6 +79,10 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _audio = new AudioManager(_settings.Audio);
+        _sounds = new SoundBank(_audio);
+        _sounds.Load(
+            System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/sounds.json"),
+            System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Sounds"));
 
         // Ressources UI pixel-art partagées (aucun pipeline de contenu requis).
         var pixel = Textures.CreatePixel(GraphicsDevice);
@@ -87,10 +92,16 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         _context = new GameContext(
             GraphicsDevice, _spriteBatch, Content, pixel, font, style,
-            _input, _scenes, Window, _settings, _audio, this, Exit);
+            _input, _scenes, Window, _settings, _audio, _sounds, this, Exit);
 
         ConfigureVirtualScreen();
         _scenes.Change(new GameplayScene(_context));
+    }
+
+    protected override void UnloadContent()
+    {
+        _sounds?.Dispose();
+        base.UnloadContent();
     }
 
     protected override void Update(GameTime gameTime)

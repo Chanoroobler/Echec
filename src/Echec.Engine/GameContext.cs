@@ -29,6 +29,7 @@ public sealed class GameContext
         GameWindow window,
         GameSettings settings,
         AudioManager audio,
+        SoundBank sounds,
         IDisplayService display,
         Action quit)
     {
@@ -43,6 +44,7 @@ public sealed class GameContext
         Window = window;
         Settings = settings;
         Audio = audio;
+        Sounds = sounds;
         Display = display;
         Quit = quit;
         VirtualResolution = new Point(1280, 720);
@@ -73,6 +75,10 @@ public sealed class GameContext
     public GameWindow Window { get; }
     public GameSettings Settings { get; }
     public AudioManager Audio { get; }
+
+    /// <summary>Banque d'effets sonores (clé d'action → WAV), pilotée par Assets/Config/sounds.json.</summary>
+    public SoundBank Sounds { get; }
+
     public IDisplayService Display { get; }
 
     /// <summary>Ferme l'application (fourni par la couche Game).</summary>

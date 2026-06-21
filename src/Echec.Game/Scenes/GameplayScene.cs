@@ -81,6 +81,31 @@ public sealed class GameplayScene : Scene
     private double _aiTimer;
     private bool _showTrees;
 
+    // Animation « pose » : la dernière case où un pion s'est posé rebondit brièvement.
+    // Un seul pion bouge à la fois (jeu au tour par tour) → un seul état suffit.
+    private Cell? _landingCell;
+    private double _landingTimer;
+    private const double LandingDuration = 0.20;
+    // Soulèvement du pion sélectionné (« tenu en main »), en fraction de la case.
+    private const float HeldLiftFraction = 0.09f;
+    // Amplitude du rebond de pose, en fraction de la case.
+    private const float LandingLiftFraction = 0.13f;
+
+    // Glisser-déposer en COMBAT : case d'origine du pion soulevé à la souris (null = aucun).
+    private Cell? _combatDragFrom;
+    // Soulèvement du pion PORTÉ à la souris (plus marqué que la simple sélection).
+    private const float CarriedLiftFraction = 0.22f;
+
+    // Ombre PROJETÉE (silhouette du sprite) : cisaillement latéral + bascule/aplatissement vers le bas,
+    // ancrée à la base du socle. Une vraie ombre portée plutôt qu'une ellipse posée.
+    private const float ShadowShear = 0.55f;          // inclinaison latérale (0 = tout droit)
+    private const float ShadowFlatten = -0.45f;       // < 0 : rabat la silhouette au sol vers l'avant + aplatit
+    private const float ShadowAlpha = 0.38f;          // opacité de l'ombre (au sol)
+    private const float ShadowAnchorFraction = 0.94f; // hauteur de la base du socle dans le sprite (0 haut … 1 bas)
+    // Réaction au soulèvement : quand le pion est en l'air, l'ombre GLISSE (direction lumière) et S'ÉCLAIRCIT.
+    private const float ShadowLiftSlide = 0.85f;      // px de glissement de l'ombre par px de soulèvement
+    private const float ShadowLiftFade = 0.5f;        // part d'opacité perdue à pleine hauteur (0 = aucune)
+
     public GameplayScene(GameContext context) : base(context)
     {
     }
@@ -164,6 +189,7 @@ public sealed class GameplayScene : Scene
         _run.StartBattle();
         ClearSelection();
         _aiTimer = 0;
+        Context.Sounds.Play("battle_start");
     }
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
@@ -171,6 +197,7 @@ public sealed class GameplayScene : Scene
         var unit = spec.Spawn(Faction.Player);
         _match.Place(cell, unit);
         _playerSpec[unit] = spec;
+        TriggerLanding(cell);
     }
 
     private void PlaceEnemies(List<UnitSpec> wave)
@@ -208,6 +235,9 @@ public sealed class GameplayScene : Scene
         // Le courant d'eau avance en continu (même en pause / menus).
         _time += (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+        if (_landingTimer > 0)
+            _landingTimer -= gameTime.ElapsedGameTime.TotalSeconds;
+
         // Outil dev (F1) : prioritaire, fige le reste.
         if (Context.Input.WasKeyPressed(Keys.F1) && !_pauseMenu.IsOpen)
             _showTrees = !_showTrees;
@@ -220,8 +250,8 @@ public sealed class GameplayScene : Scene
 
         if (Context.Input.WasKeyPressed(Keys.Escape))
         {
-            if (_pauseMenu.IsOpen) _pauseMenu.Back();
-            else _pauseMenu.Open();
+            if (_pauseMenu.IsOpen) { _pauseMenu.Back(); Context.Sounds.Play("menu_close"); }
+            else { _pauseMenu.Open(); Context.Sounds.Play("menu_open"); }
         }
 
         if (_pauseMenu.IsOpen) { UpdatePauseMenu(); return; }
@@ -261,6 +291,7 @@ public sealed class GameplayScene : Scene
             _dragSpec = _pending[i];
             _pending.RemoveAt(i);
             _dragFrom = null;
+            Context.Sounds.Play("unit_pick");
             return;
         }
 
@@ -273,6 +304,7 @@ public sealed class GameplayScene : Scene
             _dragFrom = cell;
             _match.Remove(cell);
             _playerSpec.Remove(unit);
+            Context.Sounds.Play("unit_pick");
         }
     }
 
@@ -282,13 +314,25 @@ public sealed class GameplayScene : Scene
         var cell = CellUnderMouse();
 
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null)
+        {
             PlacePlayer(spec, c);                       // pose / repositionne
+            Context.Sounds.Play("unit_place");
+        }
         else if (!spec.Essential && IsOverPanel(mouse))
+        {
             _pending.Add(spec);                         // retour à l'inventaire (jamais le commandant)
+            Context.Sounds.Play("unit_pick");
+        }
         else if (_dragFrom is { } from && _match.UnitAt(from) == null)
+        {
             PlacePlayer(spec, from);                    // drop invalide : remet à l'origine
+            Context.Sounds.Play("unit_place");
+        }
         else
+        {
             _pending.Add(spec);                         // venait de l'inventaire : y retourne
+            Context.Sounds.Play("unit_pick");
+        }
 
         _dragSpec = null;
         _dragFrom = null;
@@ -339,6 +383,11 @@ public sealed class GameplayScene : Scene
         }
 
         ClearSelection();
+
+        // Repère sonore de fin : campagne gagnée/perdue, ou combat remporté (→ recrutement).
+        if (_run.Phase == RunPhase.Victory) Context.Sounds.Play("victory");
+        else if (_run.Phase == RunPhase.Defeat) Context.Sounds.Play("defeat");
+        else if (_match.Winner == Faction.Player) Context.Sounds.Play("combat_won");
     }
 
     private bool CommanderAlive() =>
@@ -346,16 +395,40 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlayerTurn()
     {
-        if (!Context.Input.WasLeftClicked)
+        // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place).
+        if (Context.Input.WasRightClicked && (_selected is not null || _combatDragFrom is not null))
+        {
+            _combatDragFrom = null;
+            ClearSelection();
+            Context.Sounds.Play("unit_deselect");
             return;
+        }
 
+        if (Context.Input.WasLeftClicked)
+            BeginCombatInteraction();
+        else if (Context.Input.WasLeftReleased && _combatDragFrom is not null)
+            DropCarriedUnit();
+    }
+
+    /// <summary>
+    /// Appui gauche en combat : agit sur une cible déjà mise en évidence (clic-pour-déplacer
+    /// conservé), sinon SAISIT une unité du joueur — qui devient « portée » à la souris.
+    /// </summary>
+    private void BeginCombatInteraction()
+    {
         var hit = CellUnderMouse();
-        if (hit is null) { ClearSelection(); return; }
+        if (hit is null)
+        {
+            if (_selected is not null) Context.Sounds.Play("unit_deselect");
+            ClearSelection();
+            return;
+        }
         var cell = hit.Value;
 
         if (_selected is not null && _attackTargets.Contains(cell))
         {
             _match.TryAttack(_selected.Value, cell);
+            Context.Sounds.Play("unit_attack");
             EndPlayerAction();
             return;
         }
@@ -363,6 +436,8 @@ public sealed class GameplayScene : Scene
         if (_selected is not null && _legalMoves.Contains(cell))
         {
             _match.TryMove(_selected.Value, cell);
+            TriggerLanding(cell);
+            Context.Sounds.Play("unit_move");
             EndPlayerAction();
             return;
         }
@@ -373,10 +448,47 @@ public sealed class GameplayScene : Scene
             _selected = cell;
             _legalMoves = _match.LegalMoves(cell);
             _attackTargets = _match.AttackTargets(cell);
+            _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
+            Context.Sounds.Play("unit_select");
         }
         else
         {
+            if (_selected is not null) Context.Sounds.Play("unit_deselect");
             ClearSelection();
+        }
+    }
+
+    /// <summary>
+    /// Relâché du glisser de combat : dépose le pion sur la case visée si c'est une attaque ou un
+    /// déplacement légal ; sinon il « retombe » sur sa case d'origine et reste sélectionné.
+    /// </summary>
+    private void DropCarriedUnit()
+    {
+        var from = _combatDragFrom!.Value;
+        _combatDragFrom = null;
+
+        if (CellUnderMouse() is not { } cell || cell == from)
+        {
+            TriggerLanding(from);                   // reposé en place : reste sélectionné
+            return;
+        }
+
+        if (_attackTargets.Contains(cell))
+        {
+            _match.TryAttack(from, cell);
+            Context.Sounds.Play("unit_attack");
+            EndPlayerAction();
+        }
+        else if (_legalMoves.Contains(cell))
+        {
+            _match.TryMove(from, cell);
+            TriggerLanding(cell);
+            Context.Sounds.Play("unit_move");
+            EndPlayerAction();
+        }
+        else
+        {
+            TriggerLanding(from);                   // case invalide : retombe sur place, reste sélectionné
         }
     }
 
@@ -398,9 +510,16 @@ public sealed class GameplayScene : Scene
             return;
 
         if (a.IsAttack)
+        {
             _match.TryAttack(a.From, a.To);
+            Context.Sounds.Play("unit_attack");
+        }
         else
+        {
             _match.TryMove(a.From, a.To);
+            TriggerLanding(a.To);
+            Context.Sounds.Play("unit_move");
+        }
     }
 
     private void UpdateRecruitment()
@@ -415,6 +534,7 @@ public sealed class GameplayScene : Scene
             if (DraftCardRect(i, viewport.Width, viewport.Height).Contains(mouse))
             {
                 _run.Recruit(_run.Draft[i]);
+                Context.Sounds.Play("recruit");
                 BeginPlacement();
                 return;
             }
@@ -426,6 +546,14 @@ public sealed class GameplayScene : Scene
         _selected = null;
         _legalMoves.Clear();
         _attackTargets.Clear();
+        _combatDragFrom = null;
+    }
+
+    /// <summary>Lance le rebond de « pose » sur la case où un pion vient d'atterrir.</summary>
+    private void TriggerLanding(Cell cell)
+    {
+        _landingCell = cell;
+        _landingTimer = LandingDuration;
     }
 
     private Cell? CellUnderMouse()
@@ -447,7 +575,13 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, layout);
+        sb.End();
 
+        // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
+        if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
+            DrawCastShadows(sb, layout);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
         switch (_run.Phase)
         {
             case RunPhase.Placement:
@@ -462,6 +596,7 @@ public sealed class GameplayScene : Scene
                 DrawHighlights(sb, layout);
                 DrawEnemyThreat(sb, layout);
                 DrawUnits(sb, layout);
+                DrawCarriedUnit(sb, layout);
                 DrawPanelBackground(sb);
                 DrawBattlePanel(sb);
                 break;
@@ -615,6 +750,10 @@ public sealed class GameplayScene : Scene
 
     private void DrawUnit(SpriteBatch sb, GridLayout layout, Cell cell, Unit unit)
     {
+        // Pion porté à la souris : dessiné en flottant par DrawCarriedUnit, pas sur sa case.
+        if (_combatDragFrom == cell)
+            return;
+
         var top = layout.CellToScreen(cell.Column, cell.Row);
         var size = layout.TileSize;
         var zx = (int)top.X;
@@ -625,24 +764,146 @@ public sealed class GameplayScene : Scene
         if (unit.IsEssential)
             DrawRectBorder(sb, zone, Palette.Yellow1, 3);
 
+        // L'ombre projetée est dessinée dans une passe dédiée (DrawCastShadows), sous toutes les unités.
+        var animLift = UnitLift(cell, size);
+        var spriteLift = (int)(size * SpriteLiftFraction);
+
         var sprite = UnitSprite(unit);
         if (sprite != null)
         {
             // Le socle est en bas du sprite : on remonte pour le centrer (haut qui déborde, voulu).
-            var lift = (int)(size * SpriteLiftFraction);
-            sb.Draw(sprite, new Rectangle(zx, zy - lift, size, size), Color.White);
+            sb.Draw(sprite, new Rectangle(zx, zy - spriteLift - animLift, size, size), Color.White);
         }
         else
         {
             // Pas d'asset : placeholder jeton coloré + initiale de la classe.
-            var token = new Rectangle(zx + 9, zy + 8, size - 18, size - 26);
+            var token = new Rectangle(zx + 9, zy + 8 - animLift, size - 18, size - 26);
             DrawChip(sb, unit.Class, unit.Faction, token);
         }
 
-        var barBg = new Rectangle(zx + 9, zy + size - 14, size - 18, 5);
-        DrawRect(sb, barBg, Palette.Black1);
-        var ratio = unit.MaxHp == 0 ? 0f : (float)unit.Hp / unit.MaxHp;
-        DrawRect(sb, new Rectangle(barBg.X, barBg.Y, (int)(barBg.Width * ratio), barBg.Height), Palette.Green1);
+        // Barre de vie retirée temporairement (cachait l'ombre) — à restaurer après les tests.
+        // var barBg = new Rectangle(zx + 9, zy + size - 14, size - 18, 5);
+        // DrawRect(sb, barBg, Palette.Black1);
+        // var ratio = unit.MaxHp == 0 ? 0f : (float)unit.Hp / unit.MaxHp;
+        // DrawRect(sb, new Rectangle(barBg.X, barBg.Y, (int)(barBg.Width * ratio), barBg.Height), Palette.Green1);
+    }
+
+    /// <summary>
+    /// Soulèvement vertical (px entiers) du pion sur une case : constant tant qu'il est
+    /// sélectionné (« tenu en main »), plus un rebond amorti juste après s'être posé.
+    /// </summary>
+    private int UnitLift(Cell cell, int size)
+    {
+        var lift = 0f;
+
+        if (_selected == cell)
+            lift += size * HeldLiftFraction;
+
+        if (_landingCell == cell && _landingTimer > 0)
+        {
+            var t = (float)(1 - _landingTimer / LandingDuration);     // 0 → 1
+            var bounce = MathF.Abs(MathF.Cos(t * MathF.PI * 1.5f)) * (1 - t); // 2 rebonds amortis
+            lift += size * LandingLiftFraction * bounce;
+        }
+
+        return (int)lift;
+    }
+
+    /// <summary>
+    /// Passe d'ombres PROJETÉES (à appeler entre le terrain et les unités) : chaque pion est redessiné
+    /// en silhouette sombre, cisaillée et rabattue au sol, ancrée à la base de son socle. L'ombre
+    /// reste au sol même quand le pion se soulève (elle utilise la position « au repos » du sprite),
+    /// ce qui rend lisible le décollage. Un batch dédié par pion (matrice de cisaillement propre).
+    /// </summary>
+    private void DrawCastShadows(SpriteBatch sb, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);
+
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (_combatDragFrom == cell)            // pion porté : ombre dessinée sous le curseur
+                continue;
+            if (UnitSprite(unit) is not { } sprite) // placeholder sans sprite : pas de silhouette
+                continue;
+
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift, size, UnitLift(cell, size));
+        }
+
+        // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »).
+        if (_combatDragFrom is { } from && _match.UnitAt(from) is { } carried && UnitSprite(carried) is { } cs)
+        {
+            var m = Context.Input.MousePosition;
+            DrawPieceCastShadow(sb, cs, m.X - size / 2, m.Y - size / 2, size, (int)(size * CarriedLiftFraction));
+        }
+    }
+
+    /// <summary>
+    /// Ombre projetée d'un pion dont la silhouette « au repos » occupe (<paramref name="destX"/>,
+    /// <paramref name="destY"/>). Quand le pion est en l'air (<paramref name="lift"/> &gt; 0), l'ombre
+    /// GLISSE dans la direction de la lumière et S'ÉCLAIRCIT → lecture nette du décollage.
+    /// </summary>
+    private void DrawPieceCastShadow(SpriteBatch sb, Texture2D sprite, int destX, int destY, int size, int lift)
+    {
+        var k = MathHelper.Clamp(lift / (size * CarriedLiftFraction), 0f, 1f);
+        var slideX = (int)(lift * ShadowLiftSlide);          // glisse vers la lumière (droite, comme le cisaillement)
+        var slideY = (int)(lift * ShadowLiftSlide * 0.35f);  // et un peu vers le bas/avant
+        var alpha = ShadowAlpha * (1f - ShadowLiftFade * k);
+
+        var dest = new Rectangle(destX + slideX, destY + slideY, size, size);
+        var anchor = new Vector2(dest.X + size / 2f, dest.Y + size * ShadowAnchorFraction);
+        DrawSilhouetteShadow(sb, sprite, dest, anchor, alpha);
+    }
+
+    /// <summary>
+    /// Dessine une silhouette de sprite en ombre : matrice qui, AUTOUR de <paramref name="anchor"/>
+    /// (la base du socle), cisaille latéralement et rabat/aplatit la silhouette vers le bas
+    /// (<see cref="ShadowFlatten"/> &lt; 0 → l'ombre tombe vers l'avant). Teinte sombre semi-transparente.
+    /// </summary>
+    private void DrawSilhouetteShadow(SpriteBatch sb, Texture2D sprite, Rectangle dest, Vector2 anchor, float alpha)
+    {
+        var transform =
+            Matrix.CreateTranslation(-anchor.X, -anchor.Y, 0f)
+            * new Matrix(1f, 0f, 0f, 0f,
+                         -ShadowShear, ShadowFlatten, 0f, 0f,
+                         0f, 0f, 1f, 0f,
+                         0f, 0f, 0f, 1f)
+            * Matrix.CreateTranslation(anchor.X, anchor.Y, 0f);
+
+        // CullNone : ShadowFlatten < 0 retourne la silhouette (inverse le sens des triangles) →
+        // sans ça le SpriteBatch l'éliminerait par culling et l'ombre serait invisible.
+        sb.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform,
+            rasterizerState: RasterizerState.CullNone);
+        sb.Draw(sprite, dest, Palette.Black1 * alpha);
+        sb.End();
+    }
+
+    /// <summary>
+    /// Pion soulevé à la souris pendant un glisser de combat : le sprite suit le curseur, nettement
+    /// soulevé, et projette une ombre sur la case visée quand c'est une cible légale (aperçu de pose).
+    /// </summary>
+    private void DrawCarriedUnit(SpriteBatch sb, GridLayout layout)
+    {
+        if (_combatDragFrom is not { } from || _match.UnitAt(from) is not { } unit)
+            return;
+
+        var size = layout.TileSize;
+        var lift = (int)(size * CarriedLiftFraction);
+        var m = Context.Input.MousePosition;
+
+        // Repère de pose : liseré clair sur la case visée si le dépôt est valide (distinct de l'ombre).
+        if (CellUnderMouse() is { } target && (_legalMoves.Contains(target) || _attackTargets.Contains(target)))
+            DrawZoneBorder(sb, layout, target, Palette.White, 2);
+
+        // (L'ombre projetée du pion porté est dessinée dans la passe d'ombres, au sol sous le curseur.)
+        // Pion porté, centré sur la souris (même rendu que sur le plateau : sprite ou jeton placeholder).
+        var rect = new Rectangle(m.X - size / 2, m.Y - size / 2 - lift, size, size);
+        var sprite = UnitSprite(unit);
+        if (sprite != null)
+            sb.Draw(sprite, rect, Color.White);
+        else
+            DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, size - 18, size - 26));
     }
 
     // ── Panneau latéral ───────────────────────────────────────────────────────────
@@ -935,6 +1196,8 @@ public sealed class GameplayScene : Scene
     {
         if (!Context.Input.WasLeftClicked)
             return;
+
+        Context.Sounds.Play("menu_click");
 
         var viewport = VirtualViewport;
         var action = _pauseMenu.HandleClick(Context.Input.MousePosition, viewport.Width, viewport.Height);

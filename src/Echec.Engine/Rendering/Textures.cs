@@ -105,6 +105,49 @@ public static class Textures
         }
     }
 
+    /// <summary>
+    /// Ellipse d'ombre <b>tramée</b> (dithering Bayer ordonné) : pleine au centre, points de
+    /// plus en plus espacés vers le bord → contour pixel-art « doux » sans dégradé. Les pixels
+    /// hors ellipse sont transparents ; les pixels gardés sont blancs opaques (la couleur/alpha
+    /// finale est posée à l'affichage via la teinte du <c>Draw</c>).
+    ///
+    /// À dessiner en <see cref="SamplerState.PointClamp"/> avec un facteur d'échelle ENTIER : le
+    /// motif reste alors net à tout zoom (pixel-perfect), contrairement à un blob en dégradé.
+    /// </summary>
+    public static Texture2D CreateShadowEllipse(GraphicsDevice graphicsDevice, int width, int height)
+    {
+        const float core = 0.45f;                 // proportion (du rayon²) de cœur PLEIN ; au-delà → tramage
+        var data = new Color[width * height];
+        var cx = (width - 1) / 2f;
+        var cy = (height - 1) / 2f;
+        var rx = width / 2f;
+        var ry = height / 2f;
+
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var nx = (x - cx) / rx;
+                var ny = (y - cy) / ry;
+                var d2 = nx * nx + ny * ny;        // 0 au centre … 1 au bord … >1 dehors
+                bool keep;
+                if (d2 <= core)
+                    keep = true;                   // cœur plein
+                else if (d2 < 1f)
+                {
+                    var fade = (1f - d2) / (1f - core);            // 1 au cœur → 0 au bord
+                    keep = fade >= (Bayer4[y & 3, x & 3] + 0.5f) / 16f; // anneau tramé
+                }
+                else
+                    keep = false;                  // hors ellipse
+
+                data[y * width + x] = keep ? Color.White : Color.Transparent;
+            }
+
+        var texture = new Texture2D(graphicsDevice, width, height);
+        texture.SetData(data);
+        return texture;
+    }
+
     /// <summary>Charge un PNG depuis le disque, ou renvoie <c>null</c> s'il est absent/illisible.</summary>
     public static Texture2D? LoadPngOrNull(GraphicsDevice graphicsDevice, string path)
     {

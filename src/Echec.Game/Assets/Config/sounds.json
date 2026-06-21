@@ -1,0 +1,27 @@
+// Table des effets sonores : "clé d'action" -> "fichier WAV".
+// Les chemins sont relatifs à Assets/Sounds/. Pour remplacer un son, change
+// simplement la valeur (un autre .wav du dossier) — aucun code à toucher.
+// Une clé absente ou un fichier introuvable = silence (pas d'erreur).
+{
+  // ── Placement ────────────────────────────────────────────────
+  "unit_pick":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort A.wav",
+  "unit_place":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Gather Plop Lower A.wav",
+  "battle_start":"Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification A.wav",
+
+  // ── Combat ───────────────────────────────────────────────────
+  "unit_select":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort C.wav",
+  "unit_deselect":"Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort D.wav",
+  "unit_move":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Steps/Grass Step A.wav",
+  "unit_attack":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+
+  // ── Fin de combat / campagne ─────────────────────────────────
+  "combat_won": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up A.wav",
+  "recruit":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",
+  "victory":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up D.wav",
+  "defeat":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
+
+  // ── Menus ────────────────────────────────────────────────────
+  "menu_open":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu A.wav",
+  "menu_close": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu B.wav",
+  "menu_click": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu C.wav"
+}

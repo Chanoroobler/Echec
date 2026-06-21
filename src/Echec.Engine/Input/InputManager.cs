@@ -60,4 +60,9 @@ public sealed class InputManager
 
     /// <summary>Vrai tant que le bouton gauche est maintenu (pour le retour visuel d'enfoncement).</summary>
     public bool IsLeftDown => _currentMouse.LeftButton == ButtonState.Pressed;
+
+    /// <summary>Vrai uniquement à la frame du clic droit (annulation / désélection).</summary>
+    public bool WasRightClicked =>
+        _currentMouse.RightButton == ButtonState.Pressed &&
+        _previousMouse.RightButton == ButtonState.Released;
 }
