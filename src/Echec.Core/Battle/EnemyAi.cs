@@ -5,14 +5,17 @@ using Echec.Core.Map;
 
 namespace Echec.Core.Battle;
 
+/// <summary>Action choisie par l'IA : un déplacement ou une attaque.</summary>
+public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
+
 /// <summary>
-/// IA gloutonne simple pour le camp ennemi : si une attaque mortelle est possible
-/// elle la joue, sinon une attaque quelconque, sinon elle avance l'unité qui peut
-/// le plus se rapprocher d'une unité joueur. Choix déterministe (premier trouvé).
+/// IA gloutonne simple (camp ennemi). Priorités : attaque mortelle &gt; attaque
+/// quelconque &gt; avancer l'unité qui se rapproche le plus d'une unité joueur.
+/// Choix déterministe (premier trouvé).
 /// </summary>
 public static class EnemyAi
 {
-    public static (Cell From, Cell To)? ChooseMove(Match match)
+    public static AiAction? ChooseAction(Match match)
     {
         if (match.IsOver || match.CurrentTurn != Faction.Enemy)
             return null;
@@ -23,31 +26,27 @@ public static class EnemyAi
         if (players.Count == 0)
             return null;
 
-        (Cell, Cell)? bestKill = null;
-        (Cell, Cell)? bestAttack = null;
-        (Cell, Cell)? bestAdvance = null;
+        AiAction? bestKill = null, bestAttack = null, bestAdvance = null;
         var bestAdvanceDistance = int.MaxValue;
 
         foreach (var (from, unit) in enemies)
         {
+            foreach (var target in match.AttackTargets(from))
+            {
+                var victim = match.UnitAt(target)!;
+                if (unit.Damage >= victim.Hp)
+                    bestKill ??= new AiAction(from, target, IsAttack: true);
+                else
+                    bestAttack ??= new AiAction(from, target, IsAttack: true);
+            }
+
             foreach (var to in match.LegalMoves(from))
             {
-                var target = match.UnitAt(to);
-                if (target != null && target.Faction == Faction.Player)
+                var distance = players.Min(p => Chebyshev(to, p));
+                if (distance < bestAdvanceDistance)
                 {
-                    if (unit.Damage >= target.Hp)
-                        bestKill ??= (from, to);
-                    else
-                        bestAttack ??= (from, to);
-                }
-                else
-                {
-                    var distance = players.Min(p => Chebyshev(to, p));
-                    if (distance < bestAdvanceDistance)
-                    {
-                        bestAdvanceDistance = distance;
-                        bestAdvance = (from, to);
-                    }
+                    bestAdvanceDistance = distance;
+                    bestAdvance = new AiAction(from, to, IsAttack: false);
                 }
             }
         }

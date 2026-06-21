@@ -4,12 +4,13 @@ using Echec.Core.Map;
 namespace Echec.Core.Battle;
 
 /// <summary>
-/// État et règles d'une partie : grille d'unités, tour courant, résolution des
-/// déplacements et du combat, condition de victoire. Domaine pur (aucun rendu).
+/// État et règles d'une partie : grille d'unités, tour courant, déplacement et combat,
+/// condition de victoire. Domaine pur (aucun rendu).
 ///
-/// Combat : se déplacer sur une case ennemie inflige les dégâts de l'attaquant.
-/// Si la cible meurt, l'attaquant prend sa place ; sinon il reste sur place.
-/// Un seul déplacement par tour, puis la main passe au camp adverse.
+/// Un tour = UNE action : se DÉPLACER vers une case vide (jusqu'à la portée de
+/// déplacement) OU ATTAQUER une cible à portée de tir. Les deux suivent les directions
+/// du domaine. À l'attaque : si la cible meurt et que la portée de tir vaut 1 (mêlée,
+/// ou saut du cavalier), l'attaquant prend sa place ; sinon il reste sur place.
 /// </summary>
 public sealed class Match
 {
@@ -46,68 +47,132 @@ public sealed class Match
             }
     }
 
-    /// <summary>Cases atteignables (vides ou occupées par un ennemi) pour l'unité en <paramref name="from"/>.</summary>
+    /// <summary>Cases VIDES atteignables en déplacement (le long des directions, bloqué par toute unité).</summary>
     public List<Cell> LegalMoves(Cell from)
     {
         var result = new List<Cell>();
-        var unit = UnitAt(from);
-        if (unit == null || unit.Faction != CurrentTurn || IsOver)
+        var unit = ActiveUnitAt(from);
+        if (unit == null)
             return result;
 
-        foreach (var offset in MovementRules.Offsets(unit.Type))
-        {
-            var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-            if (!InBounds(to))
-                continue;
+        var vectors = Movement.Vectors(unit.Domaine);
 
-            var target = _units[to.Column, to.Row];
-            if (target == null || target.Faction != unit.Faction)
-                result.Add(to); // case vide ou ennemi (attaque)
+        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        {
+            foreach (var offset in vectors)
+            {
+                var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
+                if (InBounds(to) && _units[to.Column, to.Row] == null)
+                    result.Add(to);
+            }
+            return result;
+        }
+
+        foreach (var dir in vectors)
+        {
+            for (var step = 1; step <= unit.MoveRange; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to) || _units[to.Column, to.Row] != null)
+                    break; // hors plateau ou bloqué : on ne passe pas à travers
+                result.Add(to);
+            }
         }
 
         return result;
     }
 
-    /// <summary>
-    /// Tente le déplacement <paramref name="from"/> → <paramref name="to"/> pour le camp
-    /// courant. Résout le combat, fait passer le tour en cas de succès.
-    /// </summary>
+    /// <summary>Cases ennemies à portée de TIR (première unité rencontrée dans chaque direction).</summary>
+    public List<Cell> AttackTargets(Cell from)
+    {
+        var result = new List<Cell>();
+        var unit = ActiveUnitAt(from);
+        if (unit == null)
+            return result;
+
+        var vectors = Movement.Vectors(unit.Domaine);
+
+        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        {
+            foreach (var offset in vectors)
+            {
+                var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
+                if (UnitAt(to) is { } target && target.Faction != unit.Faction)
+                    result.Add(to);
+            }
+            return result;
+        }
+
+        foreach (var dir in vectors)
+        {
+            for (var step = 1; step <= unit.AttackRange; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to))
+                    break;
+
+                var target = _units[to.Column, to.Row];
+                if (target == null)
+                    continue; // case vide : la ligne de tir continue
+
+                if (target.Faction != unit.Faction)
+                    result.Add(to); // premier ennemi en vue
+                break;              // une unité bloque la ligne (amie ou ennemie)
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Déplace l'unité vers une case vide légale. Passe le tour en cas de succès.</summary>
     public MoveKind TryMove(Cell from, Cell to)
     {
-        if (IsOver)
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !LegalMoves(from).Contains(to))
             return MoveKind.Invalid;
 
-        var unit = UnitAt(from);
-        if (unit == null || unit.Faction != CurrentTurn)
+        MoveUnit(from, to);
+        EndTurn();
+        return MoveKind.Moved;
+    }
+
+    /// <summary>Attaque une cible ennemie à portée de tir. Passe le tour en cas de succès.</summary>
+    public MoveKind TryAttack(Cell from, Cell target)
+    {
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !AttackTargets(from).Contains(target))
             return MoveKind.Invalid;
 
-        if (!LegalMoves(from).Contains(to))
-            return MoveKind.Invalid;
+        var victim = _units[target.Column, target.Row]!;
+        victim.TakeDamage(unit.Damage);
 
-        var target = _units[to.Column, to.Row];
         MoveKind kind;
-
-        if (target == null)
+        if (!victim.IsAlive)
         {
-            MoveUnit(from, to);
-            kind = MoveKind.Moved;
+            _units[target.Column, target.Row] = null;
+            if (TakesPlaceOnKill(unit))
+                MoveUnit(from, target);
+            kind = MoveKind.Killed;
         }
         else
         {
-            target.TakeDamage(unit.Damage);
-            if (!target.IsAlive)
-            {
-                MoveUnit(from, to);
-                kind = MoveKind.Killed;
-            }
-            else
-            {
-                kind = MoveKind.Attacked; // l'attaquant reste sur place
-            }
+            kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
 
         EndTurn();
         return kind;
+    }
+
+    /// <summary>Mêlée (tir 1) ou saut du cavalier : l'attaquant avance sur la case libérée.</summary>
+    private static bool TakesPlaceOnKill(Unit unit) =>
+        Movement.Kind(unit.Domaine) == MovementKind.Jump || unit.AttackRange == 1;
+
+    private Unit? ActiveUnitAt(Cell cell)
+    {
+        if (IsOver)
+            return null;
+        var unit = UnitAt(cell);
+        return unit != null && unit.Faction == CurrentTurn ? unit : null;
     }
 
     private void MoveUnit(Cell from, Cell to)

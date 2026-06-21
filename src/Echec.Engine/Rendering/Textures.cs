@@ -41,6 +41,22 @@ public static class Textures
         return texture;
     }
 
+    /// <summary>Charge un PNG depuis le disque, ou renvoie <c>null</c> s'il est absent/illisible.</summary>
+    public static Texture2D? LoadPngOrNull(GraphicsDevice graphicsDevice, string path)
+    {
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return Texture2D.FromStream(graphicsDevice, stream);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Charge un PNG via <c>Texture2D.FromFile</c>, ou renvoie un placeholder si absent/illisible.</summary>
     public static Texture2D LoadTileOrPlaceholder(GraphicsDevice graphicsDevice, string path,
         int surfaceSize = GridLayout.DefaultTileSize, int thickness = 10)

@@ -7,6 +7,8 @@ using Echec.Engine.Scenes;
 using Echec.Engine.Settings;
 using Echec.Engine.UI;
 using Echec.Engine.UI.Text;
+using Echec.Core.Battle;
+using Echec.Core.Battle.Config;
 using Echec.Game.Scenes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -40,9 +42,26 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void Initialize()
     {
+        LoadUnitConfig();
         // Démarre dans la résolution par défaut des réglages.
         Apply(_settings.Display);
         base.Initialize();
+    }
+
+    /// <summary>Charge les classes depuis Assets/Config/units.json (repli sur les défauts si absent/invalide).</summary>
+    private static void LoadUnitConfig()
+    {
+        var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/units.json");
+        if (!System.IO.File.Exists(path))
+            return;
+        try
+        {
+            Domaines.Load(DomaineCatalog.FromJson(System.IO.File.ReadAllText(path)));
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"units.json ignoré (invalide) : {ex.Message}");
+        }
     }
 
     protected override void LoadContent()

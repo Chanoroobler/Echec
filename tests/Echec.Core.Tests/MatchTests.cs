@@ -10,45 +10,28 @@ public class MatchTests
     {
         var match = new Match(8, 8);
         playerCell = new Cell(4, 4);
-        enemyCell = new Cell(4, 3); // adjacente, au-dessus
-        match.Place(playerCell, Units.Soldier(Faction.Player));
-        match.Place(enemyCell, Units.Soldier(Faction.Enemy));
+        enemyCell = new Cell(4, 3); // adjacente
+        match.Place(playerCell, Units.Pion(Faction.Player));
+        match.Place(enemyCell, Units.Pion(Faction.Enemy));
         return match;
     }
 
     [Fact]
-    public void Soldier_InCenter_HasEightLegalMoves()
+    public void LegalMoves_OnlyEmptyCells_OccupiedCellsBlock()
     {
-        var match = new Match(8, 8);
-        var center = new Cell(4, 4);
-        match.Place(center, Units.Soldier(Faction.Player));
+        var match = TwoUnitMatch(out var playerCell, out var enemyCell);
 
-        Assert.Equal(8, match.LegalMoves(center).Count);
+        var moves = match.LegalMoves(playerCell);
+        Assert.DoesNotContain(enemyCell, moves);          // une case occupée n'est pas un déplacement
+        Assert.Equal(7, moves.Count);                     // 8 voisins - 1 occupé
     }
 
     [Fact]
-    public void Soldier_InCorner_HasThreeLegalMoves()
+    public void AttackTargets_IncludesAdjacentEnemy_ForMeleePion()
     {
-        var match = new Match(8, 8);
-        var corner = new Cell(0, 0);
-        match.Place(corner, Units.Soldier(Faction.Player));
+        var match = TwoUnitMatch(out var playerCell, out var enemyCell);
 
-        Assert.Equal(3, match.LegalMoves(corner).Count);
-    }
-
-    [Fact]
-    public void LegalMoves_ExcludesFriendlyButIncludesEnemy()
-    {
-        var match = new Match(8, 8);
-        var from = new Cell(4, 4);
-        match.Place(from, Units.Soldier(Faction.Player));
-        match.Place(new Cell(4, 3), Units.Soldier(Faction.Player)); // ami
-        match.Place(new Cell(5, 4), Units.Soldier(Faction.Enemy));  // ennemi
-
-        var moves = match.LegalMoves(from);
-        Assert.DoesNotContain(new Cell(4, 3), moves); // ami exclu
-        Assert.Contains(new Cell(5, 4), moves);       // ennemi = attaque possible
-        Assert.Equal(7, moves.Count);
+        Assert.Equal(new[] { enemyCell }, match.AttackTargets(playerCell));
     }
 
     [Fact]
@@ -66,42 +49,85 @@ public class MatchTests
     }
 
     [Fact]
-    public void AttackNonLethal_DealsDamage_AttackerStays_TurnPasses()
+    public void MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses()
     {
         var match = TwoUnitMatch(out var playerCell, out var enemyCell);
         var enemy = match.UnitAt(enemyCell)!;
 
-        var kind = match.TryMove(playerCell, enemyCell);
+        var kind = match.TryAttack(playerCell, enemyCell);
 
         Assert.Equal(MoveKind.Attacked, kind);
         Assert.Equal(6, enemy.Hp);                    // 10 - 4
-        Assert.NotNull(match.UnitAt(playerCell));     // attaquant resté sur place
-        Assert.Same(enemy, match.UnitAt(enemyCell));
+        Assert.NotNull(match.UnitAt(playerCell));     // resté sur place (avant le kill)
         Assert.Equal(Faction.Enemy, match.CurrentTurn);
     }
 
     [Fact]
-    public void LethalAttack_KillsTarget_AttackerTakesPlace_AndWins()
+    public void MeleeKill_AttackerTakesPlace_AndWins()
     {
         var match = TwoUnitMatch(out var playerCell, out var enemyCell);
         var enemy = match.UnitAt(enemyCell)!;
-        enemy.TakeDamage(enemy.Hp - 1); // 1 PV : le prochain coup tue
+        enemy.TakeDamage(enemy.Hp - 1);
 
-        var kind = match.TryMove(playerCell, enemyCell);
+        var kind = match.TryAttack(playerCell, enemyCell);
 
         Assert.Equal(MoveKind.Killed, kind);
-        Assert.Null(match.UnitAt(playerCell));        // l'attaquant a bougé
-        Assert.Equal(Faction.Player, match.UnitAt(enemyCell)!.Faction); // il prend la place
+        Assert.Null(match.UnitAt(playerCell));                          // mêlée : prend la place
+        Assert.Equal(Faction.Player, match.UnitAt(enemyCell)!.Faction);
         Assert.True(match.IsOver);
         Assert.Equal(Faction.Player, match.Winner);
     }
 
     [Fact]
-    public void EnemyUnit_HasNoLegalMoves_DuringPlayerTurn()
+    public void RangedAttack_HitsAtDistance_AndStaysInPlaceOnKill()
+    {
+        var match = new Match(8, 8);
+        var tourCell = new Cell(3, 7);
+        var enemyCell = new Cell(3, 4); // 3 cases en ligne, à portée de tir (3)
+        match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
+        var enemy = Units.Pion(Faction.Enemy);
+        enemy.TakeDamage(enemy.Hp - 1);
+        match.Place(enemyCell, enemy);
+
+        Assert.Contains(enemyCell, match.AttackTargets(tourCell));
+
+        var kind = match.TryAttack(tourCell, enemyCell);
+
+        Assert.Equal(MoveKind.Killed, kind);
+        Assert.NotNull(match.UnitAt(tourCell));   // tir à distance : reste sur place
+        Assert.Null(match.UnitAt(enemyCell));     // la case libérée reste vide
+    }
+
+    [Fact]
+    public void RangedAttack_BlockedByUnitInLine()
+    {
+        var match = new Match(8, 8);
+        var tourCell = new Cell(3, 7);
+        match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
+        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));  // allié qui bloque la ligne
+        match.Place(new Cell(3, 4), Units.Pion(Faction.Enemy));
+
+        Assert.DoesNotContain(new Cell(3, 4), match.AttackTargets(tourCell));
+    }
+
+    [Fact]
+    public void AttackRange_LimitsReach()
+    {
+        var match = new Match(8, 8);
+        var tourCell = new Cell(3, 7);
+        match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player)); // portée tir 3
+        match.Place(new Cell(3, 3), Units.Pion(Faction.Enemy));        // distance 4
+
+        Assert.Empty(match.AttackTargets(tourCell));
+    }
+
+    [Fact]
+    public void EnemyUnit_HasNoActions_DuringPlayerTurn()
     {
         var match = TwoUnitMatch(out _, out var enemyCell);
 
-        Assert.Empty(match.LegalMoves(enemyCell)); // pas le tour de l'ennemi
+        Assert.Empty(match.LegalMoves(enemyCell));
+        Assert.Empty(match.AttackTargets(enemyCell));
     }
 
     [Fact]
@@ -111,18 +137,18 @@ public class MatchTests
         var weak = new Cell(4, 4);
         var enemy = new Cell(4, 3);
         var throwaway = new Cell(0, 0);
-        match.Place(weak, Units.Soldier(Faction.Player));
-        match.UnitAt(weak)!.TakeDamage(match.UnitAt(weak)!.Hp - 1); // tuable en un coup
-        match.Place(enemy, Units.Soldier(Faction.Enemy));
-        match.Place(throwaway, Units.Soldier(Faction.Player));
+        match.Place(weak, Units.Pion(Faction.Player));
+        match.UnitAt(weak)!.TakeDamage(match.UnitAt(weak)!.Hp - 1);
+        match.Place(enemy, Units.Pion(Faction.Enemy));
+        match.Place(throwaway, Units.Pion(Faction.Player));
 
-        // Le joueur joue un coup neutre pour passer la main à l'IA.
-        match.TryMove(throwaway, new Cell(1, 1));
+        match.TryMove(throwaway, new Cell(1, 1)); // passe la main à l'IA
         Assert.Equal(Faction.Enemy, match.CurrentTurn);
 
-        var move = EnemyAi.ChooseMove(match);
+        var action = EnemyAi.ChooseAction(match);
 
-        Assert.NotNull(move);
-        Assert.Equal(weak, move!.Value.To); // l'IA vise la cible mortelle
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(weak, action.Value.To);
     }
 }

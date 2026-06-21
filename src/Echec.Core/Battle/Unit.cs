@@ -1,34 +1,41 @@
 namespace Echec.Core.Battle;
 
 /// <summary>
-/// Unité jouable : type, camp, points de vie et dégâts. État mutable (les PV
-/// baissent au combat). Pour le POC, seules ces stats existent.
+/// Unité jouable. Deux axes : le <see cref="Domaine"/> (qui fournit le style de
+/// déplacement) et la <see cref="Class"/> (asset + stats : PV, dégâts, portée).
+/// Le level-up n'est pas encore défini : l'unité reste sur la classe qu'on lui donne.
 /// </summary>
 public sealed class Unit
 {
-    public Unit(UnitType type, Faction faction, int maxHp, int damage)
+    public Unit(Domaine domaine, Faction faction, UnitClass unitClass)
     {
-        Type = type;
+        Domaine = domaine;
         Faction = faction;
-        MaxHp = maxHp;
-        Hp = maxHp;
-        Damage = damage;
+        Class = unitClass;
+        Hp = unitClass.MaxHp;
     }
 
-    public UnitType Type { get; }
+    public Domaine Domaine { get; }
     public Faction Faction { get; }
-    public int MaxHp { get; }
-    public int Damage { get; }
+    public UnitClass Class { get; }
     public int Hp { get; private set; }
+
+    public MovementKind MovementKind => Movement.Kind(Domaine);
+    public int MaxHp => Class.MaxHp;
+    public int Damage => Class.Damage;
+    public int MoveRange => Class.MoveRange;
+    public int AttackRange => Class.AttackRange;
 
     public bool IsAlive => Hp > 0;
 
     public void TakeDamage(int amount) => Hp = System.Math.Max(0, Hp - amount);
 }
 
-/// <summary>Fabrique d'unités avec leurs stats par défaut (POC).</summary>
+/// <summary>Fabrique d'unités : démarre sur la classe de base du domaine.</summary>
 public static class Units
 {
-    public static Unit Soldier(Faction faction) =>
-        new(UnitType.Soldier, faction, maxHp: 10, damage: 4);
+    public static Unit Of(Domaine domaine, Faction faction) =>
+        new(domaine, faction, Domaines.Of(domaine).BaseClass);
+
+    public static Unit Pion(Faction faction) => Of(Domaine.Pion, faction);
 }

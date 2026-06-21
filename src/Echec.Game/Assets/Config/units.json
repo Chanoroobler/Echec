@@ -1,0 +1,28 @@
+{
+  // Paramétrage des classes par domaine.
+  // Le motif de déplacement (Pion=8 dir, Fou=diagonales, Cavalier=saut, Tour=lignes, Dame=8 dir)
+  // est fixé en code par le domaine. Ici on règle : nom, asset (PNG dans Assets/Units/<asset>.png),
+  // PV (hp), dégâts (damage), portée de déplacement (moveRange) et portée de tir (attackRange).
+  "domaines": [
+    {
+      "domaine": "Pion",
+      "baseClass": { "name": "Soldat", "asset": "soldat", "hp": 10, "damage": 4, "moveRange": 1, "attackRange": 1 }
+    },
+    {
+      "domaine": "Fou",
+      "baseClass": { "name": "Eclaireur", "asset": "eclaireur", "hp": 8, "damage": 4, "moveRange": 3, "attackRange": 2 }
+    },
+    {
+      "domaine": "Cavalier",
+      "baseClass": { "name": "Cavalier", "asset": "cavalier", "hp": 10, "damage": 5, "moveRange": 1, "attackRange": 1 }
+    },
+    {
+      "domaine": "Tour",
+      "baseClass": { "name": "Sentinelle", "asset": "sentinelle", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 }
+    },
+    {
+      "domaine": "Dame",
+      "baseClass": { "name": "Capitaine", "asset": "capitaine", "hp": 12, "damage": 5, "moveRange": 3, "attackRange": 1 }
+    }
+  ]
+}
