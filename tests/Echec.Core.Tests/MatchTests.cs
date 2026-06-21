@@ -131,6 +131,36 @@ public class MatchTests
     }
 
     [Fact]
+    public void ThreatenedCells_ComputedRegardlessOfTurn_EvenForEnemy()
+    {
+        var match = TwoUnitMatch(out var playerCell, out var enemyCell);
+
+        // C'est le tour du joueur : l'ennemi n'a aucune action jouable...
+        Assert.Empty(match.AttackTargets(enemyCell));
+
+        // ...mais sa zone de MENACE reste calculable (8 voisins du pion ennemi centré),
+        // et elle inclut bien le joueur adjacent.
+        var threat = match.ThreatenedCells(enemyCell);
+        Assert.Equal(8, threat.Count);
+        Assert.Contains(playerCell, threat);
+    }
+
+    [Fact]
+    public void ThreatenedCells_StopAtFirstBlocker_WhichIsIncluded()
+    {
+        var match = new Match(8, 8);
+        var tour = new Cell(3, 7);
+        match.Place(tour, Units.Of(Domaine.Tour, Faction.Enemy)); // tir 3, glisse en croix
+        var blocker = new Cell(3, 5);                             // 2 cases au nord
+        match.Place(blocker, Units.Pion(Faction.Player));
+
+        var threat = match.ThreatenedCells(tour);
+        Assert.Contains(new Cell(3, 6), threat);       // case vide avant le bloqueur : menacée
+        Assert.Contains(blocker, threat);              // le bloqueur subirait l'attaque : menacé
+        Assert.DoesNotContain(new Cell(3, 4), threat); // au-delà du bloqueur : hors de portée
+    }
+
+    [Fact]
     public void EnemyAi_PrefersLethalAttack()
     {
         var match = new Match(8, 8);

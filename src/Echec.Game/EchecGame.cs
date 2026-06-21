@@ -38,6 +38,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private const int DesignHeight = 720;
     private RenderTarget2D? _virtualTarget;
     private Rectangle _virtualDest;
+    private int _virtualScale = 1;
 
     public EchecGame()
     {
@@ -109,6 +110,13 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         // 2. On agrandit la cible vers l'écran réel (échelle entière, PointClamp = net).
         GraphicsDevice.SetRenderTarget(null);
         GraphicsDevice.Clear(Color.Black);
+
+        // 2a. La scène peut étendre son fond (eau) dans les bandes noires du letterbox, AVANT le
+        //     blit du canvas qui recouvre ensuite la zone 16:9 par-dessus.
+        var pp = GraphicsDevice.PresentationParameters;
+        _scenes.DrawLetterboxBackground(
+            new Point(pp.BackBufferWidth, pp.BackBufferHeight), _virtualDest.Location, _virtualScale);
+
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);
         _spriteBatch.End();
@@ -119,9 +127,27 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     /// <summary>Applique résolution + plein écran (IDisplayService).</summary>
     public void Apply(DisplaySettings settings)
     {
+        // Plein écran FENÊTRÉ sans bordure (borderless), jamais exclusif : le mode exclusif
+        // (HardwareModeSwitch) casse la capture OBS/Twitch et minimise la fenêtre au moindre
+        // clic hors-jeu (2e écran). Le borderless reste capturable et garde le focus.
+        _graphics.HardwareModeSwitch = false;
         _graphics.IsFullScreen = settings.Fullscreen;
-        _graphics.PreferredBackBufferWidth = settings.Width;
-        _graphics.PreferredBackBufferHeight = settings.Height;
+
+        if (settings.Fullscreen)
+        {
+            // En borderless on couvre l'écran à sa résolution NATIVE → aucune mise à l'échelle
+            // par SDL (qui briserait le pixel-perfect) ; le canvas virtuel gère l'agrandissement
+            // entier. La résolution choisie dans le menu ne s'applique donc qu'en fenêtré.
+            var mode = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode;
+            _graphics.PreferredBackBufferWidth = mode.Width;
+            _graphics.PreferredBackBufferHeight = mode.Height;
+        }
+        else
+        {
+            _graphics.PreferredBackBufferWidth = settings.Width;
+            _graphics.PreferredBackBufferHeight = settings.Height;
+        }
+
         _graphics.ApplyChanges();
         ConfigureVirtualScreen();
     }
@@ -175,6 +201,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         int dispH = canvasH * scale;
         var offset = new Point((realW - dispW) / 2, (realH - dispH) / 2);
         _virtualDest = new Rectangle(offset.X, offset.Y, dispW, dispH);
+        _virtualScale = scale;
 
         _context.VirtualResolution = new Point(canvasW, canvasH);
         _input.SetViewport(offset, scale);

@@ -42,6 +42,10 @@ public sealed class SceneManager
 
     public void Update(GameTime gameTime) => Current?.Update(gameTime);
 
+    /// <summary>Fond de letterbox de la scène active (eau dans les bandes noires). Voir <see cref="Scene.DrawLetterboxBackground"/>.</summary>
+    public void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale)
+        => (Current as Scene)?.DrawLetterboxBackground(realScreen, canvasOffset, canvasScale);
+
     public void Draw(GameTime gameTime)
     {
         foreach (var scene in _stack)

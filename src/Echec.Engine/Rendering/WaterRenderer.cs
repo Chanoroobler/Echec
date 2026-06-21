@@ -105,18 +105,30 @@ public sealed class WaterRenderer
     }
 
     /// <summary>
-    /// Peint l'eau plein écran (à appeler AVANT le plateau). <paramref name="width"/>/
+    /// Peint l'eau plein canvas (à appeler AVANT le plateau). <paramref name="width"/>/
     /// <paramref name="height"/> = taille du canvas ; le courant est ancré à ce repère.
     /// </summary>
     public void DrawWater(SpriteBatch spriteBatch, float time, int width, int height)
+        => DrawWaterRect(spriteBatch, time, new Rectangle(0, 0, width, height),
+            Vector2.Zero, new Vector2(width, height));
+
+    /// <summary>
+    /// Peint l'eau sur un rectangle écran arbitraire avec un mapping écran→repère EXPLICITE
+    /// (<paramref name="worldMin"/>/<paramref name="worldSize"/>). Sert à étendre l'eau sur le
+    /// backbuffer réel (bandes du letterbox) en raccordant le repère à celui du canvas → le
+    /// courant est continu de part et d'autre de la bordure du canvas.
+    /// </summary>
+    public void DrawWaterRect(SpriteBatch spriteBatch, float time, Rectangle dest,
+        Vector2 worldMin, Vector2 worldSize)
     {
         if (_effect == null) return;
-        SetFrame(time, width, height);
+        Set("Time", time);
+        Set("WorldRect", new Vector4(worldMin.X, worldMin.Y, worldSize.X, worldSize.Y));
         _effect.CurrentTechnique = _effect.Techniques["Water"];
 
         // La texture de bruit EST la texture du SpriteBatch (slot 0). PointWrap : bruit net et répété.
         spriteBatch.Begin(samplerState: SamplerState.PointWrap, effect: _effect);
-        spriteBatch.Draw(_noise, new Rectangle(0, 0, width, height), Color.White);
+        spriteBatch.Draw(_noise, dest, Color.White);
         spriteBatch.End();
     }
 

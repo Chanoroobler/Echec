@@ -452,6 +452,7 @@ public sealed class GameplayScene : Scene
         {
             case RunPhase.Placement:
                 DrawDeploymentZone(sb, layout);
+                DrawEnemyThreat(sb, layout);
                 DrawUnits(sb, layout);
                 DrawPanelBackground(sb);
                 DrawPlacementPanel(sb);
@@ -459,6 +460,7 @@ public sealed class GameplayScene : Scene
                 break;
             case RunPhase.Battle:
                 DrawHighlights(sb, layout);
+                DrawEnemyThreat(sb, layout);
                 DrawUnits(sb, layout);
                 DrawPanelBackground(sb);
                 DrawBattlePanel(sb);
@@ -522,6 +524,51 @@ public sealed class GameplayScene : Scene
         return new Rectangle((int)layout.Origin.X, (int)layout.Origin.Y, pxW, pxH);
     }
 
+    /// <summary>
+    /// Étend l'eau dans les bandes noires du letterbox : on peint le champ d'eau sur tout le
+    /// backbuffer réel, avec un repère raccordé à celui du canvas (mêmes coordonnées « monde »)
+    /// → le courant est continu jusqu'au bord du canvas, qui sera ensuite blitté par-dessus.
+    /// </summary>
+    public override void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale)
+    {
+        if (canvasScale <= 0)
+            return;
+
+        var sb = Context.SpriteBatch;
+        var fullScreen = new Rectangle(0, 0, realScreen.X, realScreen.Y);
+
+        if (_water.Enabled)
+        {
+            // Écran réel → coordonnées canvas : le pixel écran s = canvasOffset + monde * canvasScale.
+            var worldMin = new Vector2(-canvasOffset.X / (float)canvasScale, -canvasOffset.Y / (float)canvasScale);
+            var worldSize = new Vector2(realScreen.X / (float)canvasScale, realScreen.Y / (float)canvasScale);
+            _water.DrawWaterRect(sb, _time, fullScreen, worldMin, worldSize);
+        }
+
+        // Le voile d'assombrissement (pause / recrutement / fin) est dessiné DANS le canvas et ne
+        // couvre donc que la zone 16:9 ; on l'étend ici aux bandes pour que tout l'écran soit sombre.
+        if (FullScreenDim() is { } dim)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(Context.Pixel, fullScreen, dim);
+            sb.End();
+        }
+    }
+
+    /// <summary>
+    /// Voile plein écran actif, le cas échéant : doit reproduire EXACTEMENT le voile dessiné dans
+    /// le canvas (pause → <see cref="PauseMenuRenderer"/>, recrutement/fin → <see cref="DrawDim"/>)
+    /// afin que les bandes du letterbox s'assombrissent à l'identique. Null si rien à assombrir.
+    /// </summary>
+    private Color? FullScreenDim()
+    {
+        if (_pauseMenu.IsOpen)
+            return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
+        return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
+            ? Palette.Black1 * 0.62f       // = DrawDim
+            : null;
+    }
+
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
     {
         foreach (var cell in _battlefield.Cells())
@@ -544,6 +591,20 @@ public sealed class GameplayScene : Scene
 
         foreach (var cell in _attackTargets)      // cible de tir = rouge
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
+    }
+
+    /// <summary>
+    /// Au survol d'une unité ENNEMIE, prévisualise sa portée d'attaque : les cases qu'elle menace
+    /// sont teintées en rouge, l'ennemi survolé est cerclé. Aide à anticiper le danger.
+    /// </summary>
+    private void DrawEnemyThreat(SpriteBatch sb, GridLayout layout)
+    {
+        if (CellUnderMouse() is not { } cell || _match.UnitAt(cell) is not { Faction: Faction.Enemy })
+            return;
+
+        foreach (var threat in _match.ThreatenedCells(cell))
+            DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
+        DrawZoneBorder(sb, layout, cell, Palette.Purple5, 2);
     }
 
     private void DrawUnits(SpriteBatch sb, GridLayout layout)

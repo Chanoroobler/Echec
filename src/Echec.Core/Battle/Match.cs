@@ -143,6 +143,49 @@ public sealed class Match
         return result;
     }
 
+    /// <summary>
+    /// Cases MENACÉES par l'unité en <paramref name="from"/> : toutes les cases atteignables le
+    /// long de ses directions de tir jusqu'à sa portée, en s'arrêtant à la première unité
+    /// rencontrée (incluse, car elle subirait l'attaque). INDÉPENDANT du tour courant — sert à
+    /// prévisualiser la menace d'un ennemi au survol. Liste vide si la case est inoccupée.
+    /// </summary>
+    public List<Cell> ThreatenedCells(Cell from)
+    {
+        var result = new List<Cell>();
+        var unit = UnitAt(from);
+        if (unit == null)
+            return result;
+
+        var vectors = Movement.Vectors(unit.Domaine);
+
+        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        {
+            foreach (var offset in vectors)
+            {
+                var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
+                if (InBounds(to))
+                    result.Add(to);
+            }
+            return result;
+        }
+
+        foreach (var dir in vectors)
+        {
+            for (var step = 1; step <= unit.AttackRange; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to))
+                    break;
+
+                result.Add(to);
+                if (_units[to.Column, to.Row] != null)
+                    break; // une unité bloque la ligne de tir au-delà
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>Déplace l'unité vers une case vide légale. Passe le tour en cas de succès.</summary>
     public MoveKind TryMove(Cell from, Cell to)
     {
