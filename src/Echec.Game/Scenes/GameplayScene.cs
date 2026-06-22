@@ -60,9 +60,12 @@ public sealed class GameplayScene : Scene
     private PauseMenuRenderer _pauseRenderer = null!;
     private DomaineTreeRenderer _treeRenderer = null!;
 
-    // Effets de combat shader (estafilade / dissolution / flash) + animation d'attaque en cours.
+    // Effets de combat shader (dissolution / flash) + animation d'attaque en cours.
     private CombatFxRenderer _combatFx = null!;
     private readonly MeleeStrikeFx _fx = new();
+    // Étincelles d'impact (particules poolées) + garde-fou « émises une seule fois par coup ».
+    private readonly SparkBurst _sparks = new();
+    private bool _sparksEmitted;
 
     // Sprites d'unités 64×64 chargés depuis Assets/Units/<asset>.png (null = pas d'asset → placeholder).
     private const string UnitAssetFolder = "Assets/Units";
@@ -70,6 +73,10 @@ public sealed class GameplayScene : Scene
 
     private Run _run = null!;
     private Match _match = null!;
+
+    // Orientation visuelle par unité : true = regarde vers le bas (face caméra). Suit la dernière
+    // action verticale (déplacement/attaque) ; défaut = vers l'adversaire (cf. DefaultFacesDown).
+    private readonly Dictionary<Unit, bool> _facesDown = new();
 
     // Lien unité déployée → gabarit d'inventaire, pour calculer les pertes après combat.
     private readonly Dictionary<Unit, UnitSpec> _playerSpec = new();
@@ -221,6 +228,7 @@ public sealed class GameplayScene : Scene
         // Terrain propre à ce combat : herbe + obstacles eau/montagne aléatoires (zone neutre, symétrique).
         _battlefield = _run.BuildBattlefield(Columns, Rows);
         _match = new Match(Columns, Rows, _battlefield);
+        _facesDown.Clear();
         _playerSpec.Clear();
         _enemySpec.Clear();
         _enemyKillOrder.Clear();
@@ -420,11 +428,16 @@ public sealed class GameplayScene : Scene
 
     private void UpdateBattle(GameTime gameTime)
     {
+        var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _sparks.Update(dt);     // les particules vivent leur vie même pendant le gel de l'animation
+
         // Animation d'attaque en cours : on gèle entrées, IA et fin de combat le temps des FX
         // (le domaine est déjà résolu ; la fin de partie ne s'affiche qu'après la dissolution).
         if (_fx.Active)
         {
-            _fx.Update(gameTime.ElapsedGameTime.TotalSeconds);
+            _fx.Update(dt);
+            if (_fx.HasImpacted && !_sparksEmitted)
+                EmitImpactSparks();
             return;
         }
 
@@ -508,7 +521,9 @@ public sealed class GameplayScene : Scene
 
         if (_selected is not null && _legalMoves.Contains(cell))
         {
-            _match.TryMove(_selected.Value, cell);
+            var from = _selected.Value;
+            _match.TryMove(from, cell);
+            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
             TriggerLanding(cell);
             Context.Sounds.Play("unit_move");
             EndPlayerAction();
@@ -555,6 +570,7 @@ public sealed class GameplayScene : Scene
         else if (_legalMoves.Contains(cell))
         {
             _match.TryMove(from, cell);
+            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
             TriggerLanding(cell);
             Context.Sounds.Play("unit_move");
             EndPlayerAction();
@@ -589,6 +605,7 @@ public sealed class GameplayScene : Scene
         else
         {
             _match.TryMove(a.From, a.To);
+            if (_match.UnitAt(a.To) is { } moved) FaceToward(moved, a.From, a.To);
             TriggerLanding(a.To);
             Context.Sounds.Play("unit_move");
         }
@@ -638,6 +655,8 @@ public sealed class GameplayScene : Scene
     {
         var attacker = _match.UnitAt(from);
         var victim = _match.UnitAt(target);
+        if (attacker != null)
+            FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
         var victimSprite = victim != null ? UnitSprite(victim) : null;
 
@@ -652,6 +671,7 @@ public sealed class GameplayScene : Scene
         var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
         var attackerCell = advanced ? target : from;
         _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced);
+        _sparksEmitted = false;     // la gerbe d'étincelles sera émise au contact (cf. UpdateBattle)
 
         return kind;
     }
@@ -717,8 +737,10 @@ public sealed class GameplayScene : Scene
                 DrawCarriedUnit(sb, board);
                 sb.End();
 
-                if (_fx.Active)             // estafilade / dissolution / flash : passes shader dédiées
+                if (_fx.Active)             // dissolution / attaquant animé / flash : passes dédiées
                     DrawCombatFx(sb, board);
+
+                _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
 
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawPanelBackground(sb);
@@ -774,9 +796,8 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        _water.BuildMask(sb, BoardRect(layout), w, h);
         _water.DrawWater(sb, _time, w, h);
-        _water.DrawShadow(sb, _time, w, h);
+        _water.DrawShadow(sb, BoardRect(layout), w, h);   // ombre statique mise en cache (cf. WaterRenderer)
     }
 
     /// <summary>Rectangle (en coordonnées canvas) couvert par le plateau, épaisseur des sprites comprise.</summary>
@@ -904,6 +925,11 @@ public sealed class GameplayScene : Scene
         // L'ombre projetée est dessinée dans une passe dédiée (DrawCastShadows), sous toutes les unités.
         var animLift = UnitLift(cell, size);
         var spriteLift = (int)(size * SpriteLiftFraction);
+
+        // Recul de la victime survivante : décalage en pixels à l'opposé de l'attaquant, au contact.
+        var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
+        zx += kb.X;
+        zy += kb.Y;
 
         var sprite = UnitSprite(unit);
         if (sprite != null)
@@ -1061,20 +1087,23 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Passe d'effets de l'attaque en cours (entre les unités et le panneau) : dissolution de la
-    /// victime, attaquant en fente/avance avec son ombre, flash du survivant, puis estafilade
-    /// d'impact par-dessus. Chaque sous-effet ouvre son propre batch (état de mélange / shader).
+    /// victime (avec son recul), attaquant en fente/avance avec son ombre, flash « touché » du
+    /// survivant. Les étincelles d'impact, elles, sont dessinées à part (cf. <see cref="_sparks"/>).
     /// </summary>
     private void DrawCombatFx(SpriteBatch sb, GridLayout layout)
     {
         var size = layout.TileSize;
         var spriteLift = (int)(size * SpriteLiftFraction);
+        // Taille d'un bloc des FX shader, alignée à la grille écran → pixel-art cohérent à tout zoom.
+        var fxPixel = MathF.Max(2f, size / 32f);
 
         // Ancrages écran (coin haut-gauche du sprite, lift de socle compris) des cases en jeu.
         var fromTop = layout.CellToScreen(_fx.From.Column, _fx.From.Row) - new Vector2(0, spriteLift);
         var toTop = layout.CellToScreen(_fx.To.Column, _fx.To.Row) - new Vector2(0, spriteLift);
-        var victimRect = new Rectangle((int)toTop.X, (int)toTop.Y, size, size);
+        var kb = VictimKnockback(size);
+        var victimRect = new Rectangle((int)toTop.X + kb.X, (int)toTop.Y + kb.Y, size, size);
 
-        // 1. Victime qui meurt : dissolution sur sa case (sous l'attaquant qui prendra la place).
+        // 1. Victime qui meurt : dissolution sur sa case (reculée), sous l'attaquant qui prendra la place.
         if (_fx.Killed && _fx.VictimSprite is { } deadSprite)
             _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
 
@@ -1089,13 +1118,45 @@ public sealed class GameplayScene : Scene
             sb.End();
         }
 
-        // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (toujours en place).
+        // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (reculé comme lui).
         if (!_fx.Killed && _fx.VictimSprite is { } hitSprite)
-            _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White);
+            _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White, fxPixel);
+    }
 
-        // 4. Estafilade d'impact, confinée à la silhouette de la victime (pas le fond de la case).
-        if (_fx.SlashProgress is var slash and >= 0f && _fx.VictimSprite is { } slashSprite)
-            _combatFx.DrawSlash(sb, slashSprite, victimRect, slash, Palette.White);
+    /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
+    private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To;
+
+    /// <summary>Décalage de recul (px entiers) de la victime au contact : à l'opposé de l'attaquant.</summary>
+    private Point VictimKnockback(int size)
+    {
+        if (!_fx.Active)
+            return Point.Zero;
+        var amt = _fx.KnockbackAmount;
+        if (amt <= 0f)
+            return Point.Zero;
+
+        var dir = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
+        if (dir.LengthSquared() > 0f)
+            dir.Normalize();
+        var mag = size * 0.16f * amt;
+        return new Point((int)MathF.Round(dir.X * mag), (int)MathF.Round(dir.Y * mag));
+    }
+
+    /// <summary>Émet la gerbe d'étincelles au point de contact, dans le sens du coup (une fois par attaque).</summary>
+    private void EmitImpactSparks()
+    {
+        _sparksEmitted = true;
+        var layout = BuildLayout();
+        var size = layout.TileSize;
+        var center = layout.CellToScreen(_fx.To.Column, _fx.To.Row) + new Vector2(size / 2f, size / 2f);
+
+        var dir = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row); // sens du coup
+        var unit = dir.LengthSquared() > 0f ? Vector2.Normalize(dir) : Vector2.Zero;
+        var origin = center - unit * (size * 0.22f);   // bord de contact, côté attaquant
+        var pixel = MathF.Max(2f, size / 32f);
+        // EXCEPTION palette autorisée par le dev POUR CE FX UNIQUEMENT : rouge vif « flashy » +
+        // cœurs orange chauds, pour que l'impact pète à l'écran (hors des 20 tons de la palette).
+        _sparks.Emit(origin, dir, count: 16, new Color(255, 40, 40), new Color(255, 190, 80), pixel);
     }
 
     // ── Panneau latéral ───────────────────────────────────────────────────────────
@@ -1374,19 +1435,40 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Sprite à afficher pour une unité, selon le camp et l'orientation.
-    /// Joueur : de dos (&lt;asset&gt;_back, déployé sur le plateau) ou de face
-    /// (&lt;asset&gt;_front, présentation en inventaire). IA : toujours de face
-    /// (&lt;asset&gt;_ia_front). Repli sur le PNG simple &lt;asset&gt;, puis null (placeholder).
+    /// Sprite à afficher pour une unité sur le plateau, selon son ORIENTATION : une unité qui
+    /// regarde vers le bas (vers la caméra) montre sa face (&lt;asset&gt;_front / _ia_front), sinon
+    /// son dos (&lt;asset&gt;_back / _ia_back). L'orientation suit la dernière action (déplacement/
+    /// attaque) verticale — voir <see cref="FaceToward"/>. Repli sur le PNG simple, puis placeholder.
     /// </summary>
-    private Texture2D? UnitSprite(Unit unit) => SpriteFor(unit.Class, unit.Faction);
+    private Texture2D? UnitSprite(Unit unit) => SpriteFor(unit.Class, unit.Faction, front: FacesDown(unit));
 
+    /// <summary><paramref name="front"/> = l'unité regarde vers le bas (face caméra).</summary>
     private Texture2D? SpriteFor(UnitClass cls, Faction faction, bool front = false)
     {
         var variant = faction == Faction.Player
             ? $"{cls.Asset}_{(front ? "front" : "back")}"
-            : $"{cls.Asset}_ia_front";
+            : $"{cls.Asset}_ia_{(front ? "front" : "back")}";
         return SpriteFor(variant) ?? SpriteFor(cls.Asset);
+    }
+
+    /// <summary>Orientation par défaut : le joueur regarde vers le haut (l'ennemi), l'ennemi vers le bas.</summary>
+    private static bool DefaultFacesDown(Faction faction) => faction == Faction.Enemy;
+
+    /// <summary>Vrai si l'unité regarde vers le bas (face caméra) — état suivi, ou défaut selon le camp.</summary>
+    private bool FacesDown(Unit unit) =>
+        _facesDown.TryGetValue(unit, out var f) ? f : DefaultFacesDown(unit.Faction);
+
+    /// <summary>
+    /// Oriente l'unité d'après une action <paramref name="from"/> → <paramref name="to"/>.
+    /// JOUEUR : regarde vers le bas (front/face) UNIQUEMENT en descendant (diagonale descendante
+    /// comprise) ; tout le reste (montée, horizontal) → dos (back). ENNEMI : exactement l'inverse —
+    /// front par défaut (et en horizontal), dos (ia_back) seulement en montant.
+    /// </summary>
+    private void FaceToward(Unit unit, Cell from, Cell to)
+    {
+        _facesDown[unit] = unit.Faction == Faction.Player
+            ? to.Row > from.Row     // joueur : face seulement vers le bas
+            : to.Row >= from.Row;   // ennemi : face sauf en montant
     }
 
     /// <summary>Charge un PNG d'unité par nom de fichier (mis en cache), ou null s'il est absent.</summary>

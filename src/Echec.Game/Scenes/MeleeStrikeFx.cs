@@ -18,13 +18,13 @@ namespace Echec.Game.Scenes;
 public sealed class MeleeStrikeFx
 {
     // Minutage (s).
-    private const double LungeDur    = 0.10; // fente vers la cible
-    private const double SlashDur    = 0.16; // estafilade visible
+    private const double LungeDur    = 0.14; // fente vers la cible = fenêtre du balayage de lame
     private const double DissolveDur = 0.45; // désintégration du mort
     private const double BlinkDur    = 0.34; // clignotement du survivant
     private const double AdvanceDur  = 0.14; // l'attaquant prend la place libérée
     private const double RecoilDur   = 0.12; // retour sur sa case (pas d'avance)
     private const double ShakeDur    = 0.22; // secousse d'écran après l'impact
+    private const double KnockbackDur = 0.18; // recul de la victime après le contact
 
     private const float LungeFraction = 0.42f; // amplitude de la fente, en fraction de case
 
@@ -66,7 +66,7 @@ public sealed class MeleeStrikeFx
         {
             (true, true)  => LungeDur + DissolveDur + AdvanceDur, // mêlée mortelle : avance après dissolution
             (true, false) => LungeDur + DissolveDur,              // tir mortel : reste en place
-            _             => LungeDur + Math.Max(SlashDur, BlinkDur),
+            _             => LungeDur + BlinkDur,                 // survivant : flash après contact
         };
     }
 
@@ -79,13 +79,21 @@ public sealed class MeleeStrikeFx
             Active = false;
     }
 
-    /// <summary>Avancement du slash [0,1], ou &lt;0 lorsqu'il n'est plus visible.</summary>
-    public float SlashProgress
+    /// <summary>Vrai à l'instant exact du contact (fin de la fente) — pour déclencher les étincelles.</summary>
+    public bool HasImpacted => _elapsed >= LungeDur;
+
+    /// <summary>
+    /// Intensité du recul (knockback) de la victime [0,1] : max au contact, revient à 0. La scène en
+    /// fait un décalage en pixels (direction = à l'opposé de l'attaquant).
+    /// </summary>
+    public float KnockbackAmount
     {
         get
         {
             var t = _elapsed - LungeDur;
-            return t >= 0 && t <= SlashDur ? (float)(t / SlashDur) : -1f;
+            if (t < 0 || t > KnockbackDur)
+                return 0f;
+            return 1f - EaseInOut((float)(t / KnockbackDur));
         }
     }
 

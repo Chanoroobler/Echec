@@ -1,3 +1,4 @@
+using System;
 using Echec.Engine.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -31,27 +32,6 @@ public sealed class CombatFxRenderer
     private void Set(string name, Vector4 value) => _effect!.Parameters[name]?.SetValue(value);
 
     /// <summary>
-    /// Estafilade diagonale lumineuse balayant la silhouette de <paramref name="sprite"/> (touché),
-    /// <paramref name="progress"/> de 0 (avant la case) à 1 (au-delà). Confinée au sprite via son alpha,
-    /// mélange ADDITIF → brille par-dessus l'unité sans déborder sur le fond transparent.
-    /// </summary>
-    public void DrawSlash(SpriteBatch sb, Texture2D sprite, Rectangle rect, float progress, Color color,
-        float halfWidth = 0.14f)
-    {
-        if (_effect == null)
-            return;
-
-        Set("Progress", progress);
-        Set("SlashColor", ToVec4(color));
-        Set("SlashWidth", halfWidth);
-        _effect.CurrentTechnique = _effect.Techniques["Slash"];
-
-        sb.Begin(blendState: BlendState.Additive, samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, rect, Color.White);
-        sb.End();
-    }
-
-    /// <summary>
     /// Désintègre <paramref name="sprite"/> dans <paramref name="rect"/> : <paramref name="progress"/>
     /// 0 = intact, 1 = entièrement consumé. <paramref name="seed"/> varie le motif à chaque mort.
     /// Sans shader : simple fondu alpha décroissant.
@@ -83,18 +63,27 @@ public sealed class CombatFxRenderer
     /// Éclaircit la silhouette de <paramref name="sprite"/> (réaction « touché ») par
     /// <paramref name="intensity"/> [0,1]. Mélange ADDITIF, par-dessus le sprite déjà dessiné.
     /// </summary>
-    public void DrawFlash(SpriteBatch sb, Texture2D sprite, Rectangle rect, float intensity, Color color)
+    public void DrawFlash(SpriteBatch sb, Texture2D sprite, Rectangle rect, float intensity, Color color,
+        float pixelSize)
     {
         if (_effect == null || intensity <= 0f)
             return;
 
         Set("Intensity", intensity);
         Set("FlashColor", ToVec4(color));
+        SetPixelGrid(rect, pixelSize);
         _effect.CurrentTechnique = _effect.Techniques["Flash"];
 
         sb.Begin(blendState: BlendState.Additive, samplerState: SamplerState.PointClamp, effect: _effect);
         sb.Draw(sprite, rect, Color.White);
         sb.End();
+    }
+
+    /// <summary>Rectangle canvas couvert + taille d'un bloc → quantification alignée à la grille écran.</summary>
+    private void SetPixelGrid(Rectangle rect, float pixelSize)
+    {
+        Set("DestRect", new Vector4(rect.X, rect.Y, rect.Width, rect.Height));
+        Set("PixelSize", MathF.Max(1f, pixelSize));
     }
 
     private static Vector4 ToVec4(Color c) => new(c.R / 255f, c.G / 255f, c.B / 255f, c.A / 255f);

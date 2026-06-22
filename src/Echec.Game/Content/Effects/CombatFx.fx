@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CombatFx.fx — feedback visuel des attaques au corps à corps.
-//   • Slash    : estafilade diagonale lumineuse (╱) qui balaie une case. Dessinée
-//                sur le pixel blanc plein → couleur procédurale, mélange ADDITIF.
+// CombatFx.fx — feedback visuel des attaques.
 //   • Dissolve : désintégration pixel-art du sprite d'une unité qui meurt, par seuil
 //                de bruit chunky + liseré incandescent. Le sprite est la texture liée.
-//   • Flash    : silhouette du sprite éclaircie (réaction « touché » des survivants),
+//   • Flash    : silhouette du sprite éclaircie (réaction « touché » au contact),
 //                mélange ADDITIF.
+// (Le feedback d'impact lui-même = étincelles en particules + knockback, gérés côté C#.)
 //
 // Comme les sprites sont chargés en alpha DROIT (Texture2D.FromStream) puis dessinés
 // par SpriteBatch en AlphaBlend, ces passes sortent elles aussi en alpha droit pour
@@ -21,9 +20,11 @@
 float  Progress;       // avancement de l'effet [0,1] (sens propre à chaque passe)
 float  Intensity;      // intensité du flash [0,1]
 
-// ── Slash ──
-float4 SlashColor;     // teinte de l'estafilade (crème lumineuse)
-float  SlashWidth;     // demi-largeur de la lame, en fraction de case
+// Pixel-art : on quantifie en ESPACE CANVAS (pas en UV du quad) pour aligner les blocs sur la
+// grille de pixels du jeu, comme le shader d'eau. DestRect = rectangle canvas couvert (xy coin,
+// zw taille) ; PixelSize = côté d'un bloc en pixels canvas.
+float4 DestRect;
+float  PixelSize;
 
 // ── Dissolve ──
 float4 DissolveEdge;   // teinte du liseré incandescent (braise)
@@ -45,26 +46,13 @@ float Hash(float2 p)
     return frac(p.x * p.y);
 }
 
-// ── Slash ──────────────────────────────────────────────────────────────────────
-// Diagonale ╱ : la droite x + y = const ; on fait glisser sa position de coupe avec
-// Progress, en tapant les extrémités pour obtenir un coup de lame plutôt qu'un voile.
-// CONFINÉE à la silhouette : multipliée par l'alpha du sprite (la texture liée = la
-// victime) → l'estafilade ne déborde pas sur le fond transparent de la case.
-float4 SlashPS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
+// Ramène un uv au CENTRE de son bloc de la grille de pixels canvas (aligné à l'écran, taille
+// PixelSize) → blocs nets façon pixel-art, cohérents avec le reste du jeu, quel que soit le zoom.
+float2 Pixelate(float2 uv)
 {
-    float silhouette = tex2D(SpriteSampler, uv).a;
-
-    float p      = (uv.x + uv.y) * 0.5;          // 0 (coin haut-gauche) … 1 (coin bas-droit)
-    float center = lerp(-0.15, 1.15, Progress);  // la coupe traverse la case
-    float band   = smoothstep(SlashWidth, 0.0, abs(p - center));
-
-    float along = uv.x + uv.y - 1.0;             // axe le long de la lame [-1,1]
-    float taper = 1.0 - smoothstep(0.65, 1.0, abs(along));
-
-    float env = sin(Progress * 3.14159265);      // apparition / disparition douce
-    float a   = saturate(band * taper * env) * silhouette;
-
-    return float4(SlashColor.rgb * a, a);        // additif, confiné au sprite
+    float2 canvasPos = DestRect.xy + uv * DestRect.zw;
+    float2 q = (floor(canvasPos / PixelSize) + 0.5) * PixelSize;
+    return (q - DestRect.xy) / DestRect.zw;
 }
 
 // ── Dissolve ─────────────────────────────────────────────────────────────────────
@@ -93,12 +81,16 @@ float4 DissolvePS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
 }
 
 // ── Flash ─────────────────────────────────────────────────────────────────────────
+// Silhouette DURE (seuil sur l'alpha → bords nets, pas d'anti-aliasing) et intensité POSTÉRISÉE
+// → clignotement par paliers francs plutôt qu'un fondu lisse (rendu pixel-art).
 float4 FlashPS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
 {
-    float a = tex2D(SpriteSampler, uv).a * Intensity;
+    // Échantillonne la silhouette au centre du bloc canvas → flash en blocs alignés à la grille.
+    float2 quv = Pixelate(uv);
+    float sil = step(0.5, tex2D(SpriteSampler, quv).a);
+    float a = floor(sil * Intensity * 4.0 + 0.5) / 4.0;
     return float4(FlashColor.rgb * a, a);         // additif : éclaircit la silhouette
 }
 
-technique Slash    { pass P0 { PixelShader = compile PS_SHADERMODEL SlashPS();    } }
 technique Dissolve { pass P0 { PixelShader = compile PS_SHADERMODEL DissolvePS(); } }
 technique Flash    { pass P0 { PixelShader = compile PS_SHADERMODEL FlashPS();    } }
