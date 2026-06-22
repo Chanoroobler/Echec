@@ -9,8 +9,9 @@ namespace Echec.Core.Battle;
 ///
 /// Un tour = UNE action : se DÉPLACER vers une case vide (jusqu'à la portée de
 /// déplacement) OU ATTAQUER une cible à portée de tir. Les deux suivent les directions
-/// du domaine. À l'attaque : si la cible meurt et que la portée de tir vaut 1 (mêlée,
-/// ou saut du cavalier), l'attaquant prend sa place ; sinon il reste sur place.
+/// du domaine. À l'attaque : si la cible meurt, l'attaquant prend sa place dès lors qu'il
+/// POURRAIT s'y déplacer (case libérée atteignable par son mouvement : mêlée, saut, ou ligne
+/// dégagée du lancier dans sa portée) ; sinon (hors d'atteinte ou chemin bloqué) il reste.
 /// </summary>
 public sealed class Match
 {
@@ -23,6 +24,9 @@ public sealed class Match
     // Unités essentielles posées sur le terrain (commandant joueur / boss ennemi).
     // On garde la référence même après leur mort pour évaluer la condition de victoire.
     private readonly List<Unit> _essential = new();
+
+    // Buffer réutilisé par CanTakePlace (évite d'allouer une liste de coups à chaque kill).
+    private readonly List<Cell> _placeBuffer = new();
 
     public Match(int width, int height, Battlefield? terrain = null)
     {
@@ -254,8 +258,8 @@ public sealed class Match
         MoveKind kind;
         if (!victim.IsAlive)
         {
-            _units[target.Column, target.Row] = null;
-            if (TakesPlaceOnKill(unit))
+            _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
+            if (CanTakePlace(from, target))
                 MoveUnit(from, target);
             kind = MoveKind.Killed;
         }
@@ -268,9 +272,16 @@ public sealed class Match
         return kind;
     }
 
-    /// <summary>Mêlée (tir 1) ou saut du cavalier : l'attaquant avance sur la case libérée.</summary>
-    private static bool TakesPlaceOnKill(Unit unit) =>
-        Movement.Kind(unit.Domaine) == MovementKind.Jump || unit.AttackRange == 1;
+    /// <summary>
+    /// L'attaquant prend la place de la cible tuée s'il POURRAIT s'y déplacer : case désormais
+    /// libre ET atteignable par son mouvement (mêlée adjacente, saut du cavalier, ou ligne dégagée
+    /// du lancier dans sa portée de déplacement). Bloqué par un allié ou hors d'atteinte → reste.
+    /// </summary>
+    private bool CanTakePlace(Cell from, Cell target)
+    {
+        LegalMoves(from, _placeBuffer);
+        return _placeBuffer.Contains(target);
+    }
 
     private Unit? ActiveUnitAt(Cell cell)
     {

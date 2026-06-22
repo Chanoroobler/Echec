@@ -130,10 +130,15 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         GraphicsDevice.Clear(Color.Black);
 
         // 2a. La scène peut étendre son fond (eau) dans les bandes noires du letterbox, AVANT le
-        //     blit du canvas qui recouvre ensuite la zone 16:9 par-dessus.
+        //     blit du canvas qui recouvre ensuite la zone 16:9 par-dessus. On ne le fait QUE s'il y a
+        //     réellement des bandes : sur un écran 16:9 le canvas remplit tout, et cette passe plein
+        //     backbuffer (shader d'eau à la résolution native) serait intégralement recouverte → gâchée.
         var pp = GraphicsDevice.PresentationParameters;
-        _scenes.DrawLetterboxBackground(
-            new Point(pp.BackBufferWidth, pp.BackBufferHeight), _virtualDest.Location, _virtualScale);
+        var hasBands = _virtualDest.X > 0 || _virtualDest.Y > 0
+            || _virtualDest.Width < pp.BackBufferWidth || _virtualDest.Height < pp.BackBufferHeight;
+        if (hasBands)
+            _scenes.DrawLetterboxBackground(
+                new Point(pp.BackBufferWidth, pp.BackBufferHeight), _virtualDest.Location, _virtualScale);
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);

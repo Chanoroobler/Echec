@@ -79,23 +79,57 @@ public class MatchTests
     }
 
     [Fact]
-    public void RangedAttack_HitsAtDistance_AndStaysInPlaceOnKill()
+    public void LancierKill_TakesPlace_WhenPathClearAndInMoveRange()
     {
         var match = new Match(8, 8);
         var tourCell = new Cell(3, 7);
-        var enemyCell = new Cell(3, 4); // 3 cases en ligne, à portée de tir (3)
+        var enemyCell = new Cell(3, 4); // 3 cases en ligne : à portée de tir ET de déplacement (3)
         match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
         var enemy = Units.Pion(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
         match.Place(enemyCell, enemy);
 
-        Assert.Contains(enemyCell, match.AttackTargets(tourCell));
-
         var kind = match.TryAttack(tourCell, enemyCell);
 
         Assert.Equal(MoveKind.Killed, kind);
-        Assert.NotNull(match.UnitAt(tourCell));   // tir à distance : reste sur place
-        Assert.Null(match.UnitAt(enemyCell));     // la case libérée reste vide
+        Assert.Null(match.UnitAt(tourCell));                            // ligne dégagée : prend la place
+        Assert.Equal(Faction.Player, match.UnitAt(enemyCell)!.Faction);
+    }
+
+    [Fact]
+    public void RangedKill_StaysInPlace_WhenTargetBeyondMoveRange()
+    {
+        var match = new Match(8, 8);
+        var archerCell = new Cell(3, 7);
+        var enemyCell = new Cell(3, 4); // distance 3 : à portée de TIR (3) mais hors DÉPLACEMENT (2)
+        match.Place(archerCell, Units.Of(Domaine.Dame, Faction.Player)); // Archer : tir 3, déplacement 2
+        var enemy = Units.Pion(Faction.Enemy);
+        enemy.TakeDamage(enemy.Hp - 1);
+        match.Place(enemyCell, enemy);
+
+        var kind = match.TryAttack(archerCell, enemyCell);
+
+        Assert.Equal(MoveKind.Killed, kind);
+        Assert.NotNull(match.UnitAt(archerCell));  // hors de portée de déplacement : reste sur place
+        Assert.Null(match.UnitAt(enemyCell));      // la case libérée reste vide
+    }
+
+    [Fact]
+    public void LancierKill_StaysInPlace_WhenAllyBlocksMovePath()
+    {
+        var match = new Match(8, 8);
+        var tourCell = new Cell(3, 7);
+        match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player)); // tir 3, traverse ses alliés
+        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));       // allié sur la ligne
+        var enemy = Units.Pion(Faction.Enemy);
+        enemy.TakeDamage(enemy.Hp - 1);
+        match.Place(new Cell(3, 5), enemy);                            // ennemi DERRIÈRE l'allié
+
+        var kind = match.TryAttack(tourCell, new Cell(3, 5));          // tire à travers l'allié, tue
+
+        Assert.Equal(MoveKind.Killed, kind);
+        Assert.NotNull(match.UnitAt(tourCell));   // le déplacement, lui, est bloqué par l'allié → reste
+        Assert.Null(match.UnitAt(new Cell(3, 5))); // case libérée, inoccupée
     }
 
     [Fact]
