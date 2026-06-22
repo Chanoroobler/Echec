@@ -55,6 +55,7 @@ public static class DomaineCatalog
             .Select(e => ToClass(e, tier + 1))
             .ToArray();
 
-        return new UnitClass(c.Name, c.Asset, tier, c.Hp, c.Damage, c.MoveRange, c.AttackRange, evolutions);
+        return new UnitClass(c.Name, c.Asset, tier, c.Hp, c.Damage, c.MoveRange, c.AttackRange,
+            c.PiercesAllies, evolutions);
     }
 }

@@ -3,6 +3,8 @@
   // Le motif de déplacement (Pion=8 dir, Fou=diagonales, Cavalier=saut, Tour=lignes, Dame=8 dir)
   // est fixé en code par le domaine. Ici on règle : nom, asset (PNG dans Assets/Units/<asset>.png),
   // PV (hp), dégâts (damage), portée de déplacement (moveRange) et portée de tir (attackRange).
+  // "piercesAllies": true => la classe tire À TRAVERS ses alliés sans les toucher (les ennemis bloquent
+  // toujours). Absent = false.
   "domaines": [
     {
       "domaine": "Pion",
@@ -18,7 +20,7 @@
     },
     {
       "domaine": "Tour",
-      "baseClass": { "name": "Lancier", "asset": "lancier", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 }
+      "baseClass": { "name": "Lancier", "asset": "lancier", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 2, "piercesAllies": true }
     },
     {
       "domaine": "Dame",

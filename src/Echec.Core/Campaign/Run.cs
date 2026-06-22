@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
+using Echec.Core.Map;
 
 namespace Echec.Core.Campaign;
 
@@ -29,9 +30,10 @@ public sealed class Run
     public const int TotalCombats = 6;
     public const int DraftSize = 3;
 
-    // Domaines piochables pour le recrutement et les ennemis (les 5 classes de base).
-    private static readonly Domaine[] Pool =
-        { Domaine.Pion, Domaine.Fou, Domaine.Cavalier, Domaine.Tour, Domaine.Dame };
+    // Domaines piochables pour les VAGUES ENNEMIES. Limité à pion (Soldat) + lancier (Tour)
+    // pour l'instant (réglage de difficulté temporaire). Le recrutement, lui, propose
+    // désormais les ennemis VAINCUS (voir BuildDraft), plus cette pioche.
+    private static readonly Domaine[] Pool = { Domaine.Pion, Domaine.Tour };
 
     private readonly Random _rng;
     private readonly List<UnitSpec> _roster = new();
@@ -67,6 +69,13 @@ public sealed class Run
         Phase = RunPhase.Placement;
     }
 
+    /// <summary>
+    /// Terrain du combat courant : herbe + obstacles (eau/montagne) aléatoires dans la zone neutre,
+    /// symétriques. Tiré du RNG du run → varie d'un combat à l'autre, reproductible si seed fixé.
+    /// </summary>
+    public Battlefield BuildBattlefield(int width, int height) =>
+        TerrainGenerator.Generate(width, height, _rng);
+
     /// <summary>Vague ennemie du combat courant (le placement est assuré par la scène).</summary>
     public List<UnitSpec> BuildEnemyWave()
     {
@@ -94,11 +103,12 @@ public sealed class Run
     }
 
     /// <summary>
-    /// Combat gagné. <paramref name="casualties"/> = gabarits du roster qui sont morts
-    /// pendant le combat (retirés : permadeath). Combat de boss → victoire ; sinon →
-    /// recrutement (draft prêt).
+    /// Combat gagné. <paramref name="casualties"/> = gabarits du roster morts pendant le combat
+    /// (retirés : permadeath). <paramref name="defeatedEnemies"/> = ennemis vaincus DANS L'ORDRE de
+    /// leur mort ; le recrutement propose les 3 derniers (le boss n'y figure jamais). Combat de boss
+    /// → victoire ; sinon → recrutement.
     /// </summary>
-    public void CompleteCombat(IEnumerable<UnitSpec> casualties)
+    public void CompleteCombat(IEnumerable<UnitSpec> casualties, IReadOnlyList<UnitSpec> defeatedEnemies)
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
@@ -109,7 +119,7 @@ public sealed class Run
             return;
         }
 
-        BuildDraft();
+        BuildDraft(defeatedEnemies);
         Phase = RunPhase.Recruitment;
     }
 
@@ -127,11 +137,17 @@ public sealed class Run
 
     public void Defeat() => Phase = RunPhase.Defeat;
 
-    private void BuildDraft()
+    /// <summary>
+    /// Recrutement = les <see cref="DraftSize"/> DERNIERS ennemis vaincus (dans l'ordre de leur mort),
+    /// ou moins s'il y en a eu moins. Doublons conservés (reflète les pièces réellement abattues).
+    /// Les gabarits sont posés tels quels ; ils s'affichent et se recrutent côté joueur (bleu).
+    /// </summary>
+    private void BuildDraft(IReadOnlyList<UnitSpec> defeatedEnemies)
     {
         _draft.Clear();
-        for (var i = 0; i < DraftSize; i++)
-            _draft.Add(RandomEnemy()); // même pioche que les ennemis : une classe de base au hasard
+        var start = Math.Max(0, defeatedEnemies.Count - DraftSize);
+        for (var i = start; i < defeatedEnemies.Count; i++)
+            _draft.Add(defeatedEnemies[i]);
     }
 
     private UnitSpec RandomEnemy()

@@ -148,6 +148,52 @@ public static class Textures
         return texture;
     }
 
+    // Flèche de curseur pixel-art (pointe en haut-gauche = hot spot en 0,0).
+    // 'O' = contour sombre, '#' = remplissage clair, '.' = transparent.
+    private static readonly string[] CursorArrow =
+    {
+        "O..........",
+        "OO.........",
+        "O#O........",
+        "O##O.......",
+        "O###O......",
+        "O####O.....",
+        "O#####O....",
+        "O######O...",
+        "O#######O..",
+        "O########O.",
+        "O####OOOOOO",
+        "O#O##O.....",
+        "OO.O##O....",
+        "O..O##O....",
+        "....O##O...",
+        ".....OO....",
+    };
+
+    /// <summary>
+    /// Curseur logiciel (flèche pixel-art), pointe ancrée en (0,0). Dessiné par le jeu à la position
+    /// souris (à un facteur d'échelle ENTIER, en PointClamp) car le curseur OS est masqué par Windows
+    /// dès que la fenêtre couvre tout l'écran (plein écran borderless).
+    /// </summary>
+    public static Texture2D CreateCursor(GraphicsDevice graphicsDevice, Color fill, Color outline)
+    {
+        var height = CursorArrow.Length;
+        var width = CursorArrow[0].Length;
+        var data = new Color[width * height];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                data[y * width + x] = CursorArrow[y][x] switch
+                {
+                    'O' => outline,
+                    '#' => fill,
+                    _ => Color.Transparent,
+                };
+
+        var texture = new Texture2D(graphicsDevice, width, height);
+        texture.SetData(data);
+        return texture;
+    }
+
     /// <summary>Charge un PNG depuis le disque, ou renvoie <c>null</c> s'il est absent/illisible.</summary>
     public static Texture2D? LoadPngOrNull(GraphicsDevice graphicsDevice, string path)
     {
@@ -166,7 +212,7 @@ public static class Textures
 
     /// <summary>Charge un PNG via <c>Texture2D.FromFile</c>, ou renvoie un placeholder si absent/illisible.</summary>
     public static Texture2D LoadTileOrPlaceholder(GraphicsDevice graphicsDevice, string path,
-        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 10)
+        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 16)
     {
         if (File.Exists(path))
         {
@@ -185,11 +231,85 @@ public static class Textures
     }
 
     /// <summary>
+    /// Tuile pleine 64×(64+épaisseur) d'une couleur de surface donnée + bande d'épaisseur (côté),
+    /// avec un léger liseré assombri pour lire la grille. Sert de repli aux terrains sans PNG
+    /// (eau/montagne) — même gabarit que la tuile d'herbe (épaisseur = 16 → 64×80).
+    /// </summary>
+    public static Texture2D CreateColorTile(GraphicsDevice graphicsDevice, Color surface, Color side,
+        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 16)
+    {
+        var width = surfaceSize;
+        var height = surfaceSize + thickness;
+        var surfaceEdge = Darken(surface, 0.85f);
+        var border = Darken(side, 0.8f);
+
+        var data = new Color[width * height];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                Color color;
+                if (y < surfaceSize)
+                {
+                    var onBorder = x == 0 || x == width - 1 || y == 0;
+                    color = onBorder ? surfaceEdge : surface;
+                }
+                else
+                {
+                    var onBorder = x == 0 || x == width - 1 || y == height - 1;
+                    color = onBorder ? border : side;
+                }
+
+                data[y * width + x] = color;
+            }
+
+        var texture = new Texture2D(graphicsDevice, width, height);
+        texture.SetData(data);
+        return texture;
+    }
+
+    /// <summary>Assombrit une couleur (RGB × facteur), alpha conservé.</summary>
+    private static Color Darken(Color c, float factor) =>
+        new((byte)(c.R * factor), (byte)(c.G * factor), (byte)(c.B * factor), c.A);
+
+    /// <summary>
+    /// Tuile 64×(64+épaisseur) TRANSLUCIDE : surface teintée légère + liseré plus marqué, le reste
+    /// (et la bande d'épaisseur) transparent → laisse voir ce qui est dessiné dessous (ex. le shader
+    /// d'eau animé derrière le plateau). Sortie PRÉMULTIPLIÉE pour un mélange correct en AlphaBlend.
+    /// </summary>
+    public static Texture2D CreateTransparentTile(GraphicsDevice graphicsDevice, Color surfaceTint, Color edge,
+        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 16)
+    {
+        var width = surfaceSize;
+        var height = surfaceSize + thickness;
+        var fill = Premultiply(surfaceTint);
+        var line = Premultiply(edge);
+
+        var data = new Color[width * height];   // transparent par défaut (bande d'épaisseur incluse)
+        for (var y = 0; y < surfaceSize; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var onBorder = x == 0 || x == width - 1 || y == 0 || y == surfaceSize - 1;
+                data[y * width + x] = onBorder ? line : fill;
+            }
+
+        var texture = new Texture2D(graphicsDevice, width, height);
+        texture.SetData(data);
+        return texture;
+    }
+
+    /// <summary>Prémultiplie une couleur à alpha droit (RGB × alpha), pour un blend AlphaBlend correct.</summary>
+    private static Color Premultiply(Color c)
+    {
+        var a = c.A / 255f;
+        return new Color((byte)(c.R * a), (byte)(c.G * a), (byte)(c.B * a), c.A);
+    }
+
+    /// <summary>
     /// Génère une tuile 64×(64+épaisseur) : surface verte + bande d'épaisseur plus
     /// sombre + liseré, pour visualiser la grille avant d'avoir les vrais sprites.
     /// </summary>
     public static Texture2D CreateTilePlaceholder(GraphicsDevice graphicsDevice,
-        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 10)
+        int surfaceSize = GridLayout.DefaultTileSize, int thickness = 16)
     {
         var width = surfaceSize;
         var height = surfaceSize + thickness;

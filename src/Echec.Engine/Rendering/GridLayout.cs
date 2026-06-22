@@ -6,16 +6,20 @@ namespace Echec.Engine.Rendering;
 /// Conversion case logique ↔ pixels pour une grille droite avec épaisseur.
 ///
 /// - <see cref="TileSize"/> (64) = zone de jeu d'une case ET pas de la grille.
-/// - Le sprite mesure <see cref="SpriteWidth"/> × <see cref="SpriteHeight"/> (64×74) :
-///   les 10 px supplémentaires (<see cref="Thickness"/>) sont l'épaisseur, dessinée
+/// - Le sprite mesure <see cref="SpriteWidth"/> × <see cref="SpriteHeight"/> (64×80) :
+///   les 16 px supplémentaires (<see cref="Thickness"/>) sont l'épaisseur, dessinée
 ///   sous la surface. On dessine de l'arrière vers l'avant (rangée 0 → N) pour que
 ///   les cases de devant recouvrent correctement l'épaisseur de celles de derrière.
+///
+/// IMPORTANT (pixel-perfect) : <see cref="SpriteHeight"/> DOIT égaler la hauteur réelle du
+/// PNG de tuile (Assets/Tiles/grass.png = 64×80), sinon la tuile est étirée à un facteur
+/// fractionnaire et le quadrillage se déforme.
 /// </summary>
 public sealed class GridLayout
 {
     public const int DefaultTileSize = 64;
     public const int DefaultSpriteWidth = 64;
-    public const int DefaultSpriteHeight = 74;
+    public const int DefaultSpriteHeight = 80;   // = hauteur du PNG de tuile (64 surface + 16 épaisseur)
 
     public GridLayout(
         Vector2 origin,

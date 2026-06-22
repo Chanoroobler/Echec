@@ -10,7 +10,7 @@ namespace Echec.Core.Battle;
 public sealed class UnitClass
 {
     public UnitClass(string name, string asset, int tier, int maxHp, int damage,
-        int moveRange, int attackRange, params UnitClass[] evolutions)
+        int moveRange, int attackRange, bool piercesAllies = false, params UnitClass[] evolutions)
     {
         Name = name;
         Asset = asset;
@@ -19,6 +19,7 @@ public sealed class UnitClass
         Damage = damage;
         MoveRange = moveRange;
         AttackRange = attackRange;
+        PiercesAllies = piercesAllies;
         Evolutions = evolutions;
     }
 
@@ -36,6 +37,13 @@ public sealed class UnitClass
 
     /// <summary>Distance de tir/attaque (le long des directions du domaine).</summary>
     public int AttackRange { get; }
+
+    /// <summary>
+    /// Si vrai, la classe tire À TRAVERS ses propres alliés sans les toucher : ses unités amies ne
+    /// bornent pas sa ligne de tir et ne sont jamais ciblées (les ennemis bornent toujours).
+    /// Particularité du Lancier. Réglé par classe dans <c>units.json</c> (champ <c>piercesAllies</c>).
+    /// </summary>
+    public bool PiercesAllies { get; }
 
     /// <summary>Classes vers lesquelles évoluer (0 = feuille, 2 sinon).</summary>
     public IReadOnlyList<UnitClass> Evolutions { get; }

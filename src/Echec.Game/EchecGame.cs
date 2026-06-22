@@ -12,6 +12,7 @@ using Echec.Core.Battle.Config;
 using Echec.Game.Scenes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 
 namespace Echec.Game;
 
@@ -33,6 +34,10 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private SoundBank _sounds = null!;
     private GameContext _context = null!;
 
+    // Curseur logiciel (le curseur OS est masqué par Windows en plein écran borderless). Dessiné
+    // par-dessus tout, à l'échelle entière du canvas → net et présent dans tous les modes.
+    private Texture2D _cursor = null!;
+
     // Rendu pixel-perfect : les scènes dessinent dans un canvas virtuel, agrandi d'un
     // facteur ENTIER vers une zone 16:9 de l'écran (aucun asset n'est jamais déformé).
     // Hauteur de référence visée pour le canvas (taille à laquelle l'UI est calibrée).
@@ -45,7 +50,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     {
         _graphics = new GraphicsDeviceManager(this);
         Content.RootDirectory = "Content";
-        IsMouseVisible = true;
+        IsMouseVisible = false;   // on dessine notre propre curseur (le curseur OS disparaît en plein écran)
         Window.Title = "Echec";
     }
 
@@ -89,6 +94,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         var font = new PixelFont(pixel);
         var ditherTile = Textures.CreateDitherTile(GraphicsDevice, 8, Palette.Black3, Palette.Black2);
         var style = new UiStyle(pixel, ditherTile);
+        _cursor = Textures.CreateCursor(GraphicsDevice, Palette.White, Palette.Black1);
 
         _context = new GameContext(
             GraphicsDevice, _spriteBatch, Content, pixel, font, style,
@@ -101,6 +107,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     protected override void UnloadContent()
     {
         _sounds?.Dispose();
+        _cursor?.Dispose();
         base.UnloadContent();
     }
 
@@ -130,36 +137,55 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);
+        DrawCursor(_spriteBatch);
         _spriteBatch.End();
 
         base.Draw(gameTime);
     }
 
+    /// <summary>
+    /// Curseur logiciel à la position souris réelle, mis à l'échelle ENTIÈRE du canvas (PointClamp →
+    /// net). La pointe de la flèche est en (0,0) de la texture, donc alignée sur le pointeur.
+    /// </summary>
+    private void DrawCursor(SpriteBatch sb)
+    {
+        var p = Mouse.GetState().Position;
+        var scale = System.Math.Max(1, _virtualScale);
+        sb.Draw(_cursor, new Rectangle(p.X, p.Y, _cursor.Width * scale, _cursor.Height * scale), Color.White);
+    }
+
     /// <summary>Applique résolution + plein écran (IDisplayService).</summary>
     public void Apply(DisplaySettings settings)
     {
-        // Plein écran FENÊTRÉ sans bordure (borderless), jamais exclusif : le mode exclusif
-        // (HardwareModeSwitch) casse la capture OBS/Twitch et minimise la fenêtre au moindre
-        // clic hors-jeu (2e écran). Le borderless reste capturable et garde le focus.
+        // « Plein écran » = vraie fenêtre SANS BORDURE dimensionnée à l'écran, et NON le mode plein
+        // écran SDL (_graphics.IsFullScreen). Raisons :
+        //  • le fullscreen-desktop SDL masque le curseur OS sous Windows (SDL_ShowCursor est ré-écrasé
+        //    par la transition de mode → le curseur disparaît, irrécupérable depuis MonoGame) ;
+        //  • le mode exclusif (HardwareModeSwitch) casse la capture OBS/Twitch et minimise la fenêtre
+        //    au moindre clic hors-jeu (2e écran).
+        // Une fenêtre borderless à la résolution NATIVE reste capturable, garde le focus ET le curseur ;
+        // le canvas virtuel gère l'agrandissement entier (pixel-perfect).
         _graphics.HardwareModeSwitch = false;
-        _graphics.IsFullScreen = settings.Fullscreen;
+        _graphics.IsFullScreen = false;
 
         if (settings.Fullscreen)
         {
-            // En borderless on couvre l'écran à sa résolution NATIVE → aucune mise à l'échelle
-            // par SDL (qui briserait le pixel-perfect) ; le canvas virtuel gère l'agrandissement
-            // entier. La résolution choisie dans le menu ne s'applique donc qu'en fenêtré.
             var mode = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode;
+            Window.IsBorderless = true;
             _graphics.PreferredBackBufferWidth = mode.Width;
             _graphics.PreferredBackBufferHeight = mode.Height;
+            _graphics.ApplyChanges();
+            Window.Position = Point.Zero;   // coller la fenêtre au coin de l'écran principal
         }
         else
         {
+            // Fenêtré : la bordure (titre/cadre) suit le réglage « sans bordure ».
+            Window.IsBorderless = settings.Borderless;
             _graphics.PreferredBackBufferWidth = settings.Width;
             _graphics.PreferredBackBufferHeight = settings.Height;
+            _graphics.ApplyChanges();
         }
 
-        _graphics.ApplyChanges();
         ConfigureVirtualScreen();
     }
 

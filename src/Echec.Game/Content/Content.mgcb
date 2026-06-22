@@ -19,3 +19,9 @@
 /processorParam:DebugMode=Auto
 /build:Effects/Water.fx
 
+#begin Effects/CombatFx.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:Effects/CombatFx.fx
+

@@ -99,15 +99,57 @@ public class MatchTests
     }
 
     [Fact]
-    public void RangedAttack_BlockedByUnitInLine()
+    public void RangedAttack_BlockedByAlly_ForNonLancier()
     {
         var match = new Match(8, 8);
-        var tourCell = new Cell(3, 7);
-        match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
+        var archerCell = new Cell(3, 7);
+        match.Place(archerCell, Units.Of(Domaine.Dame, Faction.Player)); // Archer : tir 3, ne traverse PAS
         match.Place(new Cell(3, 6), Units.Pion(Faction.Player));  // allié qui bloque la ligne
         match.Place(new Cell(3, 4), Units.Pion(Faction.Enemy));
 
-        Assert.DoesNotContain(new Cell(3, 4), match.AttackTargets(tourCell));
+        Assert.DoesNotContain(new Cell(3, 4), match.AttackTargets(archerCell));
+    }
+
+    [Fact]
+    public void Lancier_PiercesAlly_TargetsEnemyBehind()
+    {
+        var match = new Match(8, 8);
+        var lancier = new Cell(3, 7);
+        match.Place(lancier, Units.Of(Domaine.Tour, Faction.Player)); // lancier : traverse ses alliés
+        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));      // allié sur la ligne de tir
+        match.Place(new Cell(3, 5), Units.Pion(Faction.Enemy));       // ennemi DERRIÈRE l'allié
+
+        var targets = match.AttackTargets(lancier);
+        Assert.Contains(new Cell(3, 5), targets);       // traverse l'allié sans le toucher, vise l'ennemi
+        Assert.DoesNotContain(new Cell(3, 6), targets); // l'allié n'est jamais une cible
+    }
+
+    [Fact]
+    public void Lancier_EnemyStillBlocksLine_NoTargetBehindEnemy()
+    {
+        var match = new Match(8, 8);
+        var lancier = new Cell(3, 7);
+        match.Place(lancier, Units.Of(Domaine.Tour, Faction.Player)); // tir 3
+        match.Place(new Cell(3, 6), Units.Pion(Faction.Enemy));       // ennemi 1 (borne la ligne)
+        match.Place(new Cell(3, 5), Units.Pion(Faction.Enemy));       // ennemi 2 derrière
+
+        var targets = match.AttackTargets(lancier);
+        Assert.Contains(new Cell(3, 6), targets);       // premier ennemi : ciblé
+        Assert.DoesNotContain(new Cell(3, 5), targets); // un ennemi borne la ligne (pas de tir au-delà)
+    }
+
+    [Fact]
+    public void Lancier_Threat_PassesThroughAlly_ButNotEnemy()
+    {
+        var match = new Match(8, 8);
+        var lancier = new Cell(3, 7);
+        match.Place(lancier, Units.Of(Domaine.Tour, Faction.Enemy)); // lancier ennemi
+        match.Place(new Cell(3, 6), Units.Pion(Faction.Enemy));      // allié du lancier sur la ligne
+        match.Place(new Cell(3, 5), Units.Pion(Faction.Player));     // joueur derrière
+
+        var threat = match.ThreatenedCells(lancier);
+        Assert.DoesNotContain(new Cell(3, 6), threat); // traverse l'allié sans le menacer
+        Assert.Contains(new Cell(3, 5), threat);       // menace bien le joueur derrière
     }
 
     [Fact]

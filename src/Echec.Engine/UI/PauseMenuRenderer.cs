@@ -53,6 +53,9 @@ public sealed class PauseMenuRenderer
             Label(sb, l.FsRow, "PLEIN ECRAN");
             Button(sb, l.FsToggle, menu.FullscreenText, p, pointerDown);
 
+            Label(sb, l.BdRow, "SANS BORDURE");
+            Button(sb, l.BdToggle, menu.BorderlessText, p, pointerDown);
+
             Label(sb, l.MasterRow, "VOLUME GLOBAL");
             Stepper(sb, l.MasterLeft, l.MasterValue, l.MasterRight, menu.MasterVolumeText, p, pointerDown);
 

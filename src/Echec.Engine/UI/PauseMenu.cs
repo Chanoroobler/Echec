@@ -19,7 +19,7 @@ public enum PauseElement
 {
     None,
     Resume, Options, Quit,
-    ResLeft, ResRight, FsToggle,
+    ResLeft, ResRight, FsToggle, BdToggle,
     MasterLeft, MasterRight,
     MusicLeft, MusicRight,
     SfxLeft, SfxRight,
@@ -39,6 +39,7 @@ public struct PauseLayout
     // Options : lignes (label à gauche, contrôle à droite)
     public Rectangle ResRow, ResLeft, ResValue, ResRight;
     public Rectangle FsRow, FsToggle;
+    public Rectangle BdRow, BdToggle;
     public Rectangle MasterRow, MasterLeft, MasterValue, MasterRight;
     public Rectangle MusicRow, MusicLeft, MusicValue, MusicRight;
     public Rectangle SfxRow, SfxLeft, SfxValue, SfxRight;
@@ -104,6 +105,7 @@ public sealed class PauseMenu
     // ── Valeurs affichées ──────────────────────────────────────────────────────
     public string ResolutionText => $"{_resolutions[_resIndex].X} X {_resolutions[_resIndex].Y}";
     public string FullscreenText => _s.Display.Fullscreen ? "OUI" : "NON";
+    public string BorderlessText => _s.Display.Borderless ? "OUI" : "NON";
     public string MasterVolumeText => $"{_s.Audio.Master}%";
     public string MusicVolumeText => $"{_s.Audio.Music}%";
     public string SfxVolumeText => $"{_s.Audio.Sfx}%";
@@ -131,7 +133,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (5 * BtnH + 4 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (6 * BtnH + 5 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -146,6 +148,10 @@ public sealed class PauseMenu
 
         l.FsRow = new Rectangle(panel.X, y, panel.Width, BtnH);
         l.FsToggle = new Rectangle(ctrlX, y, CtrlW, BtnH);
+        y += BtnH + Gap;
+
+        l.BdRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        l.BdToggle = new Rectangle(ctrlX, y, CtrlW, BtnH);
         y += BtnH + Gap;
 
         l.MasterRow = new Rectangle(panel.X, y, panel.Width, BtnH);
@@ -193,6 +199,7 @@ public sealed class PauseMenu
         if (l.ResLeft.Contains(p)) { StepResolution(-1); return MenuAction.GraphicsChanged; }
         if (l.ResRight.Contains(p)) { StepResolution(+1); return MenuAction.GraphicsChanged; }
         if (l.FsToggle.Contains(p)) { _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged; }
+        if (l.BdToggle.Contains(p)) { _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged; }
 
         if (l.MasterLeft.Contains(p)) { _s.Audio.Master = Step(_s.Audio.Master, -10); return MenuAction.VolumeChanged; }
         if (l.MasterRight.Contains(p)) { _s.Audio.Master = Step(_s.Audio.Master, +10); return MenuAction.VolumeChanged; }
@@ -224,6 +231,7 @@ public sealed class PauseMenu
         if (l.ResLeft.Contains(p)) return PauseElement.ResLeft;
         if (l.ResRight.Contains(p)) return PauseElement.ResRight;
         if (l.FsToggle.Contains(p)) return PauseElement.FsToggle;
+        if (l.BdToggle.Contains(p)) return PauseElement.BdToggle;
         if (l.MasterLeft.Contains(p)) return PauseElement.MasterLeft;
         if (l.MasterRight.Contains(p)) return PauseElement.MasterRight;
         if (l.MusicLeft.Contains(p)) return PauseElement.MusicLeft;

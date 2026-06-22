@@ -48,15 +48,21 @@ public sealed class GameplayScene : Scene
     private static string AssetPath(string relative) =>
         System.IO.Path.Combine(System.AppContext.BaseDirectory, relative);
 
-    private readonly Battlefield _battlefield = Battlefield.CreateFlat(Columns, Rows);
+    // Terrain régénéré à CHAQUE combat (obstacles eau/montagne aléatoires) — voir BeginPlacement.
+    private Battlefield _battlefield = Battlefield.CreateFlat(Columns, Rows);
 
-    private Texture2D _grassTile = null!;
+    // Texture de tuile par type de terrain (PNG Assets/Tiles, repli sur un aplat coloré 64×80).
+    private readonly Dictionary<TerrainType, Texture2D> _tiles = new();
     private WaterRenderer _water = null!;
     private Texture2D _waterNoise = null!;
     private float _time;
     private PauseMenu _pauseMenu = null!;
     private PauseMenuRenderer _pauseRenderer = null!;
     private DomaineTreeRenderer _treeRenderer = null!;
+
+    // Effets de combat shader (estafilade / dissolution / flash) + animation d'attaque en cours.
+    private CombatFxRenderer _combatFx = null!;
+    private readonly MeleeStrikeFx _fx = new();
 
     // Sprites d'unités 64×64 chargés depuis Assets/Units/<asset>.png (null = pas d'asset → placeholder).
     private const string UnitAssetFolder = "Assets/Units";
@@ -67,6 +73,10 @@ public sealed class GameplayScene : Scene
 
     // Lien unité déployée → gabarit d'inventaire, pour calculer les pertes après combat.
     private readonly Dictionary<Unit, UnitSpec> _playerSpec = new();
+    // Lien unité ennemie → son gabarit, pour proposer les vaincus au recrutement.
+    private readonly Dictionary<Unit, UnitSpec> _enemySpec = new();
+    // Ennemis tués pendant le combat, DANS L'ORDRE de leur mort (le recrutement prend les 3 derniers).
+    private readonly List<UnitSpec> _enemyKillOrder = new();
     // Unités du joueur encore dans l'inventaire (non déployées).
     private readonly List<UnitSpec> _pending = new();
     private string _defeatReason = "";
@@ -76,10 +86,19 @@ public sealed class GameplayScene : Scene
     private Cell? _dragFrom; // origine si on déplace une unité déjà posée (null = vient de l'inventaire)
 
     private Cell? _selected;
-    private List<Cell> _legalMoves = new();
-    private List<Cell> _attackTargets = new();
+    // Buffers RÉUTILISÉS (remplis par les variantes sans-alloc du Match) : évitent une allocation
+    // de liste à chaque sélection / chaque frame de survol.
+    private readonly List<Cell> _legalMoves = new();
+    private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
+    private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
+    private readonly List<Cell> _threatCells = new();
     private double _aiTimer;
     private bool _showTrees;
+
+    // Cache du GridLayout : déterministe selon la résolution virtuelle, donc recalculé seulement
+    // au changement de taille (au lieu de plusieurs allocations de GridLayout par frame).
+    private GridLayout? _layoutCache;
+    private Point _layoutCacheFor = new(-1, -1);
 
     // Animation « pose » : la dernière case où un pion s'est posé rebondit brièvement.
     // Un seul pion bouge à la fois (jeu au tour par tour) → un seul état suffit.
@@ -116,20 +135,23 @@ public sealed class GameplayScene : Scene
 
     public override void Load()
     {
-        _grassTile = Textures.LoadTileOrPlaceholder(Context.GraphicsDevice, AssetPath("Assets/Tiles/grass.png"));
+        LoadTiles();
         _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         _treeRenderer = new DomaineTreeRenderer(Context.Pixel, Context.Font, Context.Style);
+        _combatFx = LoadCombatFx();
 
         StartRun();
     }
 
     public override void Unload()
     {
-        _grassTile.Dispose();
+        foreach (var tile in _tiles.Values)
+            tile.Dispose();
+        _tiles.Clear();
         _waterNoise.Dispose();
         _water.Dispose();
         foreach (var sprite in _unitSprites.Values)
@@ -151,6 +173,40 @@ public sealed class GameplayScene : Scene
         return new WaterRenderer(Context.GraphicsDevice, effect, _waterNoise, Context.Pixel);
     }
 
+    /// <summary>
+    /// Charge la texture de chaque type de terrain depuis Assets/Tiles (grass/water/mountain.png),
+    /// avec repli sur un aplat coloré 64×80 (palette) si le PNG est absent — le jeu reste jouable
+    /// avant d'avoir l'art définitif.
+    /// </summary>
+    private void LoadTiles()
+    {
+        _tiles[TerrainType.Grass] = Textures.LoadTileOrPlaceholder(
+            Context.GraphicsDevice, AssetPath("Assets/Tiles/grass.png"));
+        // Eau : placeholder TRANSLUCIDE (test) → on voit le shader d'eau animé sous la case. Surface
+        // très légère + liseré plus net pour repérer la case (l'eau bloque le déplacement).
+        _tiles[TerrainType.Water] =
+            Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Tiles/water.png"))
+            ?? Textures.CreateTransparentTile(Context.GraphicsDevice,
+                WithAlpha(Palette.WaterShallow, 48), WithAlpha(Palette.WaterShallow, 140));
+        _tiles[TerrainType.Mountain] = LoadTile("mountain.png", Palette.Blue1, Palette.Black4);
+    }
+
+    private Texture2D LoadTile(string file, Color surface, Color side) =>
+        Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath($"Assets/Tiles/{file}"))
+        ?? Textures.CreateColorTile(Context.GraphicsDevice, surface, side);
+
+    /// <summary>Couleur de la palette avec un alpha imposé (placeholders translucides).</summary>
+    private static Color WithAlpha(Color c, byte alpha) => new(c.R, c.G, c.B, alpha);
+
+    /// <summary>Charge le shader d'effets de combat (repli silencieux : dissolution en fondu si absent).</summary>
+    private CombatFxRenderer LoadCombatFx()
+    {
+        Effect? effect = null;
+        try { effect = Context.Content.Load<Effect>("Effects/CombatFx"); }
+        catch { effect = null; }
+        return new CombatFxRenderer(effect);
+    }
+
     // ── Cycle de campagne ─────────────────────────────────────────────────────────
 
     private void StartRun()
@@ -162,8 +218,12 @@ public sealed class GameplayScene : Scene
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
     private void BeginPlacement()
     {
-        _match = new Match(Columns, Rows);
+        // Terrain propre à ce combat : herbe + obstacles eau/montagne aléatoires (zone neutre, symétrique).
+        _battlefield = _run.BuildBattlefield(Columns, Rows);
+        _match = new Match(Columns, Rows, _battlefield);
         _playerSpec.Clear();
+        _enemySpec.Clear();
+        _enemyKillOrder.Clear();
         _pending.Clear();
         _dragSpec = null;
         _dragFrom = null;
@@ -206,9 +266,13 @@ public sealed class GameplayScene : Scene
         var i = 0;
         foreach (var spec in wave)
         {
-            while (i < cells.Count && _match.UnitAt(cells[i]) != null) i++;
+            while (i < cells.Count
+                && (_match.UnitAt(cells[i]) != null || _battlefield[cells[i]].Terrain.BlocksMovement()))
+                i++;
             if (i >= cells.Count) break;
-            _match.Place(cells[i], spec.Spawn(Faction.Enemy));
+            var unit = spec.Spawn(Faction.Enemy);
+            _match.Place(cells[i], unit);
+            _enemySpec[unit] = spec;          // pour retrouver le gabarit à la mort (recrutement)
             i++;
         }
     }
@@ -313,7 +377,8 @@ public sealed class GameplayScene : Scene
         var spec = _dragSpec!;
         var cell = CellUnderMouse();
 
-        if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null)
+        if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
+            && !_battlefield[c].Terrain.BlocksMovement())
         {
             PlacePlayer(spec, c);                       // pose / repositionne
             Context.Sounds.Play("unit_place");
@@ -355,12 +420,21 @@ public sealed class GameplayScene : Scene
 
     private void UpdateBattle(GameTime gameTime)
     {
+        // Animation d'attaque en cours : on gèle entrées, IA et fin de combat le temps des FX
+        // (le domaine est déjà résolu ; la fin de partie ne s'affiche qu'après la dissolution).
+        if (_fx.Active)
+        {
+            _fx.Update(gameTime.ElapsedGameTime.TotalSeconds);
+            return;
+        }
+
         if (_match.CurrentTurn == Faction.Enemy)
             UpdateAiTurn(gameTime);
         else
             UpdatePlayerTurn();
 
-        CheckBattleEnd();
+        if (!_fx.Active)        // une attaque vient peut-être de lancer une animation : on attend
+            CheckBattleEnd();
     }
 
     private void CheckBattleEnd()
@@ -374,7 +448,7 @@ public sealed class GameplayScene : Scene
                 .Where(kv => !kv.Key.IsAlive)
                 .Select(kv => kv.Value)
                 .ToList();
-            _run.CompleteCombat(casualties);
+            _run.CompleteCombat(casualties, _enemyKillOrder);
         }
         else
         {
@@ -427,8 +501,7 @@ public sealed class GameplayScene : Scene
 
         if (_selected is not null && _attackTargets.Contains(cell))
         {
-            _match.TryAttack(_selected.Value, cell);
-            Context.Sounds.Play("unit_attack");
+            ResolveAttack(_selected.Value, cell);
             EndPlayerAction();
             return;
         }
@@ -446,8 +519,9 @@ public sealed class GameplayScene : Scene
         if (unit is { Faction: Faction.Player })
         {
             _selected = cell;
-            _legalMoves = _match.LegalMoves(cell);
-            _attackTargets = _match.AttackTargets(cell);
+            _match.LegalMoves(cell, _legalMoves);       // remplit les buffers (pas d'allocation)
+            _match.AttackTargets(cell, _attackTargets);
+            _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
         }
@@ -475,8 +549,7 @@ public sealed class GameplayScene : Scene
 
         if (_attackTargets.Contains(cell))
         {
-            _match.TryAttack(from, cell);
-            Context.Sounds.Play("unit_attack");
+            ResolveAttack(from, cell);
             EndPlayerAction();
         }
         else if (_legalMoves.Contains(cell))
@@ -511,8 +584,7 @@ public sealed class GameplayScene : Scene
 
         if (a.IsAttack)
         {
-            _match.TryAttack(a.From, a.To);
-            Context.Sounds.Play("unit_attack");
+            ResolveAttack(a.From, a.To);
         }
         else
         {
@@ -531,7 +603,7 @@ public sealed class GameplayScene : Scene
         var mouse = Context.Input.MousePosition;
         for (var i = 0; i < _run.Draft.Count; i++)
         {
-            if (DraftCardRect(i, viewport.Width, viewport.Height).Contains(mouse))
+            if (DraftCardRect(i, _run.Draft.Count, viewport.Width, viewport.Height).Contains(mouse))
             {
                 _run.Recruit(_run.Draft[i]);
                 Context.Sounds.Play("recruit");
@@ -546,6 +618,7 @@ public sealed class GameplayScene : Scene
         _selected = null;
         _legalMoves.Clear();
         _attackTargets.Clear();
+        _attackReach.Clear();
         _combatDragFrom = null;
     }
 
@@ -554,6 +627,44 @@ public sealed class GameplayScene : Scene
     {
         _landingCell = cell;
         _landingTimer = LandingDuration;
+    }
+
+    /// <summary>
+    /// Résout une attaque dans le domaine (instantané) PUIS lance l'animation de combat qui gèle le
+    /// tour le temps des FX. L'avancée éventuelle de l'attaquant est DÉDUITE de l'état du plateau :
+    /// après un kill en mêlée le domaine l'a déjà déplacé sur la case ; en tir il est resté en place.
+    /// </summary>
+    private MoveKind ResolveAttack(Cell from, Cell target)
+    {
+        var attacker = _match.UnitAt(from);
+        var victim = _match.UnitAt(target);
+        var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
+        var victimSprite = victim != null ? UnitSprite(victim) : null;
+
+        var kind = _match.TryAttack(from, target);
+        if (kind == MoveKind.Invalid)
+            return kind;
+
+        RecordIfEnemyKilled(victim);
+        Context.Sounds.Play("unit_attack");
+
+        var killed = kind == MoveKind.Killed;
+        var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
+        var attackerCell = advanced ? target : from;
+        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced);
+
+        return kind;
+    }
+
+    /// <summary>
+    /// Si <paramref name="victim"/> est un ennemi NON essentiel qui vient de mourir, enregistre son
+    /// gabarit dans l'ordre des morts (le boss est exclu : le recrutement ne le proposera jamais).
+    /// </summary>
+    private void RecordIfEnemyKilled(Unit? victim)
+    {
+        if (victim is { IsAlive: false, Faction: Faction.Enemy, IsEssential: false }
+            && _enemySpec.TryGetValue(victim, out var spec))
+            _enemyKillOrder.Add(spec);
     }
 
     private Cell? CellUnderMouse()
@@ -573,46 +684,63 @@ public sealed class GameplayScene : Scene
         // batch principal car elles changent d'état SpriteBatch et de render target).
         DrawWaterBackground(sb, layout, viewport);
 
+        // Le plateau (terrain + ombres + unités + FX) est secoué d'un cran à l'impact d'une attaque ;
+        // le panneau latéral et l'eau restent stables. Le layout secoué ne sert qu'au dessin (le
+        // hit-test souris reste sur le layout d'origine via BuildLayout).
+        var board = ShakeBoard(layout);
+
         sb.Begin(samplerState: SamplerState.PointClamp);
-        DrawTerrain(sb, layout);
+        DrawTerrain(sb, board);
         sb.End();
 
         // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
-            DrawCastShadows(sb, layout);
+            DrawCastShadows(sb, board);
 
-        sb.Begin(samplerState: SamplerState.PointClamp);
         switch (_run.Phase)
         {
             case RunPhase.Placement:
-                DrawDeploymentZone(sb, layout);
-                DrawEnemyThreat(sb, layout);
-                DrawUnits(sb, layout);
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                DrawDeploymentZone(sb, board);
+                DrawEnemyThreat(sb, board);
+                DrawUnits(sb, board);
                 DrawPanelBackground(sb);
                 DrawPlacementPanel(sb);
                 DrawDragGhost(sb);
+                sb.End();
                 break;
             case RunPhase.Battle:
-                DrawHighlights(sb, layout);
-                DrawEnemyThreat(sb, layout);
-                DrawUnits(sb, layout);
-                DrawCarriedUnit(sb, layout);
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                DrawHighlights(sb, board);
+                DrawEnemyThreat(sb, board);
+                DrawUnits(sb, board);
+                DrawCarriedUnit(sb, board);
+                sb.End();
+
+                if (_fx.Active)             // estafilade / dissolution / flash : passes shader dédiées
+                    DrawCombatFx(sb, board);
+
+                sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawPanelBackground(sb);
                 DrawBattlePanel(sb);
+                sb.End();
                 break;
             case RunPhase.Recruitment:
-                DrawUnits(sb, layout);
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                DrawUnits(sb, board);
                 DrawDim(sb, viewport);
                 DrawRecruitment(sb, viewport);
+                sb.End();
                 break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
-                DrawUnits(sb, layout);
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                DrawUnits(sb, board);
                 DrawDim(sb, viewport);
                 DrawEndHud(sb, viewport);
+                sb.End();
                 break;
         }
-        sb.End();
 
         if (_showTrees)
         {
@@ -706,8 +834,9 @@ public sealed class GameplayScene : Scene
 
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
     {
+        // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
-            sb.Draw(_grassTile, layout.CellToSpriteRect(cell.Column, cell.Row), Color.White);
+            sb.Draw(_tiles[_battlefield[cell].Terrain], layout.CellToSpriteRect(cell.Column, cell.Row), Color.White);
     }
 
     private void DrawDeploymentZone(SpriteBatch sb, GridLayout layout)
@@ -721,10 +850,13 @@ public sealed class GameplayScene : Scene
         if (_selected is not null)
             DrawZoneBorder(sb, layout, _selected.Value, Palette.Yellow2, 3);
 
+        foreach (var cell in _attackReach)        // PORTÉE de tir (cases atteintes) = rouge pâle
+            DrawZone(sb, layout, cell, Palette.Purple5 * 0.18f);
+
         foreach (var cell in _legalMoves)         // déplacement = jaune
             DrawZone(sb, layout, cell, Palette.Yellow2 * 0.30f);
 
-        foreach (var cell in _attackTargets)      // cible de tir = rouge
+        foreach (var cell in _attackTargets)      // ennemi réellement ciblable = rouge fort
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
     }
 
@@ -737,7 +869,8 @@ public sealed class GameplayScene : Scene
         if (CellUnderMouse() is not { } cell || _match.UnitAt(cell) is not { Faction: Faction.Enemy })
             return;
 
-        foreach (var threat in _match.ThreatenedCells(cell))
+        _match.ThreatenedCells(cell, _threatCells);     // buffer réutilisé (pas d'allocation par frame)
+        foreach (var threat in _threatCells)
             DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
         DrawZoneBorder(sb, layout, cell, Palette.Purple5, 2);
     }
@@ -752,6 +885,10 @@ public sealed class GameplayScene : Scene
     {
         // Pion porté à la souris : dessiné en flottant par DrawCarriedUnit, pas sur sa case.
         if (_combatDragFrom == cell)
+            return;
+
+        // Attaquant en cours d'animation : dessiné (fente / avance) par la passe FX, pas ici.
+        if (_fx.Active && _fx.Attacker == cell)
             return;
 
         var top = layout.CellToScreen(cell.Column, cell.Row);
@@ -823,6 +960,8 @@ public sealed class GameplayScene : Scene
         foreach (var (cell, unit) in _match.Units())
         {
             if (_combatDragFrom == cell)            // pion porté : ombre dessinée sous le curseur
+                continue;
+            if (_fx.Active && _fx.Attacker == cell) // attaquant animé : ombre dessinée par la passe FX
                 continue;
             if (UnitSprite(unit) is not { } sprite) // placeholder sans sprite : pas de silhouette
                 continue;
@@ -904,6 +1043,59 @@ public sealed class GameplayScene : Scene
             sb.Draw(sprite, rect, Color.White);
         else
             DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, size - 18, size - 26));
+    }
+
+    // ── Effets de combat (estafilade / dissolution / flash) ───────────────────────
+
+    /// <summary>Renvoie le layout décalé de la secousse d'écran si une attaque s'anime, sinon tel quel.</summary>
+    private GridLayout ShakeBoard(GridLayout layout)
+    {
+        if (!_fx.Active)
+            return layout;
+        var s = _fx.ShakeOffset(_fx.Killed ? 4f : 2f);     // secousse plus marquée sur un kill
+        if (s == Point.Zero)
+            return layout;
+        return new GridLayout(layout.Origin + new Vector2(s.X, s.Y),
+            layout.TileSize, layout.SpriteWidth, layout.SpriteHeight, layout.RowPitch);
+    }
+
+    /// <summary>
+    /// Passe d'effets de l'attaque en cours (entre les unités et le panneau) : dissolution de la
+    /// victime, attaquant en fente/avance avec son ombre, flash du survivant, puis estafilade
+    /// d'impact par-dessus. Chaque sous-effet ouvre son propre batch (état de mélange / shader).
+    /// </summary>
+    private void DrawCombatFx(SpriteBatch sb, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);
+
+        // Ancrages écran (coin haut-gauche du sprite, lift de socle compris) des cases en jeu.
+        var fromTop = layout.CellToScreen(_fx.From.Column, _fx.From.Row) - new Vector2(0, spriteLift);
+        var toTop = layout.CellToScreen(_fx.To.Column, _fx.To.Row) - new Vector2(0, spriteLift);
+        var victimRect = new Rectangle((int)toTop.X, (int)toTop.Y, size, size);
+
+        // 1. Victime qui meurt : dissolution sur sa case (sous l'attaquant qui prendra la place).
+        if (_fx.Killed && _fx.VictimSprite is { } deadSprite)
+            _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
+
+        // 2. Attaquant animé (fente puis avance / recul) + ombre projetée à l'aplomb.
+        if (_fx.AttackerSprite is { } attackerSprite)
+        {
+            var top = _fx.AttackerTopLeft(fromTop, toTop, size);
+            var rect = new Rectangle((int)top.X, (int)top.Y, size, size);
+            DrawPieceCastShadow(sb, attackerSprite, rect.X, rect.Y, size, 0);
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(attackerSprite, rect, Color.White);
+            sb.End();
+        }
+
+        // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (toujours en place).
+        if (!_fx.Killed && _fx.VictimSprite is { } hitSprite)
+            _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White);
+
+        // 4. Estafilade d'impact, confinée à la silhouette de la victime (pas le fond de la case).
+        if (_fx.SlashProgress is var slash and >= 0f && _fx.VictimSprite is { } slashSprite)
+            _combatFx.DrawSlash(sb, slashSprite, victimRect, slash, Palette.White);
     }
 
     // ── Panneau latéral ───────────────────────────────────────────────────────────
@@ -1055,7 +1247,7 @@ public sealed class GameplayScene : Scene
             new Rectangle(0, 100, viewport.Width, 12), 1, Palette.Blue1);
 
         for (var i = 0; i < _run.Draft.Count; i++)
-            DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, viewport.Width, viewport.Height));
+            DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, viewport.Width, viewport.Height));
     }
 
     private void DrawDraftCard(SpriteBatch sb, UnitSpec spec, Rectangle rect)
@@ -1064,7 +1256,7 @@ public sealed class GameplayScene : Scene
         var c = spec.UnitClass;
 
         var icon = new Rectangle(rect.X + (rect.Width - 64) / 2, rect.Y + 12, 64, 64);
-        DrawChip(sb, c, Faction.Player, icon);
+        DrawChip(sb, c, Faction.Player, icon, front: true);   // recrutement : portrait de FACE
 
         Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
             new Rectangle(rect.X, icon.Bottom + 6, rect.Width, 14), 2, Palette.White);
@@ -1076,10 +1268,10 @@ public sealed class GameplayScene : Scene
             new Rectangle(rect.X, icon.Bottom + 56, rect.Width, 10), 1, Palette.Cyan2);
     }
 
-    private static Rectangle DraftCardRect(int index, int vpW, int vpH)
+    private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH)
     {
         const int cardW = 180, cardH = 190, gap = 28;
-        var total = Run.DraftSize * cardW + (Run.DraftSize - 1) * gap;
+        var total = count * cardW + (count - 1) * gap;     // centré sur le NOMBRE réel de cartes (peut être < 3)
         var x0 = (vpW - total) / 2;
         var y = (vpH - cardH) / 2 + 20;
         return new Rectangle(x0 + index * (cardW + gap), y, cardW, cardH);
@@ -1133,17 +1325,33 @@ public sealed class GameplayScene : Scene
     private const int BoardMargin = 24;
 
     /// <summary>
+    /// Layout du plateau, MIS EN CACHE : il ne dépend que de la résolution virtuelle, donc on ne
+    /// le recalcule qu'au changement de taille (sinon plusieurs allocations de GridLayout par frame,
+    /// BuildLayout étant appelé par Draw et par chaque CellUnderMouse).
+    /// </summary>
+    private GridLayout BuildLayout()
+    {
+        var res = Context.VirtualResolution;
+        if (_layoutCache == null || _layoutCacheFor != res)
+        {
+            _layoutCache = BuildLayoutCore();
+            _layoutCacheFor = res;
+        }
+        return _layoutCache;
+    }
+
+    /// <summary>
     /// Place le terrain dans la zone à gauche du panneau avec un zoom ENTIER (les sprites
     /// 64×64 ne sont jamais étirés : pixel-perfect), au plus grand multiple qui rentre,
     /// puis centre. S'adapte à n'importe quelle taille de terrain.
     /// </summary>
-    private GridLayout BuildLayout()
+    private GridLayout BuildLayoutCore()
     {
         var viewport = VirtualViewport;
         var availWidth = viewport.Width - RightPanelWidth;
 
         const int baseTile = GridLayout.DefaultTileSize;        // 64
-        const int baseSprite = GridLayout.DefaultSpriteHeight;  // 74
+        const int baseSprite = GridLayout.DefaultSpriteHeight;  // 80
 
         float boardW = Columns * baseTile;                      // largeur à zoom 1
         float boardH = (Rows - 1) * baseTile + baseSprite;      // hauteur à zoom 1

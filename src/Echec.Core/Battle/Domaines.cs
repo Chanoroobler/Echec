@@ -48,10 +48,10 @@ public static class Domaines
         new DomaineDef(Domaine.Pion, Cls("Soldat", "soldat", hp: 10, dmg: 4, move: 1, attack: 1)),
         new DomaineDef(Domaine.Fou, Cls("Eclaireur", "eclaireur", hp: 8, dmg: 4, move: 3, attack: 2)),
         new DomaineDef(Domaine.Cavalier, Cls("Cavalier", "cavalier", hp: 10, dmg: 5, move: 1, attack: 1)),
-        new DomaineDef(Domaine.Tour, Cls("Lancier", "lancier", hp: 12, dmg: 4, move: 3, attack: 3)),
+        new DomaineDef(Domaine.Tour, Cls("Lancier", "lancier", hp: 12, dmg: 4, move: 3, attack: 3, pierces: true)),
         new DomaineDef(Domaine.Dame, Cls("Archer", "archer", hp: 8, dmg: 5, move: 2, attack: 3)),
     };
 
-    private static UnitClass Cls(string name, string asset, int hp, int dmg, int move, int attack) =>
-        new(name, asset, tier: 1, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack);
+    private static UnitClass Cls(string name, string asset, int hp, int dmg, int move, int attack, bool pierces = false) =>
+        new(name, asset, tier: 1, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack, piercesAllies: pierces);
 }

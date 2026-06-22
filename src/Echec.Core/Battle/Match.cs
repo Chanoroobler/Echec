@@ -16,16 +16,29 @@ public sealed class Match
 {
     private readonly Unit?[,] _units;
 
+    // Terrain optionnel : si fourni, l'eau et la montagne bornent déplacements et/ou tirs
+    // (null = plateau entièrement traversable, comme avant l'ajout du terrain).
+    private readonly Battlefield? _terrain;
+
     // Unités essentielles posées sur le terrain (commandant joueur / boss ennemi).
     // On garde la référence même après leur mort pour évaluer la condition de victoire.
     private readonly List<Unit> _essential = new();
 
-    public Match(int width, int height)
+    public Match(int width, int height, Battlefield? terrain = null)
     {
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
+        _terrain = terrain;
     }
+
+    /// <summary>Vrai si la tuile interdit le déplacement (eau ou montagne).</summary>
+    private bool BlocksMovement(Cell cell) =>
+        _terrain != null && _terrain[cell].Terrain.BlocksMovement();
+
+    /// <summary>Vrai si la tuile arrête une ligne de tir (montagne).</summary>
+    private bool BlocksLineOfFire(Cell cell) =>
+        _terrain != null && _terrain[cell].Terrain.BlocksLineOfFire();
 
     public int Width { get; }
     public int Height { get; }
@@ -70,9 +83,17 @@ public sealed class Match
     public List<Cell> LegalMoves(Cell from)
     {
         var result = new List<Cell>();
+        LegalMoves(from, result);
+        return result;
+    }
+
+    /// <summary>Variante SANS allocation : vide puis remplit <paramref name="result"/> (réutiliser un buffer).</summary>
+    public void LegalMoves(Cell from, List<Cell> result)
+    {
+        result.Clear();
         var unit = ActiveUnitAt(from);
         if (unit == null)
-            return result;
+            return;
 
         var vectors = Movement.Vectors(unit.Domaine);
 
@@ -81,10 +102,10 @@ public sealed class Match
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to) && _units[to.Column, to.Row] == null)
+                if (InBounds(to) && _units[to.Column, to.Row] == null && !BlocksMovement(to))
                     result.Add(to);
             }
-            return result;
+            return;
         }
 
         foreach (var dir in vectors)
@@ -92,22 +113,28 @@ public sealed class Match
             for (var step = 1; step <= unit.MoveRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || _units[to.Column, to.Row] != null)
-                    break; // hors plateau ou bloqué : on ne passe pas à travers
+                if (!InBounds(to) || _units[to.Column, to.Row] != null || BlocksMovement(to))
+                    break; // hors plateau, unité, ou obstacle (eau/montagne) : on ne passe pas à travers
                 result.Add(to);
             }
         }
-
-        return result;
     }
 
     /// <summary>Cases ennemies à portée de TIR (première unité rencontrée dans chaque direction).</summary>
     public List<Cell> AttackTargets(Cell from)
     {
         var result = new List<Cell>();
+        AttackTargets(from, result);
+        return result;
+    }
+
+    /// <summary>Variante SANS allocation : vide puis remplit <paramref name="result"/> (réutiliser un buffer).</summary>
+    public void AttackTargets(Cell from, List<Cell> result)
+    {
+        result.Clear();
         var unit = ActiveUnitAt(from);
         if (unit == null)
-            return result;
+            return;
 
         var vectors = Movement.Vectors(unit.Domaine);
 
@@ -119,28 +146,33 @@ public sealed class Match
                 if (UnitAt(to) is { } target && target.Faction != unit.Faction)
                     result.Add(to);
             }
-            return result;
+            return;
         }
 
+        var piercesAllies = unit.Class.PiercesAllies;
         foreach (var dir in vectors)
         {
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to))
-                    break;
+                if (!InBounds(to) || BlocksLineOfFire(to))
+                    break; // hors plateau ou montagne : la ligne de tir s'arrête (l'eau, elle, laisse passer)
 
                 var target = _units[to.Column, to.Row];
                 if (target == null)
-                    continue; // case vide : la ligne de tir continue
+                    continue; // case vide (ou eau) : la ligne de tir continue
 
                 if (target.Faction != unit.Faction)
-                    result.Add(to); // premier ennemi en vue
-                break;              // une unité bloque la ligne (amie ou ennemie)
+                {
+                    result.Add(to); // premier ennemi en vue : cible, et borne la ligne
+                    break;
+                }
+
+                // Allié : le LANCIER le traverse sans le toucher (ne borne pas) ; sinon il bloque.
+                if (!piercesAllies)
+                    break;
             }
         }
-
-        return result;
     }
 
     /// <summary>
@@ -152,9 +184,17 @@ public sealed class Match
     public List<Cell> ThreatenedCells(Cell from)
     {
         var result = new List<Cell>();
+        ThreatenedCells(from, result);
+        return result;
+    }
+
+    /// <summary>Variante SANS allocation : vide puis remplit <paramref name="result"/> (réutiliser un buffer).</summary>
+    public void ThreatenedCells(Cell from, List<Cell> result)
+    {
+        result.Clear();
         var unit = UnitAt(from);
         if (unit == null)
-            return result;
+            return;
 
         var vectors = Movement.Vectors(unit.Domaine);
 
@@ -166,24 +206,27 @@ public sealed class Match
                 if (InBounds(to))
                     result.Add(to);
             }
-            return result;
+            return;
         }
 
+        var piercesAllies = unit.Class.PiercesAllies;
         foreach (var dir in vectors)
         {
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to))
-                    break;
+                if (!InBounds(to) || BlocksLineOfFire(to))
+                    break; // hors plateau ou montagne : la menace ne porte pas au-delà (l'eau laisse passer)
+
+                var occupant = _units[to.Column, to.Row];
+                if (occupant != null && occupant.Faction == unit.Faction && piercesAllies)
+                    continue; // lancier : traverse l'allié sans le menacer, la ligne continue
 
                 result.Add(to);
-                if (_units[to.Column, to.Row] != null)
-                    break; // une unité bloque la ligne de tir au-delà
+                if (occupant != null)
+                    break; // un ennemi (ou un allié non traversé) borne la ligne de tir au-delà
             }
         }
-
-        return result;
     }
 
     /// <summary>Déplace l'unité vers une case vide légale. Passe le tour en cas de succès.</summary>

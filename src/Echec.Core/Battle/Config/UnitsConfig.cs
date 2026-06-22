@@ -44,6 +44,9 @@ public sealed class ClassConfig
     public int MoveRange { get; set; }
     public int AttackRange { get; set; }
 
+    /// <summary>Tire à travers ses alliés sans les toucher (Lancier). Absent/false = ligne bloquée par les alliés.</summary>
+    public bool PiercesAllies { get; set; }
+
     /// <summary>Sous-classes (pour un futur arbre) ; null/absent = feuille.</summary>
     public List<ClassConfig>? Evolutions { get; set; }
 }

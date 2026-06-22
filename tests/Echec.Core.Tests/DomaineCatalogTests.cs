@@ -12,7 +12,7 @@ public class DomaineCatalogTests
       // commentaire autorisé
       "domaines": [
         { "domaine": "Pion", "baseClass": { "name": "Recrue", "asset": "recrue", "hp": 7, "damage": 2, "moveRange": 1, "attackRange": 1 } },
-        { "domaine": "Tour", "baseClass": { "name": "Veilleur", "asset": "veilleur", "hp": 20, "damage": 3, "moveRange": 5, "attackRange": 4 } },
+        { "domaine": "Tour", "baseClass": { "name": "Veilleur", "asset": "veilleur", "hp": 20, "damage": 3, "moveRange": 5, "attackRange": 4, "piercesAllies": true } },
       ]
     }
     """;
@@ -29,10 +29,12 @@ public class DomaineCatalogTests
         Assert.Equal(2, pion.BaseClass.Damage);
         Assert.Equal(1, pion.BaseClass.MoveRange);
         Assert.Equal(1, pion.BaseClass.AttackRange);
+        Assert.False(pion.BaseClass.PiercesAllies);   // champ absent → false par défaut
 
         var tour = defs.Single(d => d.Id == Domaine.Tour);
         Assert.Equal(4, tour.BaseClass.AttackRange);
         Assert.Equal(5, tour.BaseClass.MoveRange);
+        Assert.True(tour.BaseClass.PiercesAllies);     // "piercesAllies": true lu depuis le JSON
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public class DomaineCatalogTests
       { "domaine": "Pion",     "baseClass": { "name": "Soldat",     "asset": "soldat",     "hp": 10, "damage": 4, "moveRange": 1, "attackRange": 1 } },
       { "domaine": "Fou",      "baseClass": { "name": "Eclaireur",  "asset": "eclaireur",  "hp": 8,  "damage": 4, "moveRange": 3, "attackRange": 2 } },
       { "domaine": "Cavalier", "baseClass": { "name": "Cavalier",   "asset": "cavalier",   "hp": 10, "damage": 5, "moveRange": 1, "attackRange": 1 } },
-      { "domaine": "Tour",     "baseClass": { "name": "Lancier",    "asset": "lancier",    "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3 } },
+      { "domaine": "Tour",     "baseClass": { "name": "Lancier",    "asset": "lancier",    "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3, "piercesAllies": true } },
       { "domaine": "Dame",     "baseClass": { "name": "Archer",     "asset": "archer",     "hp": 8,  "damage": 5, "moveRange": 2, "attackRange": 3 } }
     ] }
     """;

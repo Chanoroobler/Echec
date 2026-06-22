@@ -28,7 +28,7 @@ public class RunTests
 
         // Avance jusqu'au combat 2 sans pertes.
         run.StartBattle();
-        run.CompleteCombat(Enumerable.Empty<UnitSpec>());
+        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
         run.Recruit(run.Draft[0]);
 
         Assert.Equal(2, run.CombatNumber);
@@ -54,7 +54,7 @@ public class RunTests
         var soldier = run.Roster.First(u => !u.Essential);
 
         run.StartBattle();
-        run.CompleteCombat(new[] { soldier }); // un soldat tombe
+        run.CompleteCombat(new[] { soldier }, DefeatedWave(2)); // un soldat tombe
 
         Assert.DoesNotContain(soldier, run.Roster);
         Assert.Equal(2, run.Roster.Count);            // commandant + 1 soldat
@@ -66,7 +66,7 @@ public class RunTests
     {
         var run = new Run(seed: 1);
         run.StartBattle();
-        run.CompleteCombat(Enumerable.Empty<UnitSpec>());
+        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
         Assert.Equal(RunPhase.Recruitment, run.Phase);
 
         var choice = run.Draft[1];
@@ -79,13 +79,46 @@ public class RunTests
     }
 
     [Fact]
+    public void Draft_OffersLastThreeDefeated_InKillOrder()
+    {
+        var run = new Run(seed: 1);
+        run.StartBattle();
+
+        // 5 ennemis vaincus (instances distinctes) dans l'ordre de leur mort.
+        var defeated = new[]
+        {
+            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+            new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass),
+            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+            new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass),
+            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+        };
+        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), defeated);
+
+        Assert.Equal(3, run.Draft.Count);
+        Assert.Same(defeated[2], run.Draft[0]); // les 3 DERNIERS, dans l'ordre
+        Assert.Same(defeated[3], run.Draft[1]);
+        Assert.Same(defeated[4], run.Draft[2]);
+    }
+
+    [Fact]
+    public void Draft_HasFewerCards_WhenFewerEnemiesDefeated()
+    {
+        var run = new Run(seed: 1);
+        run.StartBattle();
+        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
+
+        Assert.Equal(2, run.Draft.Count); // moins d'ennemis → moins de cartes
+    }
+
+    [Fact]
     public void WinningBossCombat_EndsInVictory()
     {
         var run = new Run(seed: 1);
         AdvanceTo(run, 6);
 
         run.StartBattle();
-        run.CompleteCombat(Enumerable.Empty<UnitSpec>());
+        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(0));
 
         Assert.Equal(RunPhase.Victory, run.Phase);
     }
@@ -96,9 +129,18 @@ public class RunTests
         while (run.CombatNumber < combat)
         {
             run.StartBattle();
-            run.CompleteCombat(Enumerable.Empty<UnitSpec>());
+            run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
             run.Recruit(run.Draft[0]);
         }
+    }
+
+    // Faux groupe d'ennemis vaincus (n soldats) pour alimenter le recrutement dans les tests.
+    private static UnitSpec[] DefeatedWave(int n)
+    {
+        var wave = new UnitSpec[n];
+        for (var i = 0; i < n; i++)
+            wave[i] = new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass);
+        return wave;
     }
 }
 
