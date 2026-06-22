@@ -10,7 +10,8 @@ namespace Echec.Core.Battle;
 public sealed class UnitClass
 {
     public UnitClass(string name, string asset, int tier, int maxHp, int damage,
-        int moveRange, int attackRange, bool piercesAllies = false, params UnitClass[] evolutions)
+        int moveRange, int attackRange, bool piercesAllies = false,
+        int minAttackRange = 1, IReadOnlyList<string>? traits = null, params UnitClass[] evolutions)
     {
         Name = name;
         Asset = asset;
@@ -20,6 +21,8 @@ public sealed class UnitClass
         MoveRange = moveRange;
         AttackRange = attackRange;
         PiercesAllies = piercesAllies;
+        MinAttackRange = minAttackRange;
+        Traits = traits ?? System.Array.Empty<string>();
         Evolutions = evolutions;
     }
 
@@ -35,8 +38,23 @@ public sealed class UnitClass
     /// <summary>Distance de déplacement (le long des directions du domaine).</summary>
     public int MoveRange { get; }
 
-    /// <summary>Distance de tir/attaque (le long des directions du domaine).</summary>
+    /// <summary>Distance de tir/attaque MAXIMALE (le long des directions du domaine).</summary>
     public int AttackRange { get; }
+
+    /// <summary>
+    /// Distance de tir MINIMALE (notée « X à Y » dans le tableau des unités : X = ce min, Y =
+    /// <see cref="AttackRange"/>). 1 par défaut (peut frapper au contact). &gt; 1 pour les archers
+    /// (zone morte de près). NB : la mécanique n'est pas encore appliquée en combat — donnée seule.
+    /// </summary>
+    public int MinAttackRange { get; }
+
+    /// <summary>
+    /// Traits/particularités de la classe (Rempart, Soin, Dégâts de zone, Franchissement,
+    /// Transpercement, Interception…), HORS « Traverse allié » qui est porté par
+    /// <see cref="PiercesAllies"/>. DONNÉE seule pour l'instant : les mécaniques ne sont pas encore
+    /// implémentées (les unités concernées ne sont pas en jeu ; à faire avec les tiers 2).
+    /// </summary>
+    public IReadOnlyList<string> Traits { get; }
 
     /// <summary>
     /// Si vrai, la classe tire À TRAVERS ses propres alliés sans les toucher : ses unités amies ne

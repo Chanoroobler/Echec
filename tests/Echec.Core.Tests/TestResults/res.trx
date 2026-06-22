@@ -1,0 +1,521 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="063bd079-dde1-4f74-b273-dd6e98d56ce5" name="antho@DESKTOP-VLA4L26 2026-06-22 21:51:54" runUser="DESKTOP-VLA4L26\antho" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-22T21:51:54.9533305+02:00" queuing="2026-06-22T21:51:54.9533307+02:00" start="2026-06-22T21:51:54.4912642+02:00" finish="2026-06-22T21:51:55.0110712+02:00" />
+  <TestSettings name="default" id="ff35664c-66ca-40a8-82f9-5204cef8d27a">
+    <Deployment runDeploymentRoot="antho_DESKTOP-VLA4L26_2026-06-22_21_51_54" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="1da0629f-73ae-4677-bb05-3ace29454ef4" testId="73b5a5ae-bc93-b174-9918-631c34066338" testName="Echec.Core.Tests.RunTests.WinningBossCombat_EndsInVictory" computerName="DESKTOP-VLA4L26" duration="00:00:00.0023152" startTime="2026-06-22T21:51:54.9328781+02:00" endTime="2026-06-22T21:51:54.9328782+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1da0629f-73ae-4677-bb05-3ace29454ef4" />
+    <UnitTestResult executionId="1bf76186-7dd1-42bc-9a17-c502ce58c0f8" testId="3c24d9a8-5cc8-ee7d-7b72-46d933db1cfa" testName="Echec.Core.Tests.EssentialUnitTests.CommanderDeath_LosesEvenWithOtherUnitsAlive" computerName="DESKTOP-VLA4L26" duration="00:00:00.0050297" startTime="2026-06-22T21:51:54.9311402+02:00" endTime="2026-06-22T21:51:54.9311402+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1bf76186-7dd1-42bc-9a17-c502ce58c0f8" />
+    <UnitTestResult executionId="1733edbd-08b1-496e-92fe-79e757cc8da2" testId="34aae433-a99b-fb4e-d43d-4bf686eac170" testName="Echec.Core.Tests.MatchTests.MeleeKill_AttackerTakesPlace_AndWins" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001099" startTime="2026-06-22T21:51:54.9380429+02:00" endTime="2026-06-22T21:51:54.9380429+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1733edbd-08b1-496e-92fe-79e757cc8da2" />
+    <UnitTestResult executionId="6ff7819c-9010-4669-bce9-702db9d7a66f" testId="11cd4187-b3bb-a1e3-da78-2edd73027103" testName="Echec.Core.Tests.DomaineTests.FiveDomaines_NamedAfterChessPieces" computerName="DESKTOP-VLA4L26" duration="00:00:00.0050168" startTime="2026-06-22T21:51:54.9311966+02:00" endTime="2026-06-22T21:51:54.9311967+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6ff7819c-9010-4669-bce9-702db9d7a66f" />
+    <UnitTestResult executionId="a10950a4-d55d-4b14-8b76-edc6360ef330" testId="fbdad96f-0fc7-79a9-c6ea-420f5740cbd1" testName="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Cavalier, vectorCount: 8, kind: Jump)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000074" startTime="2026-06-22T21:51:54.9322106+02:00" endTime="2026-06-22T21:51:54.9322106+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a10950a4-d55d-4b14-8b76-edc6360ef330" />
+    <UnitTestResult executionId="9a0dae26-4145-4672-91a6-d1ed2b918c7d" testId="cd054ed1-4cea-5145-891b-9fe7f3368455" testName="Echec.Core.Tests.MatchTests.Lancier_Threat_PassesThroughAlly_ButNotEnemy" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001078" startTime="2026-06-22T21:51:54.9380159+02:00" endTime="2026-06-22T21:51:54.9380159+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9a0dae26-4145-4672-91a6-d1ed2b918c7d" />
+    <UnitTestResult executionId="4f705835-7fe8-4cc3-9954-9c6388eafb22" testId="1b602471-f900-830f-e3be-fa1e6234fada" testName="Echec.Core.Tests.MatchTests.EnemyUnit_HasNoActions_DuringPlayerTurn" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001491" startTime="2026-06-22T21:51:54.9374236+02:00" endTime="2026-06-22T21:51:54.9374237+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4f705835-7fe8-4cc3-9954-9c6388eafb22" />
+    <UnitTestResult executionId="088f4ed4-97d1-4cbe-98b5-c0453003e109" testId="12095e9d-0c25-7ec7-1cb1-33bca63f9138" testName="Echec.Core.Tests.DomaineCatalogTests.Load_OverridesDefaults" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002670" startTime="2026-06-22T21:51:54.9718801+02:00" endTime="2026-06-22T21:51:54.9718801+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="088f4ed4-97d1-4cbe-98b5-c0453003e109" />
+    <UnitTestResult executionId="79d77ff9-c588-4626-a8a5-d2c623199594" testId="90acd2e1-a474-a6e4-3fd5-8eab7e8f88c7" testName="Echec.Core.Tests.MatchTests.MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001271" startTime="2026-06-22T21:51:54.9385467+02:00" endTime="2026-06-22T21:51:54.9385468+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="79d77ff9-c588-4626-a8a5-d2c623199594">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: 6&#xD;
+Actual:   2</Message>
+          <StackTrace>   at Echec.Core.Tests.MatchTests.MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs:line 60&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="54b86374-b746-4eb1-85d2-21f05228f0c6" testId="721a1f0f-a4f8-daca-341e-854f3eb98a92" testName="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Pion, vectorCount: 8, kind: Slide)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000044" startTime="2026-06-22T21:51:54.9321739+02:00" endTime="2026-06-22T21:51:54.9321739+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="54b86374-b746-4eb1-85d2-21f05228f0c6" />
+    <UnitTestResult executionId="c0ce5962-46c0-43ee-91e3-e2d80d7c7f41" testId="ff26d86f-9254-e5ed-a322-e11f66e8db62" testName="Echec.Core.Tests.TerrainTests.Generate_KeepsDeployRowsClear_AndIsVerticallySymmetric" computerName="DESKTOP-VLA4L26" duration="00:00:00.0026223" startTime="2026-06-22T21:51:54.9026018+02:00" endTime="2026-06-22T21:51:54.9026019+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c0ce5962-46c0-43ee-91e3-e2d80d7c7f41" />
+    <UnitTestResult executionId="9d4ebc16-4be6-4469-a9fe-b6f0b4d5ce34" testId="7eab24ab-7518-f5bd-6510-9298ea0e9847" testName="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 0, row: 0, expected: True)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001696" startTime="2026-06-22T21:51:54.9131328+02:00" endTime="2026-06-22T21:51:54.9131328+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9d4ebc16-4be6-4469-a9fe-b6f0b4d5ce34" />
+    <UnitTestResult executionId="122dea3c-c7b7-473a-bd32-ea5812c16390" testId="7957f4ea-18ce-aba8-3878-40f20315f042" testName="Echec.Core.Tests.MatchTests.MoveToEmpty_MovesUnit_AndPassesTurn" computerName="DESKTOP-VLA4L26" duration="00:00:00.0015602" startTime="2026-06-22T21:51:54.9364869+02:00" endTime="2026-06-22T21:51:54.9364870+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="122dea3c-c7b7-473a-bd32-ea5812c16390" />
+    <UnitTestResult executionId="0d2f23dc-0ba8-402b-8f77-994a36dd59f8" testId="38569444-fff5-235b-ee53-a6abe6de5f8d" testName="Echec.Core.Tests.RunTests.CompleteCombat_RemovesCasualties_KeepsCommanderAndSurvivors" computerName="DESKTOP-VLA4L26" duration="00:00:00.0005848" startTime="2026-06-22T21:51:54.9344183+02:00" endTime="2026-06-22T21:51:54.9344183+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0d2f23dc-0ba8-402b-8f77-994a36dd59f8" />
+    <UnitTestResult executionId="32344580-a906-4835-99cc-6a30c083cf9b" testId="51fb52dd-38dd-9c03-1c09-43569ce92b12" testName="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Tour, vectorCount: 4, kind: Slide)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0014279" startTime="2026-06-22T21:51:54.9315791+02:00" endTime="2026-06-22T21:51:54.9315792+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="32344580-a906-4835-99cc-6a30c083cf9b" />
+    <UnitTestResult executionId="efc4c315-6a94-457c-877f-82c861e18d0c" testId="3f835c15-4b75-ff45-2fa1-e8e36c5a51c0" testName="Echec.Core.Tests.RunTests.BossCombat_IsTheSixth_AndContainsAnEssentialBoss" computerName="DESKTOP-VLA4L26" duration="00:00:00.0009711" startTime="2026-06-22T21:51:54.9331619+02:00" endTime="2026-06-22T21:51:54.9331619+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="efc4c315-6a94-457c-877f-82c861e18d0c" />
+    <UnitTestResult executionId="2fefff2b-7794-48f0-a282-2d8c5da21b40" testId="a8a3cd5f-b8cb-a384-6c6d-2906584342d9" testName="Echec.Core.Tests.MatchTests.LancierKill_TakesPlace_WhenPathClearAndInMoveRange" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001936" startTime="2026-06-22T21:51:54.9379755+02:00" endTime="2026-06-22T21:51:54.9379755+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2fefff2b-7794-48f0-a282-2d8c5da21b40">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: Killed&#xD;
+Actual:   Invalid</Message>
+          <StackTrace>   at Echec.Core.Tests.MatchTests.LancierKill_TakesPlace_WhenPathClearAndInMoveRange() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs:line 94&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="6897c355-fa3f-48b3-995c-22da11566f5c" testId="1933fa18-468c-d72b-751a-9f3ddc112d24" testName="Echec.Core.Tests.MatchTests.Lancier_PiercesAlly_TargetsEnemyBehind" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001204" startTime="2026-06-22T21:51:54.9366392+02:00" endTime="2026-06-22T21:51:54.9366393+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6897c355-fa3f-48b3-995c-22da11566f5c" />
+    <UnitTestResult executionId="3dc58dd5-6e11-4776-a0ba-84e129152cf0" testId="0a716fb2-935a-c191-5407-89886274666b" testName="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 4, row: 4, expected: True)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0014419" startTime="2026-06-22T21:51:54.9129493+02:00" endTime="2026-06-22T21:51:54.9129495+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3dc58dd5-6e11-4776-a0ba-84e129152cf0" />
+    <UnitTestResult executionId="8fd4846c-70c8-41eb-8813-8162a2a3b03e" testId="2a33f6b6-a376-f25b-da6d-c7812790972d" testName="Echec.Core.Tests.DomaineCatalogTests.FromJson_BuildsDomaineDefs_WithClassStats" computerName="DESKTOP-VLA4L26" duration="00:00:00.0019308" startTime="2026-06-22T21:51:54.9715864+02:00" endTime="2026-06-22T21:51:54.9715866+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8fd4846c-70c8-41eb-8813-8162a2a3b03e" />
+    <UnitTestResult executionId="9d9f6593-f09d-436f-b80b-cabc85ec4cf0" testId="e383f5ec-de93-ec31-4a26-b232fa4194e9" testName="Echec.Core.Tests.RunTests.EnemyWave_GrowsByOnePerCombat" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001276" startTime="2026-06-22T21:51:54.9338111+02:00" endTime="2026-06-22T21:51:54.9338112+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9d9f6593-f09d-436f-b80b-cabc85ec4cf0" />
+    <UnitTestResult executionId="1cce4594-345f-4d2c-92fd-71e32c8d30e3" testId="a060a105-e4f2-c4cf-66e7-b2e0c5ad1646" testName="Echec.Core.Tests.TerrainTests.Generate_IsDeterministic_ForSameSeed" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001874" startTime="2026-06-22T21:51:54.9126206+02:00" endTime="2026-06-22T21:51:54.9126206+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1cce4594-345f-4d2c-92fd-71e32c8d30e3" />
+    <UnitTestResult executionId="471ca77f-515b-482a-8b1b-1253e721f78f" testId="15aa03bb-5a81-bdea-2fda-0076b3b81ab5" testName="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Fou, vectorCount: 4, kind: Slide)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001473" startTime="2026-06-22T21:51:54.9321501+02:00" endTime="2026-06-22T21:51:54.9321501+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="471ca77f-515b-482a-8b1b-1253e721f78f" />
+    <UnitTestResult executionId="3b3856c9-b655-4eba-9012-5e5092f73ab3" testId="2d73b2d9-00f9-eba7-4c7c-d9b292b81546" testName="Echec.Core.Tests.MatchTests.LegalMoves_OnlyEmptyCells_OccupiedCellsBlock" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000683" startTime="2026-06-22T21:51:54.9386728+02:00" endTime="2026-06-22T21:51:54.9386729+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3b3856c9-b655-4eba-9012-5e5092f73ab3" />
+    <UnitTestResult executionId="ec42928c-8fbb-4f20-a3d1-02afcad505c0" testId="3e8c09af-0759-660b-e255-8df9a1e15462" testName="Echec.Core.Tests.TerrainTests.Generate_PlacesSomeObstacles_InNeutralZone" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001904" startTime="2026-06-22T21:51:54.9126476+02:00" endTime="2026-06-22T21:51:54.9126476+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ec42928c-8fbb-4f20-a3d1-02afcad505c0" />
+    <UnitTestResult executionId="a6472ed4-6f5a-45fe-9828-1bbed70e9bd9" testId="31eae3c8-cba1-c468-4546-cfd87107889e" testName="Echec.Core.Tests.PoolTests.Return_AppliesReset" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001406" startTime="2026-06-22T21:51:54.9457300+02:00" endTime="2026-06-22T21:51:54.9457300+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a6472ed4-6f5a-45fe-9828-1bbed70e9bd9" />
+    <UnitTestResult executionId="33cac831-e605-48fd-ad8d-b6eb561379da" testId="07d46ebd-133e-5a04-ed0f-eb83f4d1210a" testName="Echec.Core.Tests.PoolTests.Prewarm_AllocatesInstancesUpFront" computerName="DESKTOP-VLA4L26" duration="00:00:00.0004613" startTime="2026-06-22T21:51:54.9449377+02:00" endTime="2026-06-22T21:51:54.9449379+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="33cac831-e605-48fd-ad8d-b6eb561379da" />
+    <UnitTestResult executionId="47af3b7d-83f9-4cbc-9a64-8ffcf87275cb" testId="c61e80c5-5991-52c0-ddf9-5e7a28230878" testName="Echec.Core.Tests.MatchTests.EnemyAi_PrefersLethalAttack" computerName="DESKTOP-VLA4L26" duration="00:00:00.0055083" startTime="2026-06-22T21:51:54.9443726+02:00" endTime="2026-06-22T21:51:54.9443729+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="47af3b7d-83f9-4cbc-9a64-8ffcf87275cb" />
+    <UnitTestResult executionId="38699438-1e2b-405f-bbe8-acee49edf79a" testId="ee9d99de-1be9-aa80-4a7f-6ee0353b3158" testName="Echec.Core.Tests.PoolTests.Return_ThenGet_RecyclesSameInstance_WithoutNewAllocation" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002088" startTime="2026-06-22T21:51:54.9454142+02:00" endTime="2026-06-22T21:51:54.9454142+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="38699438-1e2b-405f-bbe8-acee49edf79a" />
+    <UnitTestResult executionId="786f089e-de45-4f6d-8888-1a5c86c12fff" testId="c8e18763-c5ad-7a42-2e82-f69de35cad34" testName="Echec.Core.Tests.MatchTests.Lancier_EnemyStillBlocksLine_NoTargetBehindEnemy" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001490" startTime="2026-06-22T21:51:54.9372455+02:00" endTime="2026-06-22T21:51:54.9372455+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="786f089e-de45-4f6d-8888-1a5c86c12fff" />
+    <UnitTestResult executionId="0a3bedf5-2748-41d3-b36d-7cf0ae7a3b52" testId="ce570e36-2d7c-a951-8d08-c16961e0812d" testName="Echec.Core.Tests.MatchTests.RangedKill_StaysInPlace_WhenTargetBeyondMoveRange" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002082" startTime="2026-06-22T21:51:54.9371521+02:00" endTime="2026-06-22T21:51:54.9371522+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0a3bedf5-2748-41d3-b36d-7cf0ae7a3b52">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.NotNull() Failure: Value is null</Message>
+          <StackTrace>   at Echec.Core.Tests.MatchTests.RangedKill_StaysInPlace_WhenTargetBeyondMoveRange() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs:line 113&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="8a79dd4c-ba6b-4ae3-b000-799bf7102d73" testId="1af46fe1-bcd3-aa45-81c4-4d4a07e50e84" testName="Echec.Core.Tests.DomaineTests.Tour_SlidesOrthogonally_Only" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001443" startTime="2026-06-22T21:51:54.9328291+02:00" endTime="2026-06-22T21:51:54.9328292+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8a79dd4c-ba6b-4ae3-b000-799bf7102d73">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Contains() Failure: Item not found in collection&#xD;
+Collection: [Cell { Column = 3, Row = 2 }, Cell { Column = 3, Row = 1 }, Cell { Column = 2, Row = 3 }, Cell { Column = 1, Row = 3 }, Cell { Column = 4, Row = 3 }, ···]&#xD;
+Not found:  Cell { Column = 3, Row = 0 }</Message>
+          <StackTrace>   at Echec.Core.Tests.DomaineTests.Tour_SlidesOrthogonally_Only() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs:line 74&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="aa153dda-a171-4475-890f-d49146f9aad4" testId="0258ef3f-3eb5-a982-e4f8-868eb429b875" testName="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 5, row: 0, expected: False)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000049" startTime="2026-06-22T21:51:54.9309444+02:00" endTime="2026-06-22T21:51:54.9309444+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aa153dda-a171-4475-890f-d49146f9aad4" />
+    <UnitTestResult executionId="4430bcc7-937f-4435-b647-2a286c273982" testId="927d9486-19a6-a4b4-811c-6c26afeb1e5b" testName="Echec.Core.Tests.MatchTests.AttackRange_LimitsReach" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002508" startTime="2026-06-22T21:51:54.9347746+02:00" endTime="2026-06-22T21:51:54.9347747+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4430bcc7-937f-4435-b647-2a286c273982" />
+    <UnitTestResult executionId="abc1fc22-7d58-41b0-9739-930eb2abffad" testId="7f986fbc-d6e1-8174-b582-e122155262fa" testName="Echec.Core.Tests.RunTests.Draft_HasFewerCards_WhenFewerEnemiesDefeated" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000827" startTime="2026-06-22T21:51:54.9332146+02:00" endTime="2026-06-22T21:51:54.9332147+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="abc1fc22-7d58-41b0-9739-930eb2abffad" />
+    <UnitTestResult executionId="5bd2ab47-f1ed-47e8-bdb7-aaa7534c12fc" testId="01fc43c1-dacd-1c5f-9c44-d4f0f4921e12" testName="Echec.Core.Tests.DomaineTests.Fou_SlidesDiagonally_UpToClassRange" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002338" startTime="2026-06-22T21:51:54.9324950+02:00" endTime="2026-06-22T21:51:54.9324951+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5bd2ab47-f1ed-47e8-bdb7-aaa7534c12fc">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Contains() Failure: Item not found in collection&#xD;
+Collection: [Cell { Column = 2, Row = 2 }, Cell { Column = 1, Row = 1 }, Cell { Column = 4, Row = 2 }, Cell { Column = 5, Row = 1 }, Cell { Column = 2, Row = 4 }, ···]&#xD;
+Not found:  Cell { Column = 0, Row = 0 }</Message>
+          <StackTrace>   at Echec.Core.Tests.DomaineTests.Fou_SlidesDiagonally_UpToClassRange() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs:line 60&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="4b48469b-f4d6-497f-98b9-a66027991071" testId="f10447d4-a59d-a973-347e-746bec71d233" testName="Echec.Core.Tests.MatchTests.RangedAttack_BlockedByAlly_ForNonLancier" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000900" startTime="2026-06-22T21:51:54.9348887+02:00" endTime="2026-06-22T21:51:54.9348887+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4b48469b-f4d6-497f-98b9-a66027991071" />
+    <UnitTestResult executionId="c516f864-aeda-4388-b974-a9abb22a4f48" testId="f7065b2c-cb8e-0486-fb02-5c5200ef4937" testName="Echec.Core.Tests.DomaineCatalogTests.CommandesFromJson_BuildsLeaders_WithRoleAndMovement" computerName="DESKTOP-VLA4L26" duration="00:00:00.0239009" startTime="2026-06-22T21:51:54.9696088+02:00" endTime="2026-06-22T21:51:54.9696091+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c516f864-aeda-4388-b974-a9abb22a4f48" />
+    <UnitTestResult executionId="e20177da-baa0-4249-aa61-07d5c074d280" testId="a1715668-a9ec-77f9-064e-f0474e691083" testName="Echec.Core.Tests.RunTests.Draft_OffersLastThreeDefeated_InKillOrder" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002506" startTime="2026-06-22T21:51:54.9336475+02:00" endTime="2026-06-22T21:51:54.9336476+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e20177da-baa0-4249-aa61-07d5c074d280" />
+    <UnitTestResult executionId="fe6db4d5-e781-43d7-bb06-68b85894adfe" testId="cd5a08b4-9c8d-a963-c60c-0cb81a1a81c0" testName="Echec.Core.Tests.MatchTests.AttackTargets_IncludesAdjacentEnemy_ForMeleePion" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002581" startTime="2026-06-22T21:51:54.9385856+02:00" endTime="2026-06-22T21:51:54.9385856+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fe6db4d5-e781-43d7-bb06-68b85894adfe" />
+    <UnitTestResult executionId="1c72d799-95ce-425b-b0b3-42a9f9a52d53" testId="de47dc2a-f19f-8dd8-5ea9-b6203a6e7b89" testName="Echec.Core.Tests.MatchTests.LancierKill_StaysInPlace_WhenAllyBlocksMovePath" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001178" startTime="2026-06-22T21:51:54.9388133+02:00" endTime="2026-06-22T21:51:54.9388134+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1c72d799-95ce-425b-b0b3-42a9f9a52d53" />
+    <UnitTestResult executionId="d164140f-91c8-4c1f-9067-4d0ff49ef358" testId="59a9cd95-86d5-90e9-1f93-dbdf11196d0b" testName="Echec.Core.Tests.DomaineTests.BaseClass_CarriesAssetAndStats" computerName="DESKTOP-VLA4L26" duration="00:00:00.0006857" startTime="2026-06-22T21:51:54.9315399+02:00" endTime="2026-06-22T21:51:54.9315400+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d164140f-91c8-4c1f-9067-4d0ff49ef358">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Equal() Failure: Values differ&#xD;
+Expected: 10&#xD;
+Actual:   12</Message>
+          <StackTrace>   at Echec.Core.Tests.DomaineTests.BaseClass_CarriesAssetAndStats() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs:line 37&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="7d02802b-b0c3-406b-9847-3c9b6c1bd677" testId="1b1734d2-e5c7-199a-e6f9-657df78eb81c" testName="Echec.Core.Tests.BattlefieldTests.CreateFlat_FillsEveryCellWithTerrain" computerName="DESKTOP-VLA4L26" duration="00:00:00.0021986" startTime="2026-06-22T21:51:54.9310779+02:00" endTime="2026-06-22T21:51:54.9310779+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7d02802b-b0c3-406b-9847-3c9b6c1bd677" />
+    <UnitTestResult executionId="c31f841c-beab-4098-b1d0-b8706319f849" testId="d1fec7d3-d5a8-9736-4978-22cb6bb57fa1" testName="Echec.Core.Tests.EssentialUnitTests.BossDeath_WinsEvenWithOtherEnemiesAlive" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002178" startTime="2026-06-22T21:51:54.9311644+02:00" endTime="2026-06-22T21:51:54.9311645+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c31f841c-beab-4098-b1d0-b8706319f849" />
+    <UnitTestResult executionId="1d823327-a83a-4bd8-a1ad-76fbbc3326e3" testId="ab4d2837-635c-ec6c-80c8-ca8e8ea775eb" testName="Echec.Core.Tests.MatchTests.ThreatenedCells_ComputedRegardlessOfTurn_EvenForEnemy" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000798" startTime="2026-06-22T21:51:54.9386095+02:00" endTime="2026-06-22T21:51:54.9386095+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1d823327-a83a-4bd8-a1ad-76fbbc3326e3" />
+    <UnitTestResult executionId="ab29d686-4ea4-44f5-b3fe-f96ba64ceb30" testId="c973b0ae-acfa-657b-65bf-5babd7cfc268" testName="Echec.Core.Tests.PoolTests.Get_CreatesViaFactory_WhenEmpty" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002198" startTime="2026-06-22T21:51:54.9451747+02:00" endTime="2026-06-22T21:51:54.9451748+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ab29d686-4ea4-44f5-b3fe-f96ba64ceb30" />
+    <UnitTestResult executionId="62f7c08c-80c8-4e9a-bcbd-2e9bf2750402" testId="ab66114a-96c0-e38a-e9c7-df2b857137b9" testName="Echec.Core.Tests.MatchTests.ThreatenedCells_StopAtFirstBlocker_WhichIsIncluded" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001095" startTime="2026-06-22T21:51:54.9371908+02:00" endTime="2026-06-22T21:51:54.9371908+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="62f7c08c-80c8-4e9a-bcbd-2e9bf2750402" />
+    <UnitTestResult executionId="83419500-0ead-43a2-9d38-9b94fdc1def9" testId="0e610c2c-1aef-ff74-9ca4-a91bc4ec067b" testName="Echec.Core.Tests.TerrainTests.Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage(obstacle: Water)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0103345" startTime="2026-06-22T21:51:54.9001421+02:00" endTime="2026-06-22T21:51:54.9001554+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="83419500-0ead-43a2-9d38-9b94fdc1def9" />
+    <UnitTestResult executionId="11ef01c9-ede2-4f0f-8876-3054944c7b8f" testId="61175794-e52a-8cbe-9d3b-a48d237caf0f" testName="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Dame, vectorCount: 8, kind: Slide)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000019" startTime="2026-06-22T21:51:54.9321932+02:00" endTime="2026-06-22T21:51:54.9321932+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="11ef01c9-ede2-4f0f-8876-3054944c7b8f" />
+    <UnitTestResult executionId="7978545f-7be8-420a-ba53-53f2135d991c" testId="1e7614fc-4616-7792-17af-41cf5c5f818e" testName="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: -1, row: 2, expected: False)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000026" startTime="2026-06-22T21:51:54.9310475+02:00" endTime="2026-06-22T21:51:54.9310476+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7978545f-7be8-420a-ba53-53f2135d991c" />
+    <UnitTestResult executionId="d77647b3-e3a2-408a-9485-792721014fdd" testId="4f7308b5-c36b-dd34-c1d4-bfca30a44b12" testName="Echec.Core.Tests.TerrainTests.Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage(obstacle: Mountain)" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001510" startTime="2026-06-22T21:51:54.9020430+02:00" endTime="2026-06-22T21:51:54.9020430+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d77647b3-e3a2-408a-9485-792721014fdd" />
+    <UnitTestResult executionId="b4645180-bbd6-42f6-90bb-73c59698fb0b" testId="a817892d-93c3-4bf5-e216-f30bf7f55adc" testName="Echec.Core.Tests.DomaineTests.Cavalier_JumpsOverUnits" computerName="DESKTOP-VLA4L26" duration="00:00:00.0001705" startTime="2026-06-22T21:51:54.9325542+02:00" endTime="2026-06-22T21:51:54.9325542+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b4645180-bbd6-42f6-90bb-73c59698fb0b" />
+    <UnitTestResult executionId="6c7bcdaf-2de2-4f13-8da6-75d12427d137" testId="33a8fd2d-9d79-63db-779b-0845b765ef2d" testName="Echec.Core.Tests.RunTests.Recruit_AddsUnit_AndAdvancesToNextPlacement" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002032" startTime="2026-06-22T21:51:54.9331900+02:00" endTime="2026-06-22T21:51:54.9331900+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6c7bcdaf-2de2-4f13-8da6-75d12427d137" />
+    <UnitTestResult executionId="a7f8fbfe-2baf-466f-9b5a-83c5a78f3e76" testId="bae6b22c-445a-21b3-2d17-ce0707f7f07e" testName="Echec.Core.Tests.BattlefieldTests.CreateFlat_HasGivenDimensions" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000908" startTime="2026-06-22T21:51:54.9311036+02:00" endTime="2026-06-22T21:51:54.9311036+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a7f8fbfe-2baf-466f-9b5a-83c5a78f3e76" />
+    <UnitTestResult executionId="c7163119-08e1-4498-b94c-755d5c4c6e23" testId="ee1b8e48-0e02-e3a7-a808-bad9260d6290" testName="Echec.Core.Tests.TerrainTests.Water_DoesNotBlock_LineOfFire" computerName="DESKTOP-VLA4L26" duration="00:00:00.0020226" startTime="2026-06-22T21:51:54.9125016+02:00" endTime="2026-06-22T21:51:54.9125018+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c7163119-08e1-4498-b94c-755d5c4c6e23">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Contains() Failure: Item not found in collection&#xD;
+Collection: []&#xD;
+Not found:  Cell { Column = 3, Row = 4 }</Message>
+          <StackTrace>   at Echec.Core.Tests.TerrainTests.Water_DoesNotBlock_LineOfFire() in C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\TerrainTests.cs:line 46&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e68ee836-481e-4210-ae6d-3426a0406aab" testId="437c87d3-4aa9-77e2-c5bc-b7d77cc7fb32" testName="Echec.Core.Tests.DomaineTests.Pion_KingStep_Range1_HasEightMovesFromCenter" computerName="DESKTOP-VLA4L26" duration="00:00:00.0000774" startTime="2026-06-22T21:51:54.9325306+02:00" endTime="2026-06-22T21:51:54.9325306+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e68ee836-481e-4210-ae6d-3426a0406aab" />
+    <UnitTestResult executionId="ba3c3e98-fc3c-4eb3-94a2-e3906cfbea22" testId="88728015-8928-5a52-ba06-ebdaf4c6c565" testName="Echec.Core.Tests.TerrainTests.Mountain_Blocks_LineOfFire_AndThreat" computerName="DESKTOP-VLA4L26" duration="00:00:00.0004187" startTime="2026-06-22T21:51:54.9126713+02:00" endTime="2026-06-22T21:51:54.9126713+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ba3c3e98-fc3c-4eb3-94a2-e3906cfbea22" />
+    <UnitTestResult executionId="afa51603-4275-45b6-818c-6ba53c1c2f26" testId="cbde1b22-e993-77de-cb08-0c63bc792372" testName="Echec.Core.Tests.RunTests.NewRun_StartsWithCommanderAndTwoSoldiers_InPlacement" computerName="DESKTOP-VLA4L26" duration="00:00:00.0002219" startTime="2026-06-22T21:51:54.9333658+02:00" endTime="2026-06-22T21:51:54.9333659+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="afa51603-4275-45b6-818c-6ba53c1c2f26" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 4, row: 4, expected: True)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="0a716fb2-935a-c191-5407-89886274666b">
+      <Execution id="3dc58dd5-6e11-4776-a0ba-84e129152cf0" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="Contains_RespectsBounds" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.ThreatenedCells_ComputedRegardlessOfTurn_EvenForEnemy" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ab4d2837-635c-ec6c-80c8-ca8e8ea775eb">
+      <Execution id="1d823327-a83a-4bd8-a1ad-76fbbc3326e3" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="ThreatenedCells_ComputedRegardlessOfTurn_EvenForEnemy" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 5, row: 0, expected: False)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="0258ef3f-3eb5-a982-e4f8-868eb429b875">
+      <Execution id="aa153dda-a171-4475-890f-d49146f9aad4" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="Contains_RespectsBounds" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="90acd2e1-a474-a6e4-3fd5-8eab7e8f88c7">
+      <Execution id="79d77ff9-c588-4626-a8a5-d2c623199594" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.EnemyAi_PrefersLethalAttack" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="c61e80c5-5991-52c0-ddf9-5e7a28230878">
+      <Execution id="47af3b7d-83f9-4cbc-9a64-8ffcf87275cb" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="EnemyAi_PrefersLethalAttack" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineCatalogTests.Load_OverridesDefaults" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="12095e9d-0c25-7ec7-1cb1-33bca63f9138">
+      <Execution id="088f4ed4-97d1-4cbe-98b5-c0453003e109" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineCatalogTests" name="Load_OverridesDefaults" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.BossCombat_IsTheSixth_AndContainsAnEssentialBoss" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="3f835c15-4b75-ff45-2fa1-e8e36c5a51c0">
+      <Execution id="efc4c315-6a94-457c-877f-82c861e18d0c" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="BossCombat_IsTheSixth_AndContainsAnEssentialBoss" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage(obstacle: Mountain)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="4f7308b5-c36b-dd34-c1d4-bfca30a44b12">
+      <Execution id="d77647b3-e3a2-408a-9485-792721014fdd" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.CompleteCombat_RemovesCasualties_KeepsCommanderAndSurvivors" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="38569444-fff5-235b-ee53-a6abe6de5f8d">
+      <Execution id="0d2f23dc-0ba8-402b-8f77-994a36dd59f8" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="CompleteCombat_RemovesCasualties_KeepsCommanderAndSurvivors" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.Lancier_EnemyStillBlocksLine_NoTargetBehindEnemy" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="c8e18763-c5ad-7a42-2e82-f69de35cad34">
+      <Execution id="786f089e-de45-4f6d-8888-1a5c86c12fff" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="Lancier_EnemyStillBlocksLine_NoTargetBehindEnemy" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.LancierKill_StaysInPlace_WhenAllyBlocksMovePath" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="de47dc2a-f19f-8dd8-5ea9-b6203a6e7b89">
+      <Execution id="1c72d799-95ce-425b-b0b3-42a9f9a52d53" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="LancierKill_StaysInPlace_WhenAllyBlocksMovePath" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.LegalMoves_OnlyEmptyCells_OccupiedCellsBlock" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="2d73b2d9-00f9-eba7-4c7c-d9b292b81546">
+      <Execution id="3b3856c9-b655-4eba-9012-5e5092f73ab3" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="LegalMoves_OnlyEmptyCells_OccupiedCellsBlock" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.MoveToEmpty_MovesUnit_AndPassesTurn" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="7957f4ea-18ce-aba8-3878-40f20315f042">
+      <Execution id="122dea3c-c7b7-473a-bd32-ea5812c16390" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="MoveToEmpty_MovesUnit_AndPassesTurn" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineCatalogTests.FromJson_BuildsDomaineDefs_WithClassStats" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="2a33f6b6-a376-f25b-da6d-c7812790972d">
+      <Execution id="8fd4846c-70c8-41eb-8813-8162a2a3b03e" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineCatalogTests" name="FromJson_BuildsDomaineDefs_WithClassStats" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Tour, vectorCount: 4, kind: Slide)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="51fb52dd-38dd-9c03-1c09-43569ce92b12">
+      <Execution id="32344580-a906-4835-99cc-6a30c083cf9b" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Movement_HasExpectedVectorsAndKind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Generate_KeepsDeployRowsClear_AndIsVerticallySymmetric" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ff26d86f-9254-e5ed-a322-e11f66e8db62">
+      <Execution id="c0ce5962-46c0-43ee-91e3-e2d80d7c7f41" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Generate_KeepsDeployRowsClear_AndIsVerticallySymmetric" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Cavalier, vectorCount: 8, kind: Jump)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="fbdad96f-0fc7-79a9-c6ea-420f5740cbd1">
+      <Execution id="a10950a4-d55d-4b14-8b76-edc6360ef330" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Movement_HasExpectedVectorsAndKind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Cavalier_JumpsOverUnits" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="a817892d-93c3-4bf5-e216-f30bf7f55adc">
+      <Execution id="b4645180-bbd6-42f6-90bb-73c59698fb0b" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Cavalier_JumpsOverUnits" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.PoolTests.Get_CreatesViaFactory_WhenEmpty" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="c973b0ae-acfa-657b-65bf-5babd7cfc268">
+      <Execution id="ab29d686-4ea4-44f5-b3fe-f96ba64ceb30" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.PoolTests" name="Get_CreatesViaFactory_WhenEmpty" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Mountain_Blocks_LineOfFire_AndThreat" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="88728015-8928-5a52-ba06-ebdaf4c6c565">
+      <Execution id="ba3c3e98-fc3c-4eb3-94a2-e3906cfbea22" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Mountain_Blocks_LineOfFire_AndThreat" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.PoolTests.Return_ThenGet_RecyclesSameInstance_WithoutNewAllocation" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ee9d99de-1be9-aa80-4a7f-6ee0353b3158">
+      <Execution id="38699438-1e2b-405f-bbe8-acee49edf79a" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.PoolTests" name="Return_ThenGet_RecyclesSameInstance_WithoutNewAllocation" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.LancierKill_TakesPlace_WhenPathClearAndInMoveRange" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="a8a3cd5f-b8cb-a384-6c6d-2906584342d9">
+      <Execution id="2fefff2b-7794-48f0-a282-2d8c5da21b40" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="LancierKill_TakesPlace_WhenPathClearAndInMoveRange" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.FiveDomaines_NamedAfterChessPieces" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="11cd4187-b3bb-a1e3-da78-2edd73027103">
+      <Execution id="6ff7819c-9010-4669-bce9-702db9d7a66f" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="FiveDomaines_NamedAfterChessPieces" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.PoolTests.Prewarm_AllocatesInstancesUpFront" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="07d46ebd-133e-5a04-ed0f-eb83f4d1210a">
+      <Execution id="33cac831-e605-48fd-ad8d-b6eb561379da" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.PoolTests" name="Prewarm_AllocatesInstancesUpFront" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.AttackTargets_IncludesAdjacentEnemy_ForMeleePion" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="cd5a08b4-9c8d-a963-c60c-0cb81a1a81c0">
+      <Execution id="fe6db4d5-e781-43d7-bb06-68b85894adfe" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="AttackTargets_IncludesAdjacentEnemy_ForMeleePion" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.RangedAttack_BlockedByAlly_ForNonLancier" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="f10447d4-a59d-a973-347e-746bec71d233">
+      <Execution id="4b48469b-f4d6-497f-98b9-a66027991071" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="RangedAttack_BlockedByAlly_ForNonLancier" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.Draft_HasFewerCards_WhenFewerEnemiesDefeated" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="7f986fbc-d6e1-8174-b582-e122155262fa">
+      <Execution id="abc1fc22-7d58-41b0-9739-930eb2abffad" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="Draft_HasFewerCards_WhenFewerEnemiesDefeated" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.WinningBossCombat_EndsInVictory" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="73b5a5ae-bc93-b174-9918-631c34066338">
+      <Execution id="1da0629f-73ae-4677-bb05-3ace29454ef4" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="WinningBossCombat_EndsInVictory" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.RangedKill_StaysInPlace_WhenTargetBeyondMoveRange" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ce570e36-2d7c-a951-8d08-c16961e0812d">
+      <Execution id="0a3bedf5-2748-41d3-b36d-7cf0ae7a3b52" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="RangedKill_StaysInPlace_WhenTargetBeyondMoveRange" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage(obstacle: Water)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="0e610c2c-1aef-ff74-9ca4-a91bc4ec067b">
+      <Execution id="83419500-0ead-43a2-9d38-9b94fdc1def9" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: -1, row: 2, expected: False)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="1e7614fc-4616-7792-17af-41cf5c5f818e">
+      <Execution id="7978545f-7be8-420a-ba53-53f2135d991c" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="Contains_RespectsBounds" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Fou_SlidesDiagonally_UpToClassRange" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="01fc43c1-dacd-1c5f-9c44-d4f0f4921e12">
+      <Execution id="5bd2ab47-f1ed-47e8-bdb7-aaa7534c12fc" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Fou_SlidesDiagonally_UpToClassRange" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Pion_KingStep_Range1_HasEightMovesFromCenter" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="437c87d3-4aa9-77e2-c5bc-b7d77cc7fb32">
+      <Execution id="e68ee836-481e-4210-ae6d-3426a0406aab" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Pion_KingStep_Range1_HasEightMovesFromCenter" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.MeleeKill_AttackerTakesPlace_AndWins" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="34aae433-a99b-fb4e-d43d-4bf686eac170">
+      <Execution id="1733edbd-08b1-496e-92fe-79e757cc8da2" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="MeleeKill_AttackerTakesPlace_AndWins" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Generate_PlacesSomeObstacles_InNeutralZone" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="3e8c09af-0759-660b-e255-8df9a1e15462">
+      <Execution id="ec42928c-8fbb-4f20-a3d1-02afcad505c0" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Generate_PlacesSomeObstacles_InNeutralZone" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.EnemyWave_GrowsByOnePerCombat" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="e383f5ec-de93-ec31-4a26-b232fa4194e9">
+      <Execution id="9d9f6593-f09d-436f-b80b-cabc85ec4cf0" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="EnemyWave_GrowsByOnePerCombat" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.AttackRange_LimitsReach" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="927d9486-19a6-a4b4-811c-6c26afeb1e5b">
+      <Execution id="4430bcc7-937f-4435-b647-2a286c273982" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="AttackRange_LimitsReach" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.Lancier_Threat_PassesThroughAlly_ButNotEnemy" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="cd054ed1-4cea-5145-891b-9fe7f3368455">
+      <Execution id="9a0dae26-4145-4672-91a6-d1ed2b918c7d" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="Lancier_Threat_PassesThroughAlly_ButNotEnemy" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.NewRun_StartsWithCommanderAndTwoSoldiers_InPlacement" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="cbde1b22-e993-77de-cb08-0c63bc792372">
+      <Execution id="afa51603-4275-45b6-818c-6ba53c1c2f26" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="NewRun_StartsWithCommanderAndTwoSoldiers_InPlacement" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Fou, vectorCount: 4, kind: Slide)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="15aa03bb-5a81-bdea-2fda-0076b3b81ab5">
+      <Execution id="471ca77f-515b-482a-8b1b-1253e721f78f" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Movement_HasExpectedVectorsAndKind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.CreateFlat_FillsEveryCellWithTerrain" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="1b1734d2-e5c7-199a-e6f9-657df78eb81c">
+      <Execution id="7d02802b-b0c3-406b-9847-3c9b6c1bd677" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="CreateFlat_FillsEveryCellWithTerrain" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.Contains_RespectsBounds(column: 0, row: 0, expected: True)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="7eab24ab-7518-f5bd-6510-9298ea0e9847">
+      <Execution id="9d4ebc16-4be6-4469-a9fe-b6f0b4d5ce34" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="Contains_RespectsBounds" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.ThreatenedCells_StopAtFirstBlocker_WhichIsIncluded" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ab66114a-96c0-e38a-e9c7-df2b857137b9">
+      <Execution id="62f7c08c-80c8-4e9a-bcbd-2e9bf2750402" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="ThreatenedCells_StopAtFirstBlocker_WhichIsIncluded" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Generate_IsDeterministic_ForSameSeed" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="a060a105-e4f2-c4cf-66e7-b2e0c5ad1646">
+      <Execution id="1cce4594-345f-4d2c-92fd-71e32c8d30e3" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Generate_IsDeterministic_ForSameSeed" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.BaseClass_CarriesAssetAndStats" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="59a9cd95-86d5-90e9-1f93-dbdf11196d0b">
+      <Execution id="d164140f-91c8-4c1f-9067-4d0ff49ef358" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="BaseClass_CarriesAssetAndStats" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.TerrainTests.Water_DoesNotBlock_LineOfFire" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="ee1b8e48-0e02-e3a7-a808-bad9260d6290">
+      <Execution id="c7163119-08e1-4498-b94c-755d5c4c6e23" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.TerrainTests" name="Water_DoesNotBlock_LineOfFire" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Tour_SlidesOrthogonally_Only" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="1af46fe1-bcd3-aa45-81c4-4d4a07e50e84">
+      <Execution id="8a79dd4c-ba6b-4ae3-b000-799bf7102d73" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Tour_SlidesOrthogonally_Only" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.Draft_OffersLastThreeDefeated_InKillOrder" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="a1715668-a9ec-77f9-064e-f0474e691083">
+      <Execution id="e20177da-baa0-4249-aa61-07d5c074d280" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="Draft_OffersLastThreeDefeated_InKillOrder" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Pion, vectorCount: 8, kind: Slide)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="721a1f0f-a4f8-daca-341e-854f3eb98a92">
+      <Execution id="54b86374-b746-4eb1-85d2-21f05228f0c6" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Movement_HasExpectedVectorsAndKind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.Lancier_PiercesAlly_TargetsEnemyBehind" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="1933fa18-468c-d72b-751a-9f3ddc112d24">
+      <Execution id="6897c355-fa3f-48b3-995c-22da11566f5c" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="Lancier_PiercesAlly_TargetsEnemyBehind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineCatalogTests.CommandesFromJson_BuildsLeaders_WithRoleAndMovement" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="f7065b2c-cb8e-0486-fb02-5c5200ef4937">
+      <Execution id="c516f864-aeda-4388-b974-a9abb22a4f48" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineCatalogTests" name="CommandesFromJson_BuildsLeaders_WithRoleAndMovement" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.RunTests.Recruit_AddsUnit_AndAdvancesToNextPlacement" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="33a8fd2d-9d79-63db-779b-0845b765ef2d">
+      <Execution id="6c7bcdaf-2de2-4f13-8da6-75d12427d137" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.RunTests" name="Recruit_AddsUnit_AndAdvancesToNextPlacement" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.EssentialUnitTests.CommanderDeath_LosesEvenWithOtherUnitsAlive" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="3c24d9a8-5cc8-ee7d-7b72-46d933db1cfa">
+      <Execution id="1bf76186-7dd1-42bc-9a17-c502ce58c0f8" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.EssentialUnitTests" name="CommanderDeath_LosesEvenWithOtherUnitsAlive" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.PoolTests.Return_AppliesReset" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="31eae3c8-cba1-c468-4546-cfd87107889e">
+      <Execution id="a6472ed4-6f5a-45fe-9828-1bbed70e9bd9" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.PoolTests" name="Return_AppliesReset" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.BattlefieldTests.CreateFlat_HasGivenDimensions" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="bae6b22c-445a-21b3-2d17-ce0707f7f07e">
+      <Execution id="a7f8fbfe-2baf-466f-9b5a-83c5a78f3e76" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.BattlefieldTests" name="CreateFlat_HasGivenDimensions" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.DomaineTests.Movement_HasExpectedVectorsAndKind(domaine: Dame, vectorCount: 8, kind: Slide)" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="61175794-e52a-8cbe-9d3b-a48d237caf0f">
+      <Execution id="11ef01c9-ede2-4f0f-8876-3054944c7b8f" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.DomaineTests" name="Movement_HasExpectedVectorsAndKind" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.MatchTests.EnemyUnit_HasNoActions_DuringPlayerTurn" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="1b602471-f900-830f-e3be-fa1e6234fada">
+      <Execution id="4f705835-7fe8-4cc3-9954-9c6388eafb22" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.MatchTests" name="EnemyUnit_HasNoActions_DuringPlayerTurn" />
+    </UnitTest>
+    <UnitTest name="Echec.Core.Tests.EssentialUnitTests.BossDeath_WinsEvenWithOtherEnemiesAlive" storage="c:\users\antho\source\repos\echec\tests\echec.core.tests\bin\debug\net9.0\echec.core.tests.dll" id="d1fec7d3-d5a8-9736-4978-22cb6bb57fa1">
+      <Execution id="c31f841c-beab-4098-b1d0-b8706319f849" />
+      <TestMethod codeBase="C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\bin\Debug\net9.0\Echec.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Echec.Core.Tests.EssentialUnitTests" name="BossDeath_WinsEvenWithOtherEnemiesAlive" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="73b5a5ae-bc93-b174-9918-631c34066338" executionId="1da0629f-73ae-4677-bb05-3ace29454ef4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3c24d9a8-5cc8-ee7d-7b72-46d933db1cfa" executionId="1bf76186-7dd1-42bc-9a17-c502ce58c0f8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="34aae433-a99b-fb4e-d43d-4bf686eac170" executionId="1733edbd-08b1-496e-92fe-79e757cc8da2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="11cd4187-b3bb-a1e3-da78-2edd73027103" executionId="6ff7819c-9010-4669-bce9-702db9d7a66f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fbdad96f-0fc7-79a9-c6ea-420f5740cbd1" executionId="a10950a4-d55d-4b14-8b76-edc6360ef330" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cd054ed1-4cea-5145-891b-9fe7f3368455" executionId="9a0dae26-4145-4672-91a6-d1ed2b918c7d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1b602471-f900-830f-e3be-fa1e6234fada" executionId="4f705835-7fe8-4cc3-9954-9c6388eafb22" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="12095e9d-0c25-7ec7-1cb1-33bca63f9138" executionId="088f4ed4-97d1-4cbe-98b5-c0453003e109" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="90acd2e1-a474-a6e4-3fd5-8eab7e8f88c7" executionId="79d77ff9-c588-4626-a8a5-d2c623199594" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="721a1f0f-a4f8-daca-341e-854f3eb98a92" executionId="54b86374-b746-4eb1-85d2-21f05228f0c6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ff26d86f-9254-e5ed-a322-e11f66e8db62" executionId="c0ce5962-46c0-43ee-91e3-e2d80d7c7f41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7eab24ab-7518-f5bd-6510-9298ea0e9847" executionId="9d4ebc16-4be6-4469-a9fe-b6f0b4d5ce34" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7957f4ea-18ce-aba8-3878-40f20315f042" executionId="122dea3c-c7b7-473a-bd32-ea5812c16390" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="38569444-fff5-235b-ee53-a6abe6de5f8d" executionId="0d2f23dc-0ba8-402b-8f77-994a36dd59f8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="51fb52dd-38dd-9c03-1c09-43569ce92b12" executionId="32344580-a906-4835-99cc-6a30c083cf9b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3f835c15-4b75-ff45-2fa1-e8e36c5a51c0" executionId="efc4c315-6a94-457c-877f-82c861e18d0c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a8a3cd5f-b8cb-a384-6c6d-2906584342d9" executionId="2fefff2b-7794-48f0-a282-2d8c5da21b40" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1933fa18-468c-d72b-751a-9f3ddc112d24" executionId="6897c355-fa3f-48b3-995c-22da11566f5c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0a716fb2-935a-c191-5407-89886274666b" executionId="3dc58dd5-6e11-4776-a0ba-84e129152cf0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2a33f6b6-a376-f25b-da6d-c7812790972d" executionId="8fd4846c-70c8-41eb-8813-8162a2a3b03e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e383f5ec-de93-ec31-4a26-b232fa4194e9" executionId="9d9f6593-f09d-436f-b80b-cabc85ec4cf0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a060a105-e4f2-c4cf-66e7-b2e0c5ad1646" executionId="1cce4594-345f-4d2c-92fd-71e32c8d30e3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="15aa03bb-5a81-bdea-2fda-0076b3b81ab5" executionId="471ca77f-515b-482a-8b1b-1253e721f78f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d73b2d9-00f9-eba7-4c7c-d9b292b81546" executionId="3b3856c9-b655-4eba-9012-5e5092f73ab3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3e8c09af-0759-660b-e255-8df9a1e15462" executionId="ec42928c-8fbb-4f20-a3d1-02afcad505c0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="31eae3c8-cba1-c468-4546-cfd87107889e" executionId="a6472ed4-6f5a-45fe-9828-1bbed70e9bd9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="07d46ebd-133e-5a04-ed0f-eb83f4d1210a" executionId="33cac831-e605-48fd-ad8d-b6eb561379da" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c61e80c5-5991-52c0-ddf9-5e7a28230878" executionId="47af3b7d-83f9-4cbc-9a64-8ffcf87275cb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ee9d99de-1be9-aa80-4a7f-6ee0353b3158" executionId="38699438-1e2b-405f-bbe8-acee49edf79a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c8e18763-c5ad-7a42-2e82-f69de35cad34" executionId="786f089e-de45-4f6d-8888-1a5c86c12fff" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ce570e36-2d7c-a951-8d08-c16961e0812d" executionId="0a3bedf5-2748-41d3-b36d-7cf0ae7a3b52" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1af46fe1-bcd3-aa45-81c4-4d4a07e50e84" executionId="8a79dd4c-ba6b-4ae3-b000-799bf7102d73" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0258ef3f-3eb5-a982-e4f8-868eb429b875" executionId="aa153dda-a171-4475-890f-d49146f9aad4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="927d9486-19a6-a4b4-811c-6c26afeb1e5b" executionId="4430bcc7-937f-4435-b647-2a286c273982" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7f986fbc-d6e1-8174-b582-e122155262fa" executionId="abc1fc22-7d58-41b0-9739-930eb2abffad" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="01fc43c1-dacd-1c5f-9c44-d4f0f4921e12" executionId="5bd2ab47-f1ed-47e8-bdb7-aaa7534c12fc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f10447d4-a59d-a973-347e-746bec71d233" executionId="4b48469b-f4d6-497f-98b9-a66027991071" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f7065b2c-cb8e-0486-fb02-5c5200ef4937" executionId="c516f864-aeda-4388-b974-a9abb22a4f48" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a1715668-a9ec-77f9-064e-f0474e691083" executionId="e20177da-baa0-4249-aa61-07d5c074d280" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cd5a08b4-9c8d-a963-c60c-0cb81a1a81c0" executionId="fe6db4d5-e781-43d7-bb06-68b85894adfe" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="de47dc2a-f19f-8dd8-5ea9-b6203a6e7b89" executionId="1c72d799-95ce-425b-b0b3-42a9f9a52d53" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="59a9cd95-86d5-90e9-1f93-dbdf11196d0b" executionId="d164140f-91c8-4c1f-9067-4d0ff49ef358" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1b1734d2-e5c7-199a-e6f9-657df78eb81c" executionId="7d02802b-b0c3-406b-9847-3c9b6c1bd677" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d1fec7d3-d5a8-9736-4978-22cb6bb57fa1" executionId="c31f841c-beab-4098-b1d0-b8706319f849" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ab4d2837-635c-ec6c-80c8-ca8e8ea775eb" executionId="1d823327-a83a-4bd8-a1ad-76fbbc3326e3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c973b0ae-acfa-657b-65bf-5babd7cfc268" executionId="ab29d686-4ea4-44f5-b3fe-f96ba64ceb30" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ab66114a-96c0-e38a-e9c7-df2b857137b9" executionId="62f7c08c-80c8-4e9a-bcbd-2e9bf2750402" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0e610c2c-1aef-ff74-9ca4-a91bc4ec067b" executionId="83419500-0ead-43a2-9d38-9b94fdc1def9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="61175794-e52a-8cbe-9d3b-a48d237caf0f" executionId="11ef01c9-ede2-4f0f-8876-3054944c7b8f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1e7614fc-4616-7792-17af-41cf5c5f818e" executionId="7978545f-7be8-420a-ba53-53f2135d991c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4f7308b5-c36b-dd34-c1d4-bfca30a44b12" executionId="d77647b3-e3a2-408a-9485-792721014fdd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a817892d-93c3-4bf5-e216-f30bf7f55adc" executionId="b4645180-bbd6-42f6-90bb-73c59698fb0b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="33a8fd2d-9d79-63db-779b-0845b765ef2d" executionId="6c7bcdaf-2de2-4f13-8da6-75d12427d137" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bae6b22c-445a-21b3-2d17-ce0707f7f07e" executionId="a7f8fbfe-2baf-466f-9b5a-83c5a78f3e76" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ee1b8e48-0e02-e3a7-a808-bad9260d6290" executionId="c7163119-08e1-4498-b94c-755d5c4c6e23" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="437c87d3-4aa9-77e2-c5bc-b7d77cc7fb32" executionId="e68ee836-481e-4210-ae6d-3426a0406aab" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="88728015-8928-5a52-ba06-ebdaf4c6c565" executionId="ba3c3e98-fc3c-4eb3-94a2-e3906cfbea22" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cbde1b22-e993-77de-cb08-0c63bc792372" executionId="afa51603-4275-45b6-818c-6ba53c1c2f26" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Les résultats ne figurent pas dans une liste" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="Tous les résultats chargés" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="58" executed="58" passed="51" failed="7" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 9.0.11)&#xD;
+[xUnit.net 00:00:00.05]   Discovering: Echec.Core.Tests&#xD;
+[xUnit.net 00:00:00.08]   Discovered:  Echec.Core.Tests&#xD;
+[xUnit.net 00:00:00.08]   Starting:    Echec.Core.Tests&#xD;
+[xUnit.net 00:00:00.13]       Assert.Contains() Failure: Item not found in collection&#xD;
+[xUnit.net 00:00:00.13]       Collection: []&#xD;
+[xUnit.net 00:00:00.13]       Not found:  Cell { Column = 3, Row = 4 }&#xD;
+[xUnit.net 00:00:00.13]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.13]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\TerrainTests.cs(46,0): at Echec.Core.Tests.TerrainTests.Water_DoesNotBlock_LineOfFire()&#xD;
+[xUnit.net 00:00:00.13]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.13]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:00.15]       Expected: 10&#xD;
+[xUnit.net 00:00:00.15]       Actual:   12&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs(37,0): at Echec.Core.Tests.DomaineTests.BaseClass_CarriesAssetAndStats()&#xD;
+[xUnit.net 00:00:00.15]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.15]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.Contains() Failure: Item not found in collection&#xD;
+[xUnit.net 00:00:00.15]       Collection: [Cell { Column = 2, Row = 2 }, Cell { Column = 1, Row = 1 }, Cell { Column = 4, Row = 2 }, Cell { Column = 5, Row = 1 }, Cell { Column = 2, Row = 4 }, ···]&#xD;
+[xUnit.net 00:00:00.15]       Not found:  Cell { Column = 0, Row = 0 }&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs(60,0): at Echec.Core.Tests.DomaineTests.Fou_SlidesDiagonally_UpToClassRange()&#xD;
+[xUnit.net 00:00:00.15]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.15]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.Contains() Failure: Item not found in collection&#xD;
+[xUnit.net 00:00:00.15]       Collection: [Cell { Column = 3, Row = 2 }, Cell { Column = 3, Row = 1 }, Cell { Column = 2, Row = 3 }, Cell { Column = 1, Row = 3 }, Cell { Column = 4, Row = 3 }, ···]&#xD;
+[xUnit.net 00:00:00.15]       Not found:  Cell { Column = 3, Row = 0 }&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\DomaineTests.cs(74,0): at Echec.Core.Tests.DomaineTests.Tour_SlidesOrthogonally_Only()&#xD;
+[xUnit.net 00:00:00.15]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.15]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.NotNull() Failure: Value is null&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs(113,0): at Echec.Core.Tests.MatchTests.RangedKill_StaysInPlace_WhenTargetBeyondMoveRange()&#xD;
+[xUnit.net 00:00:00.15]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.15]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:00.15]       Expected: Killed&#xD;
+[xUnit.net 00:00:00.15]       Actual:   Invalid&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs(94,0): at Echec.Core.Tests.MatchTests.LancierKill_TakesPlace_WhenPathClearAndInMoveRange()&#xD;
+[xUnit.net 00:00:00.15]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.15]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.15]       Assert.Equal() Failure: Values differ&#xD;
+[xUnit.net 00:00:00.15]       Expected: 6&#xD;
+[xUnit.net 00:00:00.15]       Actual:   2&#xD;
+[xUnit.net 00:00:00.15]       Stack Trace:&#xD;
+[xUnit.net 00:00:00.15]         C:\Users\antho\source\repos\Echec\tests\Echec.Core.Tests\MatchTests.cs(60,0): at Echec.Core.Tests.MatchTests.MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses()&#xD;
+[xUnit.net 00:00:00.16]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:00.16]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:00.19]   Finished:    Echec.Core.Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9113432+02:00">
+        <Text>[xUnit.net 00:00:00.13]     Echec.Core.Tests.TerrainTests.Water_DoesNotBlock_LineOfFire [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9595523+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.DomaineTests.BaseClass_CarriesAssetAndStats [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9599682+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.DomaineTests.Fou_SlidesDiagonally_UpToClassRange [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9600090+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.DomaineTests.Tour_SlidesOrthogonally_Only [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9605538+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.MatchTests.RangedKill_StaysInPlace_WhenTargetBeyondMoveRange [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9605836+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.MatchTests.LancierKill_TakesPlace_WhenPathClearAndInMoveRange [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="DESKTOP-VLA4L26" outcome="Error" timestamp="2026-06-22T21:51:54.9609298+02:00">
+        <Text>[xUnit.net 00:00:00.15]     Echec.Core.Tests.MatchTests.MeleeAttack_NonLethal_DealsDamage_AttackerStays_TurnPasses [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

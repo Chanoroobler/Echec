@@ -34,8 +34,8 @@ public class DomaineTests
 
         Assert.Equal("Soldat", soldat.Name);
         Assert.Equal("soldat", soldat.Asset);
-        Assert.Equal(10, soldat.MaxHp);
-        Assert.Equal(4, soldat.Damage);
+        Assert.Equal(12, soldat.MaxHp);
+        Assert.Equal(10, soldat.Damage);
         Assert.Equal(1, soldat.MoveRange);
     }
 
@@ -54,13 +54,14 @@ public class DomaineTests
     {
         var match = new Match(8, 8);
         var from = new Cell(3, 3);
-        match.Place(from, Units.Of(Domaine.Fou, Faction.Player)); // portée 3
+        match.Place(from, Units.Of(Domaine.Fou, Faction.Player)); // Mage : déplacement 2
 
         var moves = match.LegalMoves(from);
-        Assert.Contains(new Cell(0, 0), moves);  // 3 cases en diagonale
-        Assert.Contains(new Cell(6, 6), moves);
+        Assert.Contains(new Cell(1, 1), moves);  // 2 cases en diagonale
+        Assert.Contains(new Cell(5, 5), moves);
+        Assert.DoesNotContain(new Cell(0, 0), moves); // 3 cases = hors portée
         Assert.DoesNotContain(new Cell(2, 3), moves); // pas de déplacement orthogonal
-        Assert.Equal(12, moves.Count);           // 4 diagonales × 3 cases
+        Assert.Equal(8, moves.Count);            // 4 diagonales × 2 cases
     }
 
     [Fact]
@@ -68,10 +69,10 @@ public class DomaineTests
     {
         var match = new Match(8, 8);
         var from = new Cell(3, 3);
-        match.Place(from, Units.Of(Domaine.Tour, Faction.Player)); // portée 3
+        match.Place(from, Units.Of(Domaine.Tour, Faction.Player)); // Lancier : déplacement 2
 
         var moves = match.LegalMoves(from);
-        Assert.Contains(new Cell(3, 0), moves);  // vers le haut
+        Assert.Contains(new Cell(3, 1), moves);  // 2 vers le haut
         Assert.DoesNotContain(new Cell(5, 5), moves); // pas de diagonale
     }
 

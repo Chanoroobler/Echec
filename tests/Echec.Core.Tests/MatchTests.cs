@@ -57,7 +57,7 @@ public class MatchTests
         var kind = match.TryAttack(playerCell, enemyCell);
 
         Assert.Equal(MoveKind.Attacked, kind);
-        Assert.Equal(6, enemy.Hp);                    // 10 - 4
+        Assert.Equal(2, enemy.Hp);                    // 12 - 10
         Assert.NotNull(match.UnitAt(playerCell));     // resté sur place (avant le kill)
         Assert.Equal(Faction.Enemy, match.CurrentTurn);
     }
@@ -83,7 +83,7 @@ public class MatchTests
     {
         var match = new Match(8, 8);
         var tourCell = new Cell(3, 7);
-        var enemyCell = new Cell(3, 4); // 3 cases en ligne : à portée de tir ET de déplacement (3)
+        var enemyCell = new Cell(3, 5); // 2 cases en ligne : à portée de tir ET de déplacement (2)
         match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
         var enemy = Units.Pion(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
@@ -100,17 +100,17 @@ public class MatchTests
     public void RangedKill_StaysInPlace_WhenTargetBeyondMoveRange()
     {
         var match = new Match(8, 8);
-        var archerCell = new Cell(3, 7);
-        var enemyCell = new Cell(3, 4); // distance 3 : à portée de TIR (3) mais hors DÉPLACEMENT (2)
-        match.Place(archerCell, Units.Of(Domaine.Dame, Faction.Player)); // Archer : tir 3, déplacement 2
+        var mageCell = new Cell(4, 7);
+        var enemyCell = new Cell(1, 4); // 3 en diagonale : à portée de TIR (4) mais hors DÉPLACEMENT (2)
+        match.Place(mageCell, Units.Of(Domaine.Fou, Faction.Player)); // Mage : tir 4, déplacement 2, diagonales
         var enemy = Units.Pion(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
         match.Place(enemyCell, enemy);
 
-        var kind = match.TryAttack(archerCell, enemyCell);
+        var kind = match.TryAttack(mageCell, enemyCell);
 
         Assert.Equal(MoveKind.Killed, kind);
-        Assert.NotNull(match.UnitAt(archerCell));  // hors de portée de déplacement : reste sur place
+        Assert.NotNull(match.UnitAt(mageCell));    // hors de portée de déplacement : reste sur place
         Assert.Null(match.UnitAt(enemyCell));      // la case libérée reste vide
     }
 

@@ -47,6 +47,12 @@ public sealed class ClassConfig
     /// <summary>Tire à travers ses alliés sans les toucher (Lancier). Absent/false = ligne bloquée par les alliés.</summary>
     public bool PiercesAllies { get; set; }
 
-    /// <summary>Sous-classes (pour un futur arbre) ; null/absent = feuille.</summary>
+    /// <summary>Portée de tir MINIMALE (« X à Y » : X). Absent → 1 (peut frapper au contact).</summary>
+    public int? MinAttackRange { get; set; }
+
+    /// <summary>Traits/particularités (hors « Traverse allié » = piercesAllies). Absent → aucun.</summary>
+    public List<string>? Traits { get; set; }
+
+    /// <summary>Sous-classes (arbre d'évolution) ; null/absent = feuille.</summary>
     public List<ClassConfig>? Evolutions { get; set; }
 }

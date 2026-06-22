@@ -36,10 +36,10 @@ public class TerrainTests
     [Fact]
     public void Water_DoesNotBlock_LineOfFire()
     {
-        var field = FlatWith(new Cell(3, 5), TerrainType.Water);  // entre le tireur et la cible
+        var field = FlatWith(new Cell(3, 6), TerrainType.Water);  // entre le tireur et la cible
         var match = new Match(8, 8, field);
         var tour = new Cell(3, 7);
-        var enemy = new Cell(3, 4);                               // distance 3 = portée de tir
+        var enemy = new Cell(3, 5);                               // distance 2 = portée de tir
         match.Place(tour, Units.Of(Domaine.Tour, Faction.Player));
         match.Place(enemy, Units.Pion(Faction.Enemy));
 

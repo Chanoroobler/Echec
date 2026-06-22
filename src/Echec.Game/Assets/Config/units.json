@@ -1,36 +1,69 @@
 {
-  // Paramétrage des classes par domaine.
-  // Le motif de déplacement (Pion=8 dir, Fou=diagonales, Cavalier=saut, Tour=lignes, Dame=8 dir)
-  // est fixé en code par le domaine. Ici on règle : nom, asset (PNG dans Assets/Units/<asset>.png),
-  // PV (hp), dégâts (damage), portée de déplacement (moveRange) et portée de tir (attackRange).
-  // "piercesAllies": true => la classe tire À TRAVERS ses alliés sans les toucher (les ennemis bloquent
-  // toujours). Absent = false.
+  // Paramétrage des classes par domaine. Le motif de déplacement (Pion/Dame = 8 dir, Fou = diagonales,
+  // Cavalier = saut, Tour = lignes) est fixé en code par le domaine ; ici : nom, asset (PNG dans
+  // Assets/Units/<asset>.png), PV (hp), dégâts (damage), portée de déplacement (moveRange), portée de
+  // tir MAX (attackRange) et MIN (minAttackRange, défaut 1 ; « X à Y » du tableau = X..Y).
+  //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
+  //   "traits": [...]        => autres particularités (Rempart, Soin, Dégâts de zone, Franchissement,
+  //                             Transpercement, Interception) — DONNÉE seule, mécaniques à venir (tiers 2).
+  //   "evolutions": [...]    => les 2 classes de tier 2 de l'arbre.
+  // NB JEU : seuls Soldat (Pion) et Lancier (Tour) sont réellement déployés pour l'instant
+  // (vague ennemie + roster de départ) ; le reste est posé comme données, pas encore jouable.
   "domaines": [
     {
       "domaine": "Pion",
-      "baseClass": { "name": "Soldat", "asset": "soldat", "hp": 10, "damage": 4, "moveRange": 1, "attackRange": 1 }
+      "baseClass": {
+        "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
+        "evolutions": [
+          { "name": "Garde",     "asset": "garde",     "hp": 20, "damage": 8,  "moveRange": 1, "attackRange": 1, "traits": ["Rempart"] },
+          { "name": "Spadassin", "asset": "spadassin", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 1 }
+        ]
+      }
     },
     {
       "domaine": "Fou",
-      "baseClass": { "name": "Eclaireur", "asset": "eclaireur", "hp": 8, "damage": 4, "moveRange": 3, "attackRange": 2 }
+      "baseClass": {
+        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 2, "attackRange": 4,
+        "evolutions": [
+          { "name": "Clerc",   "asset": "clerc",   "hp": 8, "damage": 7,  "moveRange": 4, "attackRange": 4, "traits": ["Soin"] },
+          { "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 14, "moveRange": 4, "attackRange": 5, "traits": ["Dégâts de zone"] }
+        ]
+      }
     },
     {
       "domaine": "Cavalier",
-      "baseClass": { "name": "Cavalier", "asset": "cavalier", "hp": 10, "damage": 5, "moveRange": 1, "attackRange": 1 }
+      "baseClass": {
+        "name": "Cavalier", "asset": "cavalier", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
+        "evolutions": [
+          { "name": "Chevalier",    "asset": "chevalier",    "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"] },
+          { "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
+        ]
+      }
     },
     {
       "domaine": "Tour",
-      "baseClass": { "name": "Lancier", "asset": "lancier", "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 2, "piercesAllies": true }
+      "baseClass": {
+        "name": "Lancier", "asset": "lancier", "hp": 10, "damage": 10, "moveRange": 2, "attackRange": 2, "piercesAllies": true,
+        "evolutions": [
+          { "name": "Empaleur",     "asset": "empaleur",     "hp": 14, "damage": 14, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Transpercement"] },
+          { "name": "Hallebardier", "asset": "hallebardier", "hp": 18, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Interception"] }
+        ]
+      }
     },
     {
       "domaine": "Dame",
-      "baseClass": { "name": "Archer", "asset": "archer", "hp": 8, "damage": 5, "moveRange": 2, "attackRange": 3 }
+      "baseClass": {
+        "name": "Archer", "asset": "archer", "hp": 8, "damage": 6, "moveRange": 3, "attackRange": 3, "minAttackRange": 2,
+        "evolutions": [
+          { "name": "Rôdeur",        "asset": "rodeur",        "hp": 10, "damage": 12, "moveRange": 4, "attackRange": 3, "minAttackRange": 1 },
+          { "name": "Maître archer", "asset": "maitre_archer", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
+        ]
+      }
     }
   ],
 
-  // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur
-  // emprunte le motif de deplacement d'un des 5 domaines (champ "domaine"), qui peut
-  // varier d'un meneur a l'autre. role = "Commander" (joueur) ou "Boss" (ennemi).
+  // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
+  // de déplacement d'un des 5 domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   "commandes": [
     { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 6, "moveRange": 1, "attackRange": 1 },
     { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 8, "moveRange": 1, "attackRange": 1 }

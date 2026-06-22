@@ -79,14 +79,14 @@ public class DomaineCatalogTests
         }
     }
 
-    // JSON équivalent aux valeurs par défaut, pour restaurer l'état après le test.
+    // JSON équivalent aux valeurs par défaut (stats de base), pour restaurer l'état partagé après le test.
     private const string DefaultJson = """
     { "domaines": [
-      { "domaine": "Pion",     "baseClass": { "name": "Soldat",     "asset": "soldat",     "hp": 10, "damage": 4, "moveRange": 1, "attackRange": 1 } },
-      { "domaine": "Fou",      "baseClass": { "name": "Eclaireur",  "asset": "eclaireur",  "hp": 8,  "damage": 4, "moveRange": 3, "attackRange": 2 } },
-      { "domaine": "Cavalier", "baseClass": { "name": "Cavalier",   "asset": "cavalier",   "hp": 10, "damage": 5, "moveRange": 1, "attackRange": 1 } },
-      { "domaine": "Tour",     "baseClass": { "name": "Lancier",    "asset": "lancier",    "hp": 12, "damage": 4, "moveRange": 3, "attackRange": 3, "piercesAllies": true } },
-      { "domaine": "Dame",     "baseClass": { "name": "Archer",     "asset": "archer",     "hp": 8,  "damage": 5, "moveRange": 2, "attackRange": 3 } }
+      { "domaine": "Pion",     "baseClass": { "name": "Soldat",   "asset": "soldat",   "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1 } },
+      { "domaine": "Fou",      "baseClass": { "name": "Mage",     "asset": "mage",     "hp": 6,  "damage": 14, "moveRange": 2, "attackRange": 4 } },
+      { "domaine": "Cavalier", "baseClass": { "name": "Cavalier", "asset": "cavalier", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 3, "piercesAllies": true } },
+      { "domaine": "Tour",     "baseClass": { "name": "Lancier",  "asset": "lancier",  "hp": 10, "damage": 10, "moveRange": 2, "attackRange": 2, "piercesAllies": true } },
+      { "domaine": "Dame",     "baseClass": { "name": "Archer",   "asset": "archer",   "hp": 8,  "damage": 6,  "moveRange": 3, "attackRange": 3, "minAttackRange": 2 } }
     ] }
     """;
 }
