@@ -30,10 +30,10 @@ public sealed class Run
     public const int TotalCombats = 6;
     public const int DraftSize = 3;
 
-    // Domaines piochables pour les VAGUES ENNEMIES. Limité à pion (Soldat) + lancier (Tour)
+    // Domaines piochables pour les VAGUES ENNEMIES : pion (Soldat), lancier (Tour) et fou (Mage)
     // pour l'instant (réglage de difficulté temporaire). Le recrutement, lui, propose
     // désormais les ennemis VAINCUS (voir BuildDraft), plus cette pioche.
-    private static readonly Domaine[] Pool = { Domaine.Pion, Domaine.Tour };
+    private static readonly Domaine[] Pool = { Domaine.Pion, Domaine.Tour, Domaine.Fou };
 
     private readonly Random _rng;
     private readonly List<UnitSpec> _roster = new();

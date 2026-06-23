@@ -7,8 +7,8 @@
   //   "traits": [...]        => autres particularités (Rempart, Soin, Dégâts de zone, Franchissement,
   //                             Transpercement, Interception) — DONNÉE seule, mécaniques à venir (tiers 2).
   //   "evolutions": [...]    => les 2 classes de tier 2 de l'arbre.
-  // NB JEU : seuls Soldat (Pion) et Lancier (Tour) sont réellement déployés pour l'instant
-  // (vague ennemie + roster de départ) ; le reste est posé comme données, pas encore jouable.
+  // NB JEU : la vague ennemie pioche Soldat (Pion), Lancier (Tour) et Mage (Fou) ; le roster de
+  // départ du joueur reste Soldat + Commandant. Le reste est posé comme données, pas encore jouable.
   "domaines": [
     {
       "domaine": "Pion",
@@ -23,10 +23,10 @@
     {
       "domaine": "Fou",
       "baseClass": {
-        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 2, "attackRange": 4,
+        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 1, "attackRange": 3,
         "evolutions": [
-          { "name": "Clerc",   "asset": "clerc",   "hp": 8, "damage": 7,  "moveRange": 4, "attackRange": 4, "traits": ["Soin"] },
-          { "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 14, "moveRange": 4, "attackRange": 5, "traits": ["Dégâts de zone"] }
+          { "name": "Clerc",   "asset": "clerc",   "hp": 8, "damage": 7,  "moveRange": 3, "attackRange": 5, "traits": ["Soin"] },
+          { "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Dégâts de zone"] }
         ]
       }
     },

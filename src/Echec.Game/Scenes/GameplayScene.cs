@@ -99,6 +99,10 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
     private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
     private readonly List<Cell> _threatCells = new();
+    // Aperçu au SURVOL d'un pion joueur (rien de sélectionné) : buffers distincts de la sélection.
+    private readonly List<Cell> _hoverMoves = new();
+    private readonly List<Cell> _hoverAttackTargets = new();
+    private readonly List<Cell> _hoverReach = new();
     private double _aiTimer;
     private bool _showTrees;
 
@@ -999,32 +1003,68 @@ public sealed class GameplayScene : Scene
 
     private void DrawHighlights(SpriteBatch sb, GridLayout layout)
     {
-        if (_selected is not null)
-            DrawZoneBorder(sb, layout, _selected.Value, Palette.Yellow2, 3);
+        // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
+        if (_selected is { } sel)
+        {
+            DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets);
+            return;
+        }
 
-        foreach (var cell in _attackReach)        // PORTÉE de tir (cases atteintes) = rouge pâle
+        // Sinon, aperçu au SURVOL d'un pion joueur (uniquement pendant son tour : sinon pas de coups).
+        if (_match.CurrentTurn == Faction.Player
+            && CellUnderMouse() is { } cell && _match.UnitAt(cell) is { Faction: Faction.Player })
+        {
+            _match.ThreatenedCells(cell, _hoverReach);
+            _match.LegalMoves(cell, _hoverMoves);
+            _match.AttackTargets(cell, _hoverAttackTargets);
+            DrawMoveAttackZones(sb, layout, cell, _hoverReach, _hoverMoves, _hoverAttackTargets);
+        }
+    }
+
+    /// <summary>Surbrillances déplacement/attaque d'une unité : cerclage + portée de tir + cases de
+    /// déplacement + cibles réellement à portée. Partagé par la sélection et l'aperçu au survol.</summary>
+    private void DrawMoveAttackZones(SpriteBatch sb, GridLayout layout, Cell origin,
+        List<Cell> reach, List<Cell> moves, List<Cell> targets)
+    {
+        DrawZoneBorder(sb, layout, origin, Palette.Yellow2, 3);
+
+        foreach (var cell in reach)     // PORTÉE de tir (cases atteintes) = rouge pâle
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.18f);
 
-        foreach (var cell in _legalMoves)         // déplacement = jaune
+        foreach (var cell in moves)     // déplacement = jaune
             DrawZone(sb, layout, cell, Palette.Yellow2 * 0.30f);
 
-        foreach (var cell in _attackTargets)      // ennemi réellement ciblable = rouge fort
+        foreach (var cell in targets)   // ennemi réellement ciblable = rouge fort
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
     }
 
     /// <summary>
     /// Au survol d'une unité ENNEMIE, prévisualise sa portée d'attaque : les cases qu'elle menace
-    /// sont teintées en rouge, l'ennemi survolé est cerclé. Aide à anticiper le danger.
+    /// sont teintées en rouge, l'ennemi survolé est cerclé. Au MAINTIEN d'Espace, on affiche d'un
+    /// coup les cases menacées par TOUS les ennemis (zones de danger globales). Aide à anticiper.
     /// </summary>
     private void DrawEnemyThreat(SpriteBatch sb, GridLayout layout)
     {
-        if (CellUnderMouse() is not { } cell || _match.UnitAt(cell) is not { Faction: Faction.Enemy })
+        if (Context.Input.IsKeyDown(Keys.Space))
+        {
+            foreach (var (cell, unit) in _match.Units())
+            {
+                if (unit.Faction != Faction.Enemy)
+                    continue;
+                _match.ThreatenedCells(cell, _threatCells);
+                foreach (var threat in _threatCells)
+                    DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
+            }
+            return;
+        }
+
+        if (CellUnderMouse() is not { } hovered || _match.UnitAt(hovered) is not { Faction: Faction.Enemy })
             return;
 
-        _match.ThreatenedCells(cell, _threatCells);     // buffer réutilisé (pas d'allocation par frame)
+        _match.ThreatenedCells(hovered, _threatCells);  // buffer réutilisé (pas d'allocation par frame)
         foreach (var threat in _threatCells)
             DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
-        DrawZoneBorder(sb, layout, cell, Palette.Purple5, 2);
+        DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);
     }
 
     private void DrawUnits(SpriteBatch sb, GridLayout layout)
@@ -1374,11 +1414,18 @@ public sealed class GameplayScene : Scene
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
         var board = BoardRect(layout);
+        var hovered = CellUnderMouse();
 
-        if (_selected is not null && _match.UnitAt(_selected.Value) is { } selected)
-            DrawUnitCard(sb, selected, RightCardRect(board));
+        // Carte de NOTRE pion (à droite) : l'unité sélectionnée tant qu'elle l'est ; sinon le pion
+        // joueur survolé.
+        var ownCell = _selected;
+        if (ownCell is null && hovered is { } h && _match.UnitAt(h) is { Faction: Faction.Player })
+            ownCell = h;
+        if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
+            DrawUnitCard(sb, own, RightCardRect(board));
 
-        if (CellUnderMouse() is { } hovered && _match.UnitAt(hovered) is { Faction: Faction.Enemy } enemy)
+        // Carte de l'ennemi survolé (à gauche).
+        if (hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } enemy)
             DrawUnitCard(sb, enemy, LeftCardRect(board));
     }
 

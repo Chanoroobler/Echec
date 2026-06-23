@@ -273,6 +273,31 @@ public sealed class Match
     }
 
     /// <summary>
+    /// Cibles qu'aurait l'unité de <paramref name="from"/> si elle se déplaçait en <paramref name="to"/>
+    /// (plateau SIMULÉ puis restauré, tour inchangé). Outil d'IA pour repérer un coup qui amène à
+    /// portée d'attaque. Renvoie une nouvelle liste (vide si <paramref name="from"/> est vide).
+    /// </summary>
+    public List<Cell> TargetsAfterMove(Cell from, Cell to)
+    {
+        var unit = UnitAt(from);
+        if (unit == null)
+            return new List<Cell>();
+
+        var occupant = _units[to.Column, to.Row];
+        _units[from.Column, from.Row] = null;
+        _units[to.Column, to.Row] = unit;
+        try
+        {
+            return AttackTargets(to);
+        }
+        finally
+        {
+            _units[to.Column, to.Row] = occupant;
+            _units[from.Column, from.Row] = unit;
+        }
+    }
+
+    /// <summary>
     /// L'attaquant prend la place de la cible tuée s'il POURRAIT s'y déplacer : case désormais
     /// libre ET atteignable par son mouvement (mêlée adjacente, saut du cavalier, ou ligne dégagée
     /// du lancier dans sa portée de déplacement). Bloqué par un allié ou hors d'atteinte → reste.
