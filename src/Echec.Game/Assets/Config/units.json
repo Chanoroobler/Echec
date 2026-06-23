@@ -65,7 +65,7 @@
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
   // de déplacement d'un des 5 domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   "commandes": [
-    { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 6, "moveRange": 1, "attackRange": 1 },
+    { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1 },
     { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 8, "moveRange": 1, "attackRange": 1 }
   ]
 }

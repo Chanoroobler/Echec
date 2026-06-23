@@ -41,6 +41,7 @@ public sealed class PauseMenuRenderer
             _font.DrawCentered(sb, "PAUSE", l.Title, 2, TitleColor);
             Button(sb, l.Resume, "REPRENDRE", p, pointerDown);
             Button(sb, l.Options, "OPTIONS", p, pointerDown);
+            Button(sb, l.MainMenu, "MENU PRINCIPAL", p, pointerDown);
             Button(sb, l.Quit, "QUITTER", p, pointerDown);
         }
         else

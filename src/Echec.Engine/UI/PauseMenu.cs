@@ -6,7 +6,7 @@ using Microsoft.Xna.Framework;
 namespace Echec.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, Quit, GraphicsChanged, VolumeChanged }
+public enum MenuAction { None, Resume, MainMenu, Quit, GraphicsChanged, VolumeChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -18,7 +18,7 @@ public enum MenuPanel { Root, Options }
 public enum PauseElement
 {
     None,
-    Resume, Options, Quit,
+    Resume, Options, MainMenu, Quit,
     ResLeft, ResRight, FsToggle, BdToggle,
     MasterLeft, MasterRight,
     MusicLeft, MusicRight,
@@ -35,7 +35,7 @@ public struct PauseLayout
     public Rectangle Panel;
     public Rectangle Title;
     // Racine
-    public Rectangle Resume, Options, Quit;
+    public Rectangle Resume, Options, MainMenu, Quit;
     // Options : lignes (label à gauche, contrôle à droite)
     public Rectangle ResRow, ResLeft, ResValue, ResRight;
     public Rectangle FsRow, FsToggle;
@@ -116,7 +116,7 @@ public sealed class PauseMenu
 
     private PauseLayout RootLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (3 * BtnH + 2 * Gap) + Pad;
+        int h = Pad + TitleH + Gap + (4 * BtnH + 3 * Gap) + Pad;
         var panel = Centered(vpW, vpH, RootW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -127,6 +127,7 @@ public sealed class PauseMenu
         int y = panel.Y + Pad + TitleH + Gap;
         l.Resume = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.Options = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
+        l.MainMenu = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.Quit = new Rectangle(bx, y, bw, BtnH);
         return l;
     }
@@ -190,6 +191,7 @@ public sealed class PauseMenu
     {
         if (l.Resume.Contains(p)) { Close(); return MenuAction.Resume; }
         if (l.Options.Contains(p)) { Panel = MenuPanel.Options; return MenuAction.None; }
+        if (l.MainMenu.Contains(p)) { Close(); return MenuAction.MainMenu; }
         if (l.Quit.Contains(p)) return MenuAction.Quit;
         return MenuAction.None;
     }
@@ -224,6 +226,7 @@ public sealed class PauseMenu
         {
             if (l.Resume.Contains(p)) return PauseElement.Resume;
             if (l.Options.Contains(p)) return PauseElement.Options;
+            if (l.MainMenu.Contains(p)) return PauseElement.MainMenu;
             if (l.Quit.Contains(p)) return PauseElement.Quit;
             return PauseElement.None;
         }

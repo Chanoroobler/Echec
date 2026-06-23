@@ -70,6 +70,22 @@ public sealed class Run
     }
 
     /// <summary>
+    /// Reconstruit une run à partir d'une sauvegarde (inventaire + numéro de combat). La run reprend
+    /// en phase de PLACEMENT : la vague ennemie et le terrain sont regénérés au combat courant (la
+    /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
+    /// </summary>
+    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber)
+    {
+        var run = new Run();
+        run._roster.Clear();
+        run._roster.AddRange(roster);
+        run.CombatNumber = combatNumber;
+        run.Phase = RunPhase.Placement;
+        run._draft.Clear();
+        return run;
+    }
+
+    /// <summary>
     /// Terrain du combat courant : herbe + obstacles (eau/montagne) aléatoires dans la zone neutre,
     /// symétriques. Tiré du RNG du run → varie d'un combat à l'autre, reproductible si seed fixé.
     /// </summary>

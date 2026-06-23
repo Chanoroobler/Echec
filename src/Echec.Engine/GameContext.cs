@@ -1,6 +1,7 @@
 using Echec.Engine.Audio;
 using Echec.Engine.Display;
 using Echec.Engine.Input;
+using Echec.Engine.Persistence;
 using Echec.Engine.Scenes;
 using Echec.Engine.Settings;
 using Echec.Engine.UI;
@@ -31,6 +32,7 @@ public sealed class GameContext
         AudioManager audio,
         SoundBank sounds,
         IDisplayService display,
+        SaveService saves,
         Action quit)
     {
         GraphicsDevice = graphicsDevice;
@@ -46,6 +48,7 @@ public sealed class GameContext
         Audio = audio;
         Sounds = sounds;
         Display = display;
+        Saves = saves;
         Quit = quit;
         VirtualResolution = new Point(1280, 720);
     }
@@ -80,6 +83,9 @@ public sealed class GameContext
     public SoundBank Sounds { get; }
 
     public IDisplayService Display { get; }
+
+    /// <summary>Persistance disque : réglages + slots de progression (%AppData%\Echec).</summary>
+    public SaveService Saves { get; }
 
     /// <summary>Ferme l'application (fourni par la couche Game).</summary>
     public Action Quit { get; }

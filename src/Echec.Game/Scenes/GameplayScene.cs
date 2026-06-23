@@ -141,8 +141,17 @@ public sealed class GameplayScene : Scene
     private const float ShadowLiftSlide = 0.85f;      // px de glissement de l'ombre par px de soulèvement
     private const float ShadowLiftFade = 0.5f;        // part d'opacité perdue à pleine hauteur (0 = aucune)
 
-    public GameplayScene(GameContext context) : base(context)
+    // Slot de sauvegarde piloté depuis le menu principal : la progression est auto-sauvegardée en
+    // phase de placement et le slot est effacé à la fin de la run (victoire/défaite).
+    private readonly int _saveSlot;
+    private Run? _initialRun;
+
+    /// <param name="saveSlot">Index du slot (0..2) où sauvegarder la progression.</param>
+    /// <param name="run">Run à reprendre (depuis une sauvegarde), ou null pour une nouvelle partie.</param>
+    public GameplayScene(GameContext context, int saveSlot, Run? run = null) : base(context)
     {
+        _saveSlot = saveSlot;
+        _initialRun = run;
     }
 
     /// <summary>Viewport logique (espace virtuel) dans lequel l'UI se met en page.</summary>
@@ -227,7 +236,8 @@ public sealed class GameplayScene : Scene
 
     private void StartRun()
     {
-        _run = new Run();
+        _run = _initialRun ?? new Run();   // reprise depuis une sauvegarde, ou nouvelle campagne
+        _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
         BeginPlacement();
     }
 
@@ -258,6 +268,10 @@ public sealed class GameplayScene : Scene
         // La vague ennemie est posée dès le placement : le joueur voit le déploiement
         // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur).
         PlaceEnemies(_run.BuildEnemyWave());
+
+        // Auto-sauvegarde : la progression n'est persistée qu'ici (phase de placement), jamais en
+        // plein combat — on reprend toujours proprement au placement du combat courant.
+        Context.Saves.SaveSlot(_saveSlot, RunSave.From(_run));
     }
 
     /// <summary>Fin du placement : lance le combat (la vague ennemie est déjà posée).</summary>
@@ -349,7 +363,9 @@ public sealed class GameplayScene : Scene
             case RunPhase.Recruitment: UpdateRecruitment(); break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
-                if (Context.Input.WasLeftClicked) StartRun();
+                // Run terminée (slot déjà effacé) : un clic ramène au menu principal.
+                if (Context.Input.WasLeftClicked)
+                    Context.Scenes.Change(new MainMenuScene(Context));
                 break;
         }
     }
@@ -489,6 +505,10 @@ public sealed class GameplayScene : Scene
         if (_run.Phase == RunPhase.Victory) Context.Sounds.Play("victory");
         else if (_run.Phase == RunPhase.Defeat) Context.Sounds.Play("defeat");
         else if (_match.Winner == Faction.Player) Context.Sounds.Play("combat_won");
+
+        // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
+        if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)
+            Context.Saves.DeleteSlot(_saveSlot);
     }
 
     private bool CommanderAlive() =>
@@ -1615,14 +1635,21 @@ public sealed class GameplayScene : Scene
         var action = _pauseMenu.HandleClick(Context.Input.MousePosition, viewport.Width, viewport.Height);
         switch (action)
         {
+            case MenuAction.MainMenu:
+                // La progression est déjà sauvegardée (phase de placement) : on peut quitter vers
+                // le menu, le slot proposera « Continuer ».
+                Context.Scenes.Change(new MainMenuScene(Context));
+                break;
             case MenuAction.Quit:
                 Context.Quit();
                 break;
             case MenuAction.GraphicsChanged:
                 Context.Display.Apply(Context.Settings.Display);
+                Context.Saves.SaveSettings(Context.Settings);
                 break;
             case MenuAction.VolumeChanged:
                 Context.Audio.Apply();
+                Context.Saves.SaveSettings(Context.Settings);
                 break;
         }
     }

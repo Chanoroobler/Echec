@@ -2,6 +2,7 @@ using Echec.Engine;
 using Echec.Engine.Audio;
 using Echec.Engine.Display;
 using Echec.Engine.Input;
+using Echec.Engine.Persistence;
 using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
 using Echec.Engine.Settings;
@@ -28,6 +29,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private readonly SceneManager _scenes = new();
     private readonly InputManager _input = new();
     private readonly GameSettings _settings = new();
+    private readonly SaveService _saves = new();
 
     private SpriteBatch _spriteBatch = null!;
     private AudioManager _audio = null!;
@@ -57,7 +59,8 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     protected override void Initialize()
     {
         LoadUnitConfig();
-        // Démarre dans la résolution par défaut des réglages.
+        // Réglages persistés (résolution / plein écran / volumes) chargés AVANT le premier Apply.
+        _saves.LoadInto(_settings);
         Apply(_settings.Display);
         base.Initialize();
     }
@@ -98,10 +101,10 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         _context = new GameContext(
             GraphicsDevice, _spriteBatch, Content, pixel, font, style,
-            _input, _scenes, Window, _settings, _audio, _sounds, this, Exit);
+            _input, _scenes, Window, _settings, _audio, _sounds, this, _saves, Exit);
 
         ConfigureVirtualScreen();
-        _scenes.Change(new GameplayScene(_context));
+        _scenes.Change(new MainMenuScene(_context));
     }
 
     protected override void UnloadContent()
