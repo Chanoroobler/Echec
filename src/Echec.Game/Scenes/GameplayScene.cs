@@ -106,6 +106,15 @@ public sealed class GameplayScene : Scene
     // au changement de taille (au lieu de plusieurs allocations de GridLayout par frame).
     private GridLayout? _layoutCache;
     private Point _layoutCacheFor = new(-1, -1);
+    // Invalidé en plus de la résolution quand le zoom ou la caméra changent (pan / molette).
+    private bool _layoutDirty = true;
+
+    // Caméra : un SEUL cran de zoom supplémentaire (zoom entier +1, pixel-perfect) et un décalage
+    // de pan (px canvas) ajouté à l'origine centrée. Le pan n'a d'effet que si le plateau déborde
+    // la zone de jeu (terrain trop grand ou zoomé) ; sinon il reste verrouillé au centre.
+    private bool _zoomedIn;
+    private Vector2 _camera;
+    private const float CameraPanSpeed = 540f;   // px canvas / s au clavier
 
     // Animation « pose » : la dernière case où un pion s'est posé rebondit brièvement.
     // Un seul pion bouge à la fois (jeu au tour par tour) → un seul état suffit.
@@ -236,6 +245,7 @@ public sealed class GameplayScene : Scene
         _dragSpec = null;
         _dragFrom = null;
         ClearSelection();
+        ResetCamera();
         _aiTimer = 0;
 
         var commander = _run.Commander;
@@ -327,6 +337,10 @@ public sealed class GameplayScene : Scene
         }
 
         if (_pauseMenu.IsOpen) { UpdatePauseMenu(); return; }
+
+        // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau.
+        if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
+            UpdateCamera(gameTime);
 
         switch (_run.Phase)
         {
@@ -693,6 +707,73 @@ public sealed class GameplayScene : Scene
         return hit is null ? null : new Cell(hit.Value.Column, hit.Value.Row);
     }
 
+    // ── Caméra (zoom molette + pan clavier) ───────────────────────────────────────
+
+    /// <summary>Remet la caméra à l'état par défaut (zoom de cadrage, plateau centré).</summary>
+    private void ResetCamera()
+    {
+        _zoomedIn = false;
+        _camera = Vector2.Zero;
+        _layoutDirty = true;
+    }
+
+    /// <summary>Marque le layout à recalculer (zoom ou pan modifié).</summary>
+    private void MarkLayoutDirty() => _layoutDirty = true;
+
+    private void UpdateCamera(GameTime gameTime)
+    {
+        // Molette : un seul cran de zoom (haut = rapproché, bas = retour au cadrage).
+        var scroll = Context.Input.ScrollDelta;
+        if (scroll > 0) SetZoom(true);
+        else if (scroll < 0) SetZoom(false);
+
+        // Pan clavier : flèches + ZQSD (AZERTY). Aller « voir à droite » fait reculer l'origine.
+        var input = Context.Input;
+        var dir = Vector2.Zero;
+        if (input.IsKeyDown(Keys.Left) || input.IsKeyDown(Keys.Q)) dir.X += 1;
+        if (input.IsKeyDown(Keys.Right) || input.IsKeyDown(Keys.D)) dir.X -= 1;
+        if (input.IsKeyDown(Keys.Up) || input.IsKeyDown(Keys.Z)) dir.Y += 1;
+        if (input.IsKeyDown(Keys.Down) || input.IsKeyDown(Keys.S)) dir.Y -= 1;
+
+        if (dir != Vector2.Zero)
+        {
+            var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            _camera += dir * CameraPanSpeed * dt;
+            MarkLayoutDirty();
+        }
+    }
+
+    /// <summary>
+    /// Bascule le zoom en gardant fixe le point du plateau sous le curseur (zoom-vers-curseur).
+    /// Le débordement éventuel sera ensuite borné par le pan (cf. <see cref="BuildLayoutCore"/>).
+    /// </summary>
+    private void SetZoom(bool zoomIn)
+    {
+        if (zoomIn == _zoomedIn)
+            return;
+
+        var before = BuildLayout();             // origine + taille de case AVANT bascule
+        var origin0 = before.Origin;
+        int tile0 = before.TileSize;
+
+        _zoomedIn = zoomIn;
+        MarkLayoutDirty();
+
+        int tile1 = GridLayout.DefaultTileSize * CurrentZoom();
+        float ratio = tile1 / (float)tile0;
+
+        // Origine visée pour garder le point monde sous le curseur immobile, puis on en déduit le pan.
+        var m = Context.Input.MousePosition.ToVector2();
+        var origin1 = m - (m - origin0) * ratio;
+
+        var viewport = VirtualViewport;
+        var availWidth = viewport.Width - RightPanelWidth;
+        int pxW = Columns * tile1;
+        int pxH = (Rows - 1) * tile1 + GridLayout.DefaultSpriteHeight * CurrentZoom();
+        var center = new Vector2((availWidth - pxW) / 2f, (viewport.Height - pxH) / 2f);
+        _camera = origin1 - center;
+    }
+
     // ── Rendu ───────────────────────────────────────────────────────────────────
     public override void Draw(GameTime gameTime)
     {
@@ -797,7 +878,14 @@ public sealed class GameplayScene : Scene
         }
 
         _water.DrawWater(sb, _time, w, h);
-        _water.DrawShadow(sb, BoardRect(layout), w, h);   // ombre statique mise en cache (cf. WaterRenderer)
+
+        // Frange d'ombre : UNIQUEMENT quand le plateau est un « îlot » entièrement dans le canvas.
+        // Zoomé / pané, le plateau déborde l'écran : il n'y a plus d'eau autour à ombrer, et le
+        // dégradé envahirait toute la vue (fond qui vire au noir). On la saute alors — ça évite aussi
+        // de recalculer le flou 17-taps à chaque frame de pan (le rectangle du plateau changeant).
+        var board = BoardRect(layout);
+        if (board.X >= 0 && board.Y >= 0 && board.Right <= w && board.Bottom <= h)
+            _water.DrawShadow(sb, board, w, h);   // ombre statique mise en cache (cf. WaterRenderer)
     }
 
     /// <summary>Rectangle (en coordonnées canvas) couvert par le plateau, épaisseur des sprites comprise.</summary>
@@ -1393,45 +1481,79 @@ public sealed class GameplayScene : Scene
     private GridLayout BuildLayout()
     {
         var res = Context.VirtualResolution;
-        if (_layoutCache == null || _layoutCacheFor != res)
+        if (_layoutCache == null || _layoutDirty || _layoutCacheFor != res)
         {
             _layoutCache = BuildLayoutCore();
             _layoutCacheFor = res;
+            _layoutDirty = false;
         }
         return _layoutCache;
     }
 
     /// <summary>
-    /// Place le terrain dans la zone à gauche du panneau avec un zoom ENTIER (les sprites
-    /// 64×64 ne sont jamais étirés : pixel-perfect), au plus grand multiple qui rentre,
-    /// puis centre. S'adapte à n'importe quelle taille de terrain.
+    /// Plus grand zoom ENTIER qui fait tenir le plateau (sprites jamais étirés : pixel-perfect)
+    /// dans la zone à gauche du panneau, marges comprises. Jamais sous 1. C'est le zoom « cadrage ».
+    /// </summary>
+    private int FitZoom()
+    {
+        var viewport = VirtualViewport;
+        var availWidth = viewport.Width - RightPanelWidth;
+        float boardW = Columns * GridLayout.DefaultTileSize;
+        float boardH = (Rows - 1) * GridLayout.DefaultTileSize + GridLayout.DefaultSpriteHeight;
+        int zoom = (int)Math.Min(
+            (availWidth - 2f * BoardMargin) / boardW,
+            (viewport.Height - 2f * BoardMargin) / boardH);
+        return Math.Max(zoom, 1);
+    }
+
+    /// <summary>Zoom courant = cadrage, plus un cran (+1) quand le zoom rapproché est actif.</summary>
+    private int CurrentZoom() => FitZoom() + (_zoomedIn ? 1 : 0);
+
+    /// <summary>
+    /// Origine du plateau : centré dans la zone de jeu, décalé par le pan caméra puis BORNÉ par axe
+    /// pour que le plateau couvre toujours la zone (aucune bande noire). Si le plateau rentre sur un
+    /// axe, il y reste verrouillé au centre (pan sans effet) ; sinon le pan glisse entre les bords.
     /// </summary>
     private GridLayout BuildLayoutCore()
     {
         var viewport = VirtualViewport;
         var availWidth = viewport.Width - RightPanelWidth;
 
-        const int baseTile = GridLayout.DefaultTileSize;        // 64
-        const int baseSprite = GridLayout.DefaultSpriteHeight;  // 80
-
-        float boardW = Columns * baseTile;                      // largeur à zoom 1
-        float boardH = (Rows - 1) * baseTile + baseSprite;      // hauteur à zoom 1
-
-        // Plus grand zoom entier qui tient dans la zone disponible (jamais sous 1).
-        int zoom = (int)Math.Min(
-            (availWidth - 2f * BoardMargin) / boardW,
-            (viewport.Height - 2f * BoardMargin) / boardH);
-        zoom = Math.Max(zoom, 1);
-
-        var tile = baseTile * zoom;
-        var spriteHeight = baseSprite * zoom;
+        int zoom = CurrentZoom();
+        var tile = GridLayout.DefaultTileSize * zoom;
+        var spriteHeight = GridLayout.DefaultSpriteHeight * zoom;
 
         var pxW = Columns * tile;
         var pxH = (Rows - 1) * tile + spriteHeight;
-        var origin = new Vector2((availWidth - pxW) / 2f, (viewport.Height - pxH) / 2f);
 
+        // Léger débordement (overscroll) aux bords pour révéler entièrement les sprites des rangées
+        // extrêmes, dessinés AU-DESSUS de leur case (soulèvement) → la rangée du haut reste visible.
+        var margin = tile * 0.5f;
+        float centerX = (availWidth - pxW) / 2f;
+        float centerY = (viewport.Height - pxH) / 2f;
+        float ox = ClampAxis(centerX, _camera.X, pxW, availWidth, margin, out float cx);
+        float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, out float cy);
+        _camera = new Vector2(cx, cy);          // ré-écrit le pan borné (pas de dérive hors limites)
+
+        // Origine arrondie au pixel entier → pas de scintillement pendant le pan (pixel-perfect).
+        var origin = new Vector2(MathF.Round(ox), MathF.Round(oy));
         return new GridLayout(origin, tileSize: tile, spriteWidth: tile,
             spriteHeight: spriteHeight, rowPitch: tile);
+    }
+
+    /// <summary>
+    /// Borne l'origine d'un axe : verrouillée au centre si le plateau (<paramref name="board"/>) rentre
+    /// dans la zone (<paramref name="area"/>), sinon contrainte pour couvrir la zone bord à bord. Renvoie
+    /// l'origine et, via <paramref name="clampedPan"/>, le pan effectivement appliqué.
+    /// </summary>
+    private static float ClampAxis(float center, float pan, float board, float area, float margin, out float clampedPan)
+    {
+        float lo, hi;
+        if (board <= area) { lo = hi = center; }
+        else { lo = area - board - margin; hi = margin; }   // overscroll des deux bords (cf. appelant)
+        float origin = MathHelper.Clamp(center + pan, lo, hi);
+        clampedPan = origin - center;
+        return origin;
     }
 
     /// <summary>

@@ -65,4 +65,7 @@ public sealed class InputManager
     public bool WasRightClicked =>
         _currentMouse.RightButton == ButtonState.Pressed &&
         _previousMouse.RightButton == ButtonState.Released;
+
+    /// <summary>Variation de la molette depuis la frame précédente (&gt; 0 = vers le haut). 0 si immobile.</summary>
+    public int ScrollDelta => _currentMouse.ScrollWheelValue - _previousMouse.ScrollWheelValue;
 }
