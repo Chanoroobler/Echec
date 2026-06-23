@@ -239,7 +239,12 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         if (_virtualTarget == null || _virtualTarget.Width != canvasW || _virtualTarget.Height != canvasH)
         {
             _virtualTarget?.Dispose();
-            _virtualTarget = new RenderTarget2D(GraphicsDevice, canvasW, canvasH);
+            // PreserveContents OBLIGATOIRE : le WaterRenderer bascule de render target en cours de scène
+            // (cache d'ombre du plateau) puis revient sur ce canvas. Avec le défaut (DiscardContents),
+            // le contenu déjà dessiné — l'eau — serait effacé en noir au retour, visible dès que le
+            // plateau bouge (pan caméra) et reconstruit le cache à chaque frame.
+            _virtualTarget = new RenderTarget2D(GraphicsDevice, canvasW, canvasH,
+                mipMap: false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
         }
 
         int dispW = canvasW * scale;

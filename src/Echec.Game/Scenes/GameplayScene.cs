@@ -116,6 +116,11 @@ public sealed class GameplayScene : Scene
     private Vector2 _camera;
     private const float CameraPanSpeed = 540f;   // px canvas / s au clavier
 
+    // Animation d'entrée en combat : le panneau de droite glisse hors écran et le plateau se recentre
+    // sur toute la largeur, de façon fluide. Compte à rebours (s) ; > 0 = glissement en cours.
+    private double _battleIntroTimer;
+    private const double BattleIntroDuration = 0.35;
+
     // Animation « pose » : la dernière case où un pion s'est posé rebondit brièvement.
     // Un seul pion bouge à la fois (jeu au tour par tour) → un seul état suffit.
     private Cell? _landingCell;
@@ -280,6 +285,9 @@ public sealed class GameplayScene : Scene
         CancelDrag();
         _run.StartBattle();
         ClearSelection();
+        // Le panneau de droite glisse hors écran et le plateau se recentre : animation d'entrée.
+        _battleIntroTimer = BattleIntroDuration;
+        MarkLayoutDirty();
         _aiTimer = 0;
         Context.Sounds.Play("battle_start");
     }
@@ -352,8 +360,9 @@ public sealed class GameplayScene : Scene
 
         if (_pauseMenu.IsOpen) { UpdatePauseMenu(); return; }
 
-        // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau.
-        if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
+        // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau, et pas pendant
+        // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
+        if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0)
             UpdateCamera(gameTime);
 
         switch (_run.Phase)
@@ -459,6 +468,16 @@ public sealed class GameplayScene : Scene
     private void UpdateBattle(GameTime gameTime)
     {
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+        // Glissement d'entrée : on fige le combat (pas d'interaction) le temps que le panneau sorte
+        // et que le plateau finisse de se recentrer — le layout est rafraîchi à chaque frame.
+        if (_battleIntroTimer > 0)
+        {
+            _battleIntroTimer -= dt;
+            MarkLayoutDirty();
+            return;
+        }
+
         _sparks.Update(dt);     // les particules vivent leur vie même pendant le gel de l'animation
 
         // Animation d'attaque en cours : on gèle entrées, IA et fin de combat le temps des FX
@@ -787,7 +806,7 @@ public sealed class GameplayScene : Scene
         var origin1 = m - (m - origin0) * ratio;
 
         var viewport = VirtualViewport;
-        var availWidth = viewport.Width - RightPanelWidth;
+        var availWidth = AvailableWidth();
         int pxW = Columns * tile1;
         int pxH = (Rows - 1) * tile1 + GridLayout.DefaultSpriteHeight * CurrentZoom();
         var center = new Vector2((availWidth - pxW) / 2f, (viewport.Height - pxH) / 2f);
@@ -843,10 +862,14 @@ public sealed class GameplayScene : Scene
 
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
 
-                sb.Begin(samplerState: SamplerState.PointClamp);
-                DrawPanelBackground(sb);
-                DrawBattlePanel(sb);
-                sb.End();
+                if (_battleIntroTimer > 0)
+                    DrawSlidingPanel(sb);          // panneau de placement qui sort par la droite
+                else
+                {
+                    sb.Begin(samplerState: SamplerState.PointClamp);
+                    DrawCombatCards(sb, layout);
+                    sb.End();
+                }
                 break;
             case RunPhase.Recruitment:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -1300,8 +1323,14 @@ public sealed class GameplayScene : Scene
     private void DrawPanelBackground(SpriteBatch sb)
     {
         var panel = PanelRect();
-        DrawRect(sb, panel, Palette.Navy2);
+        Context.Style.FillDither(sb, panel);   // fond tramé pixel-art, comme les cartes / boutons
         DrawRect(sb, new Rectangle(panel.X, 0, 2, panel.Height), Palette.Navy1);
+
+        // Bord DROIT = bord du canvas : sur écran ultra-large, l'eau du letterbox affleure le panneau
+        // et ses tons (proches du fond) le rendent peu lisible. Cette bande au ton le plus sombre de la
+        // palette détache nettement le panneau de l'eau.
+        const int rightEdge = 6;
+        DrawRect(sb, new Rectangle(panel.Right - rightEdge, 0, rightEdge, panel.Height), Palette.Black1);
     }
 
     private void DrawPlacementPanel(SpriteBatch sb)
@@ -1332,33 +1361,77 @@ public sealed class GameplayScene : Scene
             new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White);
     }
 
-    private void DrawBattlePanel(SpriteBatch sb)
+    // ── Cartes de combat (remplacent l'ancien panneau de droite) ──────────────────
+    // Réutilisent le gabarit des cartes de recrutement ; le contenu sera retravaillé plus tard.
+    private const int CombatCardW = 180;
+    private const int CombatCardH = 200;
+    private const int CombatCardGap = 24;
+
+    /// <summary>
+    /// Cartes flottantes du combat : l'unité SÉLECTIONNÉE s'affiche à droite du plateau, l'ennemi
+    /// SURVOLÉ à gauche. Les deux peuvent coexister (sélection + survol d'un ennemi).
+    /// </summary>
+    private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
-        var panel = PanelRect();
-        var x = panel.X + PanelPad;
+        var board = BoardRect(layout);
 
-        Context.Font.Draw(sb, CombatTitle(), new Vector2(x, 16), 1, Palette.Yellow1);
+        if (_selected is not null && _match.UnitAt(_selected.Value) is { } selected)
+            DrawUnitCard(sb, selected, RightCardRect(board));
 
-        var objective = _run.IsBossCombat ? "TUER LE BOSS" : "ELIMINER LES ENNEMIS";
-        Context.Font.Draw(sb, "OBJECTIF", new Vector2(x, 38), 1, Palette.Blue1);
-        Context.Font.Draw(sb, objective, new Vector2(x, 52), 1,
-            _run.IsBossCombat ? Palette.Purple5 : Palette.Cyan2);
-
-        var turn = _match.CurrentTurn == Faction.Player ? "TOUR : JOUEUR" : "TOUR : ENNEMI";
-        var color = _match.CurrentTurn == Faction.Player ? Palette.Cyan1 : Palette.Purple5;
-        Context.Font.Draw(sb, turn, new Vector2(x, 78), 2, color);
-
-        if (_selected is not null && _match.UnitAt(_selected.Value) is { } unit)
-            DrawSelectedInfo(sb, unit, x, 120);
+        if (CellUnderMouse() is { } hovered && _match.UnitAt(hovered) is { Faction: Faction.Enemy } enemy)
+            DrawUnitCard(sb, enemy, LeftCardRect(board));
     }
 
-    private void DrawSelectedInfo(SpriteBatch sb, Unit unit, int x, int y)
+    /// <summary>Emplacement de la carte à DROITE du plateau (unité sélectionnée), borné à l'écran.</summary>
+    private Rectangle RightCardRect(Rectangle board)
     {
-        Context.Font.Draw(sb, unit.Class.Name.ToUpperInvariant(), new Vector2(x, y), 2, Palette.White);
-        Context.Font.Draw(sb, $"DOM {unit.Domaine}".ToUpperInvariant(), new Vector2(x, y + 22), 1, Palette.Cyan1);
-        Context.Font.Draw(sb, $"PV {unit.Hp}/{unit.MaxHp}", new Vector2(x, y + 38), 1, Palette.Yellow2);
-        Context.Font.Draw(sb, $"DEG {unit.Damage}", new Vector2(x, y + 52), 1, Palette.Brown3);
-        Context.Font.Draw(sb, $"DEP {unit.MoveRange}   TIR {unit.AttackRange}", new Vector2(x, y + 66), 1, Palette.Cyan2);
+        var vp = VirtualViewport;
+        var x = Math.Min(board.Right + CombatCardGap, vp.Width - CombatCardGap - CombatCardW);
+        return new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+    }
+
+    /// <summary>Emplacement de la carte à GAUCHE du plateau (ennemi survolé), borné à l'écran.</summary>
+    private Rectangle LeftCardRect(Rectangle board)
+    {
+        var vp = VirtualViewport;
+        var x = Math.Max(board.X - CombatCardGap - CombatCardW, CombatCardGap);
+        return new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+    }
+
+    /// <summary>
+    /// Carte d'une unité du plateau, dans son ÉTAT COURANT (PV actuels). Calquée sur la carte de
+    /// recrutement (<see cref="DrawDraftCard"/>) — la mise en forme sera retravaillée plus tard.
+    /// </summary>
+    private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect)
+    {
+        Context.Style.DrawPanel(sb, rect);
+        var c = unit.Class;
+
+        var icon = new Rectangle(rect.X + (rect.Width - 64) / 2, rect.Y + 12, 64, 64);
+        DrawChip(sb, c, unit.Faction, icon, front: true);
+
+        Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
+            new Rectangle(rect.X, icon.Bottom + 6, rect.Width, 14), 2, Palette.White);
+        Context.Font.DrawCentered(sb, $"DOM {unit.Domaine}".ToUpperInvariant(),
+            new Rectangle(rect.X, icon.Bottom + 26, rect.Width, 10), 1, Palette.Cyan1);
+        Context.Font.DrawCentered(sb, $"PV {unit.Hp}/{unit.MaxHp}   DEG {unit.Damage}",
+            new Rectangle(rect.X, icon.Bottom + 42, rect.Width, 10), 1, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, $"DEP {unit.MoveRange}   TIR {unit.AttackRange}",
+            new Rectangle(rect.X, icon.Bottom + 58, rect.Width, 10), 1, Palette.Cyan2);
+    }
+
+    /// <summary>
+    /// Pendant l'entrée en combat : redessine le panneau de placement décalé vers la droite (il sort
+    /// de l'écran), via une translation du batch. Synchronisé avec le recentrage du plateau.
+    /// </summary>
+    private void DrawSlidingPanel(SpriteBatch sb)
+    {
+        var dx = BattleIntroProgress() * RightPanelWidth;
+        sb.Begin(samplerState: SamplerState.PointClamp,
+            transformMatrix: Matrix.CreateTranslation(dx, 0f, 0f));
+        DrawPanelBackground(sb);
+        DrawPlacementPanel(sb);
+        sb.End();
     }
 
     private string CombatTitle() =>
@@ -1511,13 +1584,45 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Largeur (px canvas) dans laquelle le plateau se cadre. Au PLACEMENT, le panneau de droite
+    /// (inventaire) réserve sa bande ; dans les autres phases (combat, recrutement, fin) il n'y a
+    /// plus de panneau → le plateau se recentre sur toute la largeur, libérant une marge de chaque
+    /// côté pour les cartes d'unité (sélection à droite, ennemi survolé à gauche).
+    /// </summary>
+    private int AvailableWidth() =>
+        _run.Phase == RunPhase.Placement ? VirtualViewport.Width - RightPanelWidth : VirtualViewport.Width;
+
+    /// <summary>Progression 0→1 (lissée) du glissement d'entrée en combat ; 1 quand il est terminé.</summary>
+    private float BattleIntroProgress() =>
+        _battleIntroTimer <= 0 ? 1f : Smoothstep((float)(1 - _battleIntroTimer / BattleIntroDuration));
+
+    private static float Smoothstep(float t)
+    {
+        t = MathHelper.Clamp(t, 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    /// <summary>
+    /// Largeur servant à CENTRER le plateau (distincte de <see cref="AvailableWidth"/> qui fixe le
+    /// zoom, stable). Pendant le glissement d'entrée en combat, elle interpole de la largeur du
+    /// placement (panneau présent) vers le plein écran → le plateau glisse au lieu de sauter.
+    /// </summary>
+    private float CenteringWidth()
+    {
+        var full = AvailableWidth();
+        if (_run.Phase == RunPhase.Battle && _battleIntroTimer > 0)
+            return MathHelper.Lerp(VirtualViewport.Width - RightPanelWidth, full, BattleIntroProgress());
+        return full;
+    }
+
+    /// <summary>
     /// Plus grand zoom ENTIER qui fait tenir le plateau (sprites jamais étirés : pixel-perfect)
-    /// dans la zone à gauche du panneau, marges comprises. Jamais sous 1. C'est le zoom « cadrage ».
+    /// dans la zone disponible, marges comprises. Jamais sous 1. C'est le zoom « cadrage ».
     /// </summary>
     private int FitZoom()
     {
         var viewport = VirtualViewport;
-        var availWidth = viewport.Width - RightPanelWidth;
+        var availWidth = AvailableWidth();
         float boardW = Columns * GridLayout.DefaultTileSize;
         float boardH = (Rows - 1) * GridLayout.DefaultTileSize + GridLayout.DefaultSpriteHeight;
         int zoom = (int)Math.Min(
@@ -1537,7 +1642,9 @@ public sealed class GameplayScene : Scene
     private GridLayout BuildLayoutCore()
     {
         var viewport = VirtualViewport;
-        var availWidth = viewport.Width - RightPanelWidth;
+        // Largeur de centrage (animée pendant l'entrée en combat) ; le zoom, lui, suit AvailableWidth
+        // via CurrentZoom/FitZoom et reste stable → seul le glissement bouge, pas la taille des cases.
+        var centerWidth = CenteringWidth();
 
         int zoom = CurrentZoom();
         var tile = GridLayout.DefaultTileSize * zoom;
@@ -1549,10 +1656,14 @@ public sealed class GameplayScene : Scene
         // Léger débordement (overscroll) aux bords pour révéler entièrement les sprites des rangées
         // extrêmes, dessinés AU-DESSUS de leur case (soulèvement) → la rangée du haut reste visible.
         var margin = tile * 0.5f;
-        float centerX = (availWidth - pxW) / 2f;
+        // Jeu de pan « libre » quand le plateau tient dans la zone : on autorise un léger débordement
+        // (~1,5 case) dans les 4 directions au lieu de verrouiller au centre, pour pouvoir regarder un
+        // peu autour. Quand le plateau déborde, c'est `margin` (overscroll des bords) qui s'applique.
+        var slack = tile * 1.5f;
+        float centerX = (centerWidth - pxW) / 2f;
         float centerY = (viewport.Height - pxH) / 2f;
-        float ox = ClampAxis(centerX, _camera.X, pxW, availWidth, margin, out float cx);
-        float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, out float cy);
+        float ox = ClampAxis(centerX, _camera.X, pxW, centerWidth, margin, slack, out float cx);
+        float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, slack, out float cy);
         _camera = new Vector2(cx, cy);          // ré-écrit le pan borné (pas de dérive hors limites)
 
         // Origine arrondie au pixel entier → pas de scintillement pendant le pan (pixel-perfect).
@@ -1566,11 +1677,11 @@ public sealed class GameplayScene : Scene
     /// dans la zone (<paramref name="area"/>), sinon contrainte pour couvrir la zone bord à bord. Renvoie
     /// l'origine et, via <paramref name="clampedPan"/>, le pan effectivement appliqué.
     /// </summary>
-    private static float ClampAxis(float center, float pan, float board, float area, float margin, out float clampedPan)
+    private static float ClampAxis(float center, float pan, float board, float area, float margin, float slack, out float clampedPan)
     {
         float lo, hi;
-        if (board <= area) { lo = hi = center; }
-        else { lo = area - board - margin; hi = margin; }   // overscroll des deux bords (cf. appelant)
+        if (board <= area) { lo = center - slack; hi = center + slack; }   // tient : petit jeu autour du centre
+        else { lo = area - board - margin; hi = margin; }   // déborde : overscroll des deux bords
         float origin = MathHelper.Clamp(center + pan, lo, hi);
         clampedPan = origin - center;
         return origin;
