@@ -263,7 +263,18 @@ public sealed class GameplayScene : Scene
 
     private void StartRun()
     {
-        _run = _initialRun ?? new Run();   // reprise depuis une sauvegarde, ou nouvelle campagne
+        if (_initialRun != null)
+        {
+            _run = _initialRun;            // reprise depuis une sauvegarde (garde son propre FirstRun)
+        }
+        else
+        {
+            // Nouvelle campagne : la TOUTE PREMIÈRE du joueur a un déblocage ennemi plus doux.
+            var firstRun = !Context.Saves.HasPlayedBefore();
+            if (firstRun)
+                Context.Saves.MarkPlayed();
+            _run = new Run(firstRun: firstRun);
+        }
         _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
         BeginPlacement();
     }

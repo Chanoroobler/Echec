@@ -23,7 +23,7 @@
     {
       "domaine": "Fou",
       "baseClass": {
-        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 1, "attackRange": 3,
+        "name": "Mage", "asset": "mage", "hp": 5, "damage": 14, "moveRange": 1, "attackRange": 3,
         "evolutions": [
           { "name": "Clerc",   "asset": "clerc",   "hp": 8, "damage": 7,  "moveRange": 3, "attackRange": 5, "traits": ["Soin"] },
           { "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Dégâts de zone"] }
@@ -33,7 +33,7 @@
     {
       "domaine": "Cavalier",
       "baseClass": {
-        "name": "Cavalier", "asset": "cavalier", "hp": 14, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
+        "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 12, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
         "evolutions": [
           { "name": "Chevalier",    "asset": "chevalier",    "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"] },
           { "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
@@ -53,7 +53,7 @@
     {
       "domaine": "Dame",
       "baseClass": {
-        "name": "Archer", "asset": "archer", "hp": 8, "damage": 6, "moveRange": 3, "attackRange": 3, "minAttackRange": 2,
+        "name": "Archer", "asset": "archer", "hp": 8, "damage": 5, "moveRange": 2, "attackRange": 3, "minAttackRange": 2,
         "evolutions": [
           { "name": "Rôdeur",        "asset": "rodeur",        "hp": 10, "damage": 12, "moveRange": 4, "attackRange": 3, "minAttackRange": 1 },
           { "name": "Maître archer", "asset": "maitre_archer", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
@@ -66,6 +66,6 @@
   // de déplacement d'un des 5 domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   "commandes": [
     { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1 },
-    { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 8, "moveRange": 1, "attackRange": 1 }
+    { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1 }
   ]
 }

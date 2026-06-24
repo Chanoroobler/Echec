@@ -47,6 +47,21 @@ public sealed class SaveService
     /// <summary>Écrit l'état courant des réglages sur disque.</summary>
     public void SaveSettings(GameSettings settings) => TryWrite(OptionsPath, SettingsDto.From(settings));
 
+    // ── Profil global ───────────────────────────────────────────────────────────────
+
+    /// <summary>Vrai si le joueur a déjà démarré une campagne (sinon : sa première = tutorielle).</summary>
+    public bool HasPlayedBefore() => TryRead<ProfileDto>(ProfilePath)?.HasPlayedBefore ?? false;
+
+    /// <summary>Marque la première campagne comme entamée (idempotent).</summary>
+    public void MarkPlayed()
+    {
+        var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+        if (dto.HasPlayedBefore)
+            return;
+        dto.HasPlayedBefore = true;
+        TryWrite(ProfilePath, dto);
+    }
+
     // ── Slots de progression ───────────────────────────────────────────────────────
 
     public bool SlotExists(int index) => File.Exists(SlotPath(index));
@@ -73,6 +88,7 @@ public sealed class SaveService
     // ── E/S internes ────────────────────────────────────────────────────────────────
 
     private string OptionsPath => Path.Combine(_dir, "options.json");
+    private string ProfilePath => Path.Combine(_dir, "profile.json");
     private string SlotPath(int index) => Path.Combine(_dir, $"save-slot-{index + 1}.json");
 
     private static T? TryRead<T>(string path) where T : class

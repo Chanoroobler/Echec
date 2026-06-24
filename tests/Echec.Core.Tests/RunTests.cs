@@ -21,18 +21,104 @@ public class RunTests
     }
 
     [Fact]
-    public void EnemyWave_GrowsByOnePerCombat()
+    public void EnemyWave_FollowsFixedCountSchedule()
+    {
+        // Effectifs par combat non-boss : 2, 3, 4, 4, 5.
+        var expected = new[] { 2, 3, 4, 4, 5 };
+
+        var run = new Run(seed: 1);
+        for (var combat = 1; combat <= 5; combat++)
+        {
+            Assert.Equal(combat, run.CombatNumber);
+            Assert.Equal(expected[combat - 1], run.BuildEnemyWave().Count);
+
+            if (combat < 5)
+            {
+                run.StartBattle();
+                run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
+                run.Recruit(run.Draft[0]);
+            }
+        }
+    }
+
+    // Ordre attendu des déblocages : soldat, lancier, cavalier, archer, mage.
+    private static readonly Domaine[] IntroOrder =
+        { Domaine.Pion, Domaine.Tour, Domaine.Cavalier, Domaine.Dame, Domaine.Fou };
+
+    [Fact]
+    public void FirstRun_Combat1_IsOnlySoldiers()
+    {
+        var run = new Run(seed: 1, firstRun: true);
+        var wave = run.BuildEnemyWave();
+
+        Assert.All(wave, u => Assert.Equal(Domaine.Pion, u.Domaine)); // 1re campagne : soldat seul
+    }
+
+    [Fact]
+    public void FirstRun_UnlocksOneTypePerCombat_FromSoldier()
+    {
+        // 1re campagne : combat N débloque les N premiers types (tout débloqué au combat 5).
+        AssertUnlockSchedule(firstRun: true, combat => combat);
+    }
+
+    [Fact]
+    public void LaterRun_StartsWithSoldierAndLancier_AllUnlockedByCombat4()
+    {
+        // Campagnes suivantes : +1 type d'avance → combat N débloque N+1 types, tout au combat 4.
+        AssertUnlockSchedule(firstRun: false, combat => combat + 1);
+
+        // Combat 1 d'une campagne suivante : déjà soldat + lancier disponibles.
+        var run = new Run(seed: 1, firstRun: false);
+        var pool = run.BuildEnemyWave().Select(u => u.Domaine).ToHashSet();
+        Assert.Subset(new[] { Domaine.Pion, Domaine.Tour }.ToHashSet(), pool);
+    }
+
+    // Vérifie sur les combats 1..5 que seuls les types attendus apparaissent et que le type
+    // fraîchement débloqué CE combat est garanti — selon le rythme donné (1re campagne ou suivante).
+    private static void AssertUnlockSchedule(bool firstRun, System.Func<int, int> reachOf)
+    {
+        var run = new Run(seed: 1, firstRun: firstRun);
+        for (var combat = 1; combat <= 5; combat++)
+        {
+            var reach = System.Math.Min(reachOf(combat), IntroOrder.Length);
+            var wave = run.BuildEnemyWave();
+            var unlocked = IntroOrder.Take(reach).ToHashSet();
+
+            // Aucun type encore verrouillé n'apparaît.
+            Assert.All(wave, u => Assert.Contains(u.Domaine, unlocked));
+            // Le type fraîchement débloqué ce combat est garanti (tant que tout n'est pas déjà ouvert).
+            if (reachOf(combat) <= IntroOrder.Length)
+                Assert.Contains(wave, u => u.Domaine == IntroOrder[reach - 1]);
+
+            if (combat < 5)
+            {
+                run.StartBattle();
+                run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
+                run.Recruit(run.Draft[0]);
+            }
+        }
+    }
+
+    [Fact]
+    public void RunSave_PreservesFirstRunFlag()
+    {
+        var first = RunSave.From(new Run(seed: 1, firstRun: true)).ToRun();
+        var later = RunSave.From(new Run(seed: 1, firstRun: false)).ToRun();
+
+        Assert.True(first.FirstRun);
+        Assert.False(later.FirstRun);
+    }
+
+    [Fact]
+    public void BossWave_IsBossPlusFourEscorts()
     {
         var run = new Run(seed: 1);
-        Assert.Equal(2, run.BuildEnemyWave().Count); // combat 1
+        AdvanceTo(run, 6);
 
-        // Avance jusqu'au combat 2 sans pertes.
-        run.StartBattle();
-        run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
-        run.Recruit(run.Draft[0]);
-
-        Assert.Equal(2, run.CombatNumber);
-        Assert.Equal(3, run.BuildEnemyWave().Count); // combat 2 = 3 ennemis
+        var wave = run.BuildEnemyWave();
+        Assert.Equal(5, wave.Count);                       // boss + 4 escortes
+        Assert.Single(wave, u => u.Essential);
+        Assert.Equal(4, wave.Count(u => !u.Essential));
     }
 
     [Fact]

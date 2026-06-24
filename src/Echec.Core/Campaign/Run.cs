@@ -30,11 +30,21 @@ public sealed class Run
     public const int TotalCombats = 6;
     public const int DraftSize = 3;
 
-    // Domaines piochables pour les VAGUES ENNEMIES : Soldat (Pion), Lancier (Tour), Mage (Fou),
-    // Archer (Dame) et Cavalier (Cavalier). Comme le recrutement propose les ennemis VAINCUS
-    // (voir BuildDraft), tous ces domaines deviennent jouables côté joueur.
-    private static readonly Domaine[] Pool =
-        { Domaine.Pion, Domaine.Tour, Domaine.Fou, Domaine.Dame, Domaine.Cavalier };
+    // ORDRE D'INTRODUCTION des types ennemis : un nouveau type est débloqué à chaque combat —
+    // Soldat (Pion), Lancier (Tour), Cavalier (Cavalier), Archer (Dame), Mage (Fou). Le Cavalier
+    // arrive TÔT (rapide : move 3 + saut) pour varier la menace ; le Mage (le plus punitif, one-shot
+    // à portée 3) est introduit EN DERNIER, le temps que le joueur apprenne. Au combat N (1..5) le
+    // pool = les N premiers types, et le N-ième (« frais ») est garanti d'apparaître ; le combat de
+    // boss débloque tout le pool. Comme le recrutement propose les ennemis VAINCUS (voir BuildDraft),
+    // ces domaines deviennent jouables au fil des déblocages.
+    private static readonly Domaine[] IntroOrder =
+        { Domaine.Pion, Domaine.Tour, Domaine.Cavalier, Domaine.Dame, Domaine.Fou };
+
+    /// <summary>Nombre d'escortes accompagnant le boss (tirées parmi tous les types débloqués).</summary>
+    private const int BossEscorts = 4;
+
+    /// <summary>Taille de la vague ennemie par combat NON-boss (index 0 = combat 1) : 2,3,4,4,5.</summary>
+    private static readonly int[] EnemyCounts = { 2, 3, 4, 4, 5 };
 
     private readonly List<UnitSpec> _roster = new();
     private readonly List<UnitSpec> _draft = new();
@@ -46,9 +56,18 @@ public sealed class Run
     /// </summary>
     public int Seed { get; private set; }
 
-    public Run(int? seed = null)
+    /// <summary>
+    /// Vrai = TOUTE PREMIÈRE campagne du joueur : déblocage des types ennemis plus doux (combat 1 =
+    /// soldats seuls, tout débloqué au combat 5). Faux = campagnes suivantes : départ soldat+lancier,
+    /// tout débloqué dès le combat 4. Persisté dans <see cref="RunSave"/> pour qu'une reprise garde le
+    /// même rythme. Cf. <see cref="BuildEnemyWave"/>.
+    /// </summary>
+    public bool FirstRun { get; private set; }
+
+    public Run(int? seed = null, bool firstRun = false)
     {
         Seed = seed ?? new Random().Next();
+        FirstRun = firstRun;
         Reset();
     }
 
@@ -81,9 +100,9 @@ public sealed class Run
     /// en phase de PLACEMENT : la vague ennemie et le terrain sont regénérés au combat courant (la
     /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
     /// </summary>
-    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed)
+    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun)
     {
-        var run = new Run(seed);
+        var run = new Run(seed, firstRun);
         run._roster.Clear();
         run._roster.AddRange(roster);
         run.CombatNumber = combatNumber;
@@ -99,23 +118,44 @@ public sealed class Run
     public Battlefield BuildBattlefield(int width, int height) =>
         TerrainGenerator.Generate(width, height, CombatRng(0));
 
-    /// <summary>Vague ennemie du combat courant (le placement est assuré par la scène).</summary>
+    /// <summary>
+    /// Vague ennemie du combat courant (le placement est assuré par la scène). Déblocage progressif :
+    /// un nouveau type par combat, dans l'ordre de <see cref="IntroOrder"/>. La PREMIÈRE campagne
+    /// (<see cref="FirstRun"/>) démarre soldat seul (tout débloqué au combat 5) ; les suivantes
+    /// démarrent soldat+lancier (tout débloqué dès le combat 4). Le type fraîchement débloqué CE
+    /// combat est garanti d'apparaître ; le reste est tiré au hasard parmi le pool débloqué. Le combat
+    /// de boss = boss + <see cref="BossEscorts"/> escortes tirées parmi TOUS les types.
+    /// </summary>
     public List<UnitSpec> BuildEnemyWave()
     {
         var rng = CombatRng(1);   // RNG déterministe propre à la vague de CE combat
         var wave = new List<UnitSpec>();
+
         if (IsBossCombat)
         {
             wave.Add(ToSpec(Commandes.Boss));
-            wave.Add(RandomEnemy(rng));
-            wave.Add(RandomEnemy(rng));
+            for (var i = 0; i < BossEscorts; i++)
+                wave.Add(RandomEnemy(rng, IntroOrder.Length));
+            return wave;
         }
-        else
+
+        // Campagnes suivantes : +1 type d'avance dès le départ (soldat+lancier au combat 1).
+        var reach = FirstRun ? CombatNumber : CombatNumber + 1;
+        var unlocked = Math.Min(reach, IntroOrder.Length);          // nb de types disponibles
+        var freshlyUnlocked = reach <= IntroOrder.Length;           // un type vient d'être débloqué ?
+        var count = EnemyCounts[CombatNumber - 1];                  // 2,3,4,4,5 (combats 1..5)
+
+        // Si un type est fraîchement débloqué ce combat, on en garantit une unité (le dernier du pool).
+        if (freshlyUnlocked)
         {
-            var count = CombatNumber + 1; // combat 1 = 2 ennemis … combat 5 = 6 ennemis
-            for (var i = 0; i < count; i++)
-                wave.Add(RandomEnemy(rng));
+            var fresh = IntroOrder[unlocked - 1];
+            wave.Add(new UnitSpec(fresh, Domaines.Of(fresh).BaseClass));
         }
+        // Le reste : au hasard parmi les types débloqués.
+        for (var i = wave.Count; i < count; i++)
+            wave.Add(RandomEnemy(rng, unlocked));
+
+        Shuffle(wave, rng);   // pour que le type frais ne soit pas toujours à la même position
         return wave;
     }
 
@@ -174,10 +214,21 @@ public sealed class Run
             _draft.Add(defeatedEnemies[i]);
     }
 
-    private static UnitSpec RandomEnemy(Random rng)
+    /// <summary>Ennemi au hasard parmi les <paramref name="poolSize"/> premiers types débloqués.</summary>
+    private static UnitSpec RandomEnemy(Random rng, int poolSize)
     {
-        var domaine = Pool[rng.Next(Pool.Length)];
+        var domaine = IntroOrder[rng.Next(poolSize)];
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+    }
+
+    /// <summary>Mélange en place (Fisher-Yates) avec le RNG déterministe du combat.</summary>
+    private static void Shuffle(List<UnitSpec> list, Random rng)
+    {
+        for (var i = list.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
     }
 
     /// <summary>
