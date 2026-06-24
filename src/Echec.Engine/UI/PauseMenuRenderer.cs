@@ -1,3 +1,4 @@
+using Echec.Engine.Localization;
 using Echec.Engine.UI.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -43,35 +44,38 @@ public sealed class PauseMenuRenderer
 
         if (menu.Panel == MenuPanel.Root)
         {
-            _font.DrawCentered(sb, "PAUSE", l.Title, 2, TitleColor);
-            Button(sb, l.Resume, "REPRENDRE", p, pointerDown, focus);
-            Button(sb, l.Options, "OPTIONS", p, pointerDown, focus);
-            Button(sb, l.MainMenu, "MENU PRINCIPAL", p, pointerDown, focus);
-            Button(sb, l.Quit, "QUITTER", p, pointerDown, focus);
+            _font.DrawCentered(sb, Loc.T("menu.pause"), l.Title, 2, TitleColor);
+            Button(sb, l.Resume, Loc.T("menu.resume"), p, pointerDown, focus);
+            Button(sb, l.Options, Loc.T("menu.options"), p, pointerDown, focus);
+            Button(sb, l.MainMenu, Loc.T("menu.main_menu"), p, pointerDown, focus);
+            Button(sb, l.Quit, Loc.T("menu.quit"), p, pointerDown, focus);
         }
         else
         {
-            _font.DrawCentered(sb, "OPTIONS", l.Title, 2, TitleColor);
+            _font.DrawCentered(sb, Loc.T("options.title"), l.Title, 2, TitleColor);
 
-            Label(sb, l.ResRow, "RESOLUTION");
+            Label(sb, l.ResRow, Loc.T("options.resolution"));
             Stepper(sb, l.ResLeft, l.ResValue, l.ResRight, menu.ResolutionText, p, pointerDown, focus);
 
-            Label(sb, l.FsRow, "PLEIN ECRAN");
+            Label(sb, l.FsRow, Loc.T("options.fullscreen"));
             Button(sb, l.FsToggle, menu.FullscreenText, p, pointerDown, focus);
 
-            Label(sb, l.BdRow, "SANS BORDURE");
+            Label(sb, l.BdRow, Loc.T("options.borderless"));
             Button(sb, l.BdToggle, menu.BorderlessText, p, pointerDown, focus);
 
-            Label(sb, l.MasterRow, "VOLUME GLOBAL");
+            Label(sb, l.MasterRow, Loc.T("options.volume_master"));
             Stepper(sb, l.MasterLeft, l.MasterValue, l.MasterRight, menu.MasterVolumeText, p, pointerDown, focus);
 
-            Label(sb, l.MusicRow, "VOLUME MUSIQUE");
+            Label(sb, l.MusicRow, Loc.T("options.volume_music"));
             Stepper(sb, l.MusicLeft, l.MusicValue, l.MusicRight, menu.MusicVolumeText, p, pointerDown, focus);
 
-            Label(sb, l.SfxRow, "VOLUME EFFETS");
+            Label(sb, l.SfxRow, Loc.T("options.volume_sfx"));
             Stepper(sb, l.SfxLeft, l.SfxValue, l.SfxRight, menu.SfxVolumeText, p, pointerDown, focus);
 
-            Button(sb, l.Back, "RETOUR", p, pointerDown, focus);
+            Label(sb, l.LangRow, Loc.T("options.language"));
+            Stepper(sb, l.LangLeft, l.LangValue, l.LangRight, menu.LanguageText, p, pointerDown, focus);
+
+            Button(sb, l.Back, Loc.T("options.back"), p, pointerDown, focus);
         }
     }
 

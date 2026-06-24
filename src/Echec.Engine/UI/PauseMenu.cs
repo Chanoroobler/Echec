@@ -1,12 +1,14 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Echec.Engine.Localization;
 using Echec.Engine.Settings;
 using Microsoft.Xna.Framework;
 
 namespace Echec.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, MainMenu, Quit, GraphicsChanged, VolumeChanged }
+public enum MenuAction { None, Resume, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -23,6 +25,7 @@ public enum PauseElement
     MasterLeft, MasterRight,
     MusicLeft, MusicRight,
     SfxLeft, SfxRight,
+    LangLeft, LangRight,
     Back,
 }
 
@@ -43,6 +46,7 @@ public struct PauseLayout
     public Rectangle MasterRow, MasterLeft, MasterValue, MasterRight;
     public Rectangle MusicRow, MusicLeft, MusicValue, MusicRight;
     public Rectangle SfxRow, SfxLeft, SfxValue, SfxRight;
+    public Rectangle LangRow, LangLeft, LangValue, LangRight;
     public Rectangle Back;
 }
 
@@ -109,7 +113,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? 4 : 7;
+    private int FocusCount => Panel == MenuPanel.Root ? 4 : 8;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -125,7 +129,7 @@ public sealed class PauseMenu
         return _focus switch
         {
             0 => l.ResRow, 1 => l.FsRow, 2 => l.BdRow,
-            3 => l.MasterRow, 4 => l.MusicRow, 5 => l.SfxRow, _ => l.Back,
+            3 => l.MasterRow, 4 => l.MusicRow, 5 => l.SfxRow, 6 => l.LangRow, _ => l.Back,
         };
     }
 
@@ -144,8 +148,8 @@ public sealed class PauseMenu
         {
             1 => ToggleFullscreen(),
             2 => ToggleBorderless(),
-            6 => BackAction(),
-            _ => MenuAction.None,   // les pas (résolution, volumes) se règlent avec gauche/droite
+            7 => BackAction(),
+            _ => MenuAction.None,   // les pas (résolution, volumes, langue) se règlent avec gauche/droite
         };
     }
 
@@ -162,6 +166,7 @@ public sealed class PauseMenu
             case 3: _s.Audio.Master = Step(_s.Audio.Master, dir * 10); return MenuAction.VolumeChanged;
             case 4: _s.Audio.Music = Step(_s.Audio.Music, dir * 10); return MenuAction.VolumeChanged;
             case 5: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
+            case 6: StepLanguage(dir); return MenuAction.LanguageChanged;
             default: return MenuAction.None;
         }
     }
@@ -174,11 +179,18 @@ public sealed class PauseMenu
 
     // ── Valeurs affichées ──────────────────────────────────────────────────────
     public string ResolutionText => $"{_resolutions[_resIndex].X} X {_resolutions[_resIndex].Y}";
-    public string FullscreenText => _s.Display.Fullscreen ? "OUI" : "NON";
-    public string BorderlessText => _s.Display.Borderless ? "OUI" : "NON";
+    public string FullscreenText => _s.Display.Fullscreen ? Loc.T("common.yes") : Loc.T("common.no");
+    public string BorderlessText => _s.Display.Borderless ? Loc.T("common.yes") : Loc.T("common.no");
     public string MasterVolumeText => $"{_s.Audio.Master}%";
     public string MusicVolumeText => $"{_s.Audio.Music}%";
     public string SfxVolumeText => $"{_s.Audio.Sfx}%";
+
+    /// <summary>Nom de la langue active, affiché dans sa propre langue (endonyme).</summary>
+    public string LanguageText => _s.Language switch
+    {
+        Language.English => Loc.T("lang.english"),
+        _ => Loc.T("lang.francais"),
+    };
 
     // ── Mise en page ────────────────────────────────────────────────────────────
     public PauseLayout Layout(int vpW, int vpH)
@@ -204,7 +216,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (6 * BtnH + 5 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (7 * BtnH + 6 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -235,6 +247,10 @@ public sealed class PauseMenu
 
         l.SfxRow = new Rectangle(panel.X, y, panel.Width, BtnH);
         (l.SfxLeft, l.SfxValue, l.SfxRight) = Stepper(ctrlX, y);
+        y += BtnH + Gap;
+
+        l.LangRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        (l.LangLeft, l.LangValue, l.LangRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
         int backW = 130;
@@ -280,6 +296,9 @@ public sealed class PauseMenu
         if (l.SfxLeft.Contains(p)) { _s.Audio.Sfx = Step(_s.Audio.Sfx, -10); return MenuAction.VolumeChanged; }
         if (l.SfxRight.Contains(p)) { _s.Audio.Sfx = Step(_s.Audio.Sfx, +10); return MenuAction.VolumeChanged; }
 
+        if (l.LangLeft.Contains(p)) { StepLanguage(-1); return MenuAction.LanguageChanged; }
+        if (l.LangRight.Contains(p)) { StepLanguage(+1); return MenuAction.LanguageChanged; }
+
         if (l.Back.Contains(p)) { Back(); return MenuAction.None; }
         return MenuAction.None;
     }
@@ -311,6 +330,8 @@ public sealed class PauseMenu
         if (l.MusicRight.Contains(p)) return PauseElement.MusicRight;
         if (l.SfxLeft.Contains(p)) return PauseElement.SfxLeft;
         if (l.SfxRight.Contains(p)) return PauseElement.SfxRight;
+        if (l.LangLeft.Contains(p)) return PauseElement.LangLeft;
+        if (l.LangRight.Contains(p)) return PauseElement.LangRight;
         if (l.Back.Contains(p)) return PauseElement.Back;
         return PauseElement.None;
     }
@@ -323,4 +344,17 @@ public sealed class PauseMenu
     }
 
     private static int Step(int value, int delta) => MathHelper.Clamp(value + delta, 0, 100);
+
+    /// <summary>
+    /// Fait défiler la langue active (sans bouclage : bornée aux extrêmes) et synchronise
+    /// <see cref="Loc.Current"/> pour que tout le texte se mette à jour immédiatement.
+    /// </summary>
+    private void StepLanguage(int dir)
+    {
+        var values = (Language[])Enum.GetValues(typeof(Language));
+        var i = Array.IndexOf(values, _s.Language);
+        i = MathHelper.Clamp(i + dir, 0, values.Length - 1);
+        _s.Language = values[i];
+        Loc.Current = _s.Language;
+    }
 }

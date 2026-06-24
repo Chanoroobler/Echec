@@ -1,3 +1,4 @@
+using Echec.Engine.Localization;
 using Echec.Engine.Settings;
 
 namespace Echec.Engine.Persistence;
@@ -16,6 +17,7 @@ public sealed class SettingsDto
     public int Master { get; set; } = 80;
     public int Music { get; set; } = 80;
     public int Sfx { get; set; } = 80;
+    public Language Language { get; set; } = Language.Francais;
 
     public static SettingsDto From(GameSettings s) => new()
     {
@@ -26,6 +28,7 @@ public sealed class SettingsDto
         Master = s.Audio.Master,
         Music = s.Audio.Music,
         Sfx = s.Audio.Sfx,
+        Language = s.Language,
     };
 
     public void ApplyTo(GameSettings s)
@@ -37,5 +40,6 @@ public sealed class SettingsDto
         s.Audio.Master = Master;
         s.Audio.Music = Music;
         s.Audio.Sfx = Sfx;
+        s.Language = Language;
     }
 }

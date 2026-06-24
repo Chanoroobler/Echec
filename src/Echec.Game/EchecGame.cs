@@ -2,6 +2,7 @@ using Echec.Engine;
 using Echec.Engine.Audio;
 using Echec.Engine.Display;
 using Echec.Engine.Input;
+using Echec.Engine.Localization;
 using Echec.Engine.Persistence;
 using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
@@ -59,8 +60,11 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     protected override void Initialize()
     {
         LoadUnitConfig();
-        // Réglages persistés (résolution / plein écran / volumes) chargés AVANT le premier Apply.
+        // Textes localisés (Assets/Config/strings.csv) chargés avant tout rendu d'UI.
+        Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
+        // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
         _saves.LoadInto(_settings);
+        Loc.Current = _settings.Language;
         Apply(_settings.Display);
         base.Initialize();
     }

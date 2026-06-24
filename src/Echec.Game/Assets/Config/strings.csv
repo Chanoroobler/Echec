@@ -1,0 +1,74 @@
+Key,FR,EN
+# ── Commun ──────────────────────────────────────────────────────────────────
+common.yes,OUI,YES
+common.no,NON,NO
+# Noms de langues (endonymes : affichés dans leur propre langue, identiques en FR/EN).
+lang.francais,FRANCAIS,FRANCAIS
+lang.english,ENGLISH,ENGLISH
+# ── Menu pause ──────────────────────────────────────────────────────────────
+menu.pause,PAUSE,PAUSE
+menu.resume,REPRENDRE,RESUME
+menu.options,OPTIONS,OPTIONS
+menu.main_menu,MENU PRINCIPAL,MAIN MENU
+menu.quit,QUITTER,QUIT
+# ── Options ─────────────────────────────────────────────────────────────────
+options.title,OPTIONS,OPTIONS
+options.resolution,RESOLUTION,RESOLUTION
+options.fullscreen,PLEIN ECRAN,FULLSCREEN
+options.borderless,SANS BORDURE,BORDERLESS
+options.volume_master,VOLUME GLOBAL,MASTER VOLUME
+options.volume_music,VOLUME MUSIQUE,MUSIC VOLUME
+options.volume_sfx,VOLUME EFFETS,SFX VOLUME
+options.language,LANGUE,LANGUAGE
+options.back,RETOUR,BACK
+# ── Menu principal ──────────────────────────────────────────────────────────
+game.title,ECHEC,ECHEC
+mainmenu.slot,SLOT {0},SLOT {0}
+mainmenu.slot_progress,COMBAT {0}/{1}   {2} UNITES,BATTLE {0}/{1}   {2} UNITS
+mainmenu.new_game,NOUVELLE PARTIE,NEW GAME
+mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0} ?
+mainmenu.delete,EFFACER,DELETE
+mainmenu.cancel,ANNULER,CANCEL
+# ── Combat / placement ──────────────────────────────────────────────────────
+combat.boss,COMBAT DE BOSS,BOSS BATTLE
+combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
+placement.title,PLACEMENT,DEPLOYMENT
+placement.inventory,INVENTAIRE,INVENTORY
+placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED
+placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD
+placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY
+placement.hint_gp_fight,Y : COMBATTRE,Y : FIGHT
+placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE
+placement.hint_fight,ENTREE : COMBATTRE,ENTER : FIGHT
+# ── Caracteristiques d'unite ────────────────────────────────────────────────
+stat.power,PUISSANCE,POWER
+stat.movement,MOUVEMENT,MOVEMENT
+stat.range,PORTEE,RANGE
+# ── Recrutement ─────────────────────────────────────────────────────────────
+recruit.title,RECRUTEMENT,RECRUITMENT
+recruit.subtitle,CHOISIS UNE UNITE A REJOINDRE,CHOOSE A UNIT TO JOIN
+recruit.army,TON ARMEE,YOUR ARMY
+# ── Fin de partie ───────────────────────────────────────────────────────────
+defeat.army_destroyed,ARMEE DETRUITE,ARMY DESTROYED
+defeat.commander_fallen,COMMANDANT TOMBE,COMMANDER FALLEN
+end.victory,VICTOIRE,VICTORY
+end.defeat,DEFAITE,DEFEAT
+end.boss_defeated,BOSS VAINCU,BOSS DEFEATED
+end.replay,CLIC POUR REJOUER,CLICK TO REPLAY
+# ── Mots-cles d'unite (label + description) ─────────────────────────────────
+kw.rempart.label,REMPART,BULWARK
+kw.rempart.desc,ENCAISSE LES COUPS ET PROTEGE LES ALLIES PROCHES,SOAKS HITS AND PROTECTS NEARBY ALLIES
+kw.soin.label,SOIN,HEAL
+kw.soin.desc,PEUT RENDRE DES PV A UN ALLIE A PORTEE,CAN RESTORE HP TO AN ALLY IN RANGE
+kw.zone.label,DEGATS DE ZONE,AREA DAMAGE
+kw.zone.desc,TOUCHE AUSSI LES CASES AUTOUR DE LA CIBLE,ALSO HITS THE TILES AROUND THE TARGET
+kw.franchissement.label,FRANCHISSEMENT,VAULTING
+kw.franchissement.desc,IGNORE LES UNITES SUR SON CHEMIN DE DEPLACEMENT,IGNORES UNITS ALONG ITS MOVE PATH
+kw.transpercement.label,TRANSPERCEMENT,PIERCING
+kw.transpercement.desc,L ATTAQUE TRAVERSE ET FRAPPE LES ENNEMIS ALIGNES DERRIERE LA CIBLE,THE ATTACK CARRIES THROUGH AND HITS ENEMIES LINED UP BEHIND THE TARGET
+kw.interception.label,INTERCEPTION,INTERCEPT
+kw.interception.desc,FRAPPE L ENNEMI QUI ENTRE DANS SA PORTEE,STRIKES THE ENEMY THAT ENTERS ITS RANGE
+kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLY
+kw.pierce_allies.desc,TIRE A TRAVERS SES ALLIES SANS LES TOUCHER SEULS LES ENNEMIS BLOQUENT LA LIGNE,SHOOTS THROUGH ALLIES WITHOUT HITTING THEM ONLY ENEMIES BLOCK THE LINE
+kw.dead_zone.label,ZONE MORTE,DEAD ZONE
+kw.dead_zone.desc,NE FRAPPE PAS AU CORPS A CORPS DIRECT EN LIGNE DROITE (TIR EN DIAGONALE POSSIBLE),CANNOT STRIKE IN DIRECT MELEE IN A STRAIGHT LINE (DIAGONAL SHOT POSSIBLE)

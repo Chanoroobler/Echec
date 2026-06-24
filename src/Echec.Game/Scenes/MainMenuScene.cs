@@ -1,6 +1,7 @@
 using Echec.Core.Campaign;
 using Echec.Engine;
 using Echec.Engine.Input;
+using Echec.Engine.Localization;
 using Echec.Engine.Persistence;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
@@ -152,6 +153,9 @@ public sealed class MainMenuScene : Scene
                 Context.Audio.Apply();
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
+            case MenuAction.LanguageChanged:
+                Context.Saves.SaveSettings(Context.Settings);
+                break;
         }
 
         // « Retour » depuis Options ramène à la racine du menu pause : ici, la racine = le menu
@@ -221,14 +225,14 @@ public sealed class MainMenuScene : Scene
         sb.Draw(Context.Pixel, new Rectangle(0, 0, w, h), Palette.Navy2);
 
         var titleArea = new Rectangle(0, lay.Panel.Y - 64, w, 44);
-        Context.Font.DrawCentered(sb, "ECHEC", titleArea, 4, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, Loc.T("game.title"), titleArea, 4, Palette.Yellow2);
 
         Context.Style.DrawPanel(sb, lay.Panel);
         for (var i = 0; i < _slots.Length; i++)
             DrawSlot(sb, lay.Slots[i], lay.Dels[i], i, bgPointer, bgDown);
 
-        Button(sb, lay.Options, "OPTIONS", bgPointer, bgDown);
-        Button(sb, lay.Quit, "QUITTER", bgPointer, bgDown);
+        Button(sb, lay.Options, Loc.T("menu.options"), bgPointer, bgDown);
+        Button(sb, lay.Quit, Loc.T("menu.quit"), bgPointer, bgDown);
         sb.End();
 
         if (_confirmDelete >= 0)
@@ -254,11 +258,11 @@ public sealed class MainMenuScene : Scene
         var dy = Context.Style.DrawButton(sb, main, UiStyle.StateOf(main.Contains(pointer), down));
         var x = main.X + 12;
         var line = main.Y + 9 + dy;
-        Context.Font.Draw(sb, $"SLOT {index + 1}", new Vector2(x, line), 1, Palette.White);
+        Context.Font.Draw(sb, Loc.T("mainmenu.slot", index + 1), new Vector2(x, line), 1, Palette.White);
 
         var sub = occupied
-            ? $"COMBAT {_slots[index]!.CombatNumber}/{Run.TotalCombats}   {_slots[index]!.UnitCount} UNITES"
-            : "NOUVELLE PARTIE";
+            ? Loc.T("mainmenu.slot_progress", _slots[index]!.CombatNumber, Run.TotalCombats, _slots[index]!.UnitCount)
+            : Loc.T("mainmenu.new_game");
         Context.Font.Draw(sb, sub, new Vector2(x, line + Context.Font.LineHeight() + 6),
             1, occupied ? Palette.Blue1 : Palette.Yellow2);
 
@@ -282,10 +286,10 @@ public sealed class MainMenuScene : Scene
         Context.Style.DrawPanel(sb, panel);
 
         var textArea = new Rectangle(panel.X, panel.Y + Pad, panel.Width, 16);
-        Context.Font.DrawCentered(sb, $"EFFACER LE SLOT {_confirmDelete + 1} ?", textArea, 1, Palette.White);
+        Context.Font.DrawCentered(sb, Loc.T("mainmenu.confirm_delete", _confirmDelete + 1), textArea, 1, Palette.White);
 
-        Button(sb, yes, "EFFACER", pointer, down);
-        Button(sb, no, "ANNULER", pointer, down);
+        Button(sb, yes, Loc.T("mainmenu.delete"), pointer, down);
+        Button(sb, no, Loc.T("mainmenu.cancel"), pointer, down);
         sb.End();
     }
 

@@ -5,6 +5,7 @@ using Echec.Core.Campaign;
 using Echec.Core.Map;
 using Echec.Engine;
 using Echec.Engine.Input;
+using Echec.Engine.Localization;
 using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
@@ -642,7 +643,7 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            _defeatReason = CommanderAlive() ? "ARMEE DETRUITE" : "COMMANDANT TOMBE";
+            _defeatReason = CommanderAlive() ? Loc.T("defeat.army_destroyed") : Loc.T("defeat.commander_fallen");
             _run.Defeat();
         }
 
@@ -1610,11 +1611,11 @@ public sealed class GameplayScene : Scene
         var x = panel.X + PanelPad;
 
         Context.Font.Draw(sb, CombatTitle(), new Vector2(x, 16), 1, Palette.Yellow1);
-        Context.Font.Draw(sb, "PLACEMENT", new Vector2(x, 34), 2, Palette.Yellow2);
-        Context.Font.Draw(sb, "INVENTAIRE", new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
+        Context.Font.Draw(sb, Loc.T("placement.title"), new Vector2(x, 34), 2, Palette.Yellow2);
+        Context.Font.Draw(sb, Loc.T("placement.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
 
         if (_pending.Count == 0 && _dragSpec == null)
-            Context.Font.Draw(sb, "TOUT DEPLOYE", new Vector2(x, PanelListTop + 4), 1, Palette.Cyan2);
+            Context.Font.Draw(sb, Loc.T("placement.all_deployed"), new Vector2(x, PanelListTop + 4), 1, Palette.Cyan2);
 
         for (var i = 0; i < _pending.Count; i++)
             DrawInventoryCard(sb, _pending[i], PanelCardRect(i));
@@ -1624,14 +1625,14 @@ public sealed class GameplayScene : Scene
         var hintY = PanelListTop + rows * (InvCellH + InvGapY) + 12;
         if (Context.Input.UsingGamepad)
         {
-            var line1 = _gpInventory ? "A PRENDRE  LB TERRAIN" : "A SELECTIONNER  RB INVENTAIRE";
+            var line1 = _gpInventory ? Loc.T("placement.hint_gp_terrain") : Loc.T("placement.hint_gp_inventory");
             Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
-            Context.Font.Draw(sb, "Y : COMBATTRE", new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+            Context.Font.Draw(sb, Loc.T("placement.hint_gp_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
         }
         else
         {
-            Context.Font.Draw(sb, "GLISSER POUR PLACER", new Vector2(x, hintY), 1, Palette.Blue1);
-            Context.Font.Draw(sb, "ENTREE : COMBATTRE", new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+            Context.Font.Draw(sb, Loc.T("placement.hint_drag"), new Vector2(x, hintY), 1, Palette.Blue1);
+            Context.Font.Draw(sb, Loc.T("placement.hint_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
         }
     }
 
@@ -1787,9 +1788,9 @@ public sealed class GameplayScene : Scene
 
         // Caractéristiques : icône 32×32 + libellé + valeur.
         // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
-        y = DrawStatRow(sb, rect, y, "deg", "PUISSANCE", $"{c.Damage}", Palette.Brown3);
-        y = DrawStatRow(sb, rect, y, "dep", "MOUVEMENT", $"{c.MoveRange}", Palette.Cyan2);
-        DrawStatRow(sb, rect, y, "tir", "PORTEE", $"{c.AttackRange}", Palette.Yellow2);
+        y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), $"{c.Damage}", Palette.Brown3);
+        y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), $"{c.MoveRange}", Palette.Cyan2);
+        DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), $"{c.AttackRange}", Palette.Yellow2);
 
         // Liste des mots-clés en bas de carte (séparés par « | »), détaillés dans les popups.
         var keywords = KeywordsFor(c);
@@ -1982,7 +1983,7 @@ public sealed class GameplayScene : Scene
     }
 
     private string CombatTitle() =>
-        _run.IsBossCombat ? "COMBAT DE BOSS" : $"COMBAT {_run.CombatNumber} / {Run.TotalCombats}";
+        _run.IsBossCombat ? Loc.T("combat.boss") : Loc.T("combat.number", _run.CombatNumber, Run.TotalCombats);
 
     /// <summary>
     /// Dessine un sprite à sa TAILLE NATIVE (jamais agrandi ni rétréci), centré dans
@@ -2101,8 +2102,8 @@ public sealed class GameplayScene : Scene
         var availW = viewport.Width - RightPanelWidth;   // zone des cartes, à GAUCHE du panneau
 
         sb.Begin(samplerState: SamplerState.PointClamp);
-        Context.Font.DrawCentered(sb, "RECRUTEMENT", new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, "CHOISIS UNE UNITE A REJOINDRE",
+        Context.Font.DrawCentered(sb, Loc.T("recruit.title"), new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, Loc.T("recruit.subtitle"),
             new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);
         for (var i = 0; i < _run.Draft.Count; i++)
             DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height));
@@ -2140,8 +2141,8 @@ public sealed class GameplayScene : Scene
     private void DrawArmyInventory(SpriteBatch sb, List<UnitSpec> army)
     {
         var x = PanelRect().X + PanelPad;
-        Context.Font.Draw(sb, "TON ARMEE", new Vector2(x, 34), 2, Palette.Yellow2);
-        Context.Font.Draw(sb, "INVENTAIRE", new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
+        Context.Font.Draw(sb, Loc.T("recruit.army"), new Vector2(x, 34), 2, Palette.Yellow2);
+        Context.Font.Draw(sb, Loc.T("placement.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
         for (var i = 0; i < army.Count; i++)
             DrawInventoryCard(sb, army[i], PanelCardRect(i));
     }
@@ -2189,15 +2190,15 @@ public sealed class GameplayScene : Scene
     private void DrawEndHud(SpriteBatch sb, Viewport viewport)
     {
         var victory = _run.Phase == RunPhase.Victory;
-        var title = victory ? "VICTOIRE" : "DEFAITE";
-        var sub = victory ? "BOSS VAINCU" : _defeatReason;
+        var title = victory ? Loc.T("end.victory") : Loc.T("end.defeat");
+        var sub = victory ? Loc.T("end.boss_defeated") : _defeatReason;
 
         Context.Font.DrawCentered(sb, title,
             new Rectangle(0, viewport.Height / 2 - 40, viewport.Width, 28), 4,
             victory ? Palette.Yellow2 : Palette.Purple5);
         Context.Font.DrawCentered(sb, sub,
             new Rectangle(0, viewport.Height / 2 + 4, viewport.Width, 12), 2, Palette.White);
-        Context.Font.DrawCentered(sb, "CLIC POUR REJOUER",
+        Context.Font.DrawCentered(sb, Loc.T("end.replay"),
             new Rectangle(0, viewport.Height / 2 + 36, viewport.Width, 12), 1, Palette.Blue1);
     }
 
@@ -2442,6 +2443,9 @@ public sealed class GameplayScene : Scene
                 break;
             case MenuAction.VolumeChanged:
                 Context.Audio.Apply();
+                Context.Saves.SaveSettings(Context.Settings);
+                break;
+            case MenuAction.LanguageChanged:
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
         }
