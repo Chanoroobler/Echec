@@ -4,10 +4,12 @@ using Echec.Core.Battle;
 using Echec.Core.Campaign;
 using Echec.Core.Map;
 using Echec.Engine;
+using Echec.Engine.Input;
 using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
 using Echec.Game.Dev;
+using Echec.Game.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -31,11 +33,11 @@ public sealed class GameplayScene : Scene
     private const float SpriteLiftFraction = 0.25f;
 
     // Panneau latéral droit (inventaire au placement, infos en combat).
-    private const int RightPanelWidth = 220;
+    private const int RightPanelWidth = 240;   // élargi pour 3 colonnes de portraits 64×64
     private const int PanelPad = 12;
-    // Inventaire en grille : portraits 64×64 NATIFS (jamais redimensionnés), 2 colonnes.
+    // Inventaire en grille : portraits 64×64 NATIFS (jamais redimensionnés), 3 colonnes.
     private const int InvIconSize = 64;
-    private const int InvCols = 2;
+    private const int InvCols = 3;
     private const int InvGapX = 8;
     private const int InvCellH = InvIconSize + 14; // portrait + libellé dessous
     private const int InvGapY = 6;
@@ -67,6 +69,15 @@ public sealed class GameplayScene : Scene
     private readonly SparkBurst _sparks = new();
     private bool _sparksEmitted;
 
+    // Recrutement : le panneau d'inventaire est VISIBLE pendant le choix (on voit son armée, hors
+    // commandant). À la sélection, le pion de la carte choisie VOLE vers son emplacement d'inventaire,
+    // puis on recrute et on passe au placement. _recruitChoice = unité en vol, _recruitFrom = départ.
+    private const float RecruitFlightDuration = 0.5f;
+    private UnitSpec? _recruitChoice;
+    private float _recruitHold;
+    private Vector2 _recruitFrom;
+    private int _recruitFocus;   // carte du draft sous le focus (navigation manette/surbrillance)
+
     // Sprites d'unités 64×64 chargés depuis Assets/Units/<asset>.png (null = pas d'asset → placeholder).
     private const string UnitAssetFolder = "Assets/Units";
     private readonly Dictionary<string, Texture2D?> _unitSprites = new();
@@ -91,6 +102,12 @@ public sealed class GameplayScene : Scene
     // Glisser-déposer du placement.
     private UnitSpec? _dragSpec;
     private Cell? _dragFrom; // origine si on déplace une unité déjà posée (null = vient de l'inventaire)
+
+    // Curseur de plateau (manette) : case visée. En placement, _gpInventory bascule le focus dans
+    // l'inventaire (sélection d'une unité à déployer) et _invFocus en est l'index.
+    private Cell _cursor = new(Columns / 2, Rows - 1);
+    private bool _gpInventory;
+    private int _invFocus;
 
     private Cell? _selected;
     // Buffers RÉUTILISÉS (remplis par les variantes sans-alloc du Match) : évitent une allocation
@@ -266,6 +283,10 @@ public sealed class GameplayScene : Scene
         ClearSelection();
         ResetCamera();
         _aiTimer = 0;
+        _recruitChoice = null;   // fin d'un éventuel vol de recrutement
+        _recruitHold = 0;
+        _cursor = new Cell(Columns / 2, Rows - 1);   // curseur manette sur la ligne du commandant
+        _gpInventory = false;
 
         var commander = _run.Commander;
         PlacePlayer(commander, new Cell(Columns / 2, Rows - 1));
@@ -356,7 +377,9 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        if (Context.Input.WasKeyPressed(Keys.Escape))
+        // Ouverture/fermeture : Échap (clavier) ou Start (manette). En manette, B referme aussi.
+        if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasMenuPressed
+            || (_pauseMenu.IsOpen && Context.Input.WasCancelPressed))
         {
             if (_pauseMenu.IsOpen) { _pauseMenu.Back(); Context.Sounds.Play("menu_close"); }
             else { _pauseMenu.Open(); Context.Sounds.Play("menu_open"); }
@@ -373,7 +396,7 @@ public sealed class GameplayScene : Scene
         {
             case RunPhase.Placement: UpdatePlacement(); break;
             case RunPhase.Battle: UpdateBattle(gameTime); break;
-            case RunPhase.Recruitment: UpdateRecruitment(); break;
+            case RunPhase.Recruitment: UpdateRecruitment(gameTime); break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
                 // Run terminée (slot déjà effacé) : un clic ramène au menu principal.
@@ -385,6 +408,9 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlacement()
     {
+        if (Context.Input.UsingGamepad)
+            UpdatePlacementGamepad();
+
         if (Context.Input.WasKeyPressed(Keys.Enter))
         {
             BeginBattle();
@@ -396,6 +422,86 @@ public sealed class GameplayScene : Scene
             BeginDrag(mouse);
         else if (Context.Input.WasLeftReleased && _dragSpec != null)
             EndDrag(mouse);
+    }
+
+    /// <summary>
+    /// Placement à la manette : curseur de case (croix), A saisir/poser, B annuler, RB inventaire,
+    /// Y lancer le combat. La saisie/dépose réutilise exactement la logique du glisser souris.
+    /// </summary>
+    private void UpdatePlacementGamepad()
+    {
+        if (Context.Input.WasQuaternaryPressed) { BeginBattle(); return; }   // Y = COMBATTRE
+
+        if (_gpInventory) { UpdateInventoryFocus(); return; }
+
+        MoveCursor();
+
+        // RB : terrain → inventaire (choisir une unité à déployer, si on n'en porte pas).
+        if (Context.Input.WasRightShoulderPressed && _dragSpec == null && _pending.Count > 0)
+        {
+            _gpInventory = true;
+            _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+            return;
+        }
+
+        if (Context.Input.WasConfirmPressed)
+        {
+            if (_dragSpec != null) EndDragAt(_cursor, overPanel: false);   // poser/échanger au curseur
+            else PickUpAt(_cursor);                                        // saisir l'unité sous le curseur
+        }
+        else if (Context.Input.WasCancelPressed && _dragSpec != null)
+        {
+            CancelDrag();
+        }
+    }
+
+    /// <summary>Focus inventaire (manette) : navigue la grille, A prend l'unité en main, B/RB sort.</summary>
+    private void UpdateInventoryFocus()
+    {
+        var n = _pending.Count;
+        if (n == 0) { _gpInventory = false; return; }
+        _invFocus = System.Math.Clamp(_invFocus, 0, n - 1);
+
+        if (Context.Input.Nav(NavDir.Left) && _invFocus % InvCols > 0) _invFocus--;
+        if (Context.Input.Nav(NavDir.Right) && _invFocus % InvCols < InvCols - 1 && _invFocus + 1 < n) _invFocus++;
+        if (Context.Input.Nav(NavDir.Up) && _invFocus - InvCols >= 0) _invFocus -= InvCols;
+        if (Context.Input.Nav(NavDir.Down) && _invFocus + InvCols < n) _invFocus += InvCols;
+
+        if (Context.Input.WasConfirmPressed)
+        {
+            _dragSpec = _pending[_invFocus];   // prise en main (comme la prise depuis l'inventaire à la souris)
+            _pending.RemoveAt(_invFocus);
+            _dragFrom = null;
+            _gpInventory = false;
+            Context.Sounds.Play("unit_pick");
+        }
+        else if (Context.Input.WasCancelPressed || Context.Input.WasLeftShoulderPressed)
+        {
+            _gpInventory = false;   // LB (ou B) : inventaire → terrain
+        }
+    }
+
+    /// <summary>Saisit l'unité joueur sous le curseur (retirée du plateau en attendant la pose).</summary>
+    private void PickUpAt(Cell cell)
+    {
+        if (_match.UnitAt(cell) is { Faction: Faction.Player } unit
+            && _playerSpec.TryGetValue(unit, out var spec))
+        {
+            _dragSpec = spec;
+            _dragFrom = cell;
+            _match.Remove(cell);
+            _playerSpec.Remove(unit);
+            Context.Sounds.Play("unit_pick");
+        }
+    }
+
+    /// <summary>Déplace le curseur de case à la croix directionnelle (borné au plateau).</summary>
+    private void MoveCursor()
+    {
+        if (Context.Input.Nav(NavDir.Up)) _cursor = new Cell(_cursor.Column, System.Math.Max(0, _cursor.Row - 1));
+        if (Context.Input.Nav(NavDir.Down)) _cursor = new Cell(_cursor.Column, System.Math.Min(Rows - 1, _cursor.Row + 1));
+        if (Context.Input.Nav(NavDir.Left)) _cursor = new Cell(System.Math.Max(0, _cursor.Column - 1), _cursor.Row);
+        if (Context.Input.Nav(NavDir.Right)) _cursor = new Cell(System.Math.Min(Columns - 1, _cursor.Column + 1), _cursor.Row);
     }
 
     private void BeginDrag(Point mouse)
@@ -423,10 +529,13 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    private void EndDrag(Point mouse)
+    private void EndDrag(Point mouse) => EndDragAt(CellUnderMouse(), IsOverPanel(mouse));
+
+    /// <summary>Dépose le pion porté sur <paramref name="cell"/> (ou à l'inventaire si
+    /// <paramref name="overPanel"/>). Logique partagée souris (glisser) et manette (A).</summary>
+    private void EndDragAt(Cell? cell, bool overPanel)
     {
         var spec = _dragSpec!;
-        var cell = CellUnderMouse();
 
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
             && !_battlefield[c].Terrain.BlocksMovement())
@@ -434,7 +543,22 @@ public sealed class GameplayScene : Scene
             PlacePlayer(spec, c);                       // pose / repositionne
             Context.Sounds.Play("unit_place");
         }
-        else if (!spec.Essential && IsOverPanel(mouse))
+        else if (cell is { } c2 && IsPlayerZone(c2) && !_battlefield[c2].Terrain.BlocksMovement()
+            && _match.UnitAt(c2) is { Faction: Faction.Player } occupant
+            && (!occupant.IsEssential || _dragFrom is not null)   // commandant : échange OK depuis le plateau, jamais depuis l'inventaire
+            && _playerSpec.TryGetValue(occupant, out var occSpec))
+        {
+            // Case occupée par une de nos unités : on intervertit les deux pièces.
+            _match.Remove(c2);
+            _playerSpec.Remove(occupant);
+            PlacePlayer(spec, c2);                      // la pièce portée prend la place
+            if (_dragFrom is { } src)
+                PlacePlayer(occSpec, src);              // l'occupant rejoint la case d'origine
+            else
+                _pending.Add(occSpec);                  // pièce prise dans l'inventaire : l'occupant y retourne
+            Context.Sounds.Play("unit_place");
+        }
+        else if (!spec.Essential && overPanel)
         {
             _pending.Add(spec);                         // retour à l'inventaire (jamais le commandant)
             Context.Sounds.Play("unit_pick");
@@ -523,6 +647,7 @@ public sealed class GameplayScene : Scene
         }
 
         ClearSelection();
+        _recruitFocus = 0;   // focus manette sur la première carte du draft
 
         // Repère sonore de fin : campagne gagnée/perdue, ou combat remporté (→ recrutement).
         if (_run.Phase == RunPhase.Victory) Context.Sounds.Play("victory");
@@ -539,6 +664,19 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlayerTurn()
     {
+        // Manette : curseur de case, A agit (sélectionne / déplace / attaque), B désélectionne.
+        if (Context.Input.UsingGamepad)
+        {
+            MoveCursor();
+            if (Context.Input.WasConfirmPressed) { CombatActAt(_cursor); return; }
+            if (Context.Input.WasCancelPressed && _selected is not null)
+            {
+                ClearSelection();
+                Context.Sounds.Play("unit_deselect");
+                return;
+            }
+        }
+
         // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place).
         if (Context.Input.WasRightClicked && (_selected is not null || _combatDragFrom is not null))
         {
@@ -552,6 +690,43 @@ public sealed class GameplayScene : Scene
             BeginCombatInteraction();
         else if (Context.Input.WasLeftReleased && _combatDragFrom is not null)
             DropCarriedUnit();
+    }
+
+    /// <summary>
+    /// Action de combat à la manette sur <paramref name="cell"/> (clic-pour-agir, sans glisser) :
+    /// attaque une cible à portée, sinon déplacement légal, sinon (dé)sélection d'un pion joueur.
+    /// </summary>
+    private void CombatActAt(Cell cell)
+    {
+        if (_selected is { } sel && _attackTargets.Contains(cell))
+        {
+            ResolveAttack(sel, cell);
+            EndPlayerAction();
+            return;
+        }
+        if (_selected is { } sel2 && _legalMoves.Contains(cell))
+        {
+            _match.TryMove(sel2, cell);
+            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, sel2, cell);
+            TriggerLanding(cell);
+            Context.Sounds.Play("unit_move");
+            EndPlayerAction();
+            return;
+        }
+
+        if (_match.UnitAt(cell) is { Faction: Faction.Player })
+        {
+            _selected = cell;
+            _match.LegalMoves(cell, _legalMoves);
+            _match.AttackTargets(cell, _attackTargets);
+            _match.ThreatenedCells(cell, _attackReach);
+            Context.Sounds.Play("unit_select");
+        }
+        else
+        {
+            if (_selected is not null) Context.Sounds.Play("unit_deselect");
+            ClearSelection();
+        }
     }
 
     /// <summary>
@@ -668,23 +843,65 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    private void UpdateRecruitment()
+    private void UpdateRecruitment(GameTime gameTime)
     {
-        if (!Context.Input.WasLeftClicked)
+        var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _sparks.Update(dt);
+
+        // Vol en cours : le pion choisi rejoint le panneau d'inventaire, puis on recrute et on place.
+        if (_recruitChoice is { } choice)
+        {
+            _recruitHold -= dt;
+            if (_recruitHold <= 0f)
+            {
+                _run.Recruit(choice);    // BeginPlacement remet _recruitChoice à null
+                BeginPlacement();
+            }
             return;
+        }
 
         var viewport = VirtualViewport;
+        var availW = viewport.Width - RightPanelWidth;   // cartes centrées à GAUCHE du panneau
+        var count = _run.Draft.Count;
+        if (count == 0)
+            return;
+        _recruitFocus = System.Math.Clamp(_recruitFocus, 0, count - 1);
+
+        // Manette : navigation gauche/droite (cyclique) + validation sur la carte focus.
+        if (Context.Input.Nav(NavDir.Left)) _recruitFocus = (_recruitFocus - 1 + count) % count;
+        if (Context.Input.Nav(NavDir.Right)) _recruitFocus = (_recruitFocus + 1) % count;
+        if (Context.Input.WasConfirmPressed) { SelectRecruit(_recruitFocus, availW, viewport.Height); return; }
+
+        // Souris : le survol fixe le focus, le clic sélectionne.
         var mouse = Context.Input.MousePosition;
-        for (var i = 0; i < _run.Draft.Count; i++)
+        for (var i = 0; i < count; i++)
         {
-            if (DraftCardRect(i, _run.Draft.Count, viewport.Width, viewport.Height).Contains(mouse))
+            if (DraftCardRect(i, count, availW, viewport.Height).Contains(mouse))
             {
-                _run.Recruit(_run.Draft[i]);
-                Context.Sounds.Play("recruit");
-                BeginPlacement();
+                _recruitFocus = i;
+                if (Context.Input.WasLeftClicked) SelectRecruit(i, availW, viewport.Height);
                 return;
             }
         }
+    }
+
+    /// <summary>Lance le vol de recrutement de la carte <paramref name="index"/> vers l'inventaire.</summary>
+    private void SelectRecruit(int index, int availW, int vpH)
+    {
+        var rect = DraftCardRect(index, _run.Draft.Count, availW, vpH);
+        _recruitChoice = _run.Draft[index];
+        _recruitHold = RecruitFlightDuration;
+        // Départ du vol = centre du sprite de la carte (cf. disposition dans DrawCardLayout).
+        _recruitFrom = new Vector2(rect.X + rect.Width / 2f, rect.Y + CardPad + 22 + 32);
+        Context.Sounds.Play("recruit");
+        EmitRecruitSparks();
+    }
+
+    /// <summary>Gerbe d'étincelles dorée au décollage du sprite recruté (point de départ du vol).</summary>
+    private void EmitRecruitSparks()
+    {
+        _sparks.Emit(_recruitFrom, new Vector2(0, -1), count: 70,
+            new Color(245, 216, 147), new Color(255, 255, 255), pixel: 4f);
     }
 
     private void ClearSelection()
@@ -848,8 +1065,12 @@ public sealed class GameplayScene : Scene
                 DrawDeploymentZone(sb, board);
                 DrawEnemyThreat(sb, board);
                 DrawUnits(sb, board);
+                DrawCarriedAtCursor(sb, board);          // pion porté AU-DESSUS des pièces
+                DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
                 DrawPanelBackground(sb);
                 DrawPlacementPanel(sb);
+                DrawInventoryFocusHighlight(sb);
+                DrawPlacementPreview(sb);
                 DrawDragGhost(sb);
                 sb.End();
                 break;
@@ -859,6 +1080,7 @@ public sealed class GameplayScene : Scene
                 DrawEnemyThreat(sb, board);
                 DrawUnits(sb, board);
                 DrawCarriedUnit(sb, board);
+                DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
                 sb.End();
 
                 if (_fx.Active)             // dissolution / attaquant animé / flash : passes dédiées
@@ -879,8 +1101,9 @@ public sealed class GameplayScene : Scene
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawUnits(sb, board);
                 DrawDim(sb, viewport);
-                DrawRecruitment(sb, viewport);
                 sb.End();
+                DrawRecruitment(sb, viewport);     // gère son propre batch (panneau + cartes + vol)
+                _sparks.Draw(sb, Context.Pixel);   // gerbe au décollage du pion recruté
                 break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
@@ -900,9 +1123,14 @@ public sealed class GameplayScene : Scene
         }
         else if (_pauseMenu.IsOpen)
         {
+            // En manette : pointeur synthétique = centre de l'élément focus → réutilise la surbrillance
+            // de survol existante. En souris : vraie position.
+            var gp = Context.Input.UsingGamepad;
+            var focusRect = _pauseMenu.FocusedRect(viewport.Width, viewport.Height);
+            var pointer = gp ? focusRect.Center.ToVector2() : Context.Input.MousePosition.ToVector2();
             sb.Begin(samplerState: SamplerState.PointClamp);
             _pauseRenderer.Draw(sb, _pauseMenu, viewport.Width, viewport.Height,
-                Context.Input.MousePosition.ToVector2(), Context.Input.IsLeftDown);
+                pointer, gp ? false : Context.Input.IsLeftDown, gp ? focusRect : null);
             sb.End();
         }
     }
@@ -1045,7 +1273,8 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawEnemyThreat(SpriteBatch sb, GridLayout layout)
     {
-        if (Context.Input.IsKeyDown(Keys.Space))
+        // Espace (clavier) ou gâchette droite (manette) maintenu : toutes les zones de danger.
+        if (Context.Input.IsKeyDown(Keys.Space) || Context.Input.IsRightTriggerDown)
         {
             foreach (var (cell, unit) in _match.Units())
             {
@@ -1058,7 +1287,9 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        if (CellUnderMouse() is not { } hovered || _match.UnitAt(hovered) is not { Faction: Faction.Enemy })
+        // Case survolée : curseur en manette, souris sinon.
+        var probe = Context.Input.UsingGamepad ? (Cell?)_cursor : CellUnderMouse();
+        if (probe is not { } hovered || _match.UnitAt(hovered) is not { Faction: Faction.Enemy })
             return;
 
         _match.ThreatenedCells(hovered, _threatCells);  // buffer réutilisé (pas d'allocation par frame)
@@ -1388,9 +1619,69 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < _pending.Count; i++)
             DrawInventoryCard(sb, _pending[i], PanelCardRect(i));
 
-        var bottom = panel.Height - 44;
-        Context.Font.Draw(sb, "GLISSER POUR PLACER", new Vector2(x, bottom), 1, Palette.Blue1);
-        Context.Font.Draw(sb, "ENTREE : COMBATTRE", new Vector2(x, bottom + 16), 1, Palette.Cyan1);
+        // Aide JUSTE SOUS l'inventaire (et non collée au bas du panneau).
+        var rows = System.Math.Max(1, (_pending.Count + InvCols - 1) / InvCols);
+        var hintY = PanelListTop + rows * (InvCellH + InvGapY) + 12;
+        if (Context.Input.UsingGamepad)
+        {
+            var line1 = _gpInventory ? "A PRENDRE  LB TERRAIN" : "A SELECTIONNER  RB INVENTAIRE";
+            Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
+            Context.Font.Draw(sb, "Y : COMBATTRE", new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+        }
+        else
+        {
+            Context.Font.Draw(sb, "GLISSER POUR PLACER", new Vector2(x, hintY), 1, Palette.Blue1);
+            Context.Font.Draw(sb, "ENTREE : COMBATTRE", new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+        }
+    }
+
+    /// <summary>
+    /// Aperçu au survol en placement (hors glisser) : affiche la carte complète À GAUCHE du panneau
+    /// d'inventaire, pour un portrait d'inventaire OU une pièce déjà posée sur le plateau.
+    /// </summary>
+    private void DrawPlacementPreview(SpriteBatch sb)
+    {
+        if (_dragSpec != null)
+            return;
+
+        // Cible de l'aperçu : en manette, slot d'inventaire focus ou case du curseur ; sinon souris.
+        if (Context.Input.UsingGamepad)
+        {
+            if (_gpInventory && _pending.Count > 0)
+            {
+                var spec = _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)];
+                DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine,
+                    spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
+            }
+            else if (!_gpInventory && _match.UnitAt(_cursor) is { } cu)
+                DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp);
+            return;
+        }
+
+        var mouse = Context.Input.MousePosition;
+
+        // Priorité : portrait survolé dans l'inventaire (PV pleins, unité neuve).
+        if (PanelCardAt(mouse) is { } i)
+        {
+            var spec = _pending[i];
+            DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine,
+                spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
+            return;
+        }
+
+        // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé).
+        if (CellUnderMouse() is { } cell && _match.UnitAt(cell) is { } unit)
+            DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp);
+    }
+
+    /// <summary>Carte d'aperçu placée juste à GAUCHE du panneau d'inventaire (espace libre).</summary>
+    private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp)
+    {
+        var vp = VirtualViewport;
+        var x = PanelRect().X - CombatCardGap - CombatCardW;
+        var rect = new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp);
+        DrawKeywordPopupsBelow(sb, c, rect);
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
@@ -1403,8 +1694,8 @@ public sealed class GameplayScene : Scene
 
     // ── Cartes de combat (remplacent l'ancien panneau de droite) ──────────────────
     // Réutilisent le gabarit des cartes de recrutement ; le contenu sera retravaillé plus tard.
-    private const int CombatCardW = 180;
-    private const int CombatCardH = 200;
+    private const int CombatCardW = 200;
+    private const int CombatCardH = 330;
     private const int CombatCardGap = 24;
 
     /// <summary>
@@ -1414,7 +1705,8 @@ public sealed class GameplayScene : Scene
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
         var board = BoardRect(layout);
-        var hovered = CellUnderMouse();
+        // En manette, la « case survolée » est celle du curseur ; sinon celle sous la souris.
+        var hovered = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
 
         // Carte de NOTRE pion (à droite) : l'unité sélectionnée tant qu'elle l'est ; sinon le pion
         // joueur survolé.
@@ -1446,25 +1738,233 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Carte d'une unité du plateau, dans son ÉTAT COURANT (PV actuels). Calquée sur la carte de
-    /// recrutement (<see cref="DrawDraftCard"/>) — la mise en forme sera retravaillée plus tard.
+    /// Carte d'une unité du plateau, dans son ÉTAT COURANT (PV actuels). Les popups de mots-clés
+    /// descendent SOUS la carte (à droite de l'écran ils seraient coupés par le bord).
     /// </summary>
     private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect)
     {
-        Context.Style.DrawPanel(sb, rect);
         var c = unit.Class;
+        DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp);
+        DrawKeywordPopupsBelow(sb, c, rect);
+    }
 
-        var icon = new Rectangle(rect.X + (rect.Width - 64) / 2, rect.Y + 12, 64, 64);
-        DrawChip(sb, c, unit.Faction, icon, front: true);
+    // ── Mise en forme commune des cartes (combat + recrutement) ──────────────────
+    private const int CardPad = 12;
 
+    /// <summary>
+    /// Corps d'une carte d'unité : sprite, icône de domaine (39×39), barre de PV (1 carré = 1 PV)
+    /// + « pv/max », puis les caractéristiques (icône 32×32 + libellé + valeur). Les mots-clés sont
+    /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
+    /// </summary>
+    private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
+        Domaine domaine, int hp, int maxHp)
+    {
+        Context.Style.DrawPanel(sb, rect);
+        var y = rect.Y + CardPad;
+
+        // Titre : nom de l'unité.
         Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
-            new Rectangle(rect.X, icon.Bottom + 6, rect.Width, 14), 2, Palette.White);
-        Context.Font.DrawCentered(sb, $"DOM {unit.Domaine}".ToUpperInvariant(),
-            new Rectangle(rect.X, icon.Bottom + 26, rect.Width, 10), 1, Palette.Cyan1);
-        Context.Font.DrawCentered(sb, $"PV {unit.Hp}/{unit.MaxHp}   DEG {unit.Damage}",
-            new Rectangle(rect.X, icon.Bottom + 42, rect.Width, 10), 1, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, $"DEP {unit.MoveRange}   TIR {unit.AttackRange}",
-            new Rectangle(rect.X, icon.Bottom + 58, rect.Width, 10), 1, Palette.Cyan2);
+            new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
+        y += 22;
+
+        // Sprite du pion (comme en jeu, de face).
+        var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
+        DrawChip(sb, c, faction, sprite, front: true);
+        y = sprite.Bottom + 6;
+
+        // Icône de domaine (39×39), centrée sous le pion.
+        var dom = new Rectangle(rect.X + (rect.Width - 39) / 2, y, 39, 39);
+        DrawDomaineIcon(sb, domaine, dom);
+        y = dom.Bottom + 10;
+
+        // Barre de PV (une rangée, carrés ajustés à la largeur) + texte « pv/max ».
+        var barRect = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
+        DrawHpBar(sb, barRect, hp, maxHp);
+        y = barRect.Bottom + 2;
+        Context.Font.DrawCentered(sb, $"{hp}/{maxHp}",
+            new Rectangle(rect.X, y, rect.Width, 8), 1, Palette.White);
+        y += 14;
+
+        // Caractéristiques : icône 32×32 + libellé + valeur.
+        // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
+        y = DrawStatRow(sb, rect, y, "deg", "PUISSANCE", $"{c.Damage}", Palette.Brown3);
+        y = DrawStatRow(sb, rect, y, "dep", "MOUVEMENT", $"{c.MoveRange}", Palette.Cyan2);
+        DrawStatRow(sb, rect, y, "tir", "PORTEE", $"{c.AttackRange}", Palette.Yellow2);
+
+        // Liste des mots-clés en bas de carte (séparés par « | »), détaillés dans les popups.
+        var keywords = KeywordsFor(c);
+        if (keywords.Count > 0)
+        {
+            var joined = string.Join(" | ", keywords.Select(k => k.Label));
+            var lines = WrapText(joined, rect.Width - 2 * CardPad, 1);
+            var ty = rect.Bottom - CardPad - lines.Count * 9;
+            foreach (var line in lines)
+            {
+                Context.Font.DrawCentered(sb, line, new Rectangle(rect.X, ty, rect.Width, 8), 1, Palette.Yellow2);
+                ty += 9;
+            }
+        }
+    }
+
+    /// <summary>Une ligne de caractéristique : icône 32×32 à gauche, libellé, valeur alignée à droite.</summary>
+    private int DrawStatRow(SpriteBatch sb, Rectangle card, int y, string iconKey, string label,
+        string value, Color valueColor)
+    {
+        const int iconSize = 32;
+        var icon = new Rectangle(card.X + CardPad, y, iconSize, iconSize);
+        DrawStatIcon(sb, iconKey, icon, valueColor);
+
+        // Libellé + valeur centrés verticalement sur la hauteur de l'icône.
+        var rowH = new Rectangle(icon.Right + 8, y, card.Right - CardPad - (icon.Right + 8), iconSize);
+        Context.Font.Draw(sb, label,
+            new Vector2(rowH.X, rowH.Y + (iconSize - 7 * 2) / 2), 2, Palette.Blue1);
+        var vw = Context.Font.Measure(value, 2);
+        Context.Font.Draw(sb, value,
+            new Vector2(rowH.Right - vw, rowH.Y + (iconSize - 7 * 2) / 2), 2, valueColor);
+        return y + iconSize + 4;
+    }
+
+    /// <summary>
+    /// Barre de PV : la barre occupe TOUTE la zone (taille fixe, hauteur indépendante du nombre de PV)
+    /// et se découpe en un segment par point de vie. PV restants = rouge, PV manquants = rouge foncé.
+    /// </summary>
+    private void DrawHpBar(SpriteBatch sb, Rectangle area, int hp, int maxHp)
+    {
+        if (maxHp <= 0)
+            return;
+
+        const int gap = 1;
+        // Bornes PARTAGÉES entre segments voisins : on arrondit une seule fois chaque frontière, puis
+        // on retire 1 px à droite pour l'espace. Gap toujours constant, largeurs à ±1 px près.
+        for (var i = 0; i < maxHp; i++)
+        {
+            var left = area.X + (int)System.Math.Round((double)i * area.Width / maxHp);
+            var right = area.X + (int)System.Math.Round((double)(i + 1) * area.Width / maxHp);
+            var w = System.Math.Max(1, right - left - (i < maxHp - 1 ? gap : 0));
+            DrawRect(sb, new Rectangle(left, area.Y, w, area.Height), i < hp ? Palette.Purple5 : Palette.Purple2);
+        }
+    }
+
+    // ── Icônes (placeholders dessinés ; brancher un PNG = déposer le fichier nommé ci-dessous) ───
+    private readonly Dictionary<string, Texture2D?> _iconSprites = new();
+
+    /// <summary>PNG d'icône dans Assets/Icons (mis en cache), ou null s'il est absent.</summary>
+    private Texture2D? IconOrNull(string fileName)
+    {
+        if (!_iconSprites.TryGetValue(fileName, out var sprite))
+        {
+            sprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath($"Assets/Icons/{fileName}.png"));
+            _iconSprites[fileName] = sprite;
+        }
+        return sprite;
+    }
+
+    /// <summary>Icône de domaine 39×39. PNG <c>Assets/Icons/domaine_&lt;domaine&gt;.png</c> si présent, sinon placeholder.</summary>
+    private void DrawDomaineIcon(SpriteBatch sb, Domaine domaine, Rectangle area)
+    {
+        if (IconOrNull($"domaine_{domaine}".ToLowerInvariant()) is { } png)
+        {
+            DrawSpriteFit(sb, png, area);
+            return;
+        }
+        // Placeholder : pastille colorée + initiale du domaine.
+        var color = domaine switch
+        {
+            Domaine.Pion => Palette.Cyan1,
+            Domaine.Fou => Palette.Brown2,
+            Domaine.Cavalier => Palette.Green1,
+            Domaine.Tour => Palette.Navy1,
+            Domaine.Dame => Palette.Yellow1,
+            _ => Palette.Grey,
+        };
+        DrawRect(sb, Inflate(area, 1), Palette.Black1);
+        DrawRect(sb, area, color);
+        Context.Font.DrawCentered(sb, domaine.ToString()[..1].ToUpperInvariant(), area, 2, Palette.Black1);
+    }
+
+    /// <summary>Icône de stat 32×32. PNG <c>Assets/Icons/stat_&lt;key&gt;.png</c> si présent, sinon placeholder.</summary>
+    private void DrawStatIcon(SpriteBatch sb, string key, Rectangle area, Color tint)
+    {
+        if (IconOrNull($"stat_{key}") is { } png)
+        {
+            DrawSpriteFit(sb, png, area);
+            return;
+        }
+        DrawRect(sb, Inflate(area, 1), Palette.Black1);
+        DrawRect(sb, area, Palette.Navy2);
+        Context.Font.DrawCentered(sb, key.ToUpperInvariant()[..1], area, 2, tint);
+    }
+
+    // ── Popups de mots-clés ──────────────────────────────────────────────────────
+
+    /// <summary>Mots-clés d'une classe : ses traits + « Traverse allié » si elle perce ses alliés.</summary>
+    private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c)
+    {
+        var list = new List<UnitKeywords.Keyword>();
+        foreach (var t in c.Traits)
+            list.Add(UnitKeywords.For(t));
+        if (c.PiercesAllies)
+            list.Add(UnitKeywords.PiercesAllies);
+        if (c.MinAttackRange > 1)
+            list.Add(UnitKeywords.DeadZone);
+        return list;
+    }
+
+    /// <summary>Popups permanents empilés SOUS la carte (évite la coupe au bord droit de l'écran).</summary>
+    private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card)
+        => DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width);
+
+    /// <summary>
+    /// Empile verticalement un popup par mot-clé depuis <paramref name="origin"/> : un panneau avec le
+    /// libellé (jaune) et la description en lignes repliées. Rien si l'unité n'a aucun mot-clé.
+    /// </summary>
+    private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width)
+    {
+        var keywords = KeywordsFor(c);
+        if (keywords.Count == 0)
+            return;
+
+        const int pad = 8, lineH = 9, gap = 8;
+        var y = origin.Y;
+        foreach (var kw in keywords)
+        {
+            var lines = WrapText(kw.Description, width - 2 * pad, 1);
+            var h = pad + 10 + lines.Count * lineH + pad;     // titre + lignes
+            var box = new Rectangle(origin.X, y, width, h);
+            Context.Style.DrawPanel(sb, box);
+
+            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
+            var ly = box.Y + pad + 11;
+            foreach (var line in lines)
+            {
+                Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
+                ly += lineH;
+            }
+            y += h + gap;
+        }
+    }
+
+    /// <summary>Découpe un texte en lignes tenant dans <paramref name="maxWidth"/> (coupe aux espaces).</summary>
+    private List<string> WrapText(string text, int maxWidth, int scale)
+    {
+        var lines = new List<string>();
+        var current = "";
+        foreach (var word in text.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (Context.Font.Measure(candidate, scale) > maxWidth && current.Length > 0)
+            {
+                lines.Add(current);
+                current = word;
+            }
+            else
+            {
+                current = candidate;
+            }
+        }
+        if (current.Length > 0)
+            lines.Add(current);
+        return lines;
     }
 
     /// <summary>
@@ -1521,7 +2021,8 @@ public sealed class GameplayScene : Scene
 
     private void DrawDragGhost(SpriteBatch sb)
     {
-        if (_dragSpec == null)
+        // En manette, le pion porté est dessiné sur la case du curseur (cf. DrawGamepadPlacementCursor).
+        if (_dragSpec == null || Context.Input.UsingGamepad)
             return;
 
         var m = Context.Input.MousePosition;
@@ -1529,37 +2030,156 @@ public sealed class GameplayScene : Scene
         DrawChip(sb, _dragSpec.UnitClass, Faction.Player, new Rectangle(m.X - s / 2, m.Y - s / 2, s, s));
     }
 
+    /// <summary>Curseur de case (manette) au placement — coins AU-DESSUS des pièces (toujours visible).</summary>
+    private void DrawGamepadPlacementCursor(SpriteBatch sb, GridLayout board)
+    {
+        if (!Context.Input.UsingGamepad || _gpInventory)
+            return;
+        DrawCursorCorners(sb, board, _cursor);
+    }
+
+    /// <summary>
+    /// Curseur dessiné en CROCHETS aux 4 coins de la case (au-dessus des pièces) : reste lisible même
+    /// sur un pion, sans le « barrer » comme un cadre plein. <see cref="Palette.Yellow2"/>.
+    /// </summary>
+    private void DrawCursorCorners(SpriteBatch sb, GridLayout board, Cell cell)
+    {
+        var top = board.CellToScreen(cell.Column, cell.Row);
+        int x = (int)top.X, y = (int)top.Y, s = board.TileSize;
+        int leg = System.Math.Max(6, s / 4), t = 2;   // longueur des branches, épaisseur
+        var c = Palette.Yellow2;
+
+        // Coin haut-gauche
+        DrawRect(sb, new Rectangle(x, y, leg, t), c);
+        DrawRect(sb, new Rectangle(x, y, t, leg), c);
+        // Coin haut-droit
+        DrawRect(sb, new Rectangle(x + s - leg, y, leg, t), c);
+        DrawRect(sb, new Rectangle(x + s - t, y, t, leg), c);
+        // Coin bas-gauche
+        DrawRect(sb, new Rectangle(x, y + s - t, leg, t), c);
+        DrawRect(sb, new Rectangle(x, y + s - leg, t, leg), c);
+        // Coin bas-droit
+        DrawRect(sb, new Rectangle(x + s - leg, y + s - t, leg, t), c);
+        DrawRect(sb, new Rectangle(x + s - t, y + s - leg, t, leg), c);
+    }
+
+    /// <summary>Pion porté affiché sur la case du curseur — dessiné AU-DESSUS des pièces.</summary>
+    private void DrawCarriedAtCursor(SpriteBatch sb, GridLayout board)
+    {
+        if (!Context.Input.UsingGamepad || _gpInventory || _dragSpec == null)
+            return;
+        var top = board.CellToScreen(_cursor.Column, _cursor.Row);
+        DrawChip(sb, _dragSpec.UnitClass, Faction.Player,
+            new Rectangle((int)top.X, (int)top.Y, board.TileSize, board.TileSize));
+    }
+
+    /// <summary>Surbrillance du slot d'inventaire sous le focus manette (sous-mode inventaire).</summary>
+    private void DrawInventoryFocusHighlight(SpriteBatch sb)
+    {
+        if (!Context.Input.UsingGamepad || !_gpInventory || _pending.Count == 0)
+            return;
+
+        var i = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+        var icon = PanelCardRect(i);
+        // Cadre englobant l'icône ET le nom dessous (cf. DrawInventoryCard : nom large + 12 px sous l'icône).
+        var frame = new Rectangle(icon.X - InvGapX / 2, icon.Y, icon.Width + InvGapX, icon.Height + 14);
+        DrawRectBorder(sb, Inflate(frame, 3), Palette.Yellow2, 3);
+    }
+
+    /// <summary>Curseur de case (manette) en combat, au tour du joueur — coins au-dessus des pièces.</summary>
+    private void DrawGamepadBattleCursor(SpriteBatch sb, GridLayout board)
+    {
+        if (!Context.Input.UsingGamepad || _match.CurrentTurn != Faction.Player)
+            return;
+
+        DrawCursorCorners(sb, board, _cursor);
+    }
+
     private void DrawRecruitment(SpriteBatch sb, Viewport viewport)
     {
-        Context.Font.DrawCentered(sb, "RECRUTEMENT", new Rectangle(0, 60, viewport.Width, 24), 3, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, "CHOISIS UNE UNITE A REJOINDRE",
-            new Rectangle(0, 100, viewport.Width, 12), 1, Palette.Blue1);
+        var army = ArmyMinusCommander();
+        var availW = viewport.Width - RightPanelWidth;   // zone des cartes, à GAUCHE du panneau
 
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Font.DrawCentered(sb, "RECRUTEMENT", new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, "CHOISIS UNE UNITE A REJOINDRE",
+            new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);
         for (var i = 0; i < _run.Draft.Count; i++)
-            DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, viewport.Width, viewport.Height));
+            DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height));
+
+        // Surbrillance de la carte FOCUS (souris ou manette) — sauf pendant le vol de sélection.
+        if (_recruitChoice == null && _run.Draft.Count > 0)
+        {
+            var fi = System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1);
+            var fr = DraftCardRect(fi, _run.Draft.Count, availW, viewport.Height);
+            DrawRectBorder(sb, Inflate(fr, 3), Palette.Yellow2, 3);
+        }
+
+        // Panneau d'inventaire (à droite) : ton armée actuelle, hors commandant.
+        DrawPanelBackground(sb);
+        DrawArmyInventory(sb, army);
+        sb.End();
+
+        // Pion de la carte choisie en vol vers son emplacement d'inventaire (par-dessus le reste).
+        if (_recruitChoice is { } choice)
+            DrawRecruitFlight(sb, choice, army.Count);   // nouveau slot = à la suite de l'armée
+    }
+
+    /// <summary>L'armée actuelle hors commandant — affichée dans le panneau d'inventaire au recrutement.</summary>
+    private List<UnitSpec> ArmyMinusCommander()
+    {
+        var commander = _run.Commander;
+        var army = new List<UnitSpec>();
+        foreach (var spec in _run.Roster)
+            if (spec != commander)
+                army.Add(spec);
+        return army;
+    }
+
+    /// <summary>Contenu du panneau d'inventaire au recrutement : titre + portraits de l'armée.</summary>
+    private void DrawArmyInventory(SpriteBatch sb, List<UnitSpec> army)
+    {
+        var x = PanelRect().X + PanelPad;
+        Context.Font.Draw(sb, "TON ARMEE", new Vector2(x, 34), 2, Palette.Yellow2);
+        Context.Font.Draw(sb, "INVENTAIRE", new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
+        for (var i = 0; i < army.Count; i++)
+            DrawInventoryCard(sb, army[i], PanelCardRect(i));
+    }
+
+    /// <summary>
+    /// Pion recruté qui vole de sa carte (<see cref="_recruitFrom"/>) vers son emplacement d'inventaire
+    /// (slot <paramref name="slotIndex"/>) — translation pure 64×64 (pixel-perfect), avec accélération.
+    /// </summary>
+    private void DrawRecruitFlight(SpriteBatch sb, UnitSpec choice, int slotIndex)
+    {
+        var t = MathHelper.Clamp(1f - _recruitHold / RecruitFlightDuration, 0f, 1f);
+        var ease = t * t;
+        var slot = PanelCardRect(slotIndex);
+        var target = new Vector2(slot.X + slot.Width / 2f, slot.Y + slot.Height / 2f);
+        var pos = Vector2.Lerp(_recruitFrom, target, ease);
+        var dest = new Rectangle((int)(pos.X - InvIconSize / 2f), (int)(pos.Y - InvIconSize / 2f),
+            InvIconSize, InvIconSize);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        if (SpriteFor(choice.UnitClass, Faction.Player, front: true) is { } sprite)
+            sb.Draw(sprite, dest, Color.White);
+        else
+            DrawChip(sb, choice.UnitClass, Faction.Player, dest, front: true);
+        sb.End();
     }
 
     private void DrawDraftCard(SpriteBatch sb, UnitSpec spec, Rectangle rect)
     {
-        Context.Style.DrawPanel(sb, rect);
         var c = spec.UnitClass;
-
-        var icon = new Rectangle(rect.X + (rect.Width - 64) / 2, rect.Y + 12, 64, 64);
-        DrawChip(sb, c, Faction.Player, icon, front: true);   // recrutement : portrait de FACE
-
-        Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
-            new Rectangle(rect.X, icon.Bottom + 6, rect.Width, 14), 2, Palette.White);
-        Context.Font.DrawCentered(sb, $"DOM {spec.Domaine}".ToUpperInvariant(),
-            new Rectangle(rect.X, icon.Bottom + 26, rect.Width, 10), 1, Palette.Cyan1);
-        Context.Font.DrawCentered(sb, $"PV {c.MaxHp}   DEG {c.Damage}",
-            new Rectangle(rect.X, icon.Bottom + 42, rect.Width, 10), 1, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, $"DEP {c.MoveRange}   TIR {c.AttackRange}",
-            new Rectangle(rect.X, icon.Bottom + 56, rect.Width, 10), 1, Palette.Cyan2);
+        // Recrutement : portrait de FACE, PV pleins (l'unité est neuve).
+        DrawCardLayout(sb, rect, c, Faction.Player, spec.Domaine, c.MaxHp, c.MaxHp);
+        // Cartes côte à côte : les popups descendent SOUS la carte (pas sur le côté).
+        DrawKeywordPopupsBelow(sb, c, rect);
     }
 
     private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH)
     {
-        const int cardW = 180, cardH = 190, gap = 28;
+        const int cardW = 200, cardH = 330, gap = 28;
         var total = count * cardW + (count - 1) * gap;     // centré sur le NOMBRE réel de cartes (peut être < 3)
         var x0 = (vpW - total) / 2;
         var y = (vpH - cardH) / 2 + 20;
@@ -1784,13 +2404,28 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePauseMenu()
     {
-        if (!Context.Input.WasLeftClicked)
-            return;
-
-        Context.Sounds.Play("menu_click");
-
         var viewport = VirtualViewport;
-        var action = _pauseMenu.HandleClick(Context.Input.MousePosition, viewport.Width, viewport.Height);
+        var action = MenuAction.None;
+
+        // Manette : navigation au focus (haut/bas), réglages (gauche/droite), A = valider.
+        if (Context.Input.Nav(NavDir.Up)) { _pauseMenu.MoveFocus(-1); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Down)) { _pauseMenu.MoveFocus(+1); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Left)) action = _pauseMenu.AdjustFocused(-1);
+        if (Context.Input.Nav(NavDir.Right)) action = _pauseMenu.AdjustFocused(+1);
+        if (Context.Input.WasConfirmPressed) { Context.Sounds.Play("menu_click"); action = _pauseMenu.ActivateFocused(); }
+
+        // Souris : clic direct.
+        if (Context.Input.WasLeftClicked)
+        {
+            Context.Sounds.Play("menu_click");
+            action = _pauseMenu.HandleClick(Context.Input.MousePosition, viewport.Width, viewport.Height);
+        }
+
+        ApplyMenuAction(action);
+    }
+
+    private void ApplyMenuAction(MenuAction action)
+    {
         switch (action)
         {
             case MenuAction.MainMenu:

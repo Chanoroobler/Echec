@@ -28,7 +28,12 @@ public sealed class PauseMenuRenderer
         _style = style;
     }
 
-    public void Draw(SpriteBatch sb, PauseMenu menu, int vpW, int vpH, Vector2 pointer, bool pointerDown)
+    /// <summary>
+    /// <paramref name="focus"/> : ligne sous le focus manette. Les boutons de cette ligne (‹ ›,
+    /// bascule, RETOUR…) s'allument comme au survol (null en souris : le survol suffit).
+    /// </summary>
+    public void Draw(SpriteBatch sb, PauseMenu menu, int vpW, int vpH, Vector2 pointer, bool pointerDown,
+        Rectangle? focus = null)
     {
         var p = pointer.ToPoint();
         sb.Draw(_pixel, new Rectangle(0, 0, vpW, vpH), Overlay);
@@ -39,52 +44,54 @@ public sealed class PauseMenuRenderer
         if (menu.Panel == MenuPanel.Root)
         {
             _font.DrawCentered(sb, "PAUSE", l.Title, 2, TitleColor);
-            Button(sb, l.Resume, "REPRENDRE", p, pointerDown);
-            Button(sb, l.Options, "OPTIONS", p, pointerDown);
-            Button(sb, l.MainMenu, "MENU PRINCIPAL", p, pointerDown);
-            Button(sb, l.Quit, "QUITTER", p, pointerDown);
+            Button(sb, l.Resume, "REPRENDRE", p, pointerDown, focus);
+            Button(sb, l.Options, "OPTIONS", p, pointerDown, focus);
+            Button(sb, l.MainMenu, "MENU PRINCIPAL", p, pointerDown, focus);
+            Button(sb, l.Quit, "QUITTER", p, pointerDown, focus);
         }
         else
         {
             _font.DrawCentered(sb, "OPTIONS", l.Title, 2, TitleColor);
 
             Label(sb, l.ResRow, "RESOLUTION");
-            Stepper(sb, l.ResLeft, l.ResValue, l.ResRight, menu.ResolutionText, p, pointerDown);
+            Stepper(sb, l.ResLeft, l.ResValue, l.ResRight, menu.ResolutionText, p, pointerDown, focus);
 
             Label(sb, l.FsRow, "PLEIN ECRAN");
-            Button(sb, l.FsToggle, menu.FullscreenText, p, pointerDown);
+            Button(sb, l.FsToggle, menu.FullscreenText, p, pointerDown, focus);
 
             Label(sb, l.BdRow, "SANS BORDURE");
-            Button(sb, l.BdToggle, menu.BorderlessText, p, pointerDown);
+            Button(sb, l.BdToggle, menu.BorderlessText, p, pointerDown, focus);
 
             Label(sb, l.MasterRow, "VOLUME GLOBAL");
-            Stepper(sb, l.MasterLeft, l.MasterValue, l.MasterRight, menu.MasterVolumeText, p, pointerDown);
+            Stepper(sb, l.MasterLeft, l.MasterValue, l.MasterRight, menu.MasterVolumeText, p, pointerDown, focus);
 
             Label(sb, l.MusicRow, "VOLUME MUSIQUE");
-            Stepper(sb, l.MusicLeft, l.MusicValue, l.MusicRight, menu.MusicVolumeText, p, pointerDown);
+            Stepper(sb, l.MusicLeft, l.MusicValue, l.MusicRight, menu.MusicVolumeText, p, pointerDown, focus);
 
             Label(sb, l.SfxRow, "VOLUME EFFETS");
-            Stepper(sb, l.SfxLeft, l.SfxValue, l.SfxRight, menu.SfxVolumeText, p, pointerDown);
+            Stepper(sb, l.SfxLeft, l.SfxValue, l.SfxRight, menu.SfxVolumeText, p, pointerDown, focus);
 
-            Button(sb, l.Back, "RETOUR", p, pointerDown);
+            Button(sb, l.Back, "RETOUR", p, pointerDown, focus);
         }
     }
 
-    private void Button(SpriteBatch sb, Rectangle r, string label, Point pointer, bool pointerDown)
+    private void Button(SpriteBatch sb, Rectangle r, string label, Point pointer, bool pointerDown,
+        Rectangle? focus = null)
     {
-        bool hover = r.Contains(pointer);
+        // Survol souris OU bouton appartenant à la ligne sous le focus manette.
+        bool hover = r.Contains(pointer) || (focus?.Contains(r.Center) ?? false);
         int dy = _style.DrawButton(sb, r, UiStyle.StateOf(hover, pointerDown));
         var area = r; area.Offset(0, dy);
         _font.DrawCentered(sb, label, area, 1, Text);
     }
 
     private void Stepper(SpriteBatch sb, Rectangle left, Rectangle value, Rectangle right,
-        string text, Point pointer, bool pointerDown)
+        string text, Point pointer, bool pointerDown, Rectangle? focus = null)
     {
-        Button(sb, left, "<", pointer, pointerDown);
+        Button(sb, left, "<", pointer, pointerDown, focus);
         _style.DrawRecessed(sb, value);
         _font.DrawCentered(sb, text, value, 1, Text);
-        Button(sb, right, ">", pointer, pointerDown);
+        Button(sb, right, ">", pointer, pointerDown, focus);
     }
 
     /// <summary>Libellé d'une ligne d'option, aligné à gauche et centré verticalement.</summary>

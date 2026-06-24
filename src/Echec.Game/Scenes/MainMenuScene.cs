@@ -1,5 +1,6 @@
 using Echec.Core.Campaign;
 using Echec.Engine;
+using Echec.Engine.Input;
 using Echec.Engine.Persistence;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
@@ -33,6 +34,10 @@ public sealed class MainMenuScene : Scene
     // Index du slot dont on demande confirmation d'effacement (-1 = aucune confirmation en cours).
     private int _confirmDelete = -1;
 
+    // Navigation manette : focus dans la liste racine [slots…, Options, Quitter] et dans la confirmation.
+    private int _focus;
+    private bool _confirmYes;   // focus de la boîte de confirmation : true = EFFACER, false = ANNULER
+
     public MainMenuScene(GameContext context) : base(context) { }
 
     public override void Load()
@@ -55,19 +60,31 @@ public sealed class MainMenuScene : Scene
         if (_menu.IsOpen) { UpdateOptions(); return; }
         if (_confirmDelete >= 0) { UpdateConfirm(); return; }
 
+        var w = Context.VirtualResolution.X;
+        var h = Context.VirtualResolution.Y;
+        var lay = BuildLayout(w, h);
+        var count = _slots.Length + 2;   // slots… + Options + Quitter
+        _focus = System.Math.Clamp(_focus, 0, count - 1);
+
+        // Manette : navigation haut/bas, A valide, X efface un slot occupé.
+        if (Context.Input.Nav(NavDir.Up)) { _focus = (_focus - 1 + count) % count; Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Down)) { _focus = (_focus + 1) % count; Context.Sounds.Play("menu_click"); }
+        if (Context.Input.WasConfirmPressed) { ActivateFocus(); return; }
+        if (Context.Input.WasTertiaryPressed && _focus < _slots.Length && _slots[_focus] != null)
+        {
+            _confirmDelete = _focus; _confirmYes = false; Context.Sounds.Play("menu_click"); return;
+        }
+
+        // Souris : clic direct.
         if (!Context.Input.WasLeftClicked)
             return;
 
-        var w = Context.VirtualResolution.X;
-        var h = Context.VirtualResolution.Y;
         var p = Context.Input.MousePosition;
-        var lay = BuildLayout(w, h);
-
         for (var i = 0; i < _slots.Length; i++)
         {
             if (_slots[i] != null && lay.Dels[i].Contains(p))
             {
-                _confirmDelete = i;
+                _confirmDelete = i; _confirmYes = false;
                 Context.Sounds.Play("menu_click");
                 return;
             }
@@ -83,6 +100,21 @@ public sealed class MainMenuScene : Scene
         else if (lay.Quit.Contains(p)) { Context.Sounds.Play("menu_click"); Context.Quit(); }
     }
 
+    /// <summary>Active l'élément racine sous le focus (slot → démarrer, Options, Quitter).</summary>
+    private void ActivateFocus()
+    {
+        if (_focus < _slots.Length) { Context.Sounds.Play("menu_click"); StartSlot(_focus); }
+        else if (_focus == _slots.Length) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
+        else { Context.Sounds.Play("menu_click"); Context.Quit(); }
+    }
+
+    /// <summary>Rectangle de l'élément racine focus (surbrillance / pointeur synthétique manette).</summary>
+    private Rectangle FocusedRect(MenuLayout lay)
+    {
+        if (_focus < _slots.Length) return lay.Slots[_focus];
+        return _focus == _slots.Length ? lay.Options : lay.Quit;
+    }
+
     /// <summary>Continue la run du slot si elle existe, sinon en démarre une nouvelle dans ce slot.</summary>
     private void StartSlot(int index)
     {
@@ -92,12 +124,24 @@ public sealed class MainMenuScene : Scene
 
     private void UpdateOptions()
     {
-        if (Context.Input.WasKeyPressed(Keys.Escape)) { CloseOptions(); return; }
-        if (!Context.Input.WasLeftClicked)
-            return;
+        if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasCancelPressed) { CloseOptions(); return; }
 
-        Context.Sounds.Play("menu_click");
-        var action = _menu.HandleClick(Context.Input.MousePosition, Context.VirtualResolution.X, Context.VirtualResolution.Y);
+        var action = MenuAction.None;
+
+        // Manette : navigation au focus + réglages.
+        if (Context.Input.Nav(NavDir.Up)) { _menu.MoveFocus(-1); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Down)) { _menu.MoveFocus(+1); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Left)) action = _menu.AdjustFocused(-1);
+        if (Context.Input.Nav(NavDir.Right)) action = _menu.AdjustFocused(+1);
+        if (Context.Input.WasConfirmPressed) { Context.Sounds.Play("menu_click"); action = _menu.ActivateFocused(); }
+
+        // Souris : clic direct.
+        if (Context.Input.WasLeftClicked)
+        {
+            Context.Sounds.Play("menu_click");
+            action = _menu.HandleClick(Context.Input.MousePosition, Context.VirtualResolution.X, Context.VirtualResolution.Y);
+        }
+
         switch (action)
         {
             case MenuAction.GraphicsChanged:
@@ -120,28 +164,36 @@ public sealed class MainMenuScene : Scene
 
     private void UpdateConfirm()
     {
-        if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasRightClicked)
+        if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasRightClicked || Context.Input.WasCancelPressed)
         {
             _confirmDelete = -1;
             return;
         }
+
+        // Manette : gauche/droite choisit EFFACER/ANNULER, A valide.
+        if (Context.Input.Nav(NavDir.Left)) _confirmYes = true;
+        if (Context.Input.Nav(NavDir.Right)) _confirmYes = false;
+        if (Context.Input.WasConfirmPressed) { ConfirmDelete(_confirmYes); return; }
+
         if (!Context.Input.WasLeftClicked)
             return;
 
         var (_, yes, no) = ConfirmLayout(Context.VirtualResolution.X, Context.VirtualResolution.Y);
         var p = Context.Input.MousePosition;
-        if (yes.Contains(p))
+        if (yes.Contains(p)) ConfirmDelete(true);
+        else if (no.Contains(p)) ConfirmDelete(false);
+    }
+
+    private void ConfirmDelete(bool erase)
+    {
+        if (erase)
         {
             Context.Saves.DeleteSlot(_confirmDelete);
             RefreshSlots();
-            _confirmDelete = -1;
-            Context.Sounds.Play("menu_click");
         }
-        else if (no.Contains(p))
-        {
-            _confirmDelete = -1;
-            Context.Sounds.Play("menu_click");
-        }
+        _confirmDelete = -1;
+        _focus = System.Math.Clamp(_focus, 0, _slots.Length + 1);
+        Context.Sounds.Play("menu_click");
     }
 
     // ── Rendu ───────────────────────────────────────────────────────────────────
@@ -154,13 +206,16 @@ public sealed class MainMenuScene : Scene
 
         var mouse = Context.Input.MousePosition;
         var mouseDown = Context.Input.IsLeftDown;
+        var gp = Context.Input.UsingGamepad;
 
         // Quand un overlay est actif (Options / confirmation), l'arrière-plan ne doit PAS réagir au
         // survol — sinon les boutons s'allument à travers l'overlay semi-transparent (fausse navigation).
-        // L'overlay lui-même, en revanche, utilise la vraie position souris.
+        // L'overlay lui-même, en revanche, utilise la vraie position souris. En manette : pointeur
+        // synthétique = centre de l'élément focus (réutilise la surbrillance de survol).
         var overlay = _menu.IsOpen || _confirmDelete >= 0;
-        var bgPointer = overlay ? new Point(int.MinValue, int.MinValue) : mouse;
-        var bgDown = !overlay && mouseDown;
+        var bgPointer = overlay ? new Point(int.MinValue, int.MinValue)
+            : (gp ? FocusedRect(lay).Center : mouse);
+        var bgDown = !overlay && !gp && mouseDown;
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         sb.Draw(Context.Pixel, new Rectangle(0, 0, w, h), Palette.Navy2);
@@ -177,11 +232,17 @@ public sealed class MainMenuScene : Scene
         sb.End();
 
         if (_confirmDelete >= 0)
-            DrawConfirm(sb, w, h, mouse, mouseDown);
+        {
+            var (_, yes, no) = ConfirmLayout(w, h);
+            var pointer = gp ? (_confirmYes ? yes.Center : no.Center) : mouse;
+            DrawConfirm(sb, w, h, pointer, !gp && mouseDown);
+        }
         else if (_menu.IsOpen)
         {
+            var focusRect = _menu.FocusedRect(w, h);
+            var pointer = gp ? focusRect.Center.ToVector2() : mouse.ToVector2();
             sb.Begin(samplerState: SamplerState.PointClamp);
-            _menuRenderer.Draw(sb, _menu, w, h, mouse.ToVector2(), mouseDown);
+            _menuRenderer.Draw(sb, _menu, w, h, pointer, !gp && mouseDown, gp ? focusRect : null);
             sb.End();
         }
     }

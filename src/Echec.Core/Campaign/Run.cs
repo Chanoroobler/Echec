@@ -30,18 +30,25 @@ public sealed class Run
     public const int TotalCombats = 6;
     public const int DraftSize = 3;
 
-    // Domaines piochables pour les VAGUES ENNEMIES : pion (Soldat), lancier (Tour) et fou (Mage)
-    // pour l'instant (réglage de difficulté temporaire). Le recrutement, lui, propose
-    // désormais les ennemis VAINCUS (voir BuildDraft), plus cette pioche.
-    private static readonly Domaine[] Pool = { Domaine.Pion, Domaine.Tour, Domaine.Fou };
+    // Domaines piochables pour les VAGUES ENNEMIES : Soldat (Pion), Lancier (Tour), Mage (Fou),
+    // Archer (Dame) et Cavalier (Cavalier). Comme le recrutement propose les ennemis VAINCUS
+    // (voir BuildDraft), tous ces domaines deviennent jouables côté joueur.
+    private static readonly Domaine[] Pool =
+        { Domaine.Pion, Domaine.Tour, Domaine.Fou, Domaine.Dame, Domaine.Cavalier };
 
-    private readonly Random _rng;
     private readonly List<UnitSpec> _roster = new();
     private readonly List<UnitSpec> _draft = new();
 
+    /// <summary>
+    /// Graine de la run, SAUVEGARDÉE. La vague ennemie et le terrain de chaque combat en dérivent de
+    /// façon déterministe (cf. <see cref="CombatRng"/>) : « Continuer » régénère donc EXACTEMENT le
+    /// même combat (mêmes ennemis, même terrain) qu'avant de quitter.
+    /// </summary>
+    public int Seed { get; private set; }
+
     public Run(int? seed = null)
     {
-        _rng = seed is { } s ? new Random(s) : new Random();
+        Seed = seed ?? new Random().Next();
         Reset();
     }
 
@@ -74,9 +81,9 @@ public sealed class Run
     /// en phase de PLACEMENT : la vague ennemie et le terrain sont regénérés au combat courant (la
     /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
     /// </summary>
-    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber)
+    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed)
     {
-        var run = new Run();
+        var run = new Run(seed);
         run._roster.Clear();
         run._roster.AddRange(roster);
         run.CombatNumber = combatNumber;
@@ -90,23 +97,24 @@ public sealed class Run
     /// symétriques. Tiré du RNG du run → varie d'un combat à l'autre, reproductible si seed fixé.
     /// </summary>
     public Battlefield BuildBattlefield(int width, int height) =>
-        TerrainGenerator.Generate(width, height, _rng);
+        TerrainGenerator.Generate(width, height, CombatRng(0));
 
     /// <summary>Vague ennemie du combat courant (le placement est assuré par la scène).</summary>
     public List<UnitSpec> BuildEnemyWave()
     {
+        var rng = CombatRng(1);   // RNG déterministe propre à la vague de CE combat
         var wave = new List<UnitSpec>();
         if (IsBossCombat)
         {
             wave.Add(ToSpec(Commandes.Boss));
-            wave.Add(RandomEnemy());
-            wave.Add(RandomEnemy());
+            wave.Add(RandomEnemy(rng));
+            wave.Add(RandomEnemy(rng));
         }
         else
         {
             var count = CombatNumber + 1; // combat 1 = 2 ennemis … combat 5 = 6 ennemis
             for (var i = 0; i < count; i++)
-                wave.Add(RandomEnemy());
+                wave.Add(RandomEnemy(rng));
         }
         return wave;
     }
@@ -166,11 +174,19 @@ public sealed class Run
             _draft.Add(defeatedEnemies[i]);
     }
 
-    private UnitSpec RandomEnemy()
+    private static UnitSpec RandomEnemy(Random rng)
     {
-        var domaine = Pool[_rng.Next(Pool.Length)];
+        var domaine = Pool[rng.Next(Pool.Length)];
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
     }
+
+    /// <summary>
+    /// RNG DÉTERMINISTE pour le combat courant, dérivé de (<see cref="Seed"/>, <see cref="CombatNumber"/>,
+    /// <paramref name="salt"/>) — stable d'une session à l'autre (pas de <c>HashCode.Combine</c> qui
+    /// varie par process). <paramref name="salt"/> sépare terrain (0) et vague ennemie (1).
+    /// </summary>
+    private Random CombatRng(int salt) =>
+        new(unchecked(Seed * 6151 + CombatNumber * 1031 + salt));
 
     /// <summary>Convertit une définition COMMANDE en gabarit essentiel (mouvement = son domaine).</summary>
     private static UnitSpec ToSpec(CommandeDef def) =>

@@ -90,17 +90,87 @@ public sealed class PauseMenu
         if (_resIndex < 0) _resIndex = 0;
     }
 
-    public void Open() { IsOpen = true; Panel = MenuPanel.Root; }
-    public void OpenOptions() { IsOpen = true; Panel = MenuPanel.Options; }
+    public void Open() { IsOpen = true; Panel = MenuPanel.Root; _focus = 0; }
+    public void OpenOptions() { IsOpen = true; Panel = MenuPanel.Options; _focus = 0; }
     public void Close() => IsOpen = false;
     public void Toggle() { if (IsOpen) Close(); else Open(); }
 
     /// <summary>Retour arrière : Options → Racine, Racine → fermeture (reprise).</summary>
     public void Back()
     {
-        if (Panel == MenuPanel.Options) Panel = MenuPanel.Root;
+        if (Panel == MenuPanel.Options) { Panel = MenuPanel.Root; _focus = 0; }
         else Close();
     }
+
+    // ── Navigation au focus (manette / clavier) ──────────────────────────────────
+    // Pendant clic, le focus suit l'élément choisi ; en manette, haut/bas le déplace, gauche/droite
+    // règle les pas/bascules (Options), A valide, B = retour. Le rendu surligne l'élément focus via un
+    // « pointeur synthétique » = centre de FocusedRect (réutilise le hit-test/surbrillance existants).
+    private int _focus;
+
+    public int Focus => _focus;
+    private int FocusCount => Panel == MenuPanel.Root ? 4 : 7;
+    public void MoveFocus(int delta)
+    {
+        var n = FocusCount;
+        _focus = ((_focus + delta) % n + n) % n;
+    }
+
+    /// <summary>Rectangle de l'élément actuellement focus (pour la surbrillance / le pointeur synthétique).</summary>
+    public Rectangle FocusedRect(int vpW, int vpH)
+    {
+        var l = Layout(vpW, vpH);
+        if (Panel == MenuPanel.Root)
+            return _focus switch { 0 => l.Resume, 1 => l.Options, 2 => l.MainMenu, _ => l.Quit };
+        return _focus switch
+        {
+            0 => l.ResRow, 1 => l.FsRow, 2 => l.BdRow,
+            3 => l.MasterRow, 4 => l.MusicRow, 5 => l.SfxRow, _ => l.Back,
+        };
+    }
+
+    /// <summary>Valide l'élément focus (bouton A). Équivaut au clic sur cet élément.</summary>
+    public MenuAction ActivateFocused()
+    {
+        if (Panel == MenuPanel.Root)
+            return _focus switch
+            {
+                0 => CloseReturning(MenuAction.Resume),
+                1 => OpenOptionsPanel(),
+                2 => CloseReturning(MenuAction.MainMenu),
+                _ => MenuAction.Quit,
+            };
+        return _focus switch
+        {
+            1 => ToggleFullscreen(),
+            2 => ToggleBorderless(),
+            6 => BackAction(),
+            _ => MenuAction.None,   // les pas (résolution, volumes) se règlent avec gauche/droite
+        };
+    }
+
+    /// <summary>Règle l'élément focus avec gauche (-1) / droite (+1).</summary>
+    public MenuAction AdjustFocused(int dir)
+    {
+        if (Panel != MenuPanel.Options)
+            return MenuAction.None;
+        switch (_focus)
+        {
+            case 0: StepResolution(dir); return MenuAction.GraphicsChanged;
+            case 1: _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged;
+            case 2: _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged;
+            case 3: _s.Audio.Master = Step(_s.Audio.Master, dir * 10); return MenuAction.VolumeChanged;
+            case 4: _s.Audio.Music = Step(_s.Audio.Music, dir * 10); return MenuAction.VolumeChanged;
+            case 5: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
+            default: return MenuAction.None;
+        }
+    }
+
+    private MenuAction CloseReturning(MenuAction a) { Close(); return a; }
+    private MenuAction OpenOptionsPanel() { Panel = MenuPanel.Options; _focus = 0; return MenuAction.None; }
+    private MenuAction BackAction() { Back(); return MenuAction.None; }
+    private MenuAction ToggleFullscreen() { _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged; }
+    private MenuAction ToggleBorderless() { _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged; }
 
     // ── Valeurs affichées ──────────────────────────────────────────────────────
     public string ResolutionText => $"{_resolutions[_resIndex].X} X {_resolutions[_resIndex].Y}";
@@ -190,7 +260,7 @@ public sealed class PauseMenu
     private MenuAction HandleRootClick(Point p, PauseLayout l)
     {
         if (l.Resume.Contains(p)) { Close(); return MenuAction.Resume; }
-        if (l.Options.Contains(p)) { Panel = MenuPanel.Options; return MenuAction.None; }
+        if (l.Options.Contains(p)) { Panel = MenuPanel.Options; _focus = 0; return MenuAction.None; }
         if (l.MainMenu.Contains(p)) { Close(); return MenuAction.MainMenu; }
         if (l.Quit.Contains(p)) return MenuAction.Quit;
         return MenuAction.None;

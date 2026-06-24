@@ -17,6 +17,9 @@ public sealed class RunSave
 
     public int CombatNumber { get; set; } = 1;
 
+    /// <summary>Graine de la run : rejoue EXACTEMENT la même vague/terrain au combat repris.</summary>
+    public int Seed { get; set; }
+
     public List<UnitSpecSave> Roster { get; set; } = new();
 
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
@@ -25,14 +28,14 @@ public sealed class RunSave
     /// <summary>Capture l'état persistant d'une run en cours.</summary>
     public static RunSave From(Run run)
     {
-        var save = new RunSave { CombatNumber = run.CombatNumber };
+        var save = new RunSave { CombatNumber = run.CombatNumber, Seed = run.Seed };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
         return save;
     }
 
     /// <summary>Reconstruit une run jouable à partir de la sauvegarde.</summary>
-    public Run ToRun() => Run.Restore(Roster.Select(s => s.ToSpec()).ToList(), CombatNumber);
+    public Run ToRun() => Run.Restore(Roster.Select(s => s.ToSpec()).ToList(), CombatNumber, Seed);
 }
 
 /// <summary>Forme sérialisable d'un <see cref="UnitSpec"/> (un emplacement d'inventaire).</summary>

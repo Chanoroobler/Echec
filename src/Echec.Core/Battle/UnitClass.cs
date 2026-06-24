@@ -44,7 +44,9 @@ public sealed class UnitClass
     /// <summary>
     /// Distance de tir MINIMALE (notée « X à Y » dans le tableau des unités : X = ce min, Y =
     /// <see cref="AttackRange"/>). 1 par défaut (peut frapper au contact). &gt; 1 pour les archers
-    /// (zone morte de près). NB : la mécanique n'est pas encore appliquée en combat — donnée seule.
+    /// (zone morte de près). Appliquée en combat, mais SEULEMENT en ligne droite (haut/bas/gauche/
+    /// droite) : en DIAGONALE on peut tirer dès la distance 1. Le corps d'une cible plus proche borne
+    /// quand même la ligne de tir (cf. <see cref="Match.AttackTargets"/>).
     /// </summary>
     public int MinAttackRange { get; }
 

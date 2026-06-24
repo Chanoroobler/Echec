@@ -116,7 +116,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void Update(GameTime gameTime)
     {
-        _input.Update();
+        _input.Update(gameTime);
         _scenes.Update(gameTime);
         base.Update(gameTime);
     }

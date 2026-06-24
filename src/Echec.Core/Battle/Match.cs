@@ -156,6 +156,9 @@ public sealed class Match
         var piercesAllies = unit.Class.PiercesAllies;
         foreach (var dir in vectors)
         {
+            // Zone morte (portée min) UNIQUEMENT en ligne droite : en diagonale on peut tirer dès la
+            // distance 1 (le contact « corps à corps » n'est interdit qu'en face/côté).
+            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.Class.MinAttackRange;
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
@@ -168,7 +171,10 @@ public sealed class Match
 
                 if (target.Faction != unit.Faction)
                 {
-                    result.Add(to); // premier ennemi en vue : cible, et borne la ligne
+                    // Premier ennemi en vue : cible SI au-delà de la zone morte de cette direction.
+                    // Dans tous les cas son corps borne la ligne (pas de tir au travers).
+                    if (step >= minStep)
+                        result.Add(to);
                     break;
                 }
 
@@ -216,6 +222,7 @@ public sealed class Match
         var piercesAllies = unit.Class.PiercesAllies;
         foreach (var dir in vectors)
         {
+            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.Class.MinAttackRange;
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
@@ -226,7 +233,8 @@ public sealed class Match
                 if (occupant != null && occupant.Faction == unit.Faction && piercesAllies)
                     continue; // lancier : traverse l'allié sans le menacer, la ligne continue
 
-                result.Add(to);
+                if (step >= minStep)
+                    result.Add(to); // hors zone morte (diagonale = dès 1) : case réellement menacée
                 if (occupant != null)
                     break; // un ennemi (ou un allié non traversé) borne la ligne de tir au-delà
             }
