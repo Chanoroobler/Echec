@@ -166,6 +166,9 @@ public sealed class Run
             Phase = RunPhase.Battle;
     }
 
+    /// <summary>Repasse en phase de placement SANS avancer le combat (fin du tutoriel → combat 1).</summary>
+    public void ReturnToPlacement() => Phase = RunPhase.Placement;
+
     /// <summary>
     /// Combat gagné. <paramref name="casualties"/> = gabarits du roster morts pendant le combat
     /// (retirés : permadeath). <paramref name="defeatedEnemies"/> = ennemis vaincus DANS L'ORDRE de

@@ -280,6 +280,13 @@ public sealed class Match
         return kind;
     }
 
+    /// <summary>Passe le tour sans agir (ennemi passif en tutoriel). Sans effet si la partie est finie.</summary>
+    public void PassTurn()
+    {
+        if (!IsOver)
+            CurrentTurn = CurrentTurn.Opponent();
+    }
+
     /// <summary>
     /// Cibles qu'aurait l'unité de <paramref name="from"/> si elle se déplaçait en <paramref name="to"/>
     /// (plateau SIMULÉ puis restauré, tour inchangé). Outil d'IA pour repérer un coup qui amène à
