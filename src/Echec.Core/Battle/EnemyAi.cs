@@ -17,6 +17,10 @@ public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
 ///
 /// Le tirage aléatoire (mise à portée comme avancée) évite de toujours pousser la même pièce :
 /// l'armée progresse en se renouvelant au lieu d'envoyer un éclaireur solitaire.
+///
+/// SUICIDAIRE en fin de partie : quand il ne reste plus qu'UNE unité ennemie, elle abandonne le
+/// filet « sans mourir » et s'engage même si elle doit y rester — sinon elle fuit et le joueur lui
+/// court après indéfiniment.
 /// </summary>
 public static class EnemyAi
 {
@@ -36,6 +40,10 @@ public static class EnemyAi
             return null;
 
         var playerCells = players.Select(p => p.Cell).ToList();
+
+        // Dernière unité : on fonce. Elle s'engage même vers une case où elle mourra, plutôt que
+        // de fuir et de faire courir le joueur après elle jusqu'à la fin de la partie.
+        var suicidal = enemies.Count <= 1;
 
         // 1. Attaques. On garde la première mortelle et la première quelconque rencontrées.
         AiAction? bestKill = null, bestAttack = null;
@@ -69,7 +77,8 @@ public static class EnemyAi
 
                 // Mise à portée : depuis « to », l'unité aurait au moins une cible, et « to » n'est pas
                 // une case où un joueur la tuerait.
-                if (match.TargetsAfterMove(from, to).Count > 0 && !WouldBeKilledAt(match, to, unit, players))
+                if (match.TargetsAfterMove(from, to).Count > 0 &&
+                    (suicidal || !WouldBeKilledAt(match, to, unit, players)))
                     engage.Add(new AiAction(from, to, IsAttack: false));
 
                 var distance = playerCells.Min(p => Chebyshev(to, p));

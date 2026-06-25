@@ -66,9 +66,13 @@ public sealed class GameplayScene : Scene
     // Effets de combat shader (dissolution / flash) + animation d'attaque en cours.
     private CombatFxRenderer _combatFx = null!;
     private readonly MeleeStrikeFx _fx = new();
-    // Étincelles d'impact (particules poolées) + garde-fou « émises une seule fois par coup ».
+    // Particules poolées : ne servent plus que pour le feu d'artifice d'extinction des chiffres de dégâts.
     private readonly SparkBurst _sparks = new();
-    private bool _sparksEmitted;
+    // Garde-fou « impact traité une seule fois par coup » (spawn du chiffre de dégâts au contact).
+    private bool _impactHandled;
+    // Chiffres de dégâts flottants (jaillis à l'impact, puis éclatent) + dégâts du coup en attente.
+    private readonly DamagePopups _damagePopups = new();
+    private int _pendingDamage;
 
     // Recrutement : le panneau d'inventaire est VISIBLE pendant le choix (on voit son armée, hors
     // commandant). À la sélection, le pion de la carte choisie VOLE vers son emplacement d'inventaire,
@@ -292,6 +296,8 @@ public sealed class GameplayScene : Scene
         _pending.Clear();
         _dragSpec = null;
         _dragFrom = null;
+        _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
+        _sparks.Clear();
         ClearSelection();
         ResetCamera();
         _aiTimer = 0;
@@ -618,15 +624,17 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        _sparks.Update(dt);     // les particules vivent leur vie même pendant le gel de l'animation
+        _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
+        if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
+            _damagePopups.Update(dt, BuildLayout(), _sparks);
 
         // Animation d'attaque en cours : on gèle entrées, IA et fin de combat le temps des FX
         // (le domaine est déjà résolu ; la fin de partie ne s'affiche qu'après la dissolution).
         if (_fx.Active)
         {
             _fx.Update(dt);
-            if (_fx.HasImpacted && !_sparksEmitted)
-                EmitImpactSparks();
+            if (_fx.HasImpacted && !_impactHandled)
+                OnImpact();
             return;
         }
 
@@ -906,14 +914,6 @@ public sealed class GameplayScene : Scene
         // Départ du vol = centre du sprite de la carte (cf. disposition dans DrawCardLayout).
         _recruitFrom = new Vector2(rect.X + rect.Width / 2f, rect.Y + CardPad + 22 + 32);
         Context.Sounds.Play("recruit");
-        EmitRecruitSparks();
-    }
-
-    /// <summary>Gerbe d'étincelles dorée au décollage du sprite recruté (point de départ du vol).</summary>
-    private void EmitRecruitSparks()
-    {
-        _sparks.Emit(_recruitFrom, new Vector2(0, -1), count: 70,
-            new Color(245, 216, 147), new Color(255, 255, 255), pixel: 4f);
     }
 
     private void ClearSelection()
@@ -941,6 +941,8 @@ public sealed class GameplayScene : Scene
     {
         var attacker = _match.UnitAt(from);
         var victim = _match.UnitAt(target);
+        // Dégâts à afficher : bornés aux PV de la cible (pas de « 9 » sur une cible à 3 PV).
+        _pendingDamage = attacker != null && victim != null ? System.Math.Min(attacker.Damage, victim.Hp) : 0;
         if (attacker != null)
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
@@ -951,16 +953,33 @@ public sealed class GameplayScene : Scene
             return kind;
 
         RecordIfEnemyKilled(victim);
-        Context.Sounds.Play("unit_attack");
 
         var killed = kind == MoveKind.Killed;
         var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
         var attackerCell = advanced ? target : from;
-        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced);
-        _sparksEmitted = false;     // la gerbe d'étincelles sera émise au contact (cf. UpdateBattle)
+        var style = attacker != null ? AttackStyleFor(attacker) : AttackStyle.Lunge;
+        // Son selon le style : incantation pour le mage, charge pour le cavalier, coup d'arme sinon.
+        Context.Sounds.Play(style switch
+        {
+            AttackStyle.Cast  => "unit_cast",
+            AttackStyle.Leap  => "unit_charge",
+            AttackStyle.Shoot => "unit_shoot",
+            _                 => "unit_attack",
+        });
+        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style);
+        _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         return kind;
     }
+
+    /// <summary>Style d'animation d'attaque selon l'unité : cavalier = charge sautée, mage = projectile, autres = fente.</summary>
+    private static AttackStyle AttackStyleFor(Unit unit) => unit.Domaine switch
+    {
+        Domaine.Cavalier => AttackStyle.Leap,
+        Domaine.Fou      => AttackStyle.Cast,
+        Domaine.Dame     => AttackStyle.Shoot,   // archer (Archer / Rôdeur / Maître archer)
+        _                => AttackStyle.Lunge,
+    };
 
     /// <summary>
     /// Si <paramref name="victim"/> est un ennemi NON essentiel qui vient de mourir, enregistre son
@@ -1099,6 +1118,7 @@ public sealed class GameplayScene : Scene
                     DrawCombatFx(sb, board);
 
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
+                _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
 
                 if (_battleIntroTimer > 0)
                     DrawSlidingPanel(sb);          // panneau de placement qui sort par la droite
@@ -1115,7 +1135,6 @@ public sealed class GameplayScene : Scene
                 DrawDim(sb, viewport);
                 sb.End();
                 DrawRecruitment(sb, viewport);     // gère son propre batch (panneau + cartes + vol)
-                _sparks.Draw(sb, Context.Pixel);   // gerbe au décollage du pion recruté
                 break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
@@ -1358,11 +1377,35 @@ public sealed class GameplayScene : Scene
             DrawChip(sb, unit.Class, unit.Faction, token);
         }
 
-        // Barre de vie retirée temporairement (cachait l'ombre) — à restaurer après les tests.
-        // var barBg = new Rectangle(zx + 9, zy + size - 14, size - 18, 5);
-        // DrawRect(sb, barBg, Palette.Black1);
-        // var ratio = unit.MaxHp == 0 ? 0f : (float)unit.Hp / unit.MaxHp;
-        // DrawRect(sb, new Rectangle(barBg.X, barBg.Y, (int)(barBg.Width * ratio), barBg.Height), Palette.Green1);
+        // Barre de vie : visible seulement quand l'unité est blessée, verticale au bord droit du pion.
+        if (unit.Hp < unit.MaxHp)
+            DrawUnitHpBar(sb, zx, zy - animLift, size, unit.Hp, unit.MaxHp);
+    }
+
+    /// <summary>
+    /// Barre de PV VERTICALE sur le bord droit d'un pion, affichée uniquement quand il est blessé.
+    /// Jauge PLEINE (pas de segments → aucun trait à désaligner, nette à tous les zooms) : le rouge
+    /// remplit le bas en proportion des PV restants, le vert occupe le reste (PV manquants).
+    /// Dimensions proportionnelles à la case pour garder les mêmes proportions quel que soit le zoom.
+    /// </summary>
+    private void DrawUnitHpBar(SpriteBatch sb, int zx, int zy, int size, int hp, int maxHp)
+    {
+        if (maxHp <= 0)
+            return;
+
+        var barW = System.Math.Max(4, size / 11);
+        var margin = System.Math.Max(3, size / 16);
+        var barH = size - 2 * margin;
+        var x = zx + size - barW - margin;  // collé au bord droit de la case
+        var y = zy + (size - barH) / 2;     // centré verticalement sur le pion
+
+        // Fond + cadre sombre (contraste sur tous les terrains).
+        DrawRect(sb, new Rectangle(x - 1, y - 1, barW + 2, barH + 2), Palette.Black1);
+        // Tout le fond = PV manquants (vert foncé) ; le rouge remplit le bas selon les PV restants.
+        DrawRect(sb, new Rectangle(x, y, barW, barH), Palette.Green4);
+
+        var fillH = (int)System.Math.Round((double)barH * hp / maxHp);
+        DrawRect(sb, new Rectangle(x, y + barH - fillH, barW, fillH), Palette.Purple5);
     }
 
     /// <summary>
@@ -1521,12 +1564,14 @@ public sealed class GameplayScene : Scene
         if (_fx.Killed && _fx.VictimSprite is { } deadSprite)
             _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
 
-        // 2. Attaquant animé (fente puis avance / recul) + ombre projetée à l'aplomb.
+        // 2. Attaquant animé (fente/charge sautée puis avance ou recul) + ombre projetée à l'aplomb.
         if (_fx.AttackerSprite is { } attackerSprite)
         {
-            var top = _fx.AttackerTopLeft(fromTop, toTop, size);
-            var rect = new Rectangle((int)top.X, (int)top.Y, size, size);
-            DrawPieceCastShadow(sb, attackerSprite, rect.X, rect.Y, size, 0);
+            var ground = _fx.AttackerTopLeft(fromTop, toTop, size);   // position au sol (sans le saut)
+            var jump = (int)_fx.AttackerJumpLift(size);               // hauteur du bond (charge sautée)
+            var rect = new Rectangle((int)ground.X, (int)ground.Y - jump, size, size);
+            // L'ombre reste AU SOL et glisse/s'éclaircit avec le bond (cf. DrawPieceCastShadow).
+            DrawPieceCastShadow(sb, attackerSprite, (int)ground.X, (int)ground.Y, size, jump);
             sb.Begin(samplerState: SamplerState.PointClamp);
             sb.Draw(attackerSprite, rect, Color.White);
             sb.End();
@@ -1535,6 +1580,78 @@ public sealed class GameplayScene : Scene
         // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (reculé comme lui).
         if (!_fx.Killed && _fx.VictimSprite is { } hitSprite)
             _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White, fxPixel);
+
+        // 4. Projectile en vol vers la cible (mage : orbe ; archer : flèche) — disparaît à l'impact.
+        if (_fx.ProjectileFlight is var flight && flight >= 0f)
+        {
+            var fromCenter = fromTop + new Vector2(size / 2f, size / 2f);
+            var toCenter = toTop + new Vector2(size / 2f, size / 2f);
+            if (_fx.Style == AttackStyle.Shoot)
+                DrawArrow(sb, fromCenter, toCenter, flight, size);
+            else
+                DrawMagicBolt(sb, fromCenter, toCenter, flight, size);
+        }
+    }
+
+    /// <summary>
+    /// Flèche pixel-art : une traînée de blocs « bois » alignés sur la direction du tir, terminée par
+    /// une pointe claire. Blocs calés sur leur grille (pixel-perfect, comme les étincelles).
+    /// </summary>
+    private void DrawArrow(SpriteBatch sb, Vector2 from, Vector2 to, float flight, int size)
+    {
+        var dir = to - from;
+        if (dir.LengthSquared() > 0.0001f)
+            dir.Normalize();
+        var head = Vector2.Lerp(from, to, flight);
+        var block = System.Math.Max(2, size / 14);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        for (var i = 4; i >= 1; i--)                            // fût : blocs en arrière de la pointe
+            DrawBlockSnapped(sb, head - dir * (block * i), block, Palette.Brown1);
+        DrawBlockSnapped(sb, head, block, Palette.Brown4);      // pointe (fer clair)
+        sb.End();
+    }
+
+    /// <summary>Carré plein de côté <paramref name="s"/> centré sur <paramref name="c"/>, calé sur la grille de blocs.</summary>
+    private void DrawBlockSnapped(SpriteBatch sb, Vector2 c, int s, Color col)
+    {
+        var x = (int)System.MathF.Round(c.X / s) * s;
+        var y = (int)System.MathF.Round(c.Y / s) * s;
+        DrawRect(sb, new Rectangle(x, y, s, s), col);
+    }
+
+    /// <summary>
+    /// Projectile magique pixel-art : une orbe (halo cyan + cœur clair) qui file de <paramref name="from"/>
+    /// à <paramref name="to"/>, traînée de 2 orbes plus pâles derrière. Tailles proportionnelles à la case.
+    /// </summary>
+    private void DrawMagicBolt(SpriteBatch sb, Vector2 from, Vector2 to, float flight, int size)
+    {
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        var r = System.Math.Max(2, size / 9);     // rayon de l'orbe (proportionnel au zoom)
+
+        // Traînée : 2 orbes plus petites et plus pâles, en arrière sur la trajectoire.
+        for (var i = 2; i >= 1; i--)
+        {
+            var tt = MathHelper.Clamp(flight - i * 0.07f, 0f, 1f);
+            var p = Vector2.Lerp(from, to, tt);
+            var rr = System.Math.Max(1, r - i);
+            DrawOrb(sb, p, rr, Palette.Cyan1 * (0.5f - i * 0.12f), Palette.Cyan2 * (0.5f - i * 0.12f));
+        }
+
+        // Tête de l'orbe : halo cyan + corps + cœur clair.
+        var head = Vector2.Lerp(from, to, flight);
+        DrawOrb(sb, head, r, Palette.Cyan1 * 0.6f, Palette.White);
+        sb.End();
+    }
+
+    /// <summary>Orbe carrée pixel-perfect : un halo (<paramref name="outer"/>) et un cœur (<paramref name="core"/>) centrés.</summary>
+    private void DrawOrb(SpriteBatch sb, Vector2 center, int radius, Color outer, Color core)
+    {
+        var cx = (int)System.MathF.Round(center.X);
+        var cy = (int)System.MathF.Round(center.Y);
+        DrawRect(sb, new Rectangle(cx - radius, cy - radius, radius * 2, radius * 2), outer);
+        var cr = System.Math.Max(1, radius / 2);
+        DrawRect(sb, new Rectangle(cx - cr, cy - cr, cr * 2, cr * 2), core);
     }
 
     /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
@@ -1556,21 +1673,13 @@ public sealed class GameplayScene : Scene
         return new Point((int)MathF.Round(dir.X * mag), (int)MathF.Round(dir.Y * mag));
     }
 
-    /// <summary>Émet la gerbe d'étincelles au point de contact, dans le sens du coup (une fois par attaque).</summary>
-    private void EmitImpactSparks()
+    /// <summary>Au contact (une fois par attaque) : fait jaillir le chiffre de dégâts, qui éclatera
+    /// ensuite en feu d'artifice. Plus d'étincelles d'impact (le dev les trouvait trop chargées avec
+    /// l'explosion du chiffre).</summary>
+    private void OnImpact()
     {
-        _sparksEmitted = true;
-        var layout = BuildLayout();
-        var size = layout.TileSize;
-        var center = layout.CellToScreen(_fx.To.Column, _fx.To.Row) + new Vector2(size / 2f, size / 2f);
-
-        var dir = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row); // sens du coup
-        var unit = dir.LengthSquared() > 0f ? Vector2.Normalize(dir) : Vector2.Zero;
-        var origin = center - unit * (size * 0.22f);   // bord de contact, côté attaquant
-        var pixel = MathF.Max(2f, size / 32f);
-        // EXCEPTION palette autorisée par le dev POUR CE FX UNIQUEMENT : rouge vif « flashy » +
-        // cœurs orange chauds, pour que l'impact pète à l'écran (hors des 20 tons de la palette).
-        _sparks.Emit(origin, dir, count: 16, new Color(255, 40, 40), new Color(255, 190, 80), pixel);
+        _impactHandled = true;
+        _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
     }
 
     // ── Panneau latéral ───────────────────────────────────────────────────────────
@@ -1915,7 +2024,9 @@ public sealed class GameplayScene : Scene
         var list = new List<UnitKeywords.Keyword>();
         foreach (var t in c.Traits)
             list.Add(UnitKeywords.For(t));
-        if (c.PiercesAllies)
+        // « Traverse allié » est redondant avec « Franchissement » (le cavalier franchit déjà tout) :
+        // on ne le montre pas quand la classe a ce trait, Franchissement suffit à l'expliquer.
+        if (c.PiercesAllies && !c.Traits.Contains("Franchissement"))
             list.Add(UnitKeywords.PiercesAllies);
         if (c.MinAttackRange > 1)
             list.Add(UnitKeywords.DeadZone);
@@ -2113,6 +2224,11 @@ public sealed class GameplayScene : Scene
         var availW = viewport.Width - RightPanelWidth;   // zone des cartes, à GAUCHE du panneau
 
         sb.Begin(samplerState: SamplerState.PointClamp);
+        // Cadre (style panneau/carte) autour du titre + sous-titre, dimensionné sur le plus large des deux.
+        var titleW = Context.Font.Measure(Loc.T("recruit.title"), 3);
+        var subW = Context.Font.Measure(Loc.T("recruit.subtitle"), 1);
+        var boxW = System.Math.Max(titleW, subW) + 56;
+        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, 48, boxW, 72));
         Context.Font.DrawCentered(sb, Loc.T("recruit.title"), new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
         Context.Font.DrawCentered(sb, Loc.T("recruit.subtitle"),
             new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);

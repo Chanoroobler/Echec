@@ -33,7 +33,7 @@
     {
       "domaine": "Cavalier",
       "baseClass": {
-        "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 12, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
+        "name": "Cavalier", "asset": "cavalier", "hp": 10, "damage": 12, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
         "evolutions": [
           { "name": "Chevalier",    "asset": "chevalier",    "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"] },
           { "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }

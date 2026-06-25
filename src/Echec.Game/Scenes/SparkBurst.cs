@@ -18,9 +18,10 @@ internal sealed class Spark
 }
 
 /// <summary>
-/// Gerbe d'étincelles d'impact : particules pixel-art recyclées via <see cref="Pool{T}"/> (pas
-/// d'allocation par coup). Émises au contact, soumises à la gravité, s'éteignent par fondu postérisé.
-/// Rendu en carrés alignés à la grille (pixel-perfect, chunky).
+/// Gerbe de particules pixel-art recyclées via <see cref="Pool{T}"/> (pas d'allocation). Soumises à
+/// la gravité, s'éteignent par fondu postérisé, rendu en carrés alignés à la grille (pixel-perfect,
+/// chunky). Seul usage restant : le feu d'artifice d'extinction des chiffres de dégâts (cf. <see
+/// cref="EmitFirework"/>) — les étincelles d'impact/recrutement ont été retirées.
 /// </summary>
 internal sealed class SparkBurst
 {
@@ -30,32 +31,41 @@ internal sealed class SparkBurst
     private readonly List<Spark> _active = new();
     private readonly Random _rng = new();
 
+    // Teintes « feu d'artifice » (or, orange chaud, rouge vif, crème) — même entorse palette
+    // assumée que les étincelles d'impact : ces FX doivent péter à l'écran.
+    private static readonly Color[] FireworkColors =
+    {
+        new(255, 210, 90), new(255, 140, 60), new(255, 70, 70), new(255, 240, 200),
+    };
+
     public bool HasActive => _active.Count > 0;
 
-    /// <summary>
-    /// Émet <paramref name="count"/> étincelles depuis <paramref name="origin"/>, en cône autour de
-    /// <paramref name="dir"/> (direction du coup) + léger biais vers le haut. Couleur principale
-    /// <paramref name="color"/>, avec ~1/3 d'étincelles en <paramref name="hot"/> (cœur chaud, pétille).
-    /// <paramref name="pixel"/> = côté de bloc en px canvas (taille de pixel d'art).
-    /// </summary>
-    public void Emit(Vector2 origin, Vector2 dir, int count, Color color, Color hot, float pixel)
+    /// <summary>Vide les particules en cours (au démarrage d'un nouveau combat) et les rend au pool.</summary>
+    public void Clear()
     {
-        if (dir.LengthSquared() > 0.0001f)
-            dir.Normalize();
-        var baseAngle = MathF.Atan2(dir.Y, dir.X);
-        var size = Math.Max(2, (int)pixel);
+        foreach (var s in _active)
+            _pool.Return(s);
+        _active.Clear();
+    }
 
+    /// <summary>
+    /// Gerbe RADIALE (360°) de particules colorées depuis <paramref name="origin"/> : un petit feu
+    /// d'artifice. Vitesses variées + gravité (cf. <see cref="Update"/>) → éclat puis retombée.
+    /// </summary>
+    public void EmitFirework(Vector2 origin, int count, float pixel)
+    {
+        var size = Math.Max(2, (int)pixel);
         for (var i = 0; i < count; i++)
         {
             var s = _pool.Get();
-            var ang = baseAngle + (float)(_rng.NextDouble() - 0.5) * 2.4f;   // cône large
-            var speed = 90f + (float)_rng.NextDouble() * 240f;
+            var ang = (float)(_rng.NextDouble() * Math.PI * 2);          // tout autour
+            var speed = 120f + (float)_rng.NextDouble() * 220f;
             s.Position = origin;
-            s.Velocity = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * speed - new Vector2(0, 70f); // gerbe vers le haut
-            s.MaxLife = 0.20f + (float)_rng.NextDouble() * 0.18f;
+            s.Velocity = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * speed;
+            s.MaxLife = 0.35f + (float)_rng.NextDouble() * 0.30f;
             s.Life = s.MaxLife;
-            s.Size = _rng.Next(3) == 0 ? size * 2 : size;   // quelques grosses, beaucoup de petites
-            s.Color = _rng.Next(3) == 0 ? hot : color;      // cœurs chauds éparpillés
+            s.Size = _rng.Next(4) == 0 ? size * 2 : size;               // quelques grosses braises
+            s.Color = FireworkColors[_rng.Next(FireworkColors.Length)];
             _active.Add(s);
         }
     }

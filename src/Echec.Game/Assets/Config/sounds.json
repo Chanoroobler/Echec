@@ -13,6 +13,9 @@
   "unit_deselect":"Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort D.wav",
   "unit_move":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Steps/Grass Step A.wav",
   "unit_attack":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+  "unit_cast":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic A.wav",
+  "unit_charge":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
+  "unit_shoot":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
 
   // ── Fin de combat / campagne ─────────────────────────────────
   "combat_won": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up A.wav",
