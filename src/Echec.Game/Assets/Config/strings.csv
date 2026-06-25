@@ -44,6 +44,9 @@ placement.hint_fight,ENTREE : COMBATTRE,ENTER : FIGHT
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
 stat.range,PORTEE,RANGE
+# ── HUD / commandes ─────────────────────────────────────────────────────────
+hud.toggle_grid,GRILLE,GRID
+hud.danger_zones,ZONES DE DANGER,DANGER ZONES
 # ── Recrutement ─────────────────────────────────────────────────────────────
 recruit.title,RECRUTEMENT,RECRUITMENT
 recruit.subtitle,CHOISIS PARMI LES TROIS DERNIERS ENNEMIS VAINCUS,CHOOSE FROM THE LAST THREE DEFEATED ENEMIES

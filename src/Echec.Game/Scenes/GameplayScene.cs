@@ -22,7 +22,7 @@ namespace Echec.Game.Scenes;
 /// Placement → Combat → Recrutement → … sur 6 combats, le dernier étant le boss.
 /// Le commandant (mort = game over) est posé d'office ; le joueur déploie le reste de
 /// son inventaire par glisser-déposer depuis le panneau de droite, puis combat l'IA.
-/// Échap = menu pause, F1 = visualiseur d'arbres (dev).
+/// Échap = menu pause, F1 = bascule du quadrillage, F10 = visualiseur d'arbres (dev).
 /// </summary>
 public sealed class GameplayScene : Scene
 {
@@ -135,6 +135,7 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _hoverReach = new();
     private double _aiTimer;
     private bool _showTrees;
+    private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
 
     // Cache du GridLayout : déterministe selon la résolution virtuelle, donc recalculé seulement
     // au changement de taille (au lieu de plusieurs allocations de GridLayout par frame).
@@ -449,8 +450,8 @@ public sealed class GameplayScene : Scene
         if (_landingTimer > 0)
             _landingTimer -= gameTime.ElapsedGameTime.TotalSeconds;
 
-        // Outil dev (F1) : prioritaire, fige le reste.
-        if (Context.Input.WasKeyPressed(Keys.F1) && !_pauseMenu.IsOpen)
+        // Outil dev (F10) : prioritaire, fige le reste. (F1 = bascule du quadrillage.)
+        if (Context.Input.WasKeyPressed(Keys.F10) && !_pauseMenu.IsOpen)
             _showTrees = !_showTrees;
         if (_showTrees)
         {
@@ -468,6 +469,10 @@ public sealed class GameplayScene : Scene
         }
 
         if (_pauseMenu.IsOpen) { UpdatePauseMenu(); return; }
+
+        // Bascule du quadrillage permanent du plateau : F1 (clavier) ou Select (manette).
+        if (Context.Input.WasKeyPressed(Keys.F1) || Context.Input.WasSelectPressed)
+            _showGrid = !_showGrid;
 
         // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau, et pas pendant
         // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
@@ -1603,6 +1608,8 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
+        if (_showGrid && _run.Phase is RunPhase.Placement or RunPhase.Battle)
+            DrawBoardGrid(sb, board, Palette.Black1);   // quadrillage permanent NOIR opaque (bascule F1/Select)
         sb.End();
 
         // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
@@ -1670,6 +1677,14 @@ public sealed class GameplayScene : Scene
                 DrawEndHud(sb, viewport);
                 sb.End();
                 break;
+        }
+
+        // Légende des commandes (haut-gauche) pendant placement / combat.
+        if (_run.Phase is RunPhase.Placement or RunPhase.Battle && !_showTrees && !_pauseMenu.IsOpen)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            DrawControlsLegend(sb, viewport);
+            sb.End();
         }
 
         if (_showTrees)
@@ -1782,11 +1797,41 @@ public sealed class GameplayScene : Scene
 
     private void DrawDeploymentZone(SpriteBatch sb, GridLayout layout)
     {
-        // Zone de déploiement en BLEU (camp joueur), plus lisible : remplissage + liseré par case.
+        // Zone de déploiement : fond bleu TRANSPARENT (comme avant) + traits en BLEU (camp joueur) à la
+        // même épaisseur que la grille noire (1 pixel d'art).
+        var thick = System.Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
         foreach (var cell in PlayerDeployCells())
         {
-            DrawZone(sb, layout, cell, Palette.Cyan1 * 0.32f);
-            DrawZoneBorder(sb, layout, cell, Palette.Cyan1 * 0.55f, 2);
+            DrawZone(sb, layout, cell, Palette.Cyan1 * 0.38f);
+            DrawZoneBorder(sb, layout, cell, Palette.Navy1, thick);   // traits bleu foncé
+        }
+    }
+
+    /// <summary>
+    /// Légende des commandes en haut à gauche (petit panneau) : bascule grille + zones de danger.
+    /// Les touches affichées correspondent au PÉRIPHÉRIQUE actif (clavier/souris vs manette).
+    /// </summary>
+    private void DrawControlsLegend(SpriteBatch sb, Viewport viewport)
+    {
+        var gp = Context.Input.UsingGamepad;
+        var lines = new[]
+        {
+            $"{(gp ? "SELECT" : "F1")} : {Loc.T("hud.toggle_grid")}",
+            $"{(gp ? "RT" : "ESPACE")} : {Loc.T("hud.danger_zones")}",
+        };
+
+        const int pad = 10, lineH = 11;
+        var w = 0;
+        foreach (var line in lines)
+            w = System.Math.Max(w, Context.Font.Measure(line, 1));
+        var box = new Rectangle(12, 12, w + 2 * pad, pad + lines.Length * lineH + pad - 2);
+        Context.Style.DrawPanel(sb, box);
+
+        var y = box.Y + pad;
+        foreach (var line in lines)
+        {
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad, y), 1, Palette.White);
+            y += lineH;
         }
     }
 
@@ -1825,6 +1870,14 @@ public sealed class GameplayScene : Scene
 
         foreach (var cell in targets)   // ennemi réellement ciblable = rouge fort
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
+
+        // Quadrillage de la portée PAR-DESSUS les remplissages (contour par case) : déplacement/attaque.
+        foreach (var cell in reach)
+            DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.45f, 1);
+        foreach (var cell in moves)
+            DrawZoneBorder(sb, layout, cell, Palette.Yellow2 * 0.7f, 1);
+        foreach (var cell in targets)
+            DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.9f, 1);
     }
 
     /// <summary>
@@ -1845,6 +1898,8 @@ public sealed class GameplayScene : Scene
                 foreach (var threat in _threatCells)
                     DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
             }
+            if (!_showGrid)   // si le quadrillage permanent est déjà là, pas besoin de le redessiner
+                DrawBoardGrid(sb, layout, Palette.Black1);   // + grille pleine NOIR opaque sur toute la map
             return;
         }
 
@@ -1856,7 +1911,23 @@ public sealed class GameplayScene : Scene
         _match.ThreatenedCells(hovered, _threatCells);  // buffer réutilisé (pas d'allocation par frame)
         foreach (var threat in _threatCells)
             DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
+        foreach (var threat in _threatCells)               // quadrillage de la portée de l'ennemi survolé
+            DrawZoneBorder(sb, layout, threat, Palette.Purple5 * 0.6f, 1);
         DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);
+    }
+
+    /// <summary>Quadrillage (lignes) sur TOUT le plateau : lignes verticales + horizontales aux frontières de cases.</summary>
+    private void DrawBoardGrid(SpriteBatch sb, GridLayout layout, Color color)
+    {
+        var origin = layout.CellToScreen(0, 0);
+        var size = layout.TileSize;
+        // Épaisseur = 1 pixel d'art : la tuile fait DefaultTileSize px natifs, dessinée à TileSize.
+        var thick = System.Math.Max(1, size / GridLayout.DefaultTileSize);
+        int ox = (int)origin.X, oy = (int)origin.Y, w = Columns * size, h = Rows * size;
+        for (var i = 0; i <= Columns; i++)
+            DrawRect(sb, new Rectangle(ox + i * size, oy, thick, h), color);   // lignes verticales
+        for (var j = 0; j <= Rows; j++)
+            DrawRect(sb, new Rectangle(ox, oy + j * size, w, thick), color);   // lignes horizontales
     }
 
     private void DrawUnits(SpriteBatch sb, GridLayout layout)

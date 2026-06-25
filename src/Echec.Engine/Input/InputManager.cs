@@ -112,6 +112,9 @@ public sealed class InputManager
     /// <summary>Bouton menu/pause : Start de la manette.</summary>
     public bool WasMenuPressed => PadEdge(Buttons.Start);
 
+    /// <summary>Bouton Select / View (Back) de la manette — ex. bascule d'affichage.</summary>
+    public bool WasSelectPressed => PadEdge(Buttons.Back);
+
     /// <summary>Bouton d'action secondaire : X de la manette (ex. effacer un slot).</summary>
     public bool WasTertiaryPressed => PadEdge(Buttons.X);
 
