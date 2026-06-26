@@ -34,6 +34,7 @@ combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
 placement.title,PLACEMENT,DEPLOYMENT
 placement.inventory,INVENTAIRE,INVENTORY
+placement.deployed,DEPLOYES {0}/{1},DEPLOYED {0}/{1}
 placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED
 placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD
 placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY

@@ -43,8 +43,8 @@ public sealed class Run
     /// <summary>Nombre d'escortes accompagnant le boss (tirées parmi tous les types débloqués).</summary>
     private const int BossEscorts = 4;
 
-    /// <summary>Taille de la vague ennemie par combat NON-boss (index 0 = combat 1) : 2,3,4,4,5.</summary>
-    private static readonly int[] EnemyCounts = { 2, 3, 4, 4, 5 };
+    /// <summary>Taille de la vague ennemie par combat NON-boss (index 0 = combat 1) : 2,3,3,4,4.</summary>
+    private static readonly int[] EnemyCounts = { 2, 3, 3, 4, 4 };
 
     private readonly List<UnitSpec> _roster = new();
     private readonly List<UnitSpec> _draft = new();
@@ -134,8 +134,11 @@ public sealed class Run
         if (IsBossCombat)
         {
             wave.Add(ToSpec(Commandes.Boss));
+            // Escortes tirées entre elles avec plafond anti-triplon (le boss, pièce unique, ne compte pas).
+            var escorts = new List<UnitSpec>();
             for (var i = 0; i < BossEscorts; i++)
-                wave.Add(RandomEnemy(rng, IntroOrder.Length));
+                escorts.Add(RandomEnemy(rng, IntroOrder.Length, escorts));
+            wave.AddRange(escorts);
             return wave;
         }
 
@@ -143,7 +146,7 @@ public sealed class Run
         var reach = FirstRun ? CombatNumber : CombatNumber + 1;
         var unlocked = Math.Min(reach, IntroOrder.Length);          // nb de types disponibles
         var freshlyUnlocked = reach <= IntroOrder.Length;           // un type vient d'être débloqué ?
-        var count = EnemyCounts[CombatNumber - 1];                  // 2,3,4,4,5 (combats 1..5)
+        var count = EnemyCounts[CombatNumber - 1];                  // 2,3,3,4,4 (combats 1..5)
 
         // Si un type est fraîchement débloqué ce combat, on en garantit une unité (le dernier du pool).
         if (freshlyUnlocked)
@@ -151,9 +154,9 @@ public sealed class Run
             var fresh = IntroOrder[unlocked - 1];
             wave.Add(new UnitSpec(fresh, Domaines.Of(fresh).BaseClass));
         }
-        // Le reste : au hasard parmi les types débloqués.
+        // Le reste : au hasard parmi les types débloqués, en évitant un 3e exemplaire d'un même type.
         for (var i = wave.Count; i < count; i++)
-            wave.Add(RandomEnemy(rng, unlocked));
+            wave.Add(RandomEnemy(rng, unlocked, wave));
 
         Shuffle(wave, rng);   // pour que le type frais ne soit pas toujours à la même position
         return wave;
@@ -217,10 +220,26 @@ public sealed class Run
             _draft.Add(defeatedEnemies[i]);
     }
 
-    /// <summary>Ennemi au hasard parmi les <paramref name="poolSize"/> premiers types débloqués.</summary>
-    private static UnitSpec RandomEnemy(Random rng, int poolSize)
+    /// <summary>Au-delà de ce nombre d'exemplaires d'un même type dans une vague, on évite d'en rajouter.</summary>
+    private const int SameTypeCap = 2;
+
+    /// <summary>
+    /// Ennemi au hasard parmi les <paramref name="poolSize"/> premiers types débloqués, en ÉVITANT un
+    /// type déjà présent <see cref="SameTypeCap"/> fois (≥3 exemplaires) dans <paramref name="soFar"/>.
+    /// Si tous les types disponibles ont atteint le plafond (pool trop petit pour l'effectif), on autorise
+    /// quand même n'importe quel type plutôt que de boucler.
+    /// </summary>
+    private static UnitSpec RandomEnemy(Random rng, int poolSize, List<UnitSpec> soFar)
     {
-        var domaine = IntroOrder[rng.Next(poolSize)];
+        var room = new List<Domaine>();
+        for (var i = 0; i < poolSize; i++)
+        {
+            var d = IntroOrder[i];
+            if (soFar.Count(u => u.Domaine == d) < SameTypeCap)
+                room.Add(d);
+        }
+
+        var domaine = room.Count > 0 ? room[rng.Next(room.Count)] : IntroOrder[rng.Next(poolSize)];
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
     }
 

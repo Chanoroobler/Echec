@@ -23,8 +23,8 @@ public class RunTests
     [Fact]
     public void EnemyWave_FollowsFixedCountSchedule()
     {
-        // Effectifs par combat non-boss : 2, 3, 4, 4, 5.
-        var expected = new[] { 2, 3, 4, 4, 5 };
+        // Effectifs par combat non-boss : 2, 3, 3, 4, 4.
+        var expected = new[] { 2, 3, 3, 4, 4 };
 
         var run = new Run(seed: 1);
         for (var combat = 1; combat <= 5; combat++)
@@ -37,6 +37,40 @@ public class RunTests
                 run.StartBattle();
                 run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
                 run.Recruit(run.Draft[0]);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(42)]
+    [InlineData(1000)]
+    [InlineData(123456)]
+    public void EnemyWave_NeverHasThreeOfTheSameType(int seed)
+    {
+        // Sur tous les combats (boss inclus) et les deux rythmes de campagne, aucune vague ne contient
+        // 3 exemplaires d'un même type (le boss, pièce unique essentielle, est exclu du décompte).
+        foreach (var firstRun in new[] { true, false })
+        {
+            var run = new Run(seed: seed, firstRun: firstRun);
+            for (var combat = 1; combat <= Run.TotalCombats; combat++)
+            {
+                var maxSame = run.BuildEnemyWave()
+                    .Where(u => !u.Essential)
+                    .GroupBy(u => u.Domaine)
+                    .Select(g => g.Count())
+                    .DefaultIfEmpty(0)
+                    .Max();
+                Assert.True(maxSame <= 2,
+                    $"seed {seed}, firstRun {firstRun}, combat {combat} : {maxSame} fois le même type");
+
+                if (combat < Run.TotalCombats)
+                {
+                    run.StartBattle();
+                    run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
+                    run.Recruit(run.Draft[0]);
+                }
             }
         }
     }

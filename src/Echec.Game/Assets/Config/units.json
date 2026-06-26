@@ -53,7 +53,7 @@
     {
       "domaine": "Dame",
       "baseClass": {
-        "name": "Archer", "asset": "archer", "hp": 8, "damage": 5, "moveRange": 2, "attackRange": 3, "minAttackRange": 2,
+        "name": "Archer", "asset": "archer", "hp": 8, "damage": 6, "moveRange": 2, "attackRange": 3, "minAttackRange": 2,
         "evolutions": [
           { "name": "Rôdeur",        "asset": "rodeur",        "hp": 10, "damage": 12, "moveRange": 4, "attackRange": 3, "minAttackRange": 1 },
           { "name": "Maître archer", "asset": "maitre_archer", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }

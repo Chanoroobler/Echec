@@ -35,6 +35,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private SpriteBatch _spriteBatch = null!;
     private AudioManager _audio = null!;
     private SoundBank _sounds = null!;
+    private MusicPlayer _music = null!;
     private GameContext _context = null!;
 
     // Curseur logiciel (le curseur OS est masqué par Windows en plein écran borderless). Dessiné
@@ -95,6 +96,10 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _sounds.Load(
             System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/sounds.json"),
             System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Sounds"));
+        _music = new MusicPlayer(_audio);
+        _music.Load(
+            System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/music.json"),
+            System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Sounds"));
 
         // Ressources UI pixel-art partagées (aucun pipeline de contenu requis).
         var pixel = Textures.CreatePixel(GraphicsDevice);
@@ -105,7 +110,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         _context = new GameContext(
             GraphicsDevice, _spriteBatch, Content, pixel, font, style,
-            _input, _scenes, Window, _settings, _audio, _sounds, this, _saves, Exit);
+            _input, _scenes, Window, _settings, _audio, _sounds, _music, this, _saves, Exit);
 
         ConfigureVirtualScreen();
         _scenes.Change(new MainMenuScene(_context));
@@ -113,6 +118,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void UnloadContent()
     {
+        _music?.Dispose();
         _sounds?.Dispose();
         _cursor?.Dispose();
         base.UnloadContent();
@@ -122,6 +128,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     {
         _input.Update(gameTime);
         _scenes.Update(gameTime);
+        _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
         base.Update(gameTime);
     }
 

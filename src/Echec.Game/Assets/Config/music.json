@@ -1,0 +1,22 @@
+// Musique de fond : mappe chaque CONTEXTE à un (ou des) fichier(s) WAV.
+// Les chemins sont relatifs à Assets/Sounds/. Un fichier introuvable = silence (pas d'erreur).
+//
+//   calm     : menu principal + placement (jouée en boucle)
+//   boss     : combat de boss (jouée en boucle)
+//   playlist : tout le reste (combat normal, recrutement, fin) — enchaînée en boucle, mélangée
+//
+// Les changements de contexte se font toujours EN FONDU (jamais de coupure sèche).
+{
+  "calm": "Fantasy/Relaxed (RT 6.314)/Fantasy Relaxed Main.wav",
+  "boss": "Fantasy/Fight 2 (RT 3)/Fantasy Fight 2 Main.wav",
+  "playlist": [
+    "Fantasy/Action 1 (RT 2)/Fantasy Action 1 Main.wav",
+    "Fantasy/Action 2 (RT 4.5)/Fantasy Action 2 Main.wav",
+    "Fantasy/Defeat (RT 5.334)/Fantasy Defeat Main.wav",
+    "Fantasy/Exploration (RT 2)/Fantasy Exploration Main.wav",
+    "Fantasy/Fight 1 (RT 5.334)/Fantasy Fight 1 Main.wav",
+    "Fantasy/Suspense (RT 4)/Fantasy Suspense Main.wav",
+    "Fantasy/Victory (RT 6)/Fantasy Victory Main.wav",
+    "Fantasy/Wonder (RT 3.375)/Fantasy Wonder Main.wav"
+  ]
+}

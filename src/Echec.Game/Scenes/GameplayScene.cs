@@ -4,6 +4,7 @@ using Echec.Core.Battle;
 using Echec.Core.Campaign;
 using Echec.Core.Map;
 using Echec.Engine;
+using Echec.Engine.Audio;
 using Echec.Engine.Input;
 using Echec.Engine.Localization;
 using Echec.Engine.Rendering;
@@ -28,6 +29,8 @@ public sealed class GameplayScene : Scene
 {
     private const int Columns = 8;
     private const int Rows = 8;
+    // Plafond d'unités joueur déployées sur le plateau, COMMANDANT COMPRIS (commandant + 4 recrues max).
+    private const int MaxDeployed = 5;
     private const double AiDelaySeconds = 0.45;
     private const double TutorialEnemyDelay = 2.6;   // tuto : laisse lire la pop avant que l'IA bouge/contre-attaque
 
@@ -447,6 +450,9 @@ public sealed class GameplayScene : Scene
         // Le courant d'eau avance en continu (même en pause / menus).
         _time += (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+        // Musique pilotée par la phase (appel idempotent : ne relance pas le contexte déjà en cours).
+        UpdateMusic();
+
         if (_landingTimer > 0)
             _landingTimer -= gameTime.ElapsedGameTime.TotalSeconds;
 
@@ -491,6 +497,23 @@ public sealed class GameplayScene : Scene
                     Context.Scenes.Change(new MainMenuScene(Context));
                 break;
         }
+    }
+
+    /// <summary>
+    /// Choisit la musique selon la phase courante : placement → « Relaxed » (calme, comme le menu) ;
+    /// combat de boss → « Fight 2 » ; tout le reste (combat normal, recrutement, victoire, défaite) →
+    /// la playlist qui tourne. Idempotent côté <see cref="MusicPlayer"/> : sans changement de contexte,
+    /// rien n'est coupé ni relancé.
+    /// </summary>
+    private void UpdateMusic()
+    {
+        var scene = _run.Phase switch
+        {
+            RunPhase.Placement => MusicScene.Calm,
+            RunPhase.Battle => _run.IsBossCombat ? MusicScene.Boss : MusicScene.Combat,
+            _ => MusicScene.Combat,   // recrutement / victoire / défaite : « sinon », la playlist
+        };
+        Context.Music.Play(scene);
     }
 
     private void UpdatePlacement(GameTime gameTime)
@@ -707,7 +730,10 @@ public sealed class GameplayScene : Scene
         var spec = _dragSpec!;
 
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
-            && !_battlefield[c].Terrain.BlocksMovement())
+            && !_battlefield[c].Terrain.BlocksMovement()
+            // Repositionner un pion déjà posé est toujours permis ; poser une NOUVELLE unité (venue de
+            // l'inventaire) seulement si le plafond n'est pas atteint (sinon elle retourne à l'inventaire).
+            && (_dragFrom != null || _playerSpec.Count < MaxDeployed))
         {
             PlacePlayer(spec, c);                       // pose / repositionne
             Context.Sounds.Play("unit_place");
@@ -2334,6 +2360,14 @@ public sealed class GameplayScene : Scene
         Context.Font.Draw(sb, CombatTitle(), new Vector2(x, 16), 1, Palette.Yellow1);
         Context.Font.Draw(sb, Loc.T("placement.title"), new Vector2(x, 34), 2, Palette.Yellow2);
         Context.Font.Draw(sb, Loc.T("placement.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
+
+        // Compteur de déploiement (commandant compris), aligné à droite de l'en-tête d'inventaire.
+        // Rouge quand le plafond est atteint : signale que les unités restantes ne pourront pas être posées.
+        var full = _playerSpec.Count >= MaxDeployed;
+        var counter = Loc.T("placement.deployed", _playerSpec.Count, MaxDeployed);
+        Context.Font.Draw(sb, counter,
+            new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
+            1, full ? Palette.Purple5 : Palette.Cyan1);
 
         if (_pending.Count == 0 && _dragSpec == null)
             Context.Font.Draw(sb, Loc.T("placement.all_deployed"), new Vector2(x, PanelListTop + 4), 1, Palette.Cyan2);

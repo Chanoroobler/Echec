@@ -31,6 +31,7 @@ public sealed class GameContext
         GameSettings settings,
         AudioManager audio,
         SoundBank sounds,
+        MusicPlayer music,
         IDisplayService display,
         SaveService saves,
         Action quit)
@@ -47,6 +48,7 @@ public sealed class GameContext
         Settings = settings;
         Audio = audio;
         Sounds = sounds;
+        Music = music;
         Display = display;
         Saves = saves;
         Quit = quit;
@@ -81,6 +83,9 @@ public sealed class GameContext
 
     /// <summary>Banque d'effets sonores (clé d'action → WAV), pilotée par Assets/Config/sounds.json.</summary>
     public SoundBank Sounds { get; }
+
+    /// <summary>Musique de fond (menu/placement, playlist de combat, boss), pilotée par Assets/Config/music.json.</summary>
+    public MusicPlayer Music { get; }
 
     public IDisplayService Display { get; }
 

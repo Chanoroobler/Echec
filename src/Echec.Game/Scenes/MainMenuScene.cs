@@ -1,5 +1,6 @@
 using Echec.Core.Campaign;
 using Echec.Engine;
+using Echec.Engine.Audio;
 using Echec.Engine.Input;
 using Echec.Engine.Localization;
 using Echec.Engine.Persistence;
@@ -47,6 +48,7 @@ public sealed class MainMenuScene : Scene
         _menu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         RefreshSlots();
+        Context.Music.Play(MusicScene.Calm);   // menu principal : piste « Relaxed » (continue dans le placement)
     }
 
     private void RefreshSlots()
