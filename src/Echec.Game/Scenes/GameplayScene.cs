@@ -139,6 +139,23 @@ public sealed class GameplayScene : Scene
     private double _fusionPunchTimer;
     private const double FusionPunchDuration = 0.16;
 
+    // Animation d'ÉVOLUTION (gèle le placement). Machine à PHASES : Reveal (timée : zoom + clignotement
+    // + révélation) → Hold (attend le CLIC du joueur, qui range la pièce) → Return (la pièce revient à
+    // sa place). Version longue/dramatique UNIQUEMENT la 1re fois (sinon Reveal court auto). _evoSource =
+    // case/slot de la pièce (la « caméra » zoome depuis là vers le centre puis y revient).
+    private enum EvoPhase { None, Reveal, Hold, Return }
+    private EvoPhase _evoPhase = EvoPhase.None;
+    private double _evoPhaseTimer;
+    private const double EvoRevealDuration = 8.4;   // zoom + clignotement + révélation (1re découverte)
+    private const double EvoReturnDuration = 0.6;   // retour de la pièce à sa place après le clic
+    private const double EvoShortDuration = 0.4;    // version rapide (déjà obtenue)
+    private bool _evoLong;
+    private Rectangle _evoSource;
+    private UnitClass? _evoBase;
+    private UnitClass? _evoResult;
+    private bool _evoSparked;             // gerbe au flash (une seule fois)
+    private bool EvoPlaying => _evoPhase != EvoPhase.None;
+
     // Curseur de plateau (manette) : case visée. En placement, _gpInventory bascule le focus dans
     // l'inventaire (sélection d'une unité à déployer) et _invFocus en est l'index.
     private Cell _cursor = new(Columns / 2, Rows - 1);
@@ -337,6 +354,9 @@ public sealed class GameplayScene : Scene
         _carryPile = false;
         _fusionReserveSlot = 0;
         _fusionPunchTimer = 0;
+        _evoPhase = EvoPhase.None;
+        _evoBase = null;
+        _evoResult = null;
         _dragSpec = null;
         _dragFrom = null;
         _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
@@ -518,7 +538,9 @@ public sealed class GameplayScene : Scene
 
         // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau, et pas pendant
         // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
-        if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0)
+        // Caméra gelée derrière un modal de placement (popup de fusion / animation d'évolution).
+        if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0
+            && !FusionOpen && !EvoPlaying)
             UpdateCamera(gameTime);
 
         switch (_run.Phase)
@@ -570,6 +592,17 @@ public sealed class GameplayScene : Scene
             UpdateFusionPopup();
             return;
         }
+
+        // Animation d'évolution en cours : placement gelé le temps du morph.
+        if (EvoPlaying)
+        {
+            UpdateEvolutionAnimation((float)gameTime.ElapsedGameTime.TotalSeconds);
+            return;
+        }
+
+        // Fin du feu d'artifice de fusion : les particules continuent de vivre après l'animation.
+        if (_sparks.HasActive)
+            _sparks.Update((float)gameTime.ElapsedGameTime.TotalSeconds);
 
         if (Context.Input.UsingGamepad)
             UpdatePlacementGamepad();
@@ -1168,7 +1201,8 @@ public sealed class GameplayScene : Scene
     /// <summary>Valide l'évolution choisie : Run.Fuse mute le roster, l'unité évoluée prend la place de la pile.</summary>
     private void ConfirmFusion(int optionIndex)
     {
-        var options = _fusionGroup[0].UnitClass.Evolutions;
+        var baseClass = _fusionGroup[0].UnitClass;
+        var options = baseClass.Evolutions;
         if (optionIndex < 0 || optionIndex >= options.Count)
             return;
 
@@ -1181,13 +1215,95 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        Rectangle source;   // emplacement de la pièce (point de zoom de la « caméra »)
         if (cell is { } c)
+        {
             PlacePlayer(fused, c);              // pile de plateau : l'unité évoluée prend la case
+            var lay = BuildLayout();
+            var top = lay.CellToScreen(c.Column, c.Row);
+            source = new Rectangle((int)top.X, (int)top.Y, lay.TileSize, lay.TileSize);
+        }
         else
+        {
             _pending.Add(fused);               // pile de réserve : va en réserve, prête à déployer
-        Context.Sounds.Play("recruit");
+            source = PanelCardRect(_pending.Count - 1);
+        }
+
+        // Version LONGUE (grand moment) uniquement la 1re fois qu'on obtient l'unité ; sinon version courte.
+        var firstTime = !Context.Saves.IsUnitDiscovered(fused.UnitClass.Asset);
+        Context.Saves.DiscoverUnit(fused.UnitClass.Asset);   // méta-progression : désormais connue
+        StartEvolutionAnimation(baseClass, fused.UnitClass, firstTime, source);
         _fusionGroup.Clear();
         _fusionCell = null;
+    }
+
+    /// <summary>Lance l'animation d'évolution (base → évolution), longue/dramatique ou courte.</summary>
+    private void StartEvolutionAnimation(UnitClass baseClass, UnitClass evolution, bool longVersion, Rectangle source)
+    {
+        _evoBase = baseClass;
+        _evoResult = evolution;
+        _evoLong = longVersion;
+        _evoSource = source;
+        _evoPhase = EvoPhase.Reveal;
+        _evoPhaseTimer = longVersion ? EvoRevealDuration : EvoShortDuration;
+        _evoSparked = false;
+    }
+
+    /// <summary>
+    /// Avance la machine à phases : Reveal (timée, gerbe au flash) → Hold (attend le CLIC du joueur)
+    /// → Return (timée, la pièce revient se ranger). La version courte saute Hold/Return.
+    /// </summary>
+    private void UpdateEvolutionAnimation(float dt)
+    {
+        _sparks.Update(dt);
+        switch (_evoPhase)
+        {
+            case EvoPhase.Reveal:
+                _evoPhaseTimer -= dt;
+                var dur = _evoLong ? EvoRevealDuration : EvoShortDuration;
+                var pr = 1.0 - _evoPhaseTimer / dur;
+                var sparkAt = _evoLong ? (double)EvoFlickerEnd : 0.2;
+                if (!_evoSparked && pr >= sparkAt)
+                {
+                    _evoSparked = true;
+                    var c = _evoLong
+                        ? new Vector2(VirtualViewport.Width / 2f, VirtualViewport.Height / 2f)
+                        : new Vector2(_evoSource.Center.X, _evoSource.Center.Y);
+                    _sparks.EmitFirework(c, _evoLong ? 48 : 20, 1);
+                    Context.Sounds.Play("recruit");
+                }
+                if (_evoPhaseTimer <= 0)
+                {
+                    if (_evoLong) _evoPhase = EvoPhase.Hold;   // attend le clic du joueur
+                    else EndEvolutionAnimation();
+                }
+                break;
+
+            case EvoPhase.Hold:
+                // Le joueur CLIQUE (ou A / Entrée) pour ranger la pièce : feu d'artifice + retour.
+                if (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed
+                    || Context.Input.WasKeyPressed(Keys.Enter))
+                {
+                    _evoPhase = EvoPhase.Return;
+                    _evoPhaseTimer = EvoReturnDuration;
+                    _sparks.EmitFirework(new Vector2(VirtualViewport.Width / 2f, VirtualViewport.Height / 2f), 56, 1);
+                    Context.Sounds.Play("recruit");
+                }
+                break;
+
+            case EvoPhase.Return:
+                _evoPhaseTimer -= dt;
+                if (_evoPhaseTimer <= 0)
+                    EndEvolutionAnimation();
+                break;
+        }
+    }
+
+    private void EndEvolutionAnimation()
+    {
+        _evoPhase = EvoPhase.None;
+        _evoBase = null;
+        _evoResult = null;
     }
 
     /// <summary>Choix d'évolution (souris/clavier/manette) ; B/Échap/clic droit ou bouton Annuler ferment.</summary>
@@ -2120,6 +2236,10 @@ public sealed class GameplayScene : Scene
                     DrawTutorialOverlay(sb, board, viewport);
                 if (FusionOpen)
                     DrawFusionPopup(sb, viewport);   // modale par-dessus le placement
+                if (EvoPlaying)
+                    DrawEvolutionAnimation(sb, viewport);   // morph base → évolution
+                else if (_sparks.HasActive)
+                    _sparks.Draw(sb, Context.Pixel);        // fin du feu d'artifice (pièce rangée)
                 break;
             case RunPhase.Battle:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -2269,8 +2389,8 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen)
-            return Palette.Black1 * 0.62f; // popup de fusion (en placement) : = DrawDim
+        if (FusionOpen || (EvoPlaying && _evoLong))
+            return Palette.Black1 * 0.62f; // popup de fusion / morph d'évolution long (placement) : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -3004,11 +3124,13 @@ public sealed class GameplayScene : Scene
             new Rectangle(cancel.X, cancel.Y + dyCancel, cancel.Width, cancel.Height), 2,
             hovered ? Palette.Yellow2 : Palette.White);
 
-        // Cartes d'évolution (mots-clés détaillés SOUS chaque carte, désormais dégagés).
+        // Cartes d'évolution (mots-clés détaillés SOUS chaque carte, désormais dégagés). Le sprite reste
+        // en SILHOUETTE tant que le joueur n'a jamais obtenu cette évolution (méta-progression).
         for (var i = 0; i < count; i++)
         {
             var rect = FusionCardRect(i, count);
-            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp);
+            var revealed = Context.Saves.IsUnitDiscovered(options[i].Asset);
+            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
             DrawKeywordPopupsBelow(sb, options[i], rect);
         }
 
@@ -3016,6 +3138,181 @@ public sealed class GameplayScene : Scene
         var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
         DrawRectBorder(sb, Inflate(FusionCardRect(fi, count), 3), Palette.Yellow2, 3);
         sb.End();
+    }
+
+    // Bornes internes de la phase REVEAL (fractions de EvoRevealDuration).
+    private const float EvoZoomIn = 0.10f;     // fin du zoom caméra (pièce → centre)
+    private const float EvoFlickerEnd = 0.78f; // fin du clignotement (silhouettes) → flash + couleur
+
+    /// <summary>
+    /// Animation d'ÉVOLUTION. LONGUE (1re fois) : Reveal (zoom + clignotement Pokémon en ombre noire +
+    /// flash + couleur) → Hold (attend le CLIC) → Return (la pièce revient se ranger). COURTE (déjà
+    /// obtenue) : simple punch + flash sur la pièce.
+    /// </summary>
+    private void DrawEvolutionAnimation(SpriteBatch sb, Viewport viewport)
+    {
+        if (!_evoLong)
+        {
+            DrawEvolutionShort(sb, (float)(1.0 - _evoPhaseTimer / EvoShortDuration));
+            return;
+        }
+
+        var centerBig = CenteredRect(viewport, 176);
+        switch (_evoPhase)
+        {
+            case EvoPhase.Reveal: DrawEvolutionReveal(sb, viewport, centerBig); break;
+            case EvoPhase.Hold: DrawEvolutionHold(sb, viewport, centerBig); break;
+            default: DrawEvolutionReturn(sb, viewport, centerBig); break;   // Return
+        }
+        _sparks.Draw(sb, Context.Pixel);
+    }
+
+    /// <summary>Phase REVEAL : zoom caméra → clignotement ombre noire (accéléré) → flash → couleur.</summary>
+    private void DrawEvolutionReveal(SpriteBatch sb, Viewport viewport, Rectangle centerBig)
+    {
+        var p = (float)(1.0 - _evoPhaseTimer / EvoRevealDuration);   // 0 → 1
+        var zoom = p < EvoZoomIn ? Smooth01(p / EvoZoomIn) : 1f;     // zoom puis maintien au centre
+        var rect = LerpRect(_evoSource, centerBig, zoom);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * (0.62f * zoom));
+
+        if (p < EvoZoomIn)
+        {
+            DrawEvoSprite(sb, _evoBase, rect, Color.Black, 1f);                 // ombre du pion de base
+        }
+        else if (p < EvoFlickerEnd)
+        {
+            // CLIGNOTEMENT : alterne base/évolution en OMBRE NOIRE. Cadence = base (terme linéaire, du
+            // switch dès le début) + accélération DOUCE et CONTINUE (terme quadratique) — pas de cubique
+            // qui reste plat puis explose d'un coup.
+            var phase = (p - EvoZoomIn) / (EvoFlickerEnd - EvoZoomIn);
+            var toggle = (int)(phase * 6f + phase * phase * 18f);
+            DrawEvoSprite(sb, toggle % 2 == 1 ? _evoResult : _evoBase, rect, Color.Black, 1f);
+        }
+        else
+        {
+            // RÉVÉLATION : l'évolution sort de l'ombre en couleur (reste au centre).
+            var rp = (p - EvoFlickerEnd) / (1f - EvoFlickerEnd);
+            var evoAlpha = Smooth01(rp / 0.5f);
+            if (evoAlpha < 1f)
+                DrawEvoSprite(sb, _evoResult, rect, Color.Black, 1f - evoAlpha);
+            DrawEvoSprite(sb, _evoResult, rect, Color.White, evoAlpha);
+            DrawEvoName(sb, viewport, rect, evoAlpha);
+        }
+        sb.End();
+
+        var flashA = Bell(p, EvoFlickerEnd + 0.01f, 0.05f);
+        if (flashA > 0.01f)
+        {
+            sb.Begin(blendState: BlendState.Additive, samplerState: SamplerState.PointClamp);
+            DrawEvoSprite(sb, _evoResult, rect, Color.White, 0.95f * flashA);
+            sb.End();
+        }
+    }
+
+    /// <summary>Phase HOLD : l'évolution en couleur au centre + invite à CLIQUER pour ranger la pièce.</summary>
+    private void DrawEvolutionHold(SpriteBatch sb, Viewport viewport, Rectangle centerBig)
+    {
+        var rect = ScaleRectCentered(centerBig, 1f + 0.03f * MathF.Sin(_time * 5f));   // léger souffle
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawDim(sb, viewport);
+        DrawEvoSprite(sb, _evoResult, rect, Color.White, 1f);
+        DrawEvoName(sb, viewport, centerBig, 1f);
+
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "fusion.continue_gp" : "fusion.continue");
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+        Context.Font.DrawCentered(sb, prompt,
+            new Rectangle(0, centerBig.Bottom + 48, viewport.Width, 12), 1, Palette.Cyan1 * a);
+        sb.End();
+    }
+
+    /// <summary>Phase RETURN : la pièce (caméra) revient du centre vers sa place après le clic.</summary>
+    private void DrawEvolutionReturn(SpriteBatch sb, Viewport viewport, Rectangle centerBig)
+    {
+        var prt = (float)(1.0 - _evoPhaseTimer / EvoReturnDuration);
+        var zoom = 1f - Smooth01(prt);   // centre → source
+        var rect = LerpRect(_evoSource, centerBig, zoom);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * (0.62f * zoom));
+        DrawEvoSprite(sb, _evoResult, rect, Color.White, 1f);
+        sb.End();
+    }
+
+    /// <summary>Nom de l'évolution centré sous <paramref name="rect"/> (fondu via <paramref name="alpha"/>).</summary>
+    private void DrawEvoName(SpriteBatch sb, Viewport viewport, Rectangle rect, float alpha)
+    {
+        if (_evoResult is { } r && alpha > 0.2f)
+            Context.Font.DrawCentered(sb, UnitName(r).ToUpperInvariant(),
+                new Rectangle(0, rect.Bottom + 14, viewport.Width, 18), 3, Palette.Yellow2 * alpha);
+    }
+
+    /// <summary>Nom d'affichage LOCALISÉ d'une classe (clé <c>unit.&lt;asset&gt;</c>, repli sur le nom brut).</summary>
+    private static string UnitName(UnitClass c) => Loc.TOr("unit." + c.Asset, c.Name);
+
+    private static Rectangle ScaleRectCentered(Rectangle r, float scale)
+    {
+        var w = (int)(r.Width * scale);
+        var h = (int)(r.Height * scale);
+        return new Rectangle(r.Center.X - w / 2, r.Center.Y - h / 2, w, h);
+    }
+
+    /// <summary>Version COURTE (unité déjà obtenue) : punch + flash sur la pièce, à son emplacement.</summary>
+    private void DrawEvolutionShort(SpriteBatch sb, float p)
+    {
+        var punch = 1f + 0.5f * Bell(p, 0.25f, 0.32f);
+        var s = (int)(_evoSource.Width * punch);
+        var rect = new Rectangle(_evoSource.Center.X - s / 2, _evoSource.Center.Y - s / 2, s, s);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawEvoSprite(sb, _evoResult, rect, Color.White, 1f);
+        sb.End();
+
+        var flashA = Bell(p, 0.2f, 0.14f);
+        if (flashA > 0.01f)
+        {
+            sb.Begin(blendState: BlendState.Additive, samplerState: SamplerState.PointClamp);
+            DrawEvoSprite(sb, _evoResult, rect, Color.White, 0.9f * flashA);
+            sb.End();
+        }
+
+        _sparks.Draw(sb, Context.Pixel);
+    }
+
+    private static Rectangle CenteredRect(Viewport vp, int size) =>
+        new(vp.Width / 2 - size / 2, vp.Height / 2 - size / 2, size, size);
+
+    /// <summary>Interpolation linéaire entre deux rectangles (pour le « zoom caméra »).</summary>
+    private static Rectangle LerpRect(Rectangle a, Rectangle b, float t) =>
+        new((int)MathHelper.Lerp(a.X, b.X, t), (int)MathHelper.Lerp(a.Y, b.Y, t),
+            (int)MathHelper.Lerp(a.Width, b.Width, t), (int)MathHelper.Lerp(a.Height, b.Height, t));
+
+    /// <summary>Sprite d'une classe étiré dans <paramref name="rect"/>, teinte + alpha (overlay d'évolution).</summary>
+    private void DrawEvoSprite(SpriteBatch sb, UnitClass? cls, Rectangle rect, Color tint, float alpha)
+    {
+        if (cls is null || alpha <= 0.001f)
+            return;
+        var sprite = SpriteFor(cls, Faction.Player, front: true);
+        if (sprite != null)
+            sb.Draw(sprite, rect, tint * alpha);
+        else
+            DrawRect(sb, rect, tint * alpha);
+    }
+
+    /// <summary>Lissage cubique 0→1 (smoothstep), borné.</summary>
+    private static float Smooth01(float t)
+    {
+        t = MathHelper.Clamp(t, 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    /// <summary>Bosse parabolique : 1 au centre, 0 à ±largeur (pour flash / punch).</summary>
+    private static float Bell(float p, float center, float width)
+    {
+        var d = (p - center) / width;
+        return MathF.Max(0f, 1f - d * d);
     }
 
     /// <summary>
@@ -3073,7 +3370,7 @@ public sealed class GameplayScene : Scene
     {
         // Portrait 64×64 à taille native (jamais redimensionné), de FACE (présentation), nom dessous.
         DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true);
-        Context.Font.DrawCentered(sb, spec.Name.ToUpperInvariant(),
+        Context.Font.DrawCentered(sb, UnitName(spec.UnitClass).ToUpperInvariant(),
             new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White);
     }
 
@@ -3142,19 +3439,22 @@ public sealed class GameplayScene : Scene
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
-        Domaine domaine, int hp, int maxHp)
+        Domaine domaine, int hp, int maxHp, bool revealed = true)
     {
         Context.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
-        // Titre : nom de l'unité.
-        Context.Font.DrawCentered(sb, c.Name.ToUpperInvariant(),
+        // Titre : nom de l'unité (localisé).
+        Context.Font.DrawCentered(sb, UnitName(c).ToUpperInvariant(),
             new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
         y += 22;
 
-        // Sprite du pion (comme en jeu, de face).
+        // Sprite du pion (comme en jeu, de face). En SILHOUETTE si l'unité n'est pas encore découverte.
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
-        DrawChip(sb, c, faction, sprite, front: true);
+        if (revealed)
+            DrawChip(sb, c, faction, sprite, front: true);
+        else
+            DrawHiddenChip(sb, c, faction, sprite);
         y = sprite.Bottom + 6;
 
         // Icône de domaine (39×39), centrée sous le pion.
@@ -3403,7 +3703,20 @@ public sealed class GameplayScene : Scene
         var color = faction == Faction.Player ? Palette.Cyan1 : Palette.Purple5;
         DrawRect(sb, Inflate(area, 2), Palette.Black1);
         DrawRect(sb, area, color);
-        Context.Font.DrawCentered(sb, cls.Name[..1], area, 2, Palette.White);
+        Context.Font.DrawCentered(sb, UnitName(cls)[..1].ToUpperInvariant(), area, 2, Palette.White);
+    }
+
+    /// <summary>
+    /// Unité non encore découverte (méta-progression) : OMBRE NOIRE UNIFORME du sprite — on voit la
+    /// SILHOUETTE (forme) entièrement noire, aucun détail. Teinte NOIR PUR (multiplie tout à 0).
+    /// </summary>
+    private void DrawHiddenChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area)
+    {
+        var sprite = SpriteFor(cls, faction, front: true);
+        if (sprite != null)
+            sb.Draw(sprite, area, Color.Black);   // ombre noire uniforme (silhouette)
+        else
+            DrawRect(sb, area, Palette.Black1);
     }
 
     private void DrawDragGhost(SpriteBatch sb)

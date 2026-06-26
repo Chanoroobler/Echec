@@ -36,6 +36,9 @@ public sealed class MainMenuScene : Scene
     // Index du slot dont on demande confirmation d'effacement (-1 = aucune confirmation en cours).
     private int _confirmDelete = -1;
 
+    // Confirmation d'effacement de la MÉTA-PROGRESSION (par-dessus le panneau d'options).
+    private bool _confirmMetaReset;
+
     // Navigation manette : focus dans la liste racine [slots…, Options, Quitter] et dans la confirmation.
     private int _focus;
     private bool _confirmYes;   // focus de la boîte de confirmation : true = EFFACER, false = ANNULER
@@ -60,6 +63,7 @@ public sealed class MainMenuScene : Scene
     // ── Mise à jour ─────────────────────────────────────────────────────────────
     public override void Update(GameTime gameTime)
     {
+        if (_confirmMetaReset) { UpdateMetaConfirm(); return; }   // par-dessus les options
         if (_menu.IsOpen) { UpdateOptions(); return; }
         if (_confirmDelete >= 0) { UpdateConfirm(); return; }
 
@@ -141,8 +145,17 @@ public sealed class MainMenuScene : Scene
         // Souris : clic direct.
         if (Context.Input.WasLeftClicked)
         {
+            var mp = Context.Input.MousePosition;
+            // Bouton « effacer les découvertes » (méta-progression) : ouvre une confirmation explicative.
+            if (_menu.Panel == MenuPanel.Options
+                && MetaResetRect(Context.VirtualResolution.X, Context.VirtualResolution.Y).Contains(mp))
+            {
+                _confirmMetaReset = true; _confirmYes = false;
+                Context.Sounds.Play("menu_click");
+                return;
+            }
             Context.Sounds.Play("menu_click");
-            action = _menu.HandleClick(Context.Input.MousePosition, Context.VirtualResolution.X, Context.VirtualResolution.Y);
+            action = _menu.HandleClick(mp, Context.VirtualResolution.X, Context.VirtualResolution.Y);
         }
 
         switch (action)
@@ -202,6 +215,35 @@ public sealed class MainMenuScene : Scene
         Context.Sounds.Play("menu_click");
     }
 
+    private void UpdateMetaConfirm()
+    {
+        if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasRightClicked || Context.Input.WasCancelPressed)
+        {
+            _confirmMetaReset = false;
+            return;
+        }
+
+        if (Context.Input.Nav(NavDir.Left)) _confirmYes = true;
+        if (Context.Input.Nav(NavDir.Right)) _confirmYes = false;
+        if (Context.Input.WasConfirmPressed) { ApplyMetaConfirm(_confirmYes); return; }
+
+        if (!Context.Input.WasLeftClicked)
+            return;
+
+        var (_, yes, no) = MetaConfirmLayout(Context.VirtualResolution.X, Context.VirtualResolution.Y);
+        var p = Context.Input.MousePosition;
+        if (yes.Contains(p)) ApplyMetaConfirm(true);
+        else if (no.Contains(p)) ApplyMetaConfirm(false);
+    }
+
+    private void ApplyMetaConfirm(bool erase)
+    {
+        if (erase)
+            Context.Saves.ResetMetaProgression();
+        _confirmMetaReset = false;
+        Context.Sounds.Play("menu_click");
+    }
+
     // ── Rendu ───────────────────────────────────────────────────────────────────
     public override void Draw(GameTime gameTime)
     {
@@ -246,10 +288,25 @@ public sealed class MainMenuScene : Scene
         else if (_menu.IsOpen)
         {
             var focusRect = _menu.FocusedRect(w, h);
-            var pointer = gp ? focusRect.Center.ToVector2() : mouse.ToVector2();
+            var dead = new Point(int.MinValue, int.MinValue);
+            // Confirmation méta ouverte : on neutralise le survol des options derrière.
+            var pointer = _confirmMetaReset ? dead.ToVector2() : (gp ? focusRect.Center.ToVector2() : mouse.ToVector2());
+            var optDown = !_confirmMetaReset && !gp && mouseDown;
             sb.Begin(samplerState: SamplerState.PointClamp);
-            _menuRenderer.Draw(sb, _menu, w, h, pointer, !gp && mouseDown, gp ? focusRect : null);
+            _menuRenderer.Draw(sb, _menu, w, h, pointer, optDown, (!_confirmMetaReset && gp) ? focusRect : null);
+            // Bouton « effacer les découvertes » sous le panneau (uniquement dans les options).
+            if (_menu.Panel == MenuPanel.Options)
+                Button(sb, MetaResetRect(w, h), Loc.T("mainmenu.reset_meta"),
+                    (_confirmMetaReset || gp) ? dead : mouse, optDown);
             sb.End();
+
+            // Boîte de confirmation explicative par-dessus le panneau d'options.
+            if (_confirmMetaReset)
+            {
+                var (_, yc, nc) = MetaConfirmLayout(w, h);
+                var cp = gp ? (_confirmYes ? yc.Center : nc.Center) : mouse;
+                DrawMetaConfirm(sb, w, h, cp, !gp && mouseDown);
+            }
         }
     }
 
@@ -335,6 +392,48 @@ public sealed class MainMenuScene : Scene
         var yes = new Rectangle(panel.X + pad, by, btnW, btnH);
         var no = new Rectangle(panel.Right - pad - btnW, by, btnW, btnH);
         return (panel, yes, no);
+    }
+
+    /// <summary>Boîte de confirmation de l'effacement de la méta-progression (plus large : texte explicatif).</summary>
+    private static (Rectangle panel, Rectangle yes, Rectangle no) MetaConfirmLayout(int w, int h)
+    {
+        const int cw = 480, ch = 210, pad = 16, btnH = 34, gap = 12;
+        var panel = new Rectangle((w - cw) / 2, (h - ch) / 2, cw, ch);
+        var btnW = (cw - 2 * pad - gap) / 2;
+        var by = panel.Bottom - pad - btnH;
+        var yes = new Rectangle(panel.X + pad, by, btnW, btnH);
+        var no = new Rectangle(panel.Right - pad - btnW, by, btnW, btnH);
+        return (panel, yes, no);
+    }
+
+    private void DrawMetaConfirm(SpriteBatch sb, int w, int h, Point pointer, bool down)
+    {
+        var (panel, yes, no) = MetaConfirmLayout(w, h);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(Context.Pixel, new Rectangle(0, 0, w, h), Palette.Navy2 * 0.85f);
+        Context.Style.DrawPanel(sb, panel);
+
+        Context.Font.DrawCentered(sb, Loc.T("mainmenu.reset_meta_confirm"),
+            new Rectangle(panel.X, panel.Y + Pad, panel.Width, 16), 1, Palette.Yellow2);
+
+        var ty = panel.Y + Pad + 30;
+        foreach (var key in new[] { "mainmenu.reset_meta_desc1", "mainmenu.reset_meta_desc2", "mainmenu.reset_meta_desc3" })
+        {
+            Context.Font.DrawCentered(sb, Loc.T(key), new Rectangle(panel.X, ty, panel.Width, 12), 1, Palette.White);
+            ty += 18;
+        }
+
+        Button(sb, yes, Loc.T("mainmenu.delete"), pointer, down);
+        Button(sb, no, Loc.T("mainmenu.cancel"), pointer, down);
+        sb.End();
+    }
+
+    /// <summary>Bouton « effacer les découvertes » : juste sous le panneau d'options.</summary>
+    private Rectangle MetaResetRect(int w, int h)
+    {
+        var panel = _menu.Layout(w, h).Panel;
+        return new Rectangle(panel.X, panel.Bottom + 12, panel.Width, 28);
     }
 
     private struct MenuLayout

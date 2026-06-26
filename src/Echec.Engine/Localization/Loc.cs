@@ -83,6 +83,23 @@ public static class Loc
     /// <summary>Texte traduit avec arguments (<see cref="string.Format(string, object[])"/>).</summary>
     public static string T(string key, params object[] args) => string.Format(T(key), args);
 
+    /// <summary>
+    /// Texte traduit pour la langue active, ou <paramref name="fallback"/> si la clé est absente
+    /// (utile pour des libellés issus de données : noms d'unités via leur asset).
+    /// </summary>
+    public static string TOr(string key, string fallback)
+    {
+        if (Rows.TryGetValue(key, out var cols))
+        {
+            var i = (int)Current;
+            if (i < cols.Length && cols[i].Length > 0)
+                return cols[i];
+            if (cols.Length > 0 && cols[0].Length > 0)
+                return cols[0];
+        }
+        return fallback;
+    }
+
     private static string Unquote(string s)
     {
         s = s.Trim();

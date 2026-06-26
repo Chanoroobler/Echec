@@ -29,6 +29,11 @@ mainmenu.new_game,NOUVELLE PARTIE,NEW GAME
 mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0} ?
 mainmenu.delete,EFFACER,DELETE
 mainmenu.cancel,ANNULER,CANCEL
+mainmenu.reset_meta,EFFACER LES DECOUVERTES,RESET DISCOVERIES
+mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES ?
+mainmenu.reset_meta_desc1,TOUTES LES UNITES DECOUVERTES SERONT OUBLIEES,ALL DISCOVERED UNITS WILL BE FORGOTTEN
+mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOLUTIONS BECOME SHADOWS AGAIN WHEN FUSING
+mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED)
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
@@ -48,6 +53,24 @@ placement.hint_gp_unfuse,B : DEFUSIONNER,B : UNFUSE
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
 stat.range,PORTEE,RANGE
+# ── Noms d'unites (cle = unit.<asset>) ──────────────────────────────────────
+unit.soldat,SOLDAT,SOLDIER
+unit.garde,GARDE,GUARD
+unit.spadassin,SPADASSIN,SWORDSMAN
+unit.mage,MAGE,MAGE
+unit.clerc,CLERC,CLERIC
+unit.sorcier,SORCIER,SORCERER
+unit.cavalier,CAVALIER,CAVALIER
+unit.chevalier,CHEVALIER,KNIGHT
+unit.archer_monte,ARCHER MONTE,MOUNTED ARCHER
+unit.lancier,LANCIER,LANCER
+unit.empaleur,EMPALEUR,IMPALER
+unit.hallebardier,HALLEBARDIER,HALBERDIER
+unit.archer,ARCHER,ARCHER
+unit.rodeur,RODEUR,RANGER
+unit.maitre_archer,MAITRE ARCHER,MASTER ARCHER
+unit.commandant,COMMANDANT,COMMANDER
+unit.boss,BOSS,BOSS
 # ── HUD / commandes ─────────────────────────────────────────────────────────
 hud.toggle_grid,GRILLE,GRID
 hud.danger_zones,ZONES DE DANGER,DANGER ZONES
@@ -59,6 +82,8 @@ recruit.army,TON ARMEE,YOUR ARMY
 fusion.title,FUSION,FUSION
 fusion.subtitle,CHOISIS UNE EVOLUTION,CHOOSE AN EVOLUTION
 fusion.cancel,ANNULER,CANCEL
+fusion.continue,CLIC POUR RANGER LA PIECE,CLICK TO STORE THE UNIT
+fusion.continue_gp,A POUR RANGER LA PIECE,A TO STORE THE UNIT
 # ── Fin de partie ───────────────────────────────────────────────────────────
 defeat.army_destroyed,ARMEE DETRUITE,ARMY DESTROYED
 defeat.commander_fallen,COMMANDANT TOMBE,COMMANDER FALLEN

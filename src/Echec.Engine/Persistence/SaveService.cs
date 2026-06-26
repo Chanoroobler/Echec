@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -59,6 +60,36 @@ public sealed class SaveService
         if (dto.HasPlayedBefore)
             return;
         dto.HasPlayedBefore = true;
+        TryWrite(ProfilePath, dto);
+    }
+
+    // ── Méta-progression : unités découvertes ────────────────────────────────────────
+
+    // Cache mémoire : évite de relire le profil sur disque à chaque frame (le rendu interroge souvent).
+    private HashSet<string>? _discovered;
+
+    private HashSet<string> DiscoveredSet() =>
+        _discovered ??= new HashSet<string>(TryRead<ProfileDto>(ProfilePath)?.DiscoveredUnits ?? new List<string>());
+
+    /// <summary>Vrai si le joueur a déjà obtenu l'unité d'asset <paramref name="asset"/> (toutes parties).</summary>
+    public bool IsUnitDiscovered(string asset) => DiscoveredSet().Contains(asset);
+
+    /// <summary>Marque une unité comme découverte (persistée). Idempotent.</summary>
+    public void DiscoverUnit(string asset)
+    {
+        if (!DiscoveredSet().Add(asset))
+            return;
+        var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+        dto.DiscoveredUnits = new List<string>(DiscoveredSet());
+        TryWrite(ProfilePath, dto);
+    }
+
+    /// <summary>Efface toute la méta-progression (unités découvertes). Garde le reste du profil.</summary>
+    public void ResetMetaProgression()
+    {
+        _discovered = new HashSet<string>();
+        var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+        dto.DiscoveredUnits = new List<string>();
         TryWrite(ProfilePath, dto);
     }
 
