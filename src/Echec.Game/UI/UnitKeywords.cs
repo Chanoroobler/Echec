@@ -9,7 +9,7 @@ namespace Echec.Game.UI;
 /// et sont résolues à la volée selon la langue active, donc un changement de langue se reflète
 /// immédiatement. IMPORTANT : la police pixel (<see cref="Echec.Engine.UI.Text.PixelFont"/>) n'a NI
 /// accents NI apostrophe/virgule — les valeurs CSV sont écrites sans diacritiques ni ponctuation.
-/// Descriptions PROVISOIRES : les mécaniques ne sont pas encore implémentées (cf. units.json).
+/// Les mécaniques de tous les traits sont implémentées dans <see cref="Echec.Core.Battle.Match"/>.
 /// </summary>
 public static class UnitKeywords
 {
@@ -24,6 +24,12 @@ public static class UnitKeywords
         ["Franchissement"] = "kw.franchissement",
         ["Transpercement"] = "kw.transpercement",
         ["Interception"] = "kw.interception",
+        ["Aura de rempart"] = "kw.aura_rempart",
+        ["Riposte"] = "kw.riposte",
+        ["Duelliste"] = "kw.duelliste",
+        ["Rage"] = "kw.rage",
+        ["Bouclier divin"] = "kw.bouclier_divin",
+        ["Bénédiction"] = "kw.benediction",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="Echec.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

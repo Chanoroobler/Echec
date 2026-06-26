@@ -35,6 +35,23 @@ public sealed class Unit
     public bool IsAlive => Hp > 0;
 
     public void TakeDamage(int amount) => Hp = System.Math.Max(0, Hp - amount);
+
+    /// <summary>Soigne l'unité (borné à ses PV max).</summary>
+    public void Heal(int amount) => Hp = System.Math.Min(MaxHp, Hp + amount);
+
+    /// <summary>
+    /// Vrai si la classe porte ce <paramref name="trait"/> (cf. <see cref="Trait"/>). « Traverse allié »
+    /// est porté par <see cref="UnitClass.PiercesAllies"/> et non par la liste de traits.
+    /// </summary>
+    public bool HasTrait(string trait)
+    {
+        if (trait == Battle.Trait.TraverseAllie)
+            return Class.PiercesAllies;
+        foreach (var t in Class.Traits)
+            if (t == trait)
+                return true;
+        return false;
+    }
 }
 
 /// <summary>Fabrique d'unités : démarre sur la classe de base du domaine.</summary>

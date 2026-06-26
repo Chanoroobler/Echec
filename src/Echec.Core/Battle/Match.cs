@@ -112,13 +112,19 @@ public sealed class Match
             return;
         }
 
+        var phases = unit.HasTrait(Trait.Franchissement);   // se déplace au travers des unités (alliées/ennemies)
         foreach (var dir in vectors)
         {
             for (var step = 1; step <= unit.MoveRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || _units[to.Column, to.Row] != null || BlocksMovement(to))
-                    break; // hors plateau, unité, ou obstacle (eau/montagne) : on ne passe pas à travers
+                if (!InBounds(to) || BlocksMovement(to))
+                    break; // hors plateau ou obstacle (eau/montagne) : on s'arrête
+                if (_units[to.Column, to.Row] != null)
+                {
+                    if (phases) continue;   // Franchissement : on enjambe l'unité (sans pouvoir s'y poser)
+                    break;                  // sinon une unité borne le déplacement
+                }
                 result.Add(to);
             }
         }
@@ -249,6 +255,7 @@ public sealed class Match
             return MoveKind.Invalid;
 
         MoveUnit(from, to);
+        TriggerInterceptions(to, unit);   // ennemis avec « Interception » dont la portée couvre la case d'arrivée
         EndTurn();
         return MoveKind.Moved;
     }
@@ -261,7 +268,15 @@ public sealed class Match
             return MoveKind.Invalid;
 
         var victim = _units[target.Column, target.Row]!;
-        victim.TakeDamage(unit.Damage);
+        ApplyDamage(target, victim, EffectiveDamage(unit, from, victim, target));
+
+        // Dégâts de zone : éclaboussure (mêmes dégâts effectifs) sur les ennemis autour de la cible.
+        if (unit.HasTrait(Trait.DegatsDeZone))
+            SplashAround(target, unit, from);
+
+        // Transpercement : l'unité juste DERRIÈRE la cible (même direction) est aussi touchée.
+        if (unit.HasTrait(Trait.Transpercement))
+            PierceBehind(from, target, unit);
 
         MoveKind kind;
         if (!victim.IsAlive)
@@ -273,11 +288,192 @@ public sealed class Match
         }
         else
         {
+            // Riposte : la victime survivante contre-attaque en mêlée (attaquant resté au contact).
+            if (victim.HasTrait(Trait.Riposte) && ChebyshevDistance(from, target) == 1
+                && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit))
+            {
+                ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from));
+                RemoveDeadAt(from);
+            }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
 
         EndTurn();
         return kind;
+    }
+
+    // ─── TRAITS : dégâts effectifs, formes d'attaque, réactions ───────────────────────────────────
+
+    private const int RempartReduction = 4;     // -4 dégâts d'une attaque à distance (>= 2)
+    private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
+    private const int RageBonus = 6;             // +6 puissance quand l'attaquant est sous le seuil PV
+    private const int RageHpThreshold = 10;      // seuil de PV de Rage
+    private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
+
+    private static readonly (int Dc, int Dr)[] Neighbors8 =
+        { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
+
+    private static int ChebyshevDistance(Cell a, Cell b) =>
+        System.Math.Max(System.Math.Abs(a.Column - b.Column), System.Math.Abs(a.Row - b.Row));
+
+    /// <summary>Vrai si une case adjacente porte un allié de <paramref name="faction"/> avec ce trait.</summary>
+    private bool HasAdjacentAlly(Cell cell, Faction faction, string trait)
+    {
+        foreach (var (dc, dr) in Neighbors8)
+            if (UnitAt(new Cell(cell.Column + dc, cell.Row + dr)) is { } u
+                && u.Faction == faction && u.HasTrait(trait))
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Bénédiction (offensifs), Rempart / Aura de
+    /// rempart (à distance ≥ 2) et Duelliste (corps à corps) en réduction. Borné à 0.
+    /// </summary>
+    private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
+    {
+        var dmg = attacker.Damage;
+        if (attacker.HasTrait(Trait.Rage) && attacker.Hp < RageHpThreshold)
+            dmg += RageBonus;
+        if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.Benediction))
+            dmg += BenedictionBonus;
+
+        var distance = ChebyshevDistance(attackerCell, victimCell);
+        var shielded = victim.HasTrait(Trait.Rempart)
+            || HasAdjacentAlly(victimCell, victim.Faction, Trait.AuraDeRempart);
+        if (distance >= 2 && shielded)
+            dmg -= RempartReduction;
+        if (distance == 1 && victim.HasTrait(Trait.Duelliste))
+            dmg -= DuellisteReduction;
+
+        return System.Math.Max(0, dmg);
+    }
+
+    /// <summary>Applique des dégâts ; un allié adjacent « Bouclier divin » empêche la mort (PV ≥ 1).</summary>
+    private void ApplyDamage(Cell cell, Unit unit, int amount)
+    {
+        if (amount <= 0)
+            return;
+        if (amount >= unit.Hp && HasAdjacentAlly(cell, unit.Faction, Trait.BouclierDivin))
+            amount = unit.Hp - 1;   // laisse 1 PV : l'attaque n'est jamais mortelle
+        if (amount > 0)
+            unit.TakeDamage(amount);
+    }
+
+    /// <summary>Dégâts EFFECTIFS qu'infligerait l'attaque de <paramref name="from"/> sur
+    /// <paramref name="target"/> (traits inclus), bornés aux PV de la cible — pour l'affichage.</summary>
+    public int PreviewDamage(Cell from, Cell target)
+    {
+        var attacker = UnitAt(from);
+        var victim = UnitAt(target);
+        if (attacker == null || victim == null)
+            return 0;
+        return System.Math.Min(EffectiveDamage(attacker, from, victim, target), victim.Hp);
+    }
+
+    /// <summary>« Dégâts de zone » : touche les ennemis des 8 cases autour de la cible (mêmes dégâts effectifs).</summary>
+    private void SplashAround(Cell center, Unit attacker, Cell attackerCell)
+    {
+        foreach (var (dc, dr) in Neighbors8)
+        {
+            var c = new Cell(center.Column + dc, center.Row + dr);
+            if (UnitAt(c) is not { } u || u.Faction == attacker.Faction)
+                continue;
+            ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c));
+            RemoveDeadAt(c);
+        }
+    }
+
+    /// <summary>« Transpercement » : touche l'ennemi situé une case derrière la cible (même direction).</summary>
+    private void PierceBehind(Cell from, Cell target, Unit attacker)
+    {
+        var dc = System.Math.Sign(target.Column - from.Column);
+        var dr = System.Math.Sign(target.Row - from.Row);
+        var behind = new Cell(target.Column + dc, target.Row + dr);
+        if (UnitAt(behind) is not { } u || u.Faction == attacker.Faction)
+            return;
+        ApplyDamage(behind, u, EffectiveDamage(attacker, from, u, behind));
+        RemoveDeadAt(behind);
+    }
+
+    /// <summary>« Interception » : chaque ennemi du mobile dont la portée couvre la case d'arrivée le frappe.</summary>
+    private void TriggerInterceptions(Cell movedTo, Unit mover)
+    {
+        foreach (var (cell, unit) in Units())
+        {
+            if (unit.Faction == mover.Faction || !unit.HasTrait(Trait.Interception))
+                continue;
+            if (!ThreatenedCells(cell).Contains(movedTo))
+                continue;
+            ApplyDamage(movedTo, mover, EffectiveDamage(unit, cell, mover, movedTo));
+            if (!mover.IsAlive)
+            {
+                RemoveDeadAt(movedTo);
+                return;   // mobile abattu : plus rien à intercepter
+            }
+        }
+    }
+
+    /// <summary>Retire de la grille l'unité morte d'une case (l'essentiel reste suivi pour la victoire).</summary>
+    private void RemoveDeadAt(Cell cell)
+    {
+        if (UnitAt(cell) is { IsAlive: false })
+            _units[cell.Column, cell.Row] = null;
+    }
+
+    /// <summary>Alliés BLESSÉS à portée qu'un soigneur (trait « Soin ») peut cibler.</summary>
+    public List<Cell> HealTargets(Cell from)
+    {
+        var result = new List<Cell>();
+        HealTargets(from, result);
+        return result;
+    }
+
+    /// <summary>Variante SANS allocation de <see cref="HealTargets(Cell)"/>.</summary>
+    public void HealTargets(Cell from, List<Cell> result)
+    {
+        result.Clear();
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !unit.HasTrait(Trait.Soin))
+            return;
+
+        var vectors = Movement.Vectors(unit.Domaine);
+        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        {
+            foreach (var off in vectors)
+            {
+                var to = new Cell(from.Column + off.Column, from.Row + off.Row);
+                if (UnitAt(to) is { } a && a.Faction == unit.Faction && a.Hp < a.MaxHp)
+                    result.Add(to);
+            }
+            return;
+        }
+
+        foreach (var dir in vectors)
+            for (var step = 1; step <= unit.AttackRange; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to) || BlocksLineOfFire(to))
+                    break;
+                var occ = _units[to.Column, to.Row];
+                if (occ == null)
+                    continue;
+                if (occ.Faction == unit.Faction && occ.Hp < occ.MaxHp)
+                    result.Add(to);   // premier allié blessé en vue
+                break;                // toute unité borne la ligne
+            }
+    }
+
+    /// <summary>« Soin » : soigne un allié ciblé (montant = puissance du soigneur). Passe le tour.</summary>
+    public MoveKind TryHeal(Cell from, Cell target)
+    {
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !HealTargets(from).Contains(target))
+            return MoveKind.Invalid;
+
+        UnitAt(target)!.Heal(unit.Damage);
+        EndTurn();
+        return MoveKind.Moved;   // action de soutien : tour consommé
     }
 
     /// <summary>Passe le tour sans agir (ennemi passif en tutoriel). Sans effet si la partie est finie.</summary>

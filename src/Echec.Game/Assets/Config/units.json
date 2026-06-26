@@ -16,7 +16,7 @@
         "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
         "evolutions": [
           { "name": "Garde",     "asset": "garde",     "hp": 20, "damage": 8,  "moveRange": 1, "attackRange": 1, "traits": ["Rempart"] },
-          { "name": "Spadassin", "asset": "spadassin", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 1 }
+          { "name": "Spadassin", "asset": "spadassin", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 1 }
         ]
       }
     },

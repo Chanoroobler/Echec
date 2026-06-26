@@ -119,6 +119,26 @@ public sealed class GameplayScene : Scene
     private UnitSpec? _dragSpec;
     private Cell? _dragFrom; // origine si on déplace une unité déjà posée (null = vient de l'inventaire)
 
+    // Fusion (placement) : pile d'unités identiques en cours d'assemblage par empilement. _fusionGroup
+    // = toutes les pièces de la pile (vide=rien, 1..N-1=empilement, ==FusionSize=popup de choix).
+    // _fusionCell = case du plateau où la pile est ancrée (null = pile dans le panneau de RÉSERVE).
+    // _fusionFocus = carte d'évolution sous le focus dans la popup.
+    private readonly List<UnitSpec> _fusionGroup = new();
+    private Cell? _fusionCell;
+    private int _fusionFocus;
+    private bool FusionOpen => _fusionGroup.Count == Run.FusionSize;
+
+    // Portage de la pile ENTIÈRE (on attrape les 2 pièces d'un coup, pour la déplacer). _carryPileFrom
+    // = ancre d'origine (null = réserve) pour restaurer sur un lâcher invalide.
+    private bool _carryPile;
+    private Cell? _carryPileFrom;
+    // Slot VISUEL où la pile de réserve s'affiche (là où elle a été formée), pour ne pas la renvoyer en fin de grille.
+    private int _fusionReserveSlot;
+
+    // Petit « punch scale » à chaque empilement (la pile gonfle brièvement puis revient).
+    private double _fusionPunchTimer;
+    private const double FusionPunchDuration = 0.16;
+
     // Curseur de plateau (manette) : case visée. En placement, _gpInventory bascule le focus dans
     // l'inventaire (sélection d'une unité à déployer) et _invFocus en est l'index.
     private Cell _cursor = new(Columns / 2, Rows - 1);
@@ -312,6 +332,11 @@ public sealed class GameplayScene : Scene
         _enemySpec.Clear();
         _enemyKillOrder.Clear();
         _pending.Clear();
+        _fusionGroup.Clear();
+        _fusionCell = null;
+        _carryPile = false;
+        _fusionReserveSlot = 0;
+        _fusionPunchTimer = 0;
         _dragSpec = null;
         _dragFrom = null;
         _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
@@ -394,6 +419,8 @@ public sealed class GameplayScene : Scene
     private void BeginBattle()
     {
         CancelDrag();
+        // Pile de fusion non terminée : sa base reprend sa case (et combat), le surplus va en réserve.
+        DisbandFusionToOrigin();
         _run.StartBattle();
         ClearSelection();
         // Le panneau de droite glisse hors écran et le plateau se recentre : animation d'entrée.
@@ -455,6 +482,8 @@ public sealed class GameplayScene : Scene
 
         if (_landingTimer > 0)
             _landingTimer -= gameTime.ElapsedGameTime.TotalSeconds;
+        if (_fusionPunchTimer > 0)
+            _fusionPunchTimer -= gameTime.ElapsedGameTime.TotalSeconds;
 
         // Outil dev (F10) : prioritaire, fige le reste. (F1 = bascule du quadrillage.)
         if (Context.Input.WasKeyPressed(Keys.F10) && !_pauseMenu.IsOpen)
@@ -463,6 +492,13 @@ public sealed class GameplayScene : Scene
         {
             if (Context.Input.WasKeyPressed(Keys.Escape))
                 _showTrees = false;
+            return;
+        }
+
+        // Échap pendant la popup de fusion : annule la fusion plutôt que d'ouvrir le menu pause.
+        if (FusionOpen && !_pauseMenu.IsOpen && Context.Input.WasKeyPressed(Keys.Escape))
+        {
+            CancelFusion();
             return;
         }
 
@@ -528,6 +564,13 @@ public sealed class GameplayScene : Scene
                 return;   // intro / revue : placement gelé (et le clic d'avancement est consommé)
         }
 
+        // Popup de fusion ouverte : on gèle le placement et on ne traite que son choix.
+        if (FusionOpen)
+        {
+            UpdateFusionPopup();
+            return;
+        }
+
         if (Context.Input.UsingGamepad)
             UpdatePlacementGamepad();
 
@@ -538,6 +581,23 @@ public sealed class GameplayScene : Scene
         }
 
         var mouse = Context.Input.MousePosition;
+
+        // Pile portée (souris) : le relâchement la repose ; les autres interactions sont gelées.
+        if (_carryPile)
+        {
+            if (!Context.Input.UsingGamepad && Context.Input.WasLeftReleased)
+                DropCarriedPile(CellUnderMouse(), IsOverPanel(mouse));
+            return;
+        }
+
+        // Clic sur le bouton d'annulation de la pile de fusion (état 2/3, réserve ou plateau).
+        if (Context.Input.WasLeftClicked && FusionStacking && _dragSpec == null
+            && FusionCancelRectActive().Contains(mouse))
+        {
+            CancelFusion();
+            return;
+        }
+
         if (Context.Input.WasLeftClicked)
             BeginDrag(mouse);
         else if (Context.Input.WasLeftReleased && _dragSpec != null)
@@ -622,6 +682,13 @@ public sealed class GameplayScene : Scene
 
         if (_gpInventory) { UpdateInventoryFocus(); return; }
 
+        // B sans rien porter (et hors portage) : annule une pile de fusion en cours (réserve ou plateau).
+        if (FusionStacking && !_carryPile && _dragSpec == null && Context.Input.WasCancelPressed)
+        {
+            CancelFusion();
+            return;
+        }
+
         MoveCursor();
 
         // RB : terrain → inventaire (choisir une unité à déployer, si on n'en porte pas).
@@ -634,8 +701,14 @@ public sealed class GameplayScene : Scene
 
         if (Context.Input.WasConfirmPressed)
         {
-            if (_dragSpec != null) EndDragAt(_cursor, overPanel: false);   // poser/échanger au curseur
-            else PickUpAt(_cursor);                                        // saisir l'unité sous le curseur
+            if (_carryPile) DropCarriedPile(_cursor, overPanel: false);          // reposer la pile portée
+            else if (_dragSpec != null) EndDragAt(_cursor, overPanel: false);    // poser/échanger au curseur
+            else if (FusionStacking && _fusionCell == _cursor) GrabPile();       // attraper la pile sous le curseur
+            else PickUpAt(_cursor);                                              // saisir l'unité sous le curseur
+        }
+        else if (Context.Input.WasCancelPressed && _carryPile)
+        {
+            DropCarriedPile(_carryPileFrom, overPanel: _carryPileFrom is null);  // B : retour à l'ancre
         }
         else if (Context.Input.WasCancelPressed && _dragSpec != null)
         {
@@ -654,6 +727,13 @@ public sealed class GameplayScene : Scene
         if (Context.Input.Nav(NavDir.Right) && _invFocus % InvCols < InvCols - 1 && _invFocus + 1 < n) _invFocus++;
         if (Context.Input.Nav(NavDir.Up) && _invFocus - InvCols >= 0) _invFocus -= InvCols;
         if (Context.Input.Nav(NavDir.Down) && _invFocus + InvCols < n) _invFocus += InvCols;
+
+        // X : fusionner le portrait focus s'il a FusionSize exemplaires en réserve (raccourci manette).
+        if (Context.Input.WasTertiaryPressed && CanFuseFromReserve(_pending[_invFocus]))
+        {
+            OpenFusionFromReserve(_pending[_invFocus]);
+            return;
+        }
 
         if (Context.Input.WasConfirmPressed)
         {
@@ -696,6 +776,16 @@ public sealed class GameplayScene : Scene
 
     private void BeginDrag(Point mouse)
     {
+        // 0. Prise de la PILE de fusion ENTIÈRE (réserve ou plateau) : on attrape les 2 pièces d'un coup
+        //    et on porte la pile (déplaçable). Le lâcher la réancre (cf. DropCarriedPile).
+        if (FusionStacking && !_carryPile
+            && ((FusionInReserve && FusionStackCardRect().Contains(mouse))
+                || (!FusionInReserve && CellUnderMouse() == _fusionCell)))
+        {
+            GrabPile();
+            return;
+        }
+
         // 1. Prise depuis l'inventaire (carte du panneau de droite).
         if (PanelCardAt(mouse) is { } i)
         {
@@ -728,6 +818,34 @@ public sealed class GameplayScene : Scene
     private void EndDragAt(Cell? cell, bool overPanel)
     {
         var spec = _dragSpec!;
+
+        // Lâcher sur la réserve : tenter d'empiler sur une pièce identique (fusion) avant tout le reste.
+        if (overPanel && TryStackOnReserve(spec, Context.Input.MousePosition))
+        {
+            _dragSpec = null;
+            _dragFrom = null;
+            return;
+        }
+
+        // Lâcher sur le plateau : tenter d'empiler sur une case (pile ou unité identique).
+        if (cell is { } sc && TryStackOnBoard(spec, sc))
+        {
+            _dragSpec = null;
+            _dragFrom = null;
+            return;
+        }
+
+        // La case d'une pile de plateau n'accepte rien d'autre (ni pose ni échange) : drop invalide.
+        if (cell is { } pc && _fusionCell == pc)
+        {
+            if (_dragFrom is { } from && _match.UnitAt(from) == null)
+                PlacePlayer(spec, from);
+            else
+                _pending.Add(spec);
+            _dragSpec = null;
+            _dragFrom = null;
+            return;
+        }
 
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
             && !_battlefield[c].Terrain.BlocksMovement()
@@ -786,6 +904,344 @@ public sealed class GameplayScene : Scene
 
         _dragSpec = null;
         _dragFrom = null;
+    }
+
+    // ─── FUSION (par empilement, réserve OU plateau) ──────────────────────────────────────────────
+    // On GLISSE une pièce sur une autre identique : elles forment une PILE (sprite + compteur « N/3 » +
+    // petit bouton « X »). Glisser une 3e sur la pile atteint FusionSize et ouvre la popup de choix
+    // d'évolution. La pile vit dans la RÉSERVE (_fusionCell == null, rendue dans le panneau) ou sur une
+    // CASE du plateau (_fusionCell == cette case, rendue sur le plateau). _fusionGroup = toutes les
+    // pièces de la pile : vide = aucune ; 1..FusionSize-1 = empilement ; == FusionSize = popup. Annuler
+    // remet la pièce de base à sa case (pile plateau) ou tout en réserve, et le surplus en réserve. La
+    // règle métier et la mutation du roster persistant vivent dans Run.Fuse ; ici, vue + empilement.
+
+    /// <summary>Nombre d'exemplaires de la classe de <paramref name="spec"/> présents EN RÉSERVE.</summary>
+    private int PendingSameClassCount(UnitSpec spec) =>
+        _pending.Count(u => Run.SameClass(u, spec));
+
+    /// <summary>Vrai si ce portrait de réserve peut amorcer une fusion (classe non-feuille + 3 en réserve).</summary>
+    private bool CanFuseFromReserve(UnitSpec spec) =>
+        !spec.Essential && !spec.UnitClass.IsLeaf && PendingSameClassCount(spec) >= Run.FusionSize;
+
+    /// <summary>Une pile de fusion est en cours d'assemblage (entre 1 et FusionSize-1 pièces).</summary>
+    private bool FusionStacking => _fusionGroup.Count > 0 && _fusionGroup.Count < Run.FusionSize;
+
+    /// <summary>Pile ancrée dans la RÉSERVE (par opposition à une pile sur le plateau).</summary>
+    private bool FusionInReserve => _fusionCell is null;
+
+    /// <summary>Slot VISUEL de la pile de RÉSERVE affichée (null si pas de pile de réserve visible).</summary>
+    private int? ReservePileSlot()
+    {
+        if (!FusionStacking || !FusionInReserve || _carryPile)
+            return null;
+        var total = _pending.Count + 1;
+        return System.Math.Clamp(_fusionReserveSlot, 0, total - 1);
+    }
+
+    /// <summary>Case du portrait de réserve d'indice <paramref name="i"/>, en sautant le slot de la pile.</summary>
+    private Rectangle PendingCardRect(int i) =>
+        ReservePileSlot() is { } p && i >= p ? PanelCardRect(i + 1) : PanelCardRect(i);
+
+    /// <summary>Case de la carte « pile » de réserve : à son slot de formation (sinon en fin de grille).</summary>
+    private Rectangle FusionStackCardRect() => PanelCardRect(ReservePileSlot() ?? _pending.Count);
+
+    /// <summary>Petit bouton d'annulation, DANS le coin haut-droit de la pile de réserve.</summary>
+    private Rectangle FusionStackCancelRect()
+    {
+        var c = FusionStackCardRect();
+        const int s = 16;
+        return new Rectangle(c.Right - s - 1, c.Y + 1, s, s);
+    }
+
+    /// <summary>Bouton d'annulation d'une pile de PLATEAU, au coin haut-droit de sa case.</summary>
+    private Rectangle FusionBoardCancelRect(GridLayout layout)
+    {
+        var cell = _fusionCell!.Value;
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        const int s = 16;
+        return new Rectangle((int)top.X + layout.TileSize - s - 1, (int)top.Y + 1, s, s);
+    }
+
+    /// <summary>Le bouton d'annulation de la pile courante (réserve ou plateau).</summary>
+    private Rectangle FusionCancelRectActive() =>
+        FusionInReserve ? FusionStackCancelRect() : FusionBoardCancelRect(BuildLayout());
+
+    /// <summary>
+    /// Tente d'empiler la pièce portée <paramref name="spec"/> sur la RÉSERVE (lâcher sur le panneau) :
+    /// sur la pile de réserve en cours (même classe) ou sur un portrait de réserve identique (démarre
+    /// une pile). Renvoie vrai si l'empilement a eu lieu.
+    /// </summary>
+    private bool TryStackOnReserve(UnitSpec spec, Point mouse)
+    {
+        if (spec.Essential || spec.UnitClass.IsLeaf)
+            return false;
+
+        // a) Lâcher sur la pile de RÉSERVE en cours.
+        if (FusionStacking && FusionInReserve && FusionStackCardRect().Contains(mouse)
+            && Run.SameClass(spec, _fusionGroup[0]))
+        {
+            AddToFusionStack(spec);
+            return true;
+        }
+
+        // b) Lâcher sur un portrait de réserve identique → démarre une pile [cible, spec] À CE SLOT.
+        if (_fusionGroup.Count == 0 && PanelCardAt(mouse) is { } j && Run.SameClass(_pending[j], spec))
+        {
+            var target = _pending[j];
+            _fusionReserveSlot = j;       // la pile s'affichera là où on a déposé
+            _pending.RemoveAt(j);
+            _fusionGroup.Add(target);
+            AddToFusionStack(spec);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Tente d'empiler la pièce portée <paramref name="spec"/> sur le PLATEAU (lâcher sur une case) :
+    /// sur la pile de plateau en cours (même classe) ou sur une unité déployée identique (démarre une
+    /// pile, en retirant la pièce de base du plateau). Renvoie vrai si l'empilement a eu lieu.
+    /// </summary>
+    private bool TryStackOnBoard(UnitSpec spec, Cell cell)
+    {
+        if (spec.Essential || spec.UnitClass.IsLeaf)
+            return false;
+
+        // a) Lâcher sur la pile de PLATEAU en cours.
+        if (FusionStacking && _fusionCell == cell && Run.SameClass(spec, _fusionGroup[0]))
+        {
+            AddToFusionStack(spec);
+            return true;
+        }
+
+        // b) Lâcher sur une unité déployée identique → démarre une pile [base, spec] ancrée sur sa case.
+        if (_fusionGroup.Count == 0
+            && _match.UnitAt(cell) is { Faction: Faction.Player } occupant && !occupant.IsEssential
+            && _playerSpec.TryGetValue(occupant, out var baseSpec) && Run.SameClass(baseSpec, spec))
+        {
+            _match.Remove(cell);
+            _playerSpec.Remove(occupant);
+            _fusionCell = cell;
+            _fusionGroup.Add(baseSpec);
+            AddToFusionStack(spec);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Ajoute une pièce à la pile ; à FusionSize, bascule en popup de choix d'évolution.</summary>
+    private void AddToFusionStack(UnitSpec spec)
+    {
+        _fusionGroup.Add(spec);
+        _fusionPunchTimer = FusionPunchDuration;   // petit « punch scale » de la pile
+        if (FusionOpen)
+        {
+            _fusionFocus = 0;
+            Context.Sounds.Play("menu_open");   // pile complète → choix d'évolution
+        }
+        else
+        {
+            Context.Sounds.Play("unit_place");  // « clac » d'empilement (2/3)
+        }
+    }
+
+    /// <summary>Attrape la pile ENTIÈRE en main (les 2 pièces) pour la déplacer (réserve ↔ plateau).</summary>
+    private void GrabPile()
+    {
+        _carryPile = true;
+        _carryPileFrom = _fusionCell;   // mémorise l'ancre (null = réserve) pour un lâcher invalide
+        _fusionCell = null;
+        Context.Sounds.Play("unit_pick");
+    }
+
+    /// <summary>
+    /// Lâche la pile portée : sur la réserve → ancrée en réserve ; sur une case libre de la zone joueur
+    /// → ancrée sur cette case (la pile se déplace) ; sinon → retour à son ancre d'origine.
+    /// </summary>
+    private void DropCarriedPile(Cell? cell, bool overPanel)
+    {
+        if (overPanel)
+        {
+            // Sur un portrait de réserve identique → l'absorber (peut compléter la fusion) ; sinon ancrer.
+            if (PanelCardAt(Context.Input.MousePosition) is { } j && Run.SameClass(_pending[j], _fusionGroup[0]))
+            {
+                var target = _pending[j];
+                _fusionReserveSlot = j;
+                _pending.RemoveAt(j);
+                _carryPile = false;
+                _fusionCell = null;
+                AddToFusionStack(target);
+                return;
+            }
+            _carryPile = false;
+            _fusionCell = null;                 // ancrée en réserve
+            _fusionReserveSlot = _pending.Count;
+            Context.Sounds.Play("unit_place");
+            return;
+        }
+
+        // Sur une unité déployée identique → l'absorber (peut compléter la fusion), pile ancrée sur sa case.
+        if (cell is { } cc && _match.UnitAt(cc) is { Faction: Faction.Player } occ && !occ.IsEssential
+            && _playerSpec.TryGetValue(occ, out var occSpec) && Run.SameClass(occSpec, _fusionGroup[0]))
+        {
+            _match.Remove(cc);
+            _playerSpec.Remove(occ);
+            _carryPile = false;
+            _fusionCell = cc;
+            AddToFusionStack(occSpec);
+            return;
+        }
+
+        // Sur une case libre de la zone joueur → ancrer (déplace la pile).
+        if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
+            && !_battlefield[c].Terrain.BlocksMovement())
+        {
+            _carryPile = false;
+            _fusionCell = c;                    // ancrée sur la case (pile déplacée)
+            Context.Sounds.Play("unit_place");
+            return;
+        }
+
+        _carryPile = false;
+        _fusionCell = _carryPileFrom;           // lâcher invalide : retour à l'ancre d'origine
+        Context.Sounds.Play("unit_pick");
+    }
+
+    /// <summary>Manette : réunit d'un coup FusionSize exemplaires de réserve et ouvre la popup.</summary>
+    private void OpenFusionFromReserve(UnitSpec rep)
+    {
+        if (!CanFuseFromReserve(rep))
+            return;
+        _fusionGroup.Clear();
+        _fusionCell = null;
+        for (var i = _pending.Count - 1; i >= 0 && _fusionGroup.Count < Run.FusionSize; i--)
+            if (Run.SameClass(_pending[i], rep))
+            {
+                _fusionGroup.Add(_pending[i]);
+                _pending.RemoveAt(i);
+            }
+        if (FusionOpen)
+        {
+            _fusionFocus = 0;
+            Context.Sounds.Play("menu_open");
+        }
+        else
+        {
+            _pending.AddRange(_fusionGroup);   // sécurité : pas assez d'exemplaires
+            _fusionGroup.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Disperse la pile en cours SANS fusionner : la pièce de base d'une pile de plateau retourne sur sa
+    /// case, le surplus (et toute pile de réserve) rejoint la réserve. Vide la pile.
+    /// </summary>
+    private void DisbandFusionToOrigin()
+    {
+        if (_fusionGroup.Count > 0)
+        {
+            if (_fusionCell is { } cell)
+            {
+                PlacePlayer(_fusionGroup[0], cell);                 // la base reprend sa case
+                for (var i = 1; i < _fusionGroup.Count; i++)
+                    _pending.Add(_fusionGroup[i]);                  // le surplus va en réserve
+            }
+            else
+            {
+                _pending.AddRange(_fusionGroup);
+            }
+        }
+        _fusionGroup.Clear();
+        _fusionCell = null;
+        _carryPile = false;
+    }
+
+    /// <summary>Annule la pile/popup : pièces rendues à leur origine (cf. <see cref="DisbandFusionToOrigin"/>).</summary>
+    private void CancelFusion()
+    {
+        DisbandFusionToOrigin();
+        Context.Sounds.Play("menu_close");
+    }
+
+    /// <summary>Valide l'évolution choisie : Run.Fuse mute le roster, l'unité évoluée prend la place de la pile.</summary>
+    private void ConfirmFusion(int optionIndex)
+    {
+        var options = _fusionGroup[0].UnitClass.Evolutions;
+        if (optionIndex < 0 || optionIndex >= options.Count)
+            return;
+
+        var consumed = _fusionGroup.ToList();
+        var cell = _fusionCell;
+        var fused = _run.Fuse(consumed, options[optionIndex]);
+        if (fused == null)
+        {
+            DisbandFusionToOrigin();            // échec inattendu : on ne perd rien
+            return;
+        }
+
+        if (cell is { } c)
+            PlacePlayer(fused, c);              // pile de plateau : l'unité évoluée prend la case
+        else
+            _pending.Add(fused);               // pile de réserve : va en réserve, prête à déployer
+        Context.Sounds.Play("recruit");
+        _fusionGroup.Clear();
+        _fusionCell = null;
+    }
+
+    /// <summary>Choix d'évolution (souris/clavier/manette) ; B/Échap/clic droit ou bouton Annuler ferment.</summary>
+    private void UpdateFusionPopup()
+    {
+        var count = _fusionGroup[0].UnitClass.Evolutions.Count;
+        _fusionFocus = System.Math.Clamp(_fusionFocus, 0, count - 1);
+
+        // Annulation : B (manette) ou clic droit. (Échap est géré en amont dans Update.)
+        if (Context.Input.WasCancelPressed || Context.Input.WasRightClicked)
+        {
+            CancelFusion();
+            return;
+        }
+
+        // Manette / clavier : navigation + validation sur la carte focus.
+        if (Context.Input.Nav(NavDir.Left)) _fusionFocus = (_fusionFocus - 1 + count) % count;
+        if (Context.Input.Nav(NavDir.Right)) _fusionFocus = (_fusionFocus + 1) % count;
+        if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
+        {
+            ConfirmFusion(_fusionFocus);
+            return;
+        }
+
+        // Souris : survol = focus, clic = valide ; clic sur Annuler ferme.
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < count; i++)
+        {
+            if (FusionCardRect(i, count).Contains(mouse))
+            {
+                _fusionFocus = i;
+                if (Context.Input.WasLeftClicked)
+                    ConfirmFusion(i);
+                return;
+            }
+        }
+        if (Context.Input.WasLeftClicked && FusionCancelRect().Contains(mouse))
+            CancelFusion();
+    }
+
+    /// <summary>Carte d'évolution n° <paramref name="index"/>, centrée sur le canvas (gabarit du draft).</summary>
+    private Rectangle FusionCardRect(int index, int count)
+    {
+        var vp = VirtualViewport;
+        return DraftCardRect(index, count, vp.Width, vp.Height);
+    }
+
+    /// <summary>Bouton « Annuler » AU-DESSUS des cartes (n'empiète pas sur les mots-clés sous les cartes).</summary>
+    private Rectangle FusionCancelRect()
+    {
+        var vp = VirtualViewport;
+        var card = DraftCardRect(0, 2, vp.Width, vp.Height);
+        const int w = 180, h = 34;
+        return new Rectangle((vp.Width - w) / 2, card.Y - 18 - h, w, h);
     }
 
     private void UpdateBattle(GameTime gameTime)
@@ -1490,8 +1946,8 @@ public sealed class GameplayScene : Scene
     {
         var attacker = _match.UnitAt(from);
         var victim = _match.UnitAt(target);
-        // Dégâts à afficher : bornés aux PV de la cible (pas de « 9 » sur une cible à 3 PV).
-        _pendingDamage = attacker != null && victim != null ? System.Math.Min(attacker.Damage, victim.Hp) : 0;
+        // Dégâts EFFECTIFS à afficher (traits inclus : Rempart, Rage…), bornés aux PV de la cible.
+        _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
         if (attacker != null)
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
@@ -1649,6 +2105,7 @@ public sealed class GameplayScene : Scene
                 DrawDeploymentZone(sb, board);
                 DrawEnemyThreat(sb, board);
                 DrawUnits(sb, board);
+                DrawFusionBoardStack(sb, board);         // pile de fusion ancrée sur une case
                 DrawCarriedAtCursor(sb, board);          // pion porté AU-DESSUS des pièces
                 DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
                 DrawPanelBackground(sb);
@@ -1656,10 +2113,13 @@ public sealed class GameplayScene : Scene
                 DrawInventoryFocusHighlight(sb);
                 DrawPlacementPreview(sb);
                 DrawDragGhost(sb);
+                DrawCarriedPile(sb, board);              // pile portée, suit la souris/curseur
                 sb.End();
 
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
+                if (FusionOpen)
+                    DrawFusionPopup(sb, viewport);   // modale par-dessus le placement
                 break;
             case RunPhase.Battle:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -1809,6 +2269,8 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
+        if (FusionOpen)
+            return Palette.Black1 * 0.62f; // popup de fusion (en placement) : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -2331,11 +2793,23 @@ public sealed class GameplayScene : Scene
         return new Rectangle(x, y, InvIconSize, InvIconSize);
     }
 
+    /// <summary>
+    /// Indice DANS <see cref="_pending"/> du portrait de réserve sous <paramref name="p"/> (null si
+    /// aucun, ou si c'est la carte de la PILE). Le slot occupé par la pile de réserve est sauté, pour
+    /// que la pile reste affichée là où elle a été formée et que les portraits gardent leur place.
+    /// </summary>
     private int? PanelCardAt(Point p)
     {
-        for (var i = 0; i < _pending.Count; i++)
-            if (PanelCardRect(i).Contains(p))
-                return i;
+        var pile = ReservePileSlot();
+        var total = _pending.Count + (pile is null ? 0 : 1);
+        for (var s = 0; s < total; s++)
+        {
+            if (!PanelCardRect(s).Contains(p))
+                continue;
+            if (pile == s)
+                return null;                              // sur la pile, pas un portrait
+            return pile is { } ps && s > ps ? s - 1 : s;  // slot → indice _pending (saute la pile)
+        }
         return null;
     }
 
@@ -2372,23 +2846,176 @@ public sealed class GameplayScene : Scene
         if (_pending.Count == 0 && _dragSpec == null)
             Context.Font.Draw(sb, Loc.T("placement.all_deployed"), new Vector2(x, PanelListTop + 4), 1, Palette.Cyan2);
 
+        var anyFusable = false;
         for (var i = 0; i < _pending.Count; i++)
-            DrawInventoryCard(sb, _pending[i], PanelCardRect(i));
+        {
+            DrawInventoryCard(sb, _pending[i], PendingCardRect(i));   // saute le slot de la pile
+            if (CanFuseFromReserve(_pending[i]))
+                anyFusable = true;   // sert juste à afficher l'indice de fusion (aucun cadre coloré)
+        }
 
-        // Aide JUSTE SOUS l'inventaire (et non collée au bas du panneau).
-        var rows = System.Math.Max(1, (_pending.Count + InvCols - 1) / InvCols);
+        // Pile de fusion en cours (état « N/3 ») + son bouton d'annulation.
+        DrawFusionStack(sb);
+
+        // Aide JUSTE SOUS l'inventaire (et non collée au bas du panneau). La pile de réserve occupe un slot.
+        var slots = _pending.Count + (ReservePileSlot() is null ? 0 : 1);
+        var rows = System.Math.Max(1, (slots + InvCols - 1) / InvCols);
         var hintY = PanelListTop + rows * (InvCellH + InvGapY) + 12;
         if (Context.Input.UsingGamepad)
         {
             var line1 = _gpInventory ? Loc.T("placement.hint_gp_terrain") : Loc.T("placement.hint_gp_inventory");
             Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
             Context.Font.Draw(sb, Loc.T("placement.hint_gp_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+            if (anyFusable)
+                Context.Font.Draw(sb, Loc.T("placement.hint_gp_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
+            if (FusionStacking)   // une pile en cours : B pour la défusionner
+                Context.Font.Draw(sb, Loc.T("placement.hint_gp_unfuse"),
+                    new Vector2(x, hintY + (anyFusable ? 48 : 32)), 1, Palette.Yellow2);
         }
         else
         {
             Context.Font.Draw(sb, Loc.T("placement.hint_drag"), new Vector2(x, hintY), 1, Palette.Blue1);
             Context.Font.Draw(sb, Loc.T("placement.hint_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+            if (anyFusable)
+                Context.Font.Draw(sb, Loc.T("placement.hint_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
         }
+    }
+
+    /// <summary>
+    /// Carte de la PILE de fusion de RÉSERVE (« N/3 ») juste après la réserve, avec son bouton « X ».
+    /// Rien si aucune pile, si la pile est sur le plateau, ou si la popup est ouverte (pile complète).
+    /// </summary>
+    private void DrawFusionStack(SpriteBatch sb)
+    {
+        if (!FusionStacking || !FusionInReserve || _carryPile)   // pas dessinée quand portée
+            return;
+
+        var card = FusionStackCardRect();
+        DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, card, front: true);
+
+        // Compteur « N/3 » sous la pile.
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+            new Rectangle(card.X - InvGapX / 2, card.Bottom + 2, card.Width + InvGapX, 10), 1, Palette.Yellow2);
+        DrawFusionCancelButton(sb, FusionStackCancelRect());
+    }
+
+    /// <summary>
+    /// Pile de fusion ancrée sur une CASE du plateau (« N/3 ») : sprite de la pièce + compteur + bouton
+    /// « X ». Rien si aucune pile de plateau, ou si la popup est ouverte.
+    /// </summary>
+    private void DrawFusionBoardStack(SpriteBatch sb, GridLayout layout)
+    {
+        if (!FusionStacking || _fusionCell is not { } cell)
+            return;
+
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        var rect = new Rectangle((int)top.X, (int)top.Y, layout.TileSize, layout.TileSize);
+        DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, rect, front: false);
+
+        // Compteur « N/3 » en bas de la case.
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+            new Rectangle(rect.X, rect.Bottom - 13, rect.Width, 10), 1, Palette.Yellow2);
+        DrawFusionCancelButton(sb, FusionBoardCancelRect(layout));
+    }
+
+    /// <summary>Pile PORTÉE : suit la souris (ou le curseur en manette), sprite + compteur « N/3 ».</summary>
+    private void DrawCarriedPile(SpriteBatch sb, GridLayout board)
+    {
+        if (!_carryPile)
+            return;
+
+        Rectangle rect;
+        if (Context.Input.UsingGamepad)
+        {
+            var top = board.CellToScreen(_cursor.Column, _cursor.Row);
+            rect = new Rectangle((int)top.X, (int)top.Y, board.TileSize, board.TileSize);
+        }
+        else
+        {
+            var m = Context.Input.MousePosition;
+            rect = new Rectangle(m.X - InvIconSize / 2, m.Y - InvIconSize / 2, InvIconSize, InvIconSize);
+        }
+        DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, rect, front: true);
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+            new Rectangle(rect.X, rect.Bottom - 13, rect.Width, 10), 1, Palette.Yellow2);
+    }
+
+    /// <summary>Échelle du « punch » : gonfle à ~1,3× à l'empilement puis revient à 1.</summary>
+    private float FusionPunchScale() =>
+        _fusionPunchTimer <= 0 ? 1f : 1f + 0.30f * (float)(_fusionPunchTimer / FusionPunchDuration);
+
+    /// <summary>Sprite de pile dessiné avec le « punch scale » (autour du centre de la zone).</summary>
+    private void DrawFusionPileChip(SpriteBatch sb, UnitClass cls, Rectangle rect, bool front)
+    {
+        var scale = FusionPunchScale();
+        var sprite = SpriteFor(cls, Faction.Player, front);
+        if (scale <= 1.001f || sprite is null)
+        {
+            DrawChip(sb, cls, Faction.Player, rect, front);
+            return;
+        }
+        var size = sprite.Width * scale;
+        var cx = rect.X + rect.Width / 2f;
+        var cy = rect.Y + rect.Height / 2f;
+        var dest = new Rectangle((int)(cx - size / 2f), (int)(cy - size / 2f), (int)size, (int)size);
+        sb.Draw(sprite, dest, Color.White);
+    }
+
+    /// <summary>Petit bouton « X » d'annulation de pile : fond TRAMÉ (dither) + relief, comme les boutons.</summary>
+    private void DrawFusionCancelButton(SpriteBatch sb, Rectangle cancel)
+    {
+        var hover = !Context.Input.UsingGamepad && cancel.Contains(Context.Input.MousePosition);
+        var dy = Context.Style.DrawButton(sb, cancel, UiStyle.StateOf(hover, Context.Input.IsLeftDown));
+        Context.Font.DrawCentered(sb, "X",
+            new Rectangle(cancel.X, cancel.Y + dy, cancel.Width, cancel.Height), 1, Palette.White);
+    }
+
+    /// <summary>
+    /// Popup MODALE de fusion : assombrit l'écran et présente les 2 évolutions (cartes d'unité) à
+    /// choisir, plus un bouton « Annuler ». Souris (survol+clic), clavier (Échap/Entrée) et manette
+    /// (←/→, A, B) sont gérés dans <see cref="UpdateFusionPopup"/>.
+    /// </summary>
+    private void DrawFusionPopup(SpriteBatch sb, Viewport viewport)
+    {
+        var options = _fusionGroup[0].UnitClass.Evolutions;
+        var count = options.Count;
+        var domaine = _fusionGroup[0].Domaine;
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawDim(sb, viewport);   // voile du canvas ; les bandes du letterbox sont assombries via FullScreenDim
+
+        var vpW = viewport.Width;
+        var cancel = FusionCancelRect();
+
+        // Cadre du TITRE (FUSION + sous-titre), centré au-dessus du bouton Annuler et des cartes.
+        var titleW = Context.Font.Measure(Loc.T("fusion.title"), 3);
+        var subW = Context.Font.Measure(Loc.T("fusion.subtitle"), 1);
+        var boxW = System.Math.Max(titleW, subW) + 56;
+        const int boxH = 64;
+        var boxY = cancel.Y - 14 - boxH;
+        Context.Style.DrawPanel(sb, new Rectangle((vpW - boxW) / 2, boxY, boxW, boxH));
+        Context.Font.DrawCentered(sb, Loc.T("fusion.title"), new Rectangle(0, boxY + 12, vpW, 24), 3, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, Loc.T("fusion.subtitle"), new Rectangle(0, boxY + 42, vpW, 12), 1, Palette.Blue1);
+
+        // Bouton Annuler ENTRE le cadre titre et les cartes, avec retour d'enfoncement (poussoir).
+        var hovered = !Context.Input.UsingGamepad && cancel.Contains(Context.Input.MousePosition);
+        var dyCancel = Context.Style.DrawButton(sb, cancel, UiStyle.StateOf(hovered, Context.Input.IsLeftDown));
+        Context.Font.DrawCentered(sb, Loc.T("fusion.cancel"),
+            new Rectangle(cancel.X, cancel.Y + dyCancel, cancel.Width, cancel.Height), 2,
+            hovered ? Palette.Yellow2 : Palette.White);
+
+        // Cartes d'évolution (mots-clés détaillés SOUS chaque carte, désormais dégagés).
+        for (var i = 0; i < count; i++)
+        {
+            var rect = FusionCardRect(i, count);
+            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp);
+            DrawKeywordPopupsBelow(sb, options[i], rect);
+        }
+
+        // Surbrillance de la carte focus.
+        var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
+        DrawRectBorder(sb, Inflate(FusionCardRect(fi, count), 3), Palette.Yellow2, 3);
+        sb.End();
     }
 
     /// <summary>

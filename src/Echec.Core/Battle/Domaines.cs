@@ -22,6 +22,14 @@ public static class Domaines
         _byId = Index(defs);
     }
 
+    /// <summary>Restaure les définitions codées par défaut (arbre complet, évolutions incluses).
+    /// Utile pour réinitialiser l'état statique partagé après un <see cref="Load"/> de test.</summary>
+    public static void ResetToDefaults()
+    {
+        _all = Defaults();
+        _byId = Index(_all);
+    }
+
     public static IReadOnlyList<DomaineDef> All => _all;
 
     public static DomaineDef Of(Domaine domaine) =>

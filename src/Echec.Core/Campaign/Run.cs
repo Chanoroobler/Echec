@@ -207,6 +207,88 @@ public sealed class Run
 
     public void Defeat() => Phase = RunPhase.Defeat;
 
+    // ─── FUSION ────────────────────────────────────────────────────────────────────────────────
+    // Pendant le PLACEMENT, fusionner FusionSize exemplaires d'une MÊME classe (même domaine + même
+    // UnitClass) en 1 unité évoluée, choisie parmi les 2 évolutions de l'arbre. La fusion mute le
+    // roster EN MÉMOIRE ; elle n'est PAS resauvegardée ici. Comme la progression n'est persistée
+    // qu'au début de chaque phase de placement (côté scène), quitter avant de lancer le combat
+    // annule la fusion (on revient au début du placement) ; lancer le combat la verrouille (elle
+    // sera sauvegardée au placement du combat suivant). Permadeath : l'unité évoluée morte = les 3
+    // exemplaires perdus. Les meneurs (commandant/boss, essentiels) ne fusionnent jamais. Une unité
+    // déjà au sommet de son arbre (feuille) ne peut pas fusionner — l'arbre étant récursif, un futur
+    // tier 3 réactiverait automatiquement la fusion une fois les évolutions ajoutées au JSON.
+
+    /// <summary>Nombre d'exemplaires d'une même classe requis pour fusionner.</summary>
+    public const int FusionSize = 3;
+
+    /// <summary>
+    /// Deux gabarits sont de la MÊME classe (donc fusionnables ensemble) s'ils partagent domaine et
+    /// classe. Source unique de la règle d'« identité » (réutilisée par l'UI réserve/plateau).
+    /// </summary>
+    public static bool SameClass(UnitSpec a, UnitSpec b) =>
+        a.Domaine == b.Domaine && a.UnitClass == b.UnitClass;
+
+    /// <summary>Nombre d'exemplaires non-essentiels de la classe de <paramref name="spec"/> dans le roster.</summary>
+    public int CountFusable(UnitSpec spec) =>
+        _roster.Count(u => !u.Essential && SameClass(u, spec));
+
+    /// <summary>
+    /// Vrai si <paramref name="spec"/> peut amorcer une fusion : en placement, non essentiel, classe
+    /// non-feuille (évolutions disponibles) et au moins <see cref="FusionSize"/> exemplaires en roster.
+    /// </summary>
+    public bool CanFuse(UnitSpec spec) =>
+        Phase == RunPhase.Placement
+        && !spec.Essential
+        && !spec.UnitClass.IsLeaf
+        && CountFusable(spec) >= FusionSize;
+
+    /// <summary>Les évolutions proposées au choix pour fusionner <paramref name="spec"/> (vide si impossible).</summary>
+    public IReadOnlyList<UnitClass> FusionOptions(UnitSpec spec) =>
+        CanFuse(spec) ? spec.UnitClass.Evolutions : System.Array.Empty<UnitClass>();
+
+    /// <summary>
+    /// Réalise la fusion : retire <see cref="FusionSize"/> exemplaires de la classe de
+    /// <paramref name="spec"/> et ajoute 1 unité de la classe <paramref name="evolution"/> choisie.
+    /// Renvoie le nouveau gabarit, ou <c>null</c> si la fusion est invalide (mauvaise phase, classe
+    /// feuille/essentielle, pas assez d'exemplaires, ou évolution étrangère à l'arbre de la classe).
+    /// </summary>
+    public UnitSpec? Fuse(UnitSpec spec, UnitClass evolution)
+    {
+        if (!CanFuse(spec))
+            return null;
+        // Retire FusionSize exemplaires (n'importe lesquels : ils sont identiques).
+        var group = _roster.Where(u => !u.Essential && SameClass(u, spec)).Take(FusionSize).ToList();
+        return Fuse(group, evolution);
+    }
+
+    /// <summary>
+    /// Variante EXPLICITE : fusionne précisément les <see cref="FusionSize"/> gabarits donnés (instances
+    /// réellement présentes au roster, de même classe non-feuille/non-essentielle). Le caller choisit donc
+    /// quelles instances sont consommées — indispensable côté scène, où roster, réserve et pièces posées
+    /// partagent les mêmes instances <see cref="UnitSpec"/> : retirer les bonnes évite de désynchroniser
+    /// la vue. Renvoie le nouveau gabarit (ajouté au roster), ou <c>null</c> si le groupe est invalide.
+    /// </summary>
+    public UnitSpec? Fuse(IReadOnlyList<UnitSpec> group, UnitClass evolution)
+    {
+        if (Phase != RunPhase.Placement || group.Count != FusionSize)
+            return null;
+
+        var first = group[0];
+        if (first.Essential || first.UnitClass.IsLeaf || !first.UnitClass.Evolutions.Contains(evolution))
+            return null;
+        if (group.Distinct().Count() != FusionSize)                        // FusionSize instances DISTINCTES
+            return null;
+        if (group.Any(u => !SameClass(u, first) || !_roster.Contains(u)))  // même classe + réellement au roster
+            return null;
+
+        foreach (var u in group)
+            _roster.Remove(u);
+
+        var fused = new UnitSpec(first.Domaine, evolution);
+        _roster.Add(fused);
+        return fused;
+    }
+
     /// <summary>
     /// Recrutement = les <see cref="DraftSize"/> DERNIERS ennemis vaincus (dans l'ordre de leur mort),
     /// ou moins s'il y en a eu moins. Doublons conservés (reflète les pièces réellement abattues).
