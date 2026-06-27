@@ -71,6 +71,13 @@ public sealed class GameplayScene : Scene
     private readonly Dictionary<string, string> _tileSheet = new();
     private readonly Dictionary<string, Rectangle> _tileSrc = new();
 
+    // Animation d'assemblage du plateau au début du placement : les tuiles montent du bas, en cascade.
+    private float _boardIntro;          // temps écoulé depuis le début de l'assemblage (s)
+    private float _boardIntroTotal;     // durée totale (0 = pas d'animation, ex. tutoriel)
+    private const float BoardIntroStagger = 0.05f;   // délai entre 2 tuiles successives
+    private const float BoardIntroRise = 0.32f;      // durée de montée d'une tuile
+    private const float BoardIntroDrop = 0.6f;       // petite remontée (en hauteurs de sprite) : émergence, pas chute
+
     // Texture de tuile par type de terrain (PNG Assets/Tiles, repli sur un aplat coloré 64×80).
     private readonly Dictionary<string, Texture2D> _tiles = new();
     private WaterRenderer _water = null!;
@@ -470,6 +477,10 @@ public sealed class GameplayScene : Scene
             _battlefield = _run.BuildBattlefield(Columns, Rows);
         }
         _match = new Match(Columns, Rows, _battlefield);
+
+        // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
+        _boardIntro = 0f;
+        _boardIntroTotal = Columns * Rows * BoardIntroStagger + BoardIntroRise;
         _facesDown.Clear();
         _playerSpec.Clear();
         _enemySpec.Clear();
@@ -522,6 +533,7 @@ public sealed class GameplayScene : Scene
         Columns = 8;
         Rows = 8;
         _map = null;                                            // tutoriel : board plat 8×8, jamais une map dessinée
+        _boardIntro = _boardIntroTotal = 0f;                    // pas d'animation d'assemblage en tutoriel
         _battlefield = Battlefield.CreateFlat(Columns, Rows);   // herbe partout, aucun obstacle
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
@@ -600,6 +612,8 @@ public sealed class GameplayScene : Scene
     private void PlaceEnemies(List<UnitSpec> wave)
     {
         var cells = EnemyDeployCells().ToList();
+        if (_map != null)
+            _run.ShuffleForCombat(cells);   // map dessinée : ennemis sur des cases tirées au hasard parmi les E (déterministe pour ce combat)
         var i = 0;
         foreach (var spec in wave)
         {
@@ -653,6 +667,8 @@ public sealed class GameplayScene : Scene
     {
         // Le courant d'eau avance en continu (même en pause / menus).
         _time += (float)gameTime.ElapsedGameTime.TotalSeconds;
+        if (_boardIntro < _boardIntroTotal)
+            _boardIntro += (float)gameTime.ElapsedGameTime.TotalSeconds;
 
         // Musique pilotée par la phase (appel idempotent : ne relance pas le contexte déjà en cours).
         UpdateMusic();
@@ -785,6 +801,13 @@ public sealed class GameplayScene : Scene
             && FusionCancelRectActive().Contains(mouse))
         {
             CancelFusion();
+            return;
+        }
+
+        // Bouton COMBATTRE (souris) : lance le combat comme Entrée. Testé avant le drag pour ne pas démarrer une prise.
+        if (_tutorial == null && Context.Input.WasLeftClicked && FightButtonRect().Contains(mouse))
+        {
+            TryStartBattle();
             return;
         }
 
@@ -2363,8 +2386,8 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
-        if (_showGrid && _run.Phase is RunPhase.Placement or RunPhase.Battle)
-            DrawBoardGrid(sb, board, Palette.Black1);   // quadrillage permanent NOIR opaque (bascule F1/Select)
+        if (_showGrid && BoardAssembled && _run.Phase is RunPhase.Placement or RunPhase.Battle)
+            DrawBoardGrid(sb, board, Palette.Black1);   // quadrillage permanent NOIR opaque (bascule F1/Select) — masqué pendant l'émergence
         sb.End();
 
         // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
@@ -2375,12 +2398,13 @@ public sealed class GameplayScene : Scene
         {
             case RunPhase.Placement:
                 sb.Begin(samplerState: SamplerState.PointClamp);
-                DrawDeploymentZone(sb, board);
-                DrawEnemyThreat(sb, board);
+                if (BoardAssembled) DrawDeploymentZone(sb, board);
+                if (BoardAssembled) DrawEnemyThreat(sb, board);
                 DrawUnits(sb, board);
                 DrawFusionBoardStack(sb, board);         // pile de fusion ancrée sur une case
                 DrawCarriedAtCursor(sb, board);          // pion porté AU-DESSUS des pièces
-                DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
+                if (BoardAssembled)
+                    DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
                 DrawPanelBackground(sb);
                 DrawPlacementPanel(sb);
                 DrawInventoryFocusHighlight(sb);
@@ -2493,8 +2517,10 @@ public sealed class GameplayScene : Scene
         // Zoomé / pané, le plateau déborde l'écran : il n'y a plus d'eau autour à ombrer, et le
         // dégradé envahirait toute la vue (fond qui vire au noir). On la saute alors — ça évite aussi
         // de recalculer le flou 17-taps à chaque frame de pan (le rectangle du plateau changeant).
+        // ...mais pas pendant l'émergence des tuiles (sinon l'ombre du plateau « complet » est là
+        // avant que les tuiles ne soient sorties de l'eau → bizarre).
         var board = BoardRect(layout);
-        if (board.X >= 0 && board.Y >= 0 && board.Right <= w && board.Bottom <= h)
+        if (BoardAssembled && board.X >= 0 && board.Y >= 0 && board.Right <= w && board.Bottom <= h)
             _water.DrawShadow(sb, board, w, h);   // ombre statique mise en cache (cf. WaterRenderer)
     }
 
@@ -2553,13 +2579,35 @@ public sealed class GameplayScene : Scene
             : null;
     }
 
+    /// <summary>Vrai quand l'animation d'assemblage du plateau est finie (toutes les tuiles en place).</summary>
+    private bool BoardAssembled => _boardIntro >= _boardIntroTotal;
+
+    /// <summary>
+    /// État d'émergence d'une case : décalage vertical (px) + opacité. La tuile démarre un peu plus
+    /// bas et TRANSPARENTE, puis remonte en se révélant (fondu) → impression de sortir de l'eau (qui
+    /// se voit derrière le plateau). Décalée par son indice (cascade). (0, 1) une fois posée.
+    /// Appliqué aussi aux ombres et aux pions pour qu'ils émergent avec leur tuile.
+    /// </summary>
+    private (int OffsetY, float Alpha) BoardIntroAnim(Cell cell, GridLayout layout)
+    {
+        if (_boardIntro >= _boardIntroTotal)
+            return (0, 1f);
+        var index = cell.Row * Columns + cell.Column;
+        var t = MathHelper.Clamp((_boardIntro - index * BoardIntroStagger) / BoardIntroRise, 0f, 1f);
+        var eased = 1f - (1f - t) * (1f - t) * (1f - t);   // easeOutCubic
+        return ((int)((1f - eased) * layout.SpriteHeight * BoardIntroDrop), eased);
+    }
+
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
     {
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
         {
             var (tex, src) = TileSprite(_battlefield[cell].Id);
-            sb.Draw(tex, layout.CellToSpriteRect(cell.Column, cell.Row), src, Color.White);
+            var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
+            var (oy, a) = BoardIntroAnim(cell, layout);
+            rect.Y += oy;
+            sb.Draw(tex, rect, src, Color.White * a);
         }
     }
 
@@ -2716,13 +2764,14 @@ public sealed class GameplayScene : Scene
 
         var top = layout.CellToScreen(cell.Column, cell.Row);
         var size = layout.TileSize;
+        var (introY, introA) = BoardIntroAnim(cell, layout);   // émerge avec sa tuile
         var zx = (int)top.X;
-        var zy = (int)top.Y;
+        var zy = (int)top.Y + introY;
         var zone = new Rectangle(zx, zy, size, size);
 
         // Liseré doré pour les unités pivots (commandant / boss).
         if (unit.IsEssential)
-            DrawRectBorder(sb, zone, Palette.Yellow1, 3);
+            DrawRectBorder(sb, zone, Palette.Yellow1 * introA, 3);
 
         // L'ombre projetée est dessinée dans une passe dédiée (DrawCastShadows), sous toutes les unités.
         var animLift = UnitLift(cell, size);
@@ -2737,7 +2786,7 @@ public sealed class GameplayScene : Scene
         if (sprite != null)
         {
             // Le socle est en bas du sprite : on remonte pour le centrer (haut qui déborde, voulu).
-            sb.Draw(sprite, new Rectangle(zx, zy - spriteLift - animLift, size, size), Color.White);
+            sb.Draw(sprite, new Rectangle(zx, zy - spriteLift - animLift, size, size), Color.White * introA);
         }
         else
         {
@@ -2819,7 +2868,8 @@ public sealed class GameplayScene : Scene
                 continue;
 
             var top = layout.CellToScreen(cell.Column, cell.Row);
-            DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift, size, UnitLift(cell, size));
+            var (introY, introA) = BoardIntroAnim(cell, layout);
+            DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift + introY, size, UnitLift(cell, size), introA);
         }
 
         // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »).
@@ -2835,12 +2885,12 @@ public sealed class GameplayScene : Scene
     /// <paramref name="destY"/>). Quand le pion est en l'air (<paramref name="lift"/> &gt; 0), l'ombre
     /// GLISSE dans la direction de la lumière et S'ÉCLAIRCIT → lecture nette du décollage.
     /// </summary>
-    private void DrawPieceCastShadow(SpriteBatch sb, Texture2D sprite, int destX, int destY, int size, int lift)
+    private void DrawPieceCastShadow(SpriteBatch sb, Texture2D sprite, int destX, int destY, int size, int lift, float fade = 1f)
     {
         var k = MathHelper.Clamp(lift / (size * CarriedLiftFraction), 0f, 1f);
         var slideX = (int)(lift * ShadowLiftSlide);          // glisse vers la lumière (droite, comme le cisaillement)
         var slideY = (int)(lift * ShadowLiftSlide * 0.35f);  // et un peu vers le bas/avant
-        var alpha = ShadowAlpha * (1f - ShadowLiftFade * k);
+        var alpha = ShadowAlpha * (1f - ShadowLiftFade * k) * fade;   // fade = fondu d'émergence du plateau
 
         var dest = new Rectangle(destX + slideX, destY + slideY, size, size);
         var anchor = new Vector2(dest.X + size / 2f, dest.Y + size * ShadowAnchorFraction);
@@ -3062,6 +3112,14 @@ public sealed class GameplayScene : Scene
     private bool IsOverPanel(Point p) =>
         p.X >= Context.VirtualResolution.X - RightPanelWidth;
 
+    /// <summary>Bouton « COMBATTRE » en bas du panneau de placement (souris) — équivaut à la touche Entrée.</summary>
+    private Rectangle FightButtonRect()
+    {
+        var panel = PanelRect();
+        const int h = 40, margin = 32;   // marge basse pour ne pas coller le bouton au bord de l'écran
+        return new Rectangle(panel.X + PanelPad, panel.Bottom - margin - h, panel.Width - 2 * PanelPad, h);
+    }
+
     /// <summary>Case 64×64 (cliquable) du portrait d'inventaire numéro <paramref name="index"/>, en grille.</summary>
     private Rectangle PanelCardRect(int index)
     {
@@ -3123,9 +3181,6 @@ public sealed class GameplayScene : Scene
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, full ? Palette.Purple5 : Palette.Cyan1);
 
-        if (_pending.Count == 0 && _dragSpec == null)
-            Context.Font.Draw(sb, Loc.T("placement.all_deployed"), new Vector2(x, PanelListTop + 4), 1, Palette.Cyan2);
-
         var anyFusable = false;
         for (var i = 0; i < _pending.Count; i++)
         {
@@ -3158,6 +3213,17 @@ public sealed class GameplayScene : Scene
             Context.Font.Draw(sb, Loc.T("placement.hint_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
             if (anyFusable)
                 Context.Font.Draw(sb, Loc.T("placement.hint_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
+        }
+
+        // Bouton COMBATTRE en bas du panneau (souris), en plus de la touche Entrée. Pas en tuto (lancement scénarisé).
+        if (_tutorial == null)
+        {
+            var btn = FightButtonRect();
+            var hover = !Context.Input.UsingGamepad && btn.Contains(Context.Input.MousePosition);
+            var down = hover && Context.Input.IsLeftDown;
+            var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover, down));
+            var area = btn; area.Offset(0, dy);
+            Context.Font.DrawCentered(sb, Loc.T("placement.fight"), area, 1, Palette.White);
         }
     }
 

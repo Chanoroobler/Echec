@@ -46,6 +46,7 @@ placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY
 placement.hint_gp_fight,Y : COMBATTRE,Y : FIGHT
 placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE
 placement.hint_fight,ENTREE : COMBATTRE,ENTER : FIGHT
+placement.fight,COMBATTRE,FIGHT
 placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN : FUSE
 placement.hint_gp_fuse,X : FUSIONNER,X : FUSE
 placement.hint_gp_unfuse,B : DEFUSIONNER,B : UNFUSE

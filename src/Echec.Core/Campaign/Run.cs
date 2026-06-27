@@ -336,6 +336,22 @@ public sealed class Run
     }
 
     /// <summary>
+    /// Mélange en place une liste avec le RNG DÉTERMINISTE du combat (stable d'une session à l'autre,
+    /// donc même tirage à la reprise d'une sauvegarde). Sert ex. à placer la vague ennemie sur des
+    /// cases tirées au hasard parmi celles proposées par la map. <paramref name="salt"/> par défaut 2
+    /// (≠ terrain=0, vague=1).
+    /// </summary>
+    public void ShuffleForCombat<T>(IList<T> list, int salt = 2)
+    {
+        var rng = CombatRng(salt);
+        for (var i = list.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+    }
+
+    /// <summary>
     /// RNG DÉTERMINISTE pour le combat courant, dérivé de (<see cref="Seed"/>, <see cref="CombatNumber"/>,
     /// <paramref name="salt"/>) — stable d'une session à l'autre (pas de <c>HashCode.Combine</c> qui
     /// varie par process). <paramref name="salt"/> sépare terrain (0) et vague ennemie (1).
