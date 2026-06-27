@@ -11,6 +11,7 @@ using Echec.Engine.UI;
 using Echec.Engine.UI.Text;
 using Echec.Core.Battle;
 using Echec.Core.Battle.Config;
+using Echec.Core.Equip;
 using Echec.Game.Scenes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -61,6 +62,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     protected override void Initialize()
     {
         LoadUnitConfig();
+        LoadEquipmentConfig();
         // Textes localisés (Assets/Config/strings.csv) chargés avant tout rendu d'UI.
         Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
@@ -85,6 +87,22 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         catch (System.Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"units.json ignoré (invalide) : {ex.Message}");
+        }
+    }
+
+    /// <summary>Charge les équipements depuis Assets/Config/equipment.json (repli sur les défauts si absent/invalide).</summary>
+    private static void LoadEquipmentConfig()
+    {
+        var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/equipment.json");
+        if (!System.IO.File.Exists(path))
+            return;
+        try
+        {
+            Equipments.Load(EquipmentCatalog.FromJson(System.IO.File.ReadAllText(path)));
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"equipment.json ignoré (invalide) : {ex.Message}");
         }
     }
 

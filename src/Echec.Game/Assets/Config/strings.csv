@@ -52,10 +52,24 @@ recrue.continue,CLIQUER POUR CONTINUER,CLICK TO CONTINUE
 placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN : FUSE
 placement.hint_gp_fuse,X : FUSIONNER,X : FUSE
 placement.hint_gp_unfuse,B : DEFUSIONNER,B : UNFUSE
+# ── Equipement (sous-phase de placement + coffres) ──────────────────────────
+equip.title,EQUIPEMENT,EQUIPMENT
+equip.inventory,EQUIPEMENTS,EQUIPMENT
+equip.empty,AUCUN EQUIPEMENT,NO EQUIPMENT
+equip.next,SUIVANT,NEXT
+equip.back,RETOUR,BACK
+equip.hint_drag,GLISSER SUR UN PION,DRAG ONTO A PAWN
+equip.hint_gp_equip,A : EQUIPER / RETIRER,A : EQUIP / REMOVE
+equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB : ITEM   Y : FIGHT
+equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
+equip.stat_bonus,+{0} {1},+{0} {1}
+equip.casque,CASQUE DE VIGUEUR,VIGOR HELMET
+equip.bouclier,ECU DE REMPART,BULWARK SHIELD
 # ── Caracteristiques d'unite ────────────────────────────────────────────────
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
 stat.range,PORTEE,RANGE
+stat.hp,PV,HP
 # ── Noms d'unites (cle = unit.<asset>) ──────────────────────────────────────
 unit.soldat,SOLDAT,SOLDIER
 unit.garde,GARDE,GUARD

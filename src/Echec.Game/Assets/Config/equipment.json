@@ -1,0 +1,15 @@
+{
+  // Catalogue d'ÉQUIPEMENTS posables sur un pion (jamais le commandant) pendant la phase Équipement.
+  // Un seul équipement par pion. Deux familles :
+  //   "kind": "Stat"  -> bonus plat sur une stat. "stat" = Hp | Damage | MoveRange | AttackRange, "amount" = +N.
+  //   "kind": "Trait" -> octroie un trait de combat. "trait" = nom canonique (voir Trait.cs : Rempart,
+  //                      Riposte, Rage, Soin, Dégâts de zone, Transpercement, Interception, …).
+  // "rarity": "Common" (coffre sans clé) ou "Rare" (coffre à clé, à venir). "id" = clé stable (sauvegarde).
+  // "icon" (optionnel) = nom du PNG d'icône 32×32 dans Assets/Equipment/<icon>.png ; absent => défaut = "id".
+  //                      Placeholder coloré dessiné tant que le PNG n'existe pas.
+  // NB : 2 équipements de test pour valider le système ; à compléter au fil des besoins.
+  "equipments": [
+    { "id": "casque", "name": "Casque de vigueur", "rarity": "Common", "kind": "Stat",  "stat": "Hp", "amount": 5 },
+    { "id": "bouclier", "name": "Écu de rempart",      "rarity": "Common", "kind": "Trait", "trait": "Rempart" }
+  ]
+}

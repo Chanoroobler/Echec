@@ -72,7 +72,32 @@ public static class MapLoader
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss);
+        var objects = new List<MapObject>();
+        if (dto.Objects is not null)
+        {
+            RequireGrid(dto.Objects, width, height, "objects");
+            for (var row = 0; row < height; row++)
+            {
+                var line = dto.Objects[row];
+                for (var col = 0; col < width; col++)
+                {
+                    var cell = new Cell(col, row);
+                    switch (line[col])
+                    {
+                        case 'C': objects.Add(new MapObject(cell, MapObjectKind.ChestCommon)); break;
+                        case 'K': objects.Add(new MapObject(cell, MapObjectKind.ChestRare)); break;
+                        case 'k': objects.Add(new MapObject(cell, MapObjectKind.Key)); break;
+                        case '.':
+                        case ' ': break;
+                        default:
+                            throw new FormatException(
+                                $"Caractère d'objet inconnu '{line[col]}' (ligne {row}). Attendu C, K, k ou '.'.");
+                    }
+                }
+            }
+        }
+
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)
@@ -106,5 +131,6 @@ public static class MapLoader
         public Dictionary<string, string>? Legend { get; set; }
         public List<string>? Tiles { get; set; }
         public List<string>? Spawns { get; set; }
+        public List<string>? Objects { get; set; }
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
+using Echec.Core.Equip;
 
 namespace Echec.Core.Campaign;
 
@@ -25,6 +26,9 @@ public sealed class RunSave
 
     public List<UnitSpecSave> Roster { get; set; } = new();
 
+    /// <summary>Équipements possédés mais NON équipés (ids du catalogue). Ceux équipés vivent sur leur unité.</summary>
+    public List<string> Inventory { get; set; } = new();
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -34,11 +38,22 @@ public sealed class RunSave
         var save = new RunSave { CombatNumber = run.CombatNumber, Seed = run.Seed, FirstRun = run.FirstRun };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
+        foreach (var equipment in run.EquipmentInventory)
+            save.Inventory.Add(equipment.Id);
         return save;
     }
 
-    /// <summary>Reconstruit une run jouable à partir de la sauvegarde.</summary>
-    public Run ToRun() => Run.Restore(Roster.Select(s => s.ToSpec()).ToList(), CombatNumber, Seed, FirstRun);
+    /// <summary>Reconstruit une run jouable à partir de la sauvegarde (équipements résolus par id, ignorés si inconnus).</summary>
+    public Run ToRun()
+    {
+        var roster = Roster.Select(s => s.ToSpec()).ToList();
+        var inventory = Inventory
+            .Select(Equipments.ById)
+            .Where(e => e != null)
+            .Select(e => e!)
+            .ToList();
+        return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory);
+    }
 }
 
 /// <summary>Forme sérialisable d'un <see cref="UnitSpec"/> (un emplacement d'inventaire).</summary>
@@ -51,11 +66,15 @@ public sealed class UnitSpecSave
 
     public bool Essential { get; set; }
 
+    /// <summary>Id de l'équipement porté (collé au pion), ou null. Le commandant n'en a jamais.</summary>
+    public string? Equipment { get; set; }
+
     public static UnitSpecSave From(UnitSpec spec) => new()
     {
         Domaine = spec.Domaine,
         Class = spec.UnitClass.Asset,
         Essential = spec.Essential,
+        Equipment = spec.Equipment?.Id,
     };
 
     public UnitSpec ToSpec()
@@ -69,7 +88,10 @@ public sealed class UnitSpecSave
 
         // Classe quelconque de l'arbre du domaine (base ou évolution), repli sur la classe de base.
         var cls = FindClass(Domaines.Of(Domaine).BaseClass, Class) ?? Domaines.Of(Domaine).BaseClass;
-        return new UnitSpec(Domaine, cls);
+        var spec = new UnitSpec(Domaine, cls);
+        if (Equipment is { } id)
+            spec.Equipment = Equipments.ById(id);   // équipement inconnu (catalogue modifié) → ignoré
+        return spec;
     }
 
     /// <summary>Recherche en profondeur la classe d'asset donné dans un arbre de classes.</summary>

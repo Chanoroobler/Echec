@@ -11,7 +11,8 @@ public sealed class MapData
     private readonly TileDef[,] _tiles;
 
     public MapData(string name, CombatType type, int width, int height, TileDef[,] tiles,
-        IReadOnlyList<Cell> playerSpawns, IReadOnlyList<Cell> enemySpawns, IReadOnlyList<Cell> bossSpawns)
+        IReadOnlyList<Cell> playerSpawns, IReadOnlyList<Cell> enemySpawns, IReadOnlyList<Cell> bossSpawns,
+        IReadOnlyList<MapObject>? objects = null)
     {
         Name = name;
         Type = type;
@@ -21,6 +22,7 @@ public sealed class MapData
         PlayerSpawns = playerSpawns;
         EnemySpawns = enemySpawns;
         BossSpawns = bossSpawns;
+        Objects = objects ?? System.Array.Empty<MapObject>();
     }
 
     public string Name { get; }
@@ -36,6 +38,9 @@ public sealed class MapData
 
     /// <summary>Cases d'apparition du/des boss (vide pour une escarmouche).</summary>
     public IReadOnlyList<Cell> BossSpawns { get; }
+
+    /// <summary>Objets posés sur le plateau (coffres, clés…), calque <c>objects</c> de la map. Vide si aucun.</summary>
+    public IReadOnlyList<MapObject> Objects { get; }
 
     /// <summary>Tuile à une case (origine en haut à gauche, comme <see cref="Battlefield"/>).</summary>
     public TileDef TileAt(Cell cell) => _tiles[cell.Column, cell.Row];

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
+using Echec.Core.Equip;
 using Echec.Core.Map;
 
 namespace Echec.Core.Campaign;
@@ -50,6 +51,12 @@ public sealed class Run
     private readonly List<UnitSpec> _draft = new();
 
     /// <summary>
+    /// Équipements POSSÉDÉS mais NON équipés (inventaire de la run). Les équipements équipés vivent sur
+    /// leur <see cref="UnitSpec"/> (collés au pion). Alimenté par les coffres, vidé en posant un équipement.
+    /// </summary>
+    private readonly List<Equipment> _equipment = new();
+
+    /// <summary>
     /// Graine de la run, SAUVEGARDÉE. La vague ennemie et le terrain de chaque combat en dérivent de
     /// façon déterministe (cf. <see cref="CombatRng"/>) : « Continuer » régénère donc EXACTEMENT le
     /// même combat (mêmes ennemis, même terrain) qu'avant de quitter.
@@ -77,6 +84,15 @@ public sealed class Run
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
 
+    /// <summary>Équipements possédés mais non équipés (inventaire). Posables sur les pions en phase Équipement.</summary>
+    public IReadOnlyList<Equipment> EquipmentInventory => _equipment;
+
+    /// <summary>
+    /// Vrai si le joueur possède au moins un équipement — en inventaire OU déjà posé sur un pion (sinon
+    /// la phase Équipement est sautée). On l'ouvre même si tout est équipé, pour pouvoir réagencer/retirer.
+    /// </summary>
+    public bool HasEquipment => _equipment.Count > 0 || _roster.Any(u => u.Equipment != null);
+
     public int CombatNumber { get; private set; }
     public RunPhase Phase { get; private set; }
 
@@ -91,6 +107,7 @@ public sealed class Run
         _roster.Add(new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass));
         _roster.Add(new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass));
         _draft.Clear();
+        _equipment.Clear();
         CombatNumber = 1;
         Phase = RunPhase.Placement;
     }
@@ -100,11 +117,15 @@ public sealed class Run
     /// en phase de PLACEMENT : la vague ennemie et le terrain sont regénérés au combat courant (la
     /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
     /// </summary>
-    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun)
+    public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
+        IReadOnlyList<Equipment>? inventory = null)
     {
         var run = new Run(seed, firstRun);
         run._roster.Clear();
         run._roster.AddRange(roster);
+        run._equipment.Clear();
+        if (inventory != null)
+            run._equipment.AddRange(inventory);
         run.CombatNumber = combatNumber;
         run.Phase = RunPhase.Placement;
         run._draft.Clear();
@@ -141,6 +162,44 @@ public sealed class Run
 
     /// <summary>Ajoute un pion à l'armée (réserve). Utilisé hors recrutement (ex. récompense d'une tuile recrue).</summary>
     public void AddUnit(UnitSpec spec) => _roster.Add(spec);
+
+    // ─── ÉQUIPEMENT ──────────────────────────────────────────────────────────────────────────────
+    // Un équipement est « collé au pion » : posé sur un UnitSpec, il le suit d'un combat à l'autre et
+    // disparaît avec lui (permadeath — voir CompleteCombat). L'inventaire (_equipment) ne contient que les
+    // équipements NON équipés. La fusion rend les équipements des 3 pions à l'inventaire (l'évolution sort nue).
+
+    /// <summary>Ajoute un équipement à l'inventaire (ex. butin d'un coffre).</summary>
+    public void AddEquipment(Equipment equipment) => _equipment.Add(equipment);
+
+    /// <summary>Retire un exemplaire d'équipement de l'inventaire (faux s'il n'y en a aucun).</summary>
+    public bool RemoveEquipment(Equipment equipment) => _equipment.Remove(equipment);
+
+    /// <summary>
+    /// Équipe <paramref name="spec"/> avec <paramref name="equipment"/> (pris dans l'inventaire) pendant
+    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais. Si le pion en portait
+    /// déjà un, l'ancien retourne à l'inventaire. Renvoie faux si la phase / le pion / l'item l'interdit.
+    /// </summary>
+    public bool Equip(UnitSpec spec, Equipment equipment)
+    {
+        if (Phase != RunPhase.Placement || spec.Essential)
+            return false;
+        if (!_equipment.Remove(equipment))
+            return false;
+        if (spec.Equipment is { } old)
+            _equipment.Add(old);
+        spec.Equipment = equipment;
+        return true;
+    }
+
+    /// <summary>Retire l'équipement de <paramref name="spec"/> et le rend à l'inventaire (sans effet s'il n'en a pas).</summary>
+    public void Unequip(UnitSpec spec)
+    {
+        if (spec.Equipment is { } e)
+        {
+            _equipment.Add(e);
+            spec.Equipment = null;
+        }
+    }
 
     public List<UnitSpec> BuildEnemyWave()
     {
@@ -298,9 +357,16 @@ public sealed class Run
             return null;
 
         foreach (var u in group)
+        {
+            if (u.Equipment is { } e)   // fusion : les équipements des 3 pions reviennent à l'inventaire
+            {
+                _equipment.Add(e);
+                u.Equipment = null;
+            }
             _roster.Remove(u);
+        }
 
-        var fused = new UnitSpec(first.Domaine, evolution);
+        var fused = new UnitSpec(first.Domaine, evolution);   // l'unité évoluée sort nue
         _roster.Add(fused);
         return fused;
     }
