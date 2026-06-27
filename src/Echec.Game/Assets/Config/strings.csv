@@ -65,6 +65,9 @@ equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
 equip.stat_bonus,+{0} {1},+{0} {1}
 equip.casque,CASQUE DE VIGUEUR,VIGOR HELMET
 equip.bouclier,ECU DE REMPART,BULWARK SHIELD
+equip.arc,ARC,BOW
+equip.botte,BOTTES,BOOTS
+equip.epee,EPEE,SWORD
 # ── Caracteristiques d'unite ────────────────────────────────────────────────
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT

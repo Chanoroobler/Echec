@@ -46,7 +46,7 @@
         "name": "Lancier", "asset": "lancier", "hp": 10, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true,
         "evolutions": [
           { "name": "Empaleur",     "asset": "empaleur",     "hp": 14, "damage": 14, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Transpercement"] },
-          { "name": "Hallebardier", "asset": "hallebardier", "hp": 18, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Interception"] }
+          { "name": "Hallebardier", "asset": "hallebardier", "hp": 18, "damage": 12, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Interception"] }
         ]
       }
     },

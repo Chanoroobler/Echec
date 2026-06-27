@@ -96,10 +96,39 @@ public sealed class GameplayScene : Scene
     private readonly HashSet<Cell> _chestConsumed = new();
     private readonly HashSet<Cell> _chestPrev = new();
     private Texture2D? _chestSprite;        // PNG du coffre fermé (placeholder coloré si absent)
-    private Equipment? _chestRevealItem;    // dernier équipement gagné (libellé flottant au-dessus du coffre)
-    private Cell _chestRevealCell;
-    private float _chestRevealTimer;
-    private const float ChestRevealDuration = 1.8f;
+    private Texture2D? _chestAnim;          // spritesheet d'ouverture (256×64 = 4 frames de 64×64)
+
+    // Révélation MODALE à l'ouverture d'un coffre (fige le combat), calquée sur la recrue. Machine à phases :
+    // Opening (anim du coffre) → Item (l'objet flotte au-dessus + description, attend le clic) → Fly (l'objet
+    // vole vers l'inventaire ; ajouté à l'arrivée) → Settle (court répit) → fin. L'item n'entre dans
+    // l'inventaire qu'à la fin du vol (comme la recrue).
+    private enum ChestPhase { None, Opening, Item, Fly, Settle }
+    private ChestPhase _chestPhase = ChestPhase.None;
+    private Equipment? _chestReveal;        // objet en cours de révélation (pas encore en inventaire)
+    private double _chestPhaseTimer;        // temps écoulé dans la phase courante
+    private Vector2 _chestFlyFrom;          // position de départ du vol (centre de l'objet révélé)
+    private bool ChestRevealActive => _chestPhase != ChestPhase.None;
+    private const int ChestFrames = 4;
+    private const double ChestOpenDuration = 0.6;
+    private const double ChestFlyDuration = 0.5;
+    private const double ChestSettleDuration = 0.6;
+
+    // Dissolution de l'ÉQUIPEMENT perdu quand une unité équipée meurt en combat (feedback de la perte).
+    // Détectée par DISPARITION du plateau (toutes causes de mort confondues), jouée APRÈS la dissolution
+    // du pion. Réutilise le shader de dissolution des unités (CombatFxRenderer).
+    private sealed class EquipDissolveFx
+    {
+        public Equipment Equip = null!;
+        public Cell Cell;
+        public Vector2 Seed;
+        public float Delay;   // attend la fin de la dissolution du pion
+        public float Time;    // temps après le délai (hold visible puis dissolution)
+    }
+    private readonly List<EquipDissolveFx> _equipDissolves = new();
+    private Dictionary<Unit, Cell> _equippedCells = new();   // snapshot des pions équipés posés (diff → morts)
+    private const float EquipDissolveDelay = 0.4f;   // ~ durée de dissolution du pion mort
+    private const float EquipDissolveHold = 0.22f;   // l'équipement reste visible un court instant
+    private const float EquipDissolveDur = 0.5f;     // puis se dissout
 
     // Texture de tuile par type de terrain (PNG Assets/Tiles, repli sur un aplat coloré 64×80).
     private readonly Dictionary<string, Texture2D> _tiles = new();
@@ -293,8 +322,10 @@ public sealed class GameplayScene : Scene
     {
         LoadTiles();
         LoadMaps();
-        // Coffre : PNG simple pour l'instant (anim plus tard). Placeholder coloré si l'asset manque.
+        // Coffre : PNG fermé (plateau) + spritesheet d'ouverture (révélation). Placeholders si absents.
         _chestSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffre.png"));
+        _chestAnim = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffreAnimate.png"));
+        _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
         _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
@@ -321,6 +352,10 @@ public sealed class GameplayScene : Scene
         _unitSprites.Clear();
         _chestSprite?.Dispose();
         _chestSprite = null;
+        _chestAnim?.Dispose();
+        _chestAnim = null;
+        _equipSlotBg?.Dispose();
+        _equipSlotBg = null;
         foreach (var sprite in _equipSprites.Values)
             sprite?.Dispose();
         _equipSprites.Clear();
@@ -563,8 +598,11 @@ public sealed class GameplayScene : Scene
         _chestCells.Clear();
         _chestConsumed.Clear();
         _chestPrev.Clear();
-        _chestRevealItem = null;
-        _chestRevealTimer = 0f;
+        _chestReveal = null;
+        _chestPhase = ChestPhase.None;
+        _chestPhaseTimer = 0;
+        _equipDissolves.Clear();
+        _equippedCells = new Dictionary<Unit, Cell>();   // snapshot vidé : pas de fausse mort au 1er combat frame
         if (_map is { } cm)
             foreach (var o in cm.Objects)
                 if (o.Kind == MapObjectKind.ChestCommon)
@@ -759,19 +797,100 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    /// <summary>Ouvre un coffre : tire un équipement COMMUN en inventaire de run, affiche un libellé flottant.</summary>
+    /// <summary>
+    /// Avance les dissolutions d'équipement en cours et détecte les NOUVELLES morts de pions équipés (par
+    /// disparition du plateau, toutes causes) pour en lancer une. Appelé chaque frame de combat.
+    /// </summary>
+    private void UpdateEquipDissolves(float dt)
+    {
+        for (var i = _equipDissolves.Count - 1; i >= 0; i--)
+        {
+            var d = _equipDissolves[i];
+            if (d.Delay > 0)
+            {
+                d.Delay -= dt;
+                if (d.Delay <= 0)
+                    Context.Sounds.Play("equip_lost");   // son négatif : l'équipement commence à se dissoudre
+                continue;
+            }
+            d.Time += dt;
+            if (d.Time >= EquipDissolveHold + EquipDissolveDur)
+                _equipDissolves.RemoveAt(i);
+        }
+
+        // Pions joueur ÉQUIPÉS encore sur le plateau ; ceux du snapshot précédent qui ont disparu sont morts.
+        var current = new Dictionary<Unit, Cell>();
+        foreach (var (cell, unit) in _match.Units())
+            if (unit.Faction == Faction.Player && unit.Equipment != null)
+                current[unit] = cell;
+        foreach (var (unit, cell) in _equippedCells)
+            if (!current.ContainsKey(unit) && unit.Equipment is { } e)
+                _equipDissolves.Add(new EquipDissolveFx
+                {
+                    Equip = e,
+                    Cell = cell,
+                    Seed = new Vector2((_equipDissolves.Count * 53) % 211, (_equipDissolves.Count * 97) % 199),
+                    Delay = EquipDissolveDelay,
+                });
+        _equippedCells = current;
+    }
+
+    /// <summary>Ouvre un coffre : lance la révélation MODALE (l'objet n'entre en inventaire qu'à la fin du vol).</summary>
     private void OpenChest(Cell c)
     {
         _chestConsumed.Add(c);
         var item = Equipments.Roll(EquipmentRarity.Common, new System.Random());
-        if (item != null)
+        if (item == null)
+            return;
+        _chestReveal = item;
+        _chestPhase = ChestPhase.Opening;
+        _chestPhaseTimer = 0;
+        Context.Sounds.Play("unit_place");   // TODO : son dédié « coffre qui s'ouvre »
+    }
+
+    /// <summary>Avance la révélation modale du coffre (fige le combat). Voir <see cref="ChestPhase"/>.</summary>
+    private void UpdateChestReveal(float dt)
+    {
+        _chestPhaseTimer += dt;
+        switch (_chestPhase)
         {
-            _run.AddEquipment(item);
-            _chestRevealItem = item;
-            _chestRevealCell = c;
-            _chestRevealTimer = ChestRevealDuration;
+            case ChestPhase.Opening:
+                if (_chestPhaseTimer >= ChestOpenDuration)
+                {
+                    _chestPhase = ChestPhase.Item;
+                    _chestPhaseTimer = 0;
+                    Context.Sounds.Play("reward");   // jingle positif à l'apparition de l'objet
+                }
+                break;
+
+            case ChestPhase.Item:   // l'objet flotte au-dessus du coffre + description ; on attend le clic
+                if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+                {
+                    _chestFlyFrom = ChestItemRect(ChestRevealRect()).Center.ToVector2();
+                    _chestPhase = ChestPhase.Fly;
+                    _chestPhaseTimer = 0;
+                    Context.Sounds.Play("unit_place");
+                }
+                break;
+
+            case ChestPhase.Fly:    // l'objet vole vers l'inventaire ; il y entre à l'arrivée
+                if (_chestPhaseTimer >= ChestFlyDuration)
+                {
+                    if (_chestReveal is { } item)
+                        _run.AddEquipment(item);
+                    _chestPhase = ChestPhase.Settle;
+                    _chestPhaseTimer = 0;
+                }
+                break;
+
+            default:                // Settle : court répit puis on reprend le combat
+                if (_chestPhaseTimer >= ChestSettleDuration)
+                {
+                    _chestReveal = null;
+                    _chestPhase = ChestPhase.None;
+                }
+                break;
         }
-        Context.Sounds.Play("unit_place");   // TODO : son dédié « coffre »
     }
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
@@ -1498,6 +1617,15 @@ public sealed class GameplayScene : Scene
                 continue;
             if (EquipBadgeRect(cell, layout).Contains(mouse))
             {
+                if (!_run.CanEquip(spec, carried))
+                {
+                    // Pion incompatible (il a déjà ce trait) : refus, l'objet retourne à l'inventaire.
+                    _run.AddEquipment(carried);
+                    _dragEquip = null;
+                    _dragEquipFrom = null;
+                    Context.Sounds.Play("unit_deselect");
+                    return;
+                }
                 if (spec.Equipment is { } occ)   // slot occupé : l'ancien équipement repart à l'inventaire
                     _run.AddEquipment(occ);
                 spec.Equipment = carried;
@@ -1994,11 +2122,17 @@ public sealed class GameplayScene : Scene
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
-        if (_chestRevealTimer > 0)   // libellé flottant « équipement trouvé » (passif, ne fige pas le combat)
-            _chestRevealTimer -= dt;
+        UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
         CheckRecrueTiles();        // récompense si un allié vient d'entrer sur une tuile « recrue »
         CheckChests();             // ouverture d'un coffre si un allié vient d'entrer dessus
+
+        // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
+        if (ChestRevealActive)
+        {
+            UpdateChestReveal(dt);
+            return;
+        }
 
         // Révélation de recrue : carte au centre + inventaire ouvert ; au clic, le pion vole vers son slot
         // d'inventaire et ne rejoint l'armée qu'à la fin du vol. Combat FIGÉ pendant toute la séquence.
@@ -2924,11 +3058,12 @@ public sealed class GameplayScene : Scene
                 DrawUnits(sb, board);
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
-                DrawChestReveal(sb, board);              // libellé « équipement trouvé » au-dessus du coffre ouvert
                 sb.End();
 
                 if (_fx.Active)             // dissolution / attaquant animé / flash : passes dédiées
                     DrawCombatFx(sb, board);
+
+                DrawEquipDissolves(sb, board);   // dissolution de l'équipement perdu (après celle du pion)
 
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
                 _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
@@ -2946,6 +3081,8 @@ public sealed class GameplayScene : Scene
                     DrawTutorialOverlay(sb, board, viewport);
                 if (_recrueReveal != null)
                     DrawRecrueReveal(sb, viewport);
+                if (ChestRevealActive)
+                    DrawChestReveal(sb, viewport);       // révélation modale du coffre (centre + inventaire)
                 break;
             case RunPhase.Recruitment:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -3070,8 +3207,8 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen || (EvoPlaying && _evoLong) || _recrueReveal != null)
-            return Palette.Black1 * 0.62f; // popup fusion / morph évolution long / révélation recrue : = DrawDim
+        if (FusionOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive)
+            return Palette.Black1 * 0.62f; // popup fusion / morph évo long / révélation recrue / coffre : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -4150,7 +4287,7 @@ public sealed class GameplayScene : Scene
         foreach (var c in _chestCells)
         {
             if (_chestConsumed.Contains(c))
-                continue;   // ouvert : retiré (animation d'ouverture plus tard)
+                continue;   // ouvert : retiré du plateau (l'ouverture se joue en modale, cf. DrawChestReveal)
             var (introY, introA) = BoardIntroAnim(c, layout);
             var top = layout.CellToScreen(c.Column, c.Row);
             var zx = (int)top.X;
@@ -4173,32 +4310,172 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    /// <summary>Libellé flottant « équipement trouvé » au-dessus d'un coffre fraîchement ouvert (combat).</summary>
-    private void DrawChestReveal(SpriteBatch sb, GridLayout layout)
+    /// <summary>
+    /// Rectangle 128×128 du coffre animé, dans la zone de jeu (à gauche du panneau d'inventaire), décalé un
+    /// peu SOUS le centre pour laisser la place à l'objet + son tooltip au-dessus.
+    /// </summary>
+    private Rectangle ChestRevealRect()
     {
-        if (_chestRevealItem is not { } item || _chestRevealTimer <= 0)
-            return;
-        var top = layout.CellToScreen(_chestRevealCell.Column, _chestRevealCell.Row);
-        var size = layout.TileSize;
-        var label = Loc.T("equip.found", EquipName(item));
-        var w = Context.Font.Measure(label, 1) + 12;
-        var rect = new Rectangle((int)top.X + size / 2 - w / 2, (int)top.Y - 20, w, 14);
-        Context.Style.FillDither(sb, rect);
-        DrawRectBorder(sb, rect, Palette.Yellow1, 1);
-        Context.Font.DrawCentered(sb, label, rect, 1, Palette.White);
+        var vp = VirtualViewport;
+        var availW = vp.Width - RightPanelWidth;
+        const int s = 128;
+        return new Rectangle(availW / 2 - s / 2, vp.Height / 2 - s / 2 + 40, s, s);
     }
 
-    /// <summary>Phase Équipement : cible de dépose (contour vide) au-dessus des pions NON équipés (non-commandant).</summary>
+    /// <summary>Rectangle 64×64 de l'objet révélé, juste AU-DESSUS du coffre.</summary>
+    private static Rectangle ChestItemRect(Rectangle chestRect)
+    {
+        const int s = 64;
+        return new Rectangle(chestRect.Center.X - s / 2, chestRect.Y - s - 8, s, s);
+    }
+
+    /// <summary>
+    /// Révélation MODALE d'un coffre : voile + inventaire d'équipement ouvert à droite + coffre ANIMÉ au
+    /// centre. Phase Item : l'objet flotte au-dessus avec sa description, on clique pour qu'il vole vers
+    /// l'inventaire. Combat figé pendant toute la séquence (cf. <see cref="UpdateChestReveal"/>).
+    /// </summary>
+    private void DrawChestReveal(SpriteBatch sb, Viewport viewport)
+    {
+        if (_chestReveal is not { } item)
+            return;
+        var availW = viewport.Width - RightPanelWidth;
+        var chestRect = ChestRevealRect();
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawDim(sb, viewport);
+        DrawPanelBackground(sb);
+        DrawEquipmentRevealPanel(sb);   // inventaire d'équipement (on voit où l'objet va atterrir)
+        DrawChestFrame(sb, chestRect);
+
+        if (_chestPhase == ChestPhase.Item)
+        {
+            var itemRect = ChestItemRect(chestRect);
+            DrawEquipSpriteAt(sb, item, itemRect);                   // l'objet flotte au-dessus du coffre
+            DrawEquipTooltipAbove(sb, item, itemRect);              // cadre tooltip (nom + description) au-dessus du sprite
+            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),  // invite au clic sous le coffre
+                new Rectangle(0, chestRect.Bottom + 16, availW, 12), 1, Palette.Cyan1);
+        }
+        sb.End();
+
+        if (_chestPhase == ChestPhase.Fly)
+            DrawChestFlight(sb, item);
+    }
+
+    /// <summary>
+    /// Dissolutions d'équipement en cours : l'icône se désintègre (même shader que les unités) à
+    /// l'emplacement du pion mort, après que celui-ci a fini de se dissoudre.
+    /// </summary>
+    private void DrawEquipDissolves(SpriteBatch sb, GridLayout layout)
+    {
+        if (_equipDissolves.Count == 0)
+            return;
+        var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);
+        const int s = 32;
+        foreach (var d in _equipDissolves)
+        {
+            if (d.Delay > 0)
+                continue;   // le pion se dissout encore : on attend
+            var progress = MathHelper.Clamp((d.Time - EquipDissolveHold) / EquipDissolveDur, 0f, 1f);
+            var top = layout.CellToScreen(d.Cell.Column, d.Cell.Row);
+            var rect = new Rectangle((int)top.X + (size - s) / 2, (int)top.Y - spriteLift + (size - s) / 2, s, s);
+            if (EquipSprite(d.Equip) is { } sprite)
+            {
+                _combatFx.DrawDissolve(sb, sprite, rect, progress, Palette.Yellow2, d.Seed);
+            }
+            else
+            {
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                var col = (d.Equip.Kind == EquipmentKind.Trait ? Palette.Yellow1 : Palette.Cyan1) * (1f - progress);
+                DrawRect(sb, rect, col);
+                sb.End();
+            }
+        }
+    }
+
+    /// <summary>Coffre rendu depuis le spritesheet d'ouverture (frame selon la phase), repli sur le PNG fermé.</summary>
+    private void DrawChestFrame(SpriteBatch sb, Rectangle dest)
+    {
+        if (_chestAnim != null)
+        {
+            var frame = _chestPhase == ChestPhase.Opening
+                ? System.Math.Clamp((int)(_chestPhaseTimer / ChestOpenDuration * ChestFrames), 0, ChestFrames - 1)
+                : ChestFrames - 1;   // ouvert
+            sb.Draw(_chestAnim, dest, new Rectangle(frame * 64, 0, 64, 64), Color.White);
+        }
+        else if (_chestSprite != null)
+        {
+            sb.Draw(_chestSprite, dest, Color.White);
+        }
+        else
+        {
+            DrawRect(sb, dest, Palette.Brown1);
+            DrawRectBorder(sb, dest, Palette.Black1, 2);
+        }
+    }
+
+    /// <summary>Panneau d'inventaire d'ÉQUIPEMENT pendant la révélation (titre + lignes existantes).</summary>
+    private void DrawEquipmentRevealPanel(SpriteBatch sb)
+    {
+        var x = PanelRect().X + PanelPad;
+        Context.Font.Draw(sb, Loc.T("equip.title"), new Vector2(x, 34), 2, Palette.Yellow2);
+        Context.Font.Draw(sb, Loc.T("equip.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
+        var inv = _run.EquipmentInventory;
+        for (var i = 0; i < inv.Count; i++)
+            DrawEquipInventoryRow(sb, inv[i], EquipRowRect(i), false);
+    }
+
+    /// <summary>Vol de l'objet (32×32, échelle constante) du centre vers son slot d'inventaire, avec accélération.</summary>
+    private void DrawChestFlight(SpriteBatch sb, Equipment item)
+    {
+        var t = MathHelper.Clamp((float)(_chestPhaseTimer / ChestFlyDuration), 0f, 1f);
+        var ease = t * t;
+        var slot = EquipRowRect(_run.EquipmentInventory.Count);   // slot d'atterrissage (item pas encore ajouté)
+        var iconCenter = new Vector2(slot.X + 18, slot.Y + slot.Height / 2f);
+        var pos = Vector2.Lerp(_chestFlyFrom, iconCenter, ease);
+        const int s = 32;
+        var dest = new Rectangle((int)(pos.X - s / 2f), (int)(pos.Y - s / 2f), s, s);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawEquipSpriteAt(sb, item, dest);
+        sb.End();
+    }
+
+    /// <summary>Sprite d'équipement rendu à la taille de <paramref name="dest"/> (multiple entier de 32 = pixel-perfect), ou placeholder.</summary>
+    private void DrawEquipSpriteAt(SpriteBatch sb, Equipment equip, Rectangle dest)
+    {
+        if (EquipSprite(equip) is { } sprite)
+        {
+            sb.Draw(sprite, dest, Color.White);
+            return;
+        }
+        var col = equip.Kind == EquipmentKind.Trait ? Palette.Yellow1 : Palette.Cyan1;
+        DrawRect(sb, dest, col);
+        DrawRectBorder(sb, dest, Palette.Black1, 1);
+    }
+
+    /// <summary>Phase Équipement : fond de slot (cible de dépose) au-dessus des pions NON équipés (non-commandant).</summary>
     private void DrawEquipDropSlots(SpriteBatch sb, GridLayout layout)
     {
         foreach (var (cell, spec) in DeployedPlayerSpecs())
         {
             if (spec.Essential || spec.Equipment != null)
                 continue;   // les pions équipés montrent déjà leur badge (DrawEquipBadgesPlacement)
-            var slot = EquipBadgeRect(cell, layout);
-            DrawRect(sb, slot, Palette.Black1 * 0.45f);
-            DrawRectBorder(sb, slot, Palette.Blue1, 2);
+            DrawEquipSlotBackground(sb, EquipBadgeRect(cell, layout));
         }
+    }
+
+    /// <summary>Fond de slot d'équipement 32×32 (PNG <c>background.png</c>) centré dans <paramref name="rect"/>, ou repli dessiné.</summary>
+    private void DrawEquipSlotBackground(SpriteBatch sb, Rectangle rect)
+    {
+        const int s = 32;
+        var box = new Rectangle(rect.Center.X - s / 2, rect.Center.Y - s / 2, s, s);
+        if (_equipSlotBg != null)
+        {
+            sb.Draw(_equipSlotBg, box, Color.White);
+            return;
+        }
+        DrawRect(sb, box, Palette.Black1 * 0.45f);
+        DrawRectBorder(sb, box, Palette.Blue1, 2);
     }
 
     /// <summary>Badge d'équipement (icône 32×32) au-dessus des pions joueur posés — placement/équipement (source = gabarit).</summary>
@@ -4217,7 +4494,7 @@ public sealed class GameplayScene : Scene
     private void DrawEquipBadge(SpriteBatch sb, GridLayout layout, Cell cell, Equipment equip)
     {
         var r = EquipBadgeRect(cell, layout);
-        DrawRect(sb, Inflate(r, 1), Palette.Black1);   // liseré sombre pour détacher du décor
+        DrawEquipSlotBackground(sb, r);   // même fond de slot que les emplacements vides
         DrawEquipIcon(sb, equip, r);
     }
 
@@ -4313,14 +4590,13 @@ public sealed class GameplayScene : Scene
 
     private void DrawEquipInventoryRow(SpriteBatch sb, Equipment equip, Rectangle row, bool focus)
     {
-        // Icône 36 (icône 32 centrée) à gauche, nom à droite, le tout centré verticalement dans la ligne.
-        var iconBox = new Rectangle(row.X, row.Y + (row.Height - 36) / 2, 36, 36);
-        DrawRect(sb, iconBox, Palette.Black1);
+        // Icône 32×32 native à gauche (sans cadre, comme les portraits d'unité), nom à droite, centrés.
+        var iconBox = new Rectangle(row.X, row.Y + (row.Height - 32) / 2, 32, 32);
         DrawEquipIcon(sb, equip, iconBox);
         if (focus)
             DrawRectBorder(sb, row, Palette.Yellow2, 2);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(),
-            new Vector2(iconBox.Right + 8, row.Y + (row.Height - 7) / 2), 1, Palette.White);
+            new Vector2(iconBox.Right + 10, row.Y + (row.Height - 7) / 2), 1, Palette.White);
     }
 
     /// <summary>Équipement porté à la souris pendant le glisser (suit le curseur).</summary>
@@ -4370,15 +4646,35 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    private const int EquipTooltipWidth = 210;
+
     /// <summary>Tooltip d'un équipement (nom + description), ancré à GAUCHE de l'élément survolé (repli à droite).</summary>
     private void DrawEquipTooltip(SpriteBatch sb, Equipment equip, Rectangle row)
     {
-        const int width = 210, pad = 8, lineH = 9;
-        var lines = WrapText(EquipDescription(equip), width - 2 * pad, 1);
-        var h = pad + 11 + lines.Count * lineH + pad;
-        var x = row.X - width - 8;                       // à gauche du bandeau (vers le plateau)
-        if (x < 8) x = System.Math.Min(row.Right + 8, VirtualViewport.Width - width - 8);
-        var box = new Rectangle(x, row.Y, width, h);
+        var x = row.X - EquipTooltipWidth - 8;           // à gauche du bandeau (vers le plateau)
+        if (x < 8) x = System.Math.Min(row.Right + 8, VirtualViewport.Width - EquipTooltipWidth - 8);
+        DrawEquipTooltipPanel(sb, equip, x, row.Y);
+    }
+
+    /// <summary>Tooltip d'un équipement centré AU-DESSUS de <paramref name="anchor"/> (repli en dessous si pas de place).</summary>
+    private void DrawEquipTooltipAbove(SpriteBatch sb, Equipment equip, Rectangle anchor)
+    {
+        var x = System.Math.Clamp(anchor.Center.X - EquipTooltipWidth / 2, 8, VirtualViewport.Width - EquipTooltipWidth - 8);
+        var y = anchor.Y - EquipTooltipHeight(equip) - 8;
+        if (y < 8) y = anchor.Bottom + 8;
+        DrawEquipTooltipPanel(sb, equip, x, y);
+    }
+
+    /// <summary>Hauteur du cadre tooltip d'un équipement (titre + description repliée), largeur fixe.</summary>
+    private int EquipTooltipHeight(Equipment equip) =>
+        8 + 11 + WrapText(EquipDescription(equip), EquipTooltipWidth - 16, 1).Count * 9 + 8;
+
+    /// <summary>Dessine le cadre tooltip (nom jaune + description blanche repliée) à un coin haut-gauche donné.</summary>
+    private void DrawEquipTooltipPanel(SpriteBatch sb, Equipment equip, int x, int y)
+    {
+        const int pad = 8, lineH = 9;
+        var lines = WrapText(EquipDescription(equip), EquipTooltipWidth - 2 * pad, 1);
+        var box = new Rectangle(x, y, EquipTooltipWidth, pad + 11 + lines.Count * lineH + pad);
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
         var ly = box.Y + pad + 11;
@@ -4535,24 +4831,23 @@ public sealed class GameplayScene : Scene
         var icon = new Rectangle(card.X + CardPad, y, iconSize, iconSize);
         DrawStatIcon(sb, iconKey, icon, valueColor);
 
-        // Libellé + valeur centrés verticalement sur la hauteur de l'icône.
         var rowH = new Rectangle(icon.Right + 8, y, card.Right - CardPad - (icon.Right + 8), iconSize);
-        Context.Font.Draw(sb, label,
-            new Vector2(rowH.X, rowH.Y + (iconSize - 7 * 2) / 2), 2, Palette.Blue1);
+        var midBig = rowH.Y + (iconSize - 7 * 2) / 2;   // ligne de base des textes scale 2 (14 px), centrée
+        // Libellé en scale 1 (l'icône identifie déjà la stat) → laisse la place à un bonus BIEN visible.
+        Context.Font.Draw(sb, label, new Vector2(rowH.X, rowH.Y + (iconSize - 7) / 2), 1, Palette.Blue1);
         var vw = Context.Font.Measure(value, 2);
-        Context.Font.Draw(sb, value,
-            new Vector2(rowH.Right - vw, rowH.Y + (iconSize - 7 * 2) / 2), 2, valueColor);
+        Context.Font.Draw(sb, value, new Vector2(rowH.Right - vw, midBig), 2, valueColor);
         if (bonus > 0)
         {
-            var tag = $"+{bonus}";
-            var tw = Context.Font.Measure(tag, 1);
-            Context.Font.Draw(sb, tag,
-                new Vector2(rowH.Right - vw - 6 - tw, rowH.Y + (iconSize - 7) / 2), 1, Palette.Cyan2);
+            // Bonus d'équipement BIEN visible : grand (scale 2) et jaune vif, entre (), à gauche de la valeur.
+            var tag = $"(+{bonus})";
+            var tw = Context.Font.Measure(tag, 2);
+            Context.Font.Draw(sb, tag, new Vector2(rowH.Right - vw - 8 - tw, midBig), 2, Palette.Yellow2);
         }
         return y + iconSize + 4;
     }
 
-    /// <summary>Texte « pv/max » centré, avec un « +N » bleu clair accolé si l'équipement augmente les PV.</summary>
+    /// <summary>Texte « pv/max » centré, avec un « +N » jaune vif (scale 2) accolé si l'équipement augmente les PV.</summary>
     private void DrawHpText(SpriteBatch sb, int x, int y, int width, int hp, int maxHp, int hpBonus)
     {
         var hpText = $"{hp}/{maxHp}";
@@ -4561,12 +4856,14 @@ public sealed class GameplayScene : Scene
             Context.Font.DrawCentered(sb, hpText, new Rectangle(x, y, width, 8), 1, Palette.White);
             return;
         }
-        var bonusText = $" +{hpBonus}";
+        // « (+N) » grand (scale 2) et jaune vif ; le « pv/max » (scale 1) bas-aligné dessous, groupe centré.
+        var bonusText = $"(+{hpBonus})";
         var wMain = Context.Font.Measure(hpText, 1);
-        var wBonus = Context.Font.Measure(bonusText, 1);
-        var startX = x + (width - (wMain + wBonus)) / 2;
-        Context.Font.Draw(sb, hpText, new Vector2(startX, y), 1, Palette.White);
-        Context.Font.Draw(sb, bonusText, new Vector2(startX + wMain, y), 1, Palette.Cyan2);
+        var wBonus = Context.Font.Measure(bonusText, 2);
+        const int gap = 6;
+        var startX = x + (width - (wMain + gap + wBonus)) / 2;
+        Context.Font.Draw(sb, hpText, new Vector2(startX, y + 7), 1, Palette.White);          // bas-aligné sur le +N
+        Context.Font.Draw(sb, bonusText, new Vector2(startX + wMain + gap, y), 2, Palette.Yellow2);
     }
 
     /// <summary>
@@ -4595,6 +4892,8 @@ public sealed class GameplayScene : Scene
 
     // Icônes d'équipement 32×32 (Assets/Equipment/<icon>.png), mises en cache (clé = nom d'icône).
     private readonly Dictionary<string, Texture2D?> _equipSprites = new();
+    // Fond de slot d'équipement 32×32 (Assets/Equipment/background.png) : derrière l'icône + slot vide.
+    private Texture2D? _equipSlotBg;
 
     /// <summary>PNG d'icône dans Assets/Icons (mis en cache), ou null s'il est absent.</summary>
     private Texture2D? IconOrNull(string fileName)

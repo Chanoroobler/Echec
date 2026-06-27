@@ -175,13 +175,36 @@ public sealed class Run
     public bool RemoveEquipment(Equipment equipment) => _equipment.Remove(equipment);
 
     /// <summary>
+    /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : pion non essentiel
+    /// (le commandant ne s'équipe jamais) et — pour un équipement de TRAIT — un pion dont la CLASSE ne
+    /// possède PAS déjà ce trait (pas de doublon de trait). Les équipements de stat passent toujours.
+    /// </summary>
+    public bool CanEquip(UnitSpec spec, Equipment equipment)
+    {
+        if (spec.Essential)
+            return false;
+        if (equipment.Kind == EquipmentKind.Trait && equipment.Trait is { } t && ClassHasTrait(spec.UnitClass, t))
+            return false;
+        return true;
+    }
+
+    /// <summary>Vrai si la classe possède NATIVEMENT ce trait (liste de traits, ou PiercesAllies pour « Traverse allié »).</summary>
+    private static bool ClassHasTrait(UnitClass cls, string trait)
+    {
+        if (trait == Trait.TraverseAllie)
+            return cls.PiercesAllies;
+        return cls.Traits.Contains(trait);
+    }
+
+    /// <summary>
     /// Équipe <paramref name="spec"/> avec <paramref name="equipment"/> (pris dans l'inventaire) pendant
-    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais. Si le pion en portait
-    /// déjà un, l'ancien retourne à l'inventaire. Renvoie faux si la phase / le pion / l'item l'interdit.
+    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais ; un trait déjà présent
+    /// sur la classe est refusé (cf. <see cref="CanEquip"/>). Si le pion en portait déjà un, l'ancien
+    /// retourne à l'inventaire. Renvoie faux si la phase / le pion / l'item l'interdit.
     /// </summary>
     public bool Equip(UnitSpec spec, Equipment equipment)
     {
-        if (Phase != RunPhase.Placement || spec.Essential)
+        if (Phase != RunPhase.Placement || !CanEquip(spec, equipment))
             return false;
         if (!_equipment.Remove(equipment))
             return false;

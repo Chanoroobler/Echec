@@ -147,6 +147,30 @@ public class EquipmentTests
     }
 
     [Fact]
+    public void Equip_TraitAlreadyOnClass_IsRejected_ButAllowedElsewhere()
+    {
+        // Le Garde a nativement Rempart : refus de l'équipement de trait Rempart sur lui.
+        var garde = Domaines.Pion.BaseClass.Evolutions[0]; // Garde (Rempart)
+        var run = RunWith(new UnitSpec(Domaine.Pion, garde));
+        var g = run.Roster.First(u => !u.Essential);
+        var rempart = RempartEquip;
+        run.AddEquipment(rempart);
+
+        Assert.False(run.CanEquip(g, rempart));
+        Assert.False(run.Equip(g, rempart));
+        Assert.Null(g.Equipment);
+        Assert.Contains(rempart, run.EquipmentInventory);   // pas consommé
+
+        // Un Soldat (sans Rempart), lui, l'accepte.
+        var run2 = RunWith(Soldat());
+        var soldat = run2.Roster.First(u => !u.Essential);
+        var rempart2 = RempartEquip;
+        run2.AddEquipment(rempart2);
+        Assert.True(run2.CanEquip(soldat, rempart2));
+        Assert.True(run2.Equip(soldat, rempart2));
+    }
+
+    [Fact]
     public void Equip_Commander_IsRejected()
     {
         var run = new Run(seed: 1);

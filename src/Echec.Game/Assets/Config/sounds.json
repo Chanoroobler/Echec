@@ -23,6 +23,10 @@
   "victory":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up D.wav",
   "defeat":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
 
+  // ── Objets / coffre ──────────────────────────────────────────
+  "reward":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",
+  "equip_lost": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
+
   // ── Menus ────────────────────────────────────────────────────
   "menu_open":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu A.wav",
   "menu_close": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu B.wav",

@@ -7,9 +7,12 @@
   // "rarity": "Common" (coffre sans clé) ou "Rare" (coffre à clé, à venir). "id" = clé stable (sauvegarde).
   // "icon" (optionnel) = nom du PNG d'icône 32×32 dans Assets/Equipment/<icon>.png ; absent => défaut = "id".
   //                      Placeholder coloré dessiné tant que le PNG n'existe pas.
-  // NB : 2 équipements de test pour valider le système ; à compléter au fil des besoins.
+  // NB : équipements de test ; à compléter au fil des besoins.
   "equipments": [
-    { "id": "casque", "name": "Casque de vigueur", "rarity": "Common", "kind": "Stat",  "stat": "Hp", "amount": 5 },
-    { "id": "bouclier", "name": "Écu de rempart",      "rarity": "Common", "kind": "Trait", "trait": "Rempart" }
+    { "id": "casque",   "name": "Casque de vigueur", "rarity": "Common", "kind": "Stat",  "stat": "Hp",          "amount": 5 },
+    { "id": "bouclier", "name": "Écu de rempart",    "rarity": "Common", "kind": "Trait", "trait": "Rempart" },
+    { "id": "arc",      "name": "Arc",               "rarity": "Common", "kind": "Stat",  "stat": "AttackRange", "amount": 1 },
+    { "id": "botte",    "name": "Bottes",            "rarity": "Common", "kind": "Stat",  "stat": "MoveRange",   "amount": 1 },
+    { "id": "epee",     "name": "Épée",              "rarity": "Common", "kind": "Stat",  "stat": "Damage",      "amount": 3 }
   ]
 }
