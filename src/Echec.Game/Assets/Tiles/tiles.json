@@ -24,6 +24,8 @@
     { "id": "herbe",             "key": "h", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 4, "row": 2 },
     { "id": "herbe_oh",          "key": "t", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 0, "row": 3 },
     { "id": "herbe_od",          "key": "r", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 1, "row": 3 },
-    { "id": "herbe_og",          "key": "l", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 2, "row": 3 }
+    { "id": "herbe_og",          "key": "l", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 2, "row": 3 },
+
+    { "id": "recrue",            "key": "R", "blocksMove": false, "blocksFire": false }
   ]
 }

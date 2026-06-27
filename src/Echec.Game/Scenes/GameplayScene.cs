@@ -61,7 +61,7 @@ public sealed class GameplayScene : Scene
 
     // Catalogue de tuiles (tiles.json) + map des combats 1-2 (escarmouche_01), chargés une fois au Load.
     private TileCatalog? _catalog;
-    private MapData? _escarmouche;
+    private readonly List<MapData> _maps = new();   // toutes les maps dessinées (Assets/Maps), associées au combat par taille
     // Map du combat courant : non-null = combat sur map dessinée (spawns peints) ; null = terrain aléatoire.
     private MapData? _map;
 
@@ -77,6 +77,16 @@ public sealed class GameplayScene : Scene
     private const float BoardIntroStagger = 0.05f;   // délai entre 2 tuiles successives
     private const float BoardIntroRise = 0.32f;      // durée de montée d'une tuile
     private const float BoardIntroDrop = 0.6f;       // petite remontée (en hauteurs de sprite) : émergence, pas chute
+
+    // Tuiles « recrue » : un allié qui finit son déplacement dessus (en combat) gagne un pion (tier 1) en
+    // réserve, puis la tuile est consommée (usage unique). Détection par transition (absent→présent).
+    private readonly List<Cell> _recrueCells = new();        // cases recrue du combat courant
+    private readonly HashSet<Cell> _recrueConsumed = new();  // déjà déclenchées
+    private readonly HashSet<Cell> _recruePrev = new();      // cases recrue occupées par un allié à la frame précédente
+    private UnitSpec? _recrueReveal;                         // unité gagnée en attente de révélation (carte modale, fige le combat)
+    private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
+    private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
+    private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
 
     // Texture de tuile par type de terrain (PNG Assets/Tiles, repli sur un aplat coloré 64×80).
     private readonly Dictionary<string, Texture2D> _tiles = new();
@@ -319,19 +329,44 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void LoadMaps()
     {
+        _maps.Clear();
         try
         {
             var tilesJson = System.IO.File.ReadAllText(AssetPath("Assets/Tiles/tiles.json"));
             _catalog = TileCatalog.FromJson(tilesJson);
             LoadTilesets(tilesJson);
-            _escarmouche = MapLoader.Parse(
-                System.IO.File.ReadAllText(AssetPath("Assets/Maps/escarmouche_01.json")), _catalog);
         }
         catch
         {
-            _catalog = null;
-            _escarmouche = null;   // repli : tous les combats en terrain aléatoire
+            _catalog = null;   // pas de catalogue → aucune map (terrain aléatoire partout)
+            return;
         }
+
+        var dir = AssetPath("Assets/Maps");
+        if (!System.IO.Directory.Exists(dir))
+            return;
+        foreach (var file in System.IO.Directory.GetFiles(dir, "*.json"))
+        {
+            try { _maps.Add(MapLoader.Parse(System.IO.File.ReadAllText(file), _catalog)); }
+            catch { /* map mal formée : ignorée, les autres restent chargées */ }
+        }
+    }
+
+    /// <summary>
+    /// Map à utiliser pour un combat, choisie par TAILLE : combats 1-2 → 6×6, combats 3-4 → 7×7. Au-delà
+    /// (ou si aucune map de la bonne taille n'est chargée) → null = terrain aléatoire 8×8. S'il y a
+    /// plusieurs maps d'une taille, on en prend une (varie selon le numéro de combat).
+    /// </summary>
+    private MapData? MapForCombat(int combatNumber)
+    {
+        var size = combatNumber switch { 1 or 2 => 6, 3 or 4 => 7, _ => (int?)null };
+        if (size is not { } s)
+            return null;
+
+        var matches = _maps
+            .Where(m => m.Type == CombatType.Escarmouche && m.Width == s && m.Height == s)
+            .ToList();
+        return matches.Count == 0 ? null : matches[(combatNumber - 1) % matches.Count];
     }
 
     /// <summary>
@@ -353,6 +388,9 @@ public sealed class GameplayScene : Scene
                     WithAlpha(Palette.WaterShallow, 48), WithAlpha(Palette.WaterShallow, 140)),
             "mountain" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
                 ?? Textures.CreateColorTile(Context.GraphicsDevice, Palette.Blue1, Palette.Black4),
+            // Tuile « recrue » (placeholder OR en attendant l'art) : marcher dessus = gagner un pion (effet à brancher).
+            "recrue" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
+                ?? Textures.CreateColorTile(Context.GraphicsDevice, Palette.Yellow2, Palette.Yellow1),
             _ => Textures.LoadTileOrPlaceholder(Context.GraphicsDevice, path),
         };
         _tiles[id] = tex;
@@ -462,8 +500,8 @@ public sealed class GameplayScene : Scene
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
     private void BeginPlacement()
     {
-        // Combats 1-2 : escarmouche 6×6 dessinée (taille + spawns peints). Au-delà : terrain aléatoire 8×8.
-        _map = _run.CombatNumber <= 2 ? _escarmouche : null;
+        // Map du combat selon sa taille (1-2 → 6×6, 3-4 → 7×7) ; sinon terrain aléatoire 8×8. Cf. MapForCombat.
+        _map = MapForCombat(_run.CombatNumber);
         if (_map is { } map)
         {
             Columns = map.Width;
@@ -481,6 +519,17 @@ public sealed class GameplayScene : Scene
         // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
         _boardIntro = 0f;
         _boardIntroTotal = Columns * Rows * BoardIntroStagger + BoardIntroRise;
+
+        // Recense les tuiles « recrue » de ce combat (récompense au passage d'un allié).
+        _recrueCells.Clear();
+        _recrueConsumed.Clear();
+        _recruePrev.Clear();
+        _recrueReveal = null;
+        _recrueAdded = false;
+        _recrueSettle = 0f;
+        foreach (var cell in _battlefield.Cells())
+            if (_battlefield[cell].Id == "recrue")
+                _recrueCells.Add(cell);
         _facesDown.Clear();
         _playerSpec.Clear();
         _enemySpec.Clear();
@@ -590,6 +639,43 @@ public sealed class GameplayScene : Scene
         MarkLayoutDirty();
         _aiTimer = 0;
         Context.Sounds.Play("battle_start");
+
+        // Base de référence : un allié DÉJÀ posé sur une recrue (placement) ne déclenche pas — seule une
+        // ENTRÉE pendant le combat compte.
+        _recruePrev.Clear();
+        foreach (var c in _recrueCells)
+            if (_match.UnitAt(c) is { Faction: Faction.Player })
+                _recruePrev.Add(c);
+    }
+
+    /// <summary>
+    /// Tuiles « recrue » : quand un allié ENTRE sur une de ces cases en combat (déplacement terminé),
+    /// on gagne un pion aléatoire (tier 1) en réserve et la tuile est consommée (usage unique). La
+    /// détection par transition (absent→présent) évite de se déclencher sur une unité simplement placée là.
+    /// </summary>
+    private void CheckRecrueTiles()
+    {
+        if (_recrueCells.Count == 0)
+            return;
+
+        foreach (var c in _recrueCells)
+        {
+            if (_recrueConsumed.Contains(c))
+                continue;
+            var allyOn = _match.UnitAt(c) is { Faction: Faction.Player };
+            if (allyOn && !_recruePrev.Contains(c))
+                TriggerRecrue(c);
+            if (allyOn) _recruePrev.Add(c); else _recruePrev.Remove(c);
+        }
+    }
+
+    private void TriggerRecrue(Cell c)
+    {
+        _recrueConsumed.Add(c);
+        // Tirée mais PAS encore ajoutée : la carte est révélée, puis le pion vole vers l'inventaire (UpdateBattle),
+        // et il rejoint l'armée seulement à la fin du vol.
+        _recrueReveal = _run.RollRandomUnit(new System.Random());
+        Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
@@ -1561,6 +1647,47 @@ public sealed class GameplayScene : Scene
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
 
+        CheckRecrueTiles();        // récompense si un allié vient d'entrer sur une tuile « recrue »
+
+        // Révélation de recrue : carte au centre + inventaire ouvert ; au clic, le pion vole vers son slot
+        // d'inventaire et ne rejoint l'armée qu'à la fin du vol. Combat FIGÉ pendant toute la séquence.
+        if (_recrueReveal is { } gained)
+        {
+            if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : on attend le clic / Entrée / A
+            {
+                if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+                {
+                    var vp = VirtualViewport;
+                    var card = DraftCardRect(0, 1, vp.Width - RightPanelWidth, vp.Height);
+                    _recruitFrom = new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f);
+                    _recruitChoice = gained;
+                    _recruitHold = RecruitFlightDuration;
+                    Context.Sounds.Play("unit_place");
+                }
+            }
+            else if (_recruitChoice != null)               // phase VOL : le pion file vers l'inventaire
+            {
+                _recruitHold -= dt;
+                if (_recruitHold <= 0f)
+                {
+                    _run.AddUnit(gained);   // la recrue rejoint l'armée (réserve), dans son slot
+                    _recruitChoice = null;
+                    _recrueAdded = true;
+                    _recrueSettle = RecrueSettleDuration;
+                }
+            }
+            else                                           // phase PAUSE : le pion est posé, on laisse voir le slot un instant
+            {
+                _recrueSettle -= dt;
+                if (_recrueSettle <= 0f)
+                {
+                    _recrueReveal = null;
+                    _recrueAdded = false;
+                }
+            }
+            return;
+        }
+
         // Animation d'attaque en cours : on gèle entrées, IA et fin de combat le temps des FX
         // (le domaine est déjà résolu ; la fin de partie ne s'affiche qu'après la dissolution).
         if (_fx.Active)
@@ -2448,6 +2575,8 @@ public sealed class GameplayScene : Scene
 
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
+                if (_recrueReveal != null)
+                    DrawRecrueReveal(sb, viewport);
                 break;
             case RunPhase.Recruitment:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -2572,8 +2701,8 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen || (EvoPlaying && _evoLong))
-            return Palette.Black1 * 0.62f; // popup de fusion / morph d'évolution long (placement) : = DrawDim
+        if (FusionOpen || (EvoPlaying && _evoLong) || _recrueReveal != null)
+            return Palette.Black1 * 0.62f; // popup fusion / morph évolution long / révélation recrue : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -2607,7 +2736,9 @@ public sealed class GameplayScene : Scene
             var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
             var (oy, a) = BoardIntroAnim(cell, layout);
             rect.Y += oy;
-            sb.Draw(tex, rect, src, Color.White * a);
+            // Tuile « recrue » consommée : assombrie pour signaler qu'elle est épuisée.
+            var tint = (_recrueConsumed.Contains(cell) ? new Color(110, 110, 110) : Color.White) * a;
+            sb.Draw(tex, rect, src, tint);
         }
     }
 
@@ -3364,6 +3495,42 @@ public sealed class GameplayScene : Scene
         var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
         DrawRectBorder(sb, Inflate(FusionCardRect(fi, count), 3), Palette.Yellow2, 3);
         sb.End();
+    }
+
+    /// <summary>
+    /// Révélation d'une recrue gagnée via une tuile « recrue » : voile + carte centrée de l'unité +
+    /// « une unité veut rejoindre votre armée ». Le combat est figé jusqu'au clic (cf. UpdateBattle).
+    /// L'unité est déjà ajoutée à l'armée ; le clic ne fait que fermer la carte.
+    /// </summary>
+    private void DrawRecrueReveal(SpriteBatch sb, Viewport viewport)
+    {
+        if (_recrueReveal is not { } spec)
+            return;
+
+        var army = ArmyMinusCommander();                 // armée SANS le commandant ni la recrue (pas encore ajoutée)
+        var availW = viewport.Width - RightPanelWidth;    // zone des cartes, à gauche du panneau
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawDim(sb, viewport);
+
+        // Inventaire ouvert à droite : on voit l'armée et le slot où la recrue va atterrir.
+        DrawPanelBackground(sb);
+        DrawArmyInventory(sb, army);
+
+        if (_recruitChoice == null && !_recrueAdded)   // phase CARTE seulement : carte centrée + invite au clic
+        {
+            var card = DraftCardRect(0, 1, availW, viewport.Height);
+            Context.Font.DrawCentered(sb, Loc.T("recrue.join"),
+                new Rectangle(0, card.Y - 44, availW, 24), 2, Palette.Yellow2);
+            DrawCardLayout(sb, card, spec.UnitClass, Faction.Player, spec.Domaine, spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
+            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),
+                new Rectangle(0, card.Bottom + 14, availW, 16), 1, Palette.Cyan1);
+        }
+        sb.End();
+
+        // Phase VOL : la recrue file de la carte vers son slot d'inventaire (slot suivant = army.Count).
+        if (_recruitChoice is { } flying)
+            DrawRecruitFlight(sb, flying, army.Count);
     }
 
     // Bornes internes de la phase REVEAL (fractions de EvoRevealDuration).

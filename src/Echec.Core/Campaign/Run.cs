@@ -126,6 +126,22 @@ public sealed class Run
     /// combat est garanti d'apparaître ; le reste est tiré au hasard parmi le pool débloqué. Le combat
     /// de boss = boss + <see cref="BossEscorts"/> escortes tirées parmi TOUS les types.
     /// </summary>
+    /// <summary>
+    /// Tire un pion ALÉATOIRE de TIER 1 (classe de base d'un type débloqué au combat courant) SANS
+    /// l'ajouter à l'armée — l'appelant l'ajoute via <see cref="AddUnit"/> (ex. après l'anim de la tuile
+    /// recrue). (Tier 2+ selon la progression : à venir.)
+    /// </summary>
+    public UnitSpec RollRandomUnit(Random rng)
+    {
+        var reach = FirstRun ? CombatNumber : CombatNumber + 1;
+        var unlocked = Math.Min(reach, IntroOrder.Length);
+        var domaine = IntroOrder[rng.Next(unlocked)];
+        return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+    }
+
+    /// <summary>Ajoute un pion à l'armée (réserve). Utilisé hors recrutement (ex. récompense d'une tuile recrue).</summary>
+    public void AddUnit(UnitSpec spec) => _roster.Add(spec);
+
     public List<UnitSpec> BuildEnemyWave()
     {
         var rng = CombatRng(1);   // RNG déterministe propre à la vague de CE combat
