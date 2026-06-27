@@ -39,12 +39,22 @@ public sealed class Battlefield
                 yield return new Cell(column, row);
     }
 
-    /// <summary>Crée un champ de bataille plat d'un seul type de terrain.</summary>
-    public static Battlefield CreateFlat(int width, int height, TerrainType terrain = TerrainType.Grass)
+    /// <summary>Crée un champ de bataille plat d'une seule tuile (herbe par défaut).</summary>
+    public static Battlefield CreateFlat(int width, int height, TileDef? terrain = null)
     {
+        var tile = new Tile(terrain ?? BuiltInTiles.Grass);
         var battlefield = new Battlefield(width, height);
         foreach (var cell in battlefield.Cells())
-            battlefield[cell] = new Tile(terrain);
+            battlefield[cell] = tile;
+        return battlefield;
+    }
+
+    /// <summary>Construit un champ de bataille à partir d'une map dessinée à la main.</summary>
+    public static Battlefield FromMap(MapData map)
+    {
+        var battlefield = new Battlefield(map.Width, map.Height);
+        foreach (var cell in battlefield.Cells())
+            battlefield[cell] = new Tile(map.TileAt(cell));
         return battlefield;
     }
 }

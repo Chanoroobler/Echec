@@ -7,7 +7,7 @@ namespace Echec.Core.Tests;
 
 public class TerrainTests
 {
-    private static Battlefield FlatWith(Cell cell, TerrainType terrain)
+    private static Battlefield FlatWith(Cell cell, TileDef terrain)
     {
         var field = Battlefield.CreateFlat(8, 8);
         field[cell] = new Tile(terrain);
@@ -15,10 +15,13 @@ public class TerrainTests
     }
 
     // ── Déplacement : eau ET montagne bornent (ni s'arrêter, ni passer) ──────────────
-    [Theory]
-    [InlineData(TerrainType.Water)]
-    [InlineData(TerrainType.Mountain)]
-    public void Obstacle_BlocksMovement_NotALegalMove_AndBlocksPassage(TerrainType obstacle)
+    [Fact]
+    public void Water_BlocksMovement_NotALegalMove_AndBlocksPassage() => AssertBlocksMovement(BuiltInTiles.Water);
+
+    [Fact]
+    public void Mountain_BlocksMovement_NotALegalMove_AndBlocksPassage() => AssertBlocksMovement(BuiltInTiles.Mountain);
+
+    private static void AssertBlocksMovement(TileDef obstacle)
     {
         var field = FlatWith(new Cell(3, 5), obstacle);          // 2 cases au nord du lancier
         var match = new Match(8, 8, field);
@@ -36,7 +39,7 @@ public class TerrainTests
     [Fact]
     public void Water_DoesNotBlock_LineOfFire()
     {
-        var field = FlatWith(new Cell(3, 6), TerrainType.Water);  // entre le tireur et la cible
+        var field = FlatWith(new Cell(3, 6), BuiltInTiles.Water);  // entre le tireur et la cible
         var match = new Match(8, 8, field);
         var tour = new Cell(3, 7);
         var enemy = new Cell(3, 5);                               // distance 2 = portée de tir
@@ -49,7 +52,7 @@ public class TerrainTests
     [Fact]
     public void Mountain_Blocks_LineOfFire_AndThreat()
     {
-        var field = FlatWith(new Cell(3, 5), TerrainType.Mountain); // entre le tireur et la cible
+        var field = FlatWith(new Cell(3, 5), BuiltInTiles.Mountain); // entre le tireur et la cible
         var match = new Match(8, 8, field);
         var tour = new Cell(3, 7);
         var enemy = new Cell(3, 4);
@@ -74,11 +77,11 @@ public class TerrainTests
         {
             // Les 2 rangées de déploiement de chaque camp restent en herbe.
             if (cell.Row < 2 || cell.Row > 5)
-                Assert.Equal(TerrainType.Grass, field[cell].Terrain);
+                Assert.Equal("grass", field[cell].Id);
 
             // Symétrie haut/bas (équité) : chaque case = son miroir.
             var mirror = new Cell(cell.Column, 8 - 1 - cell.Row);
-            Assert.Equal(field[cell].Terrain, field[mirror].Terrain);
+            Assert.Equal(field[cell].Id, field[mirror].Id);
         }
     }
 
@@ -89,7 +92,7 @@ public class TerrainTests
         var b = TerrainGenerator.Generate(8, 8, new Random(7));
 
         foreach (var cell in a.Cells())
-            Assert.Equal(a[cell].Terrain, b[cell].Terrain);
+            Assert.Equal(a[cell].Id, b[cell].Id);
     }
 
     [Fact]
@@ -99,7 +102,7 @@ public class TerrainTests
 
         var obstacles = 0;
         foreach (var cell in field.Cells())
-            if (field[cell].Terrain != TerrainType.Grass)
+            if (field[cell].Id != "grass")
                 obstacles++;
 
         Assert.True(obstacles > 0, "la génération devrait poser au moins un obstacle");

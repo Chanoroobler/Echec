@@ -27,8 +27,10 @@ namespace Echec.Game.Scenes;
 /// </summary>
 public sealed class GameplayScene : Scene
 {
-    private const int Columns = 8;
-    private const int Rows = 8;
+    // Dimensions du plateau du combat COURANT — variables : une map dessinée (escarmouche 6×6) les
+    // fixe à sa taille, sinon 8×8 (terrain aléatoire). Réglées par combat dans BeginPlacement/BeginTutorial.
+    private int Columns = 8;
+    private int Rows = 8;
     // Plafond d'unités joueur déployées sur le plateau, COMMANDANT COMPRIS (commandant + 4 recrues max).
     private const int MaxDeployed = 5;
     private const double AiDelaySeconds = 0.45;
@@ -48,18 +50,29 @@ public sealed class GameplayScene : Scene
     private const int InvGapY = 6;
     private const int PanelListTop = 110;
 
-    // Ordre des colonnes du centre vers les bords (déploiement groupé au milieu).
-    private static readonly int[] CenterOut = { 3, 4, 2, 5, 1, 6, 0, 7 };
+    // (Ordre de déploiement centre→bords : ColumnsCenterOut(), calculé selon la largeur du plateau.)
 
     // Chemins d'assets résolus depuis le dossier de l'exe (indépendant du répertoire de travail).
     private static string AssetPath(string relative) =>
         System.IO.Path.Combine(System.AppContext.BaseDirectory, relative);
 
-    // Terrain régénéré à CHAQUE combat (obstacles eau/montagne aléatoires) — voir BeginPlacement.
-    private Battlefield _battlefield = Battlefield.CreateFlat(Columns, Rows);
+    // Terrain du combat courant. Combats 1-2 = escarmouche 6×6 dessinée (_map) ; sinon 8×8 aléatoire.
+    private Battlefield _battlefield = Battlefield.CreateFlat(8, 8);
+
+    // Catalogue de tuiles (tiles.json) + map des combats 1-2 (escarmouche_01), chargés une fois au Load.
+    private TileCatalog? _catalog;
+    private MapData? _escarmouche;
+    // Map du combat courant : non-null = combat sur map dessinée (spawns peints) ; null = terrain aléatoire.
+    private MapData? _map;
+
+    // Tilesets : une tuile peut être rendue depuis une feuille (rectangle source) plutôt qu'un PNG
+    // individuel. _sheets : nom de feuille → texture ; _tileSheet : id → feuille ; _tileSrc : id → cellule.
+    private readonly Dictionary<string, Texture2D> _sheets = new();
+    private readonly Dictionary<string, string> _tileSheet = new();
+    private readonly Dictionary<string, Rectangle> _tileSrc = new();
 
     // Texture de tuile par type de terrain (PNG Assets/Tiles, repli sur un aplat coloré 64×80).
-    private readonly Dictionary<TerrainType, Texture2D> _tiles = new();
+    private readonly Dictionary<string, Texture2D> _tiles = new();
     private WaterRenderer _water = null!;
     private Texture2D _waterNoise = null!;
     private float _time;
@@ -158,7 +171,7 @@ public sealed class GameplayScene : Scene
 
     // Curseur de plateau (manette) : case visée. En placement, _gpInventory bascule le focus dans
     // l'inventaire (sélection d'une unité à déployer) et _invFocus en est l'index.
-    private Cell _cursor = new(Columns / 2, Rows - 1);
+    private Cell _cursor = new(4, 7);   // valeur par défaut (réinitialisée par combat dans BeginPlacement)
     private bool _gpInventory;
     private int _invFocus;
 
@@ -241,6 +254,7 @@ public sealed class GameplayScene : Scene
     public override void Load()
     {
         LoadTiles();
+        LoadMaps();
         _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
@@ -257,6 +271,9 @@ public sealed class GameplayScene : Scene
         foreach (var tile in _tiles.Values)
             tile.Dispose();
         _tiles.Clear();
+        foreach (var sheet in _sheets.Values)
+            sheet.Dispose();
+        _sheets.Clear();
         _waterNoise.Dispose();
         _water.Dispose();
         foreach (var sprite in _unitSprites.Values)
@@ -279,26 +296,123 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Charge la texture de chaque type de terrain depuis Assets/Tiles (grass/water/mountain.png),
-    /// avec repli sur un aplat coloré 64×80 (palette) si le PNG est absent — le jeu reste jouable
-    /// avant d'avoir l'art définitif.
+    /// Précharge les 3 tuiles « historiques » (campagne à terrain aléatoire). Les tuiles des maps
+    /// dessinées sont chargées à la demande par <see cref="TileTexture"/>.
     /// </summary>
     private void LoadTiles()
     {
-        _tiles[TerrainType.Grass] = Textures.LoadTileOrPlaceholder(
-            Context.GraphicsDevice, AssetPath("Assets/Tiles/grass.png"));
-        // Eau : placeholder TRANSLUCIDE (test) → on voit le shader d'eau animé sous la case. Surface
-        // très légère + liseré plus net pour repérer la case (l'eau bloque le déplacement).
-        _tiles[TerrainType.Water] =
-            Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Tiles/water.png"))
-            ?? Textures.CreateTransparentTile(Context.GraphicsDevice,
-                WithAlpha(Palette.WaterShallow, 48), WithAlpha(Palette.WaterShallow, 140));
-        _tiles[TerrainType.Mountain] = LoadTile("mountain.png", Palette.Blue1, Palette.Black4);
+        TileTexture("grass");
+        TileTexture("water");
+        TileTexture("mountain");
     }
 
-    private Texture2D LoadTile(string file, Color surface, Color side) =>
-        Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath($"Assets/Tiles/{file}"))
-        ?? Textures.CreateColorTile(Context.GraphicsDevice, surface, side);
+    /// <summary>
+    /// Charge le catalogue de tuiles (<c>tiles.json</c>) et la map d'escarmouche 6×6 (combats 1-2). En
+    /// cas de fichier absent/illisible, on retombe silencieusement sur le terrain aléatoire (jeu jouable).
+    /// </summary>
+    private void LoadMaps()
+    {
+        try
+        {
+            var tilesJson = System.IO.File.ReadAllText(AssetPath("Assets/Tiles/tiles.json"));
+            _catalog = TileCatalog.FromJson(tilesJson);
+            LoadTilesets(tilesJson);
+            _escarmouche = MapLoader.Parse(
+                System.IO.File.ReadAllText(AssetPath("Assets/Maps/escarmouche_01.json")), _catalog);
+        }
+        catch
+        {
+            _catalog = null;
+            _escarmouche = null;   // repli : tous les combats en terrain aléatoire
+        }
+    }
+
+    /// <summary>
+    /// Texture d'une tuile par id (cache ; disposition gérée par <see cref="Unload"/>). Charge
+    /// <c>Assets/Tiles/&lt;id&gt;.png</c>, repli sur un placeholder. Cas spéciaux « historiques » :
+    /// l'eau est translucide (on voit le shader animé dessous), la montagne retombe sur un aplat de
+    /// palette si le PNG manque.
+    /// </summary>
+    private Texture2D TileTexture(string id)
+    {
+        if (_tiles.TryGetValue(id, out var tex))
+            return tex;
+
+        var path = AssetPath($"Assets/Tiles/{id}.png");
+        tex = id switch
+        {
+            "water" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
+                ?? Textures.CreateTransparentTile(Context.GraphicsDevice,
+                    WithAlpha(Palette.WaterShallow, 48), WithAlpha(Palette.WaterShallow, 140)),
+            "mountain" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
+                ?? Textures.CreateColorTile(Context.GraphicsDevice, Palette.Blue1, Palette.Black4),
+            _ => Textures.LoadTileOrPlaceholder(Context.GraphicsDevice, path),
+        };
+        _tiles[id] = tex;
+        return tex;
+    }
+
+    /// <summary>
+    /// Lit la section <c>tilesets</c> + les <c>sheet</c>/<c>col</c>/<c>row</c> de tiles.json, charge les
+    /// feuilles (<c>Assets/Tilesets/&lt;file&gt;</c>) et mémorise le rectangle source de chaque tuile.
+    /// </summary>
+    private void LoadTilesets(string tilesJson)
+    {
+        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var doc = System.Text.Json.JsonSerializer.Deserialize<TilesDto>(tilesJson, opts);
+        if (doc?.Tilesets is null || doc.Tiles is null)
+            return;
+
+        foreach (var (name, sheet) in doc.Tilesets)
+        {
+            if (sheet.File is null) continue;
+            var tex = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath($"Assets/Tilesets/{sheet.File}"));
+            if (tex != null)
+                _sheets[name] = tex;
+        }
+
+        foreach (var t in doc.Tiles)
+        {
+            if (t.Id is null || t.Sheet is null || !doc.Tilesets.TryGetValue(t.Sheet, out var sheet))
+                continue;
+            _tileSheet[t.Id] = t.Sheet;
+            _tileSrc[t.Id] = new Rectangle(t.Col * sheet.CellW, t.Row * sheet.CellH, sheet.CellW, sheet.CellH);
+        }
+    }
+
+    /// <summary>
+    /// Texture + rectangle source d'une tuile : sa cellule dans la feuille si elle y est, sinon un PNG
+    /// individuel pris en entier (legacy grass/water/mountain, ou repli placeholder).
+    /// </summary>
+    private (Texture2D Texture, Rectangle Source) TileSprite(string id)
+    {
+        if (_tileSheet.TryGetValue(id, out var sheetName) && _sheets.TryGetValue(sheetName, out var sheet))
+            return (sheet, _tileSrc[id]);
+
+        var tex = TileTexture(id);
+        return (tex, new Rectangle(0, 0, tex.Width, tex.Height));
+    }
+
+    private sealed class TilesDto
+    {
+        public Dictionary<string, SheetDto>? Tilesets { get; set; }
+        public List<TileEntryDto>? Tiles { get; set; }
+    }
+
+    private sealed class SheetDto
+    {
+        public string? File { get; set; }
+        public int CellW { get; set; }
+        public int CellH { get; set; }
+    }
+
+    private sealed class TileEntryDto
+    {
+        public string? Id { get; set; }
+        public string? Sheet { get; set; }
+        public int Col { get; set; }
+        public int Row { get; set; }
+    }
 
     /// <summary>Couleur de la palette avec un alpha imposé (placeholders translucides).</summary>
     private static Color WithAlpha(Color c, byte alpha) => new(c.R, c.G, c.B, alpha);
@@ -341,8 +455,20 @@ public sealed class GameplayScene : Scene
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
     private void BeginPlacement()
     {
-        // Terrain propre à ce combat : herbe + obstacles eau/montagne aléatoires (zone neutre, symétrique).
-        _battlefield = _run.BuildBattlefield(Columns, Rows);
+        // Combats 1-2 : escarmouche 6×6 dessinée (taille + spawns peints). Au-delà : terrain aléatoire 8×8.
+        _map = _run.CombatNumber <= 2 ? _escarmouche : null;
+        if (_map is { } map)
+        {
+            Columns = map.Width;
+            Rows = map.Height;
+            _battlefield = Battlefield.FromMap(map);
+        }
+        else
+        {
+            Columns = 8;
+            Rows = 8;
+            _battlefield = _run.BuildBattlefield(Columns, Rows);
+        }
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
         _playerSpec.Clear();
@@ -366,11 +492,12 @@ public sealed class GameplayScene : Scene
         _aiTimer = 0;
         _recruitChoice = null;   // fin d'un éventuel vol de recrutement
         _recruitHold = 0;
-        _cursor = new Cell(Columns / 2, Rows - 1);   // curseur manette sur la ligne du commandant
+        var commanderCell = CommanderStart();
+        _cursor = commanderCell;       // curseur manette sur la case de départ du commandant
         _gpInventory = false;
 
         var commander = _run.Commander;
-        PlacePlayer(commander, new Cell(Columns / 2, Rows - 1));
+        PlacePlayer(commander, commanderCell);
 
         foreach (var spec in _run.Roster)
             if (spec != commander)
@@ -392,6 +519,9 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void BeginTutorial()
     {
+        Columns = 8;
+        Rows = 8;
+        _map = null;                                            // tutoriel : board plat 8×8, jamais une map dessinée
         _battlefield = Battlefield.CreateFlat(Columns, Rows);   // herbe partout, aucun obstacle
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
@@ -458,6 +588,15 @@ public sealed class GameplayScene : Scene
         TriggerLanding(cell);
     }
 
+    /// <summary>Case de départ du commandant : centre de la rangée du bas, ou une case de déploiement de la map si ce centre n'en est pas une.</summary>
+    private Cell CommanderStart()
+    {
+        var center = new Cell(Columns / 2, Rows - 1);
+        if (_map is { } m && !m.PlayerSpawns.Contains(center))
+            return m.PlayerSpawns.Count > 0 ? m.PlayerSpawns[^1] : center;
+        return center;
+    }
+
     private void PlaceEnemies(List<UnitSpec> wave)
     {
         var cells = EnemyDeployCells().ToList();
@@ -465,7 +604,7 @@ public sealed class GameplayScene : Scene
         foreach (var spec in wave)
         {
             while (i < cells.Count
-                && (_match.UnitAt(cells[i]) != null || _battlefield[cells[i]].Terrain.BlocksMovement()))
+                && (_match.UnitAt(cells[i]) != null || _battlefield[cells[i]].BlocksMovement))
                 i++;
             if (i >= cells.Count) break;
             var unit = spec.Spawn(Faction.Enemy);
@@ -475,19 +614,37 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    private static bool IsPlayerZone(Cell cell) => cell.Row >= Rows - 2;
-
-    private static IEnumerable<Cell> PlayerDeployCells()
+    // Colonnes du centre vers les bords (déploiement groupé au milieu), pour la largeur courante.
+    // Pour 8 colonnes : 3,4,2,5,1,6,0,7 (identique à l'ancien tableau figé).
+    private IEnumerable<int> ColumnsCenterOut()
     {
-        for (var row = Rows - 1; row >= Rows - 2; row--)
-            foreach (var col in CenterOut)
-                yield return new Cell(col, row);
+        var mid = (Columns - 1) / 2;
+        yield return mid;
+        for (var d = 1; d < Columns; d++)
+        {
+            if (mid + d < Columns) yield return mid + d;
+            if (mid - d >= 0) yield return mid - d;
+        }
     }
 
-    private static IEnumerable<Cell> EnemyDeployCells()
+    /// <summary>Vrai si la case est une case de déploiement joueur : cases peintes de la map, sinon les 2 rangées du bas.</summary>
+    private bool IsPlayerZone(Cell cell) =>
+        _map is { } m ? m.PlayerSpawns.Contains(cell) : cell.Row >= Rows - 2;
+
+    /// <summary>Cases de déploiement joueur : cases P de la map dessinée, sinon les 2 rangées du bas (centre→bords).</summary>
+    private IEnumerable<Cell> PlayerDeployCells() =>
+        _map is { } m ? m.PlayerSpawns : DefaultDeployCells(Rows - 1, Rows - 2);
+
+    /// <summary>Cases de spawn ennemi : cases E de la map dessinée, sinon les 2 rangées du haut (centre→bords).</summary>
+    private IEnumerable<Cell> EnemyDeployCells() =>
+        _map is { } m ? m.EnemySpawns : DefaultDeployCells(0, 1);
+
+    /// <summary>Cases des deux rangées <paramref name="rowA"/>→<paramref name="rowB"/>, colonnes du centre vers les bords.</summary>
+    private IEnumerable<Cell> DefaultDeployCells(int rowA, int rowB)
     {
-        for (var row = 0; row <= 1; row++)
-            foreach (var col in CenterOut)
+        var step = rowA <= rowB ? 1 : -1;
+        for (var row = rowA; row != rowB + step; row += step)
+            foreach (var col in ColumnsCenterOut())
                 yield return new Cell(col, row);
     }
 
@@ -881,7 +1038,7 @@ public sealed class GameplayScene : Scene
         }
 
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
-            && !_battlefield[c].Terrain.BlocksMovement()
+            && !_battlefield[c].BlocksMovement
             // Repositionner un pion déjà posé est toujours permis ; poser une NOUVELLE unité (venue de
             // l'inventaire) seulement si le plafond n'est pas atteint (sinon elle retourne à l'inventaire).
             && (_dragFrom != null || _playerSpec.Count < MaxDeployed))
@@ -889,7 +1046,7 @@ public sealed class GameplayScene : Scene
             PlacePlayer(spec, c);                       // pose / repositionne
             Context.Sounds.Play("unit_place");
         }
-        else if (cell is { } c2 && IsPlayerZone(c2) && !_battlefield[c2].Terrain.BlocksMovement()
+        else if (cell is { } c2 && IsPlayerZone(c2) && !_battlefield[c2].BlocksMovement
             && _match.UnitAt(c2) is { Faction: Faction.Player } occupant
             && (!occupant.IsEssential || _dragFrom is not null)   // commandant : échange OK depuis le plateau, jamais depuis l'inventaire
             && _playerSpec.TryGetValue(occupant, out var occSpec))
@@ -1129,7 +1286,7 @@ public sealed class GameplayScene : Scene
 
         // Sur une case libre de la zone joueur → ancrer (déplace la pile).
         if (cell is { } c && IsPlayerZone(c) && _match.UnitAt(c) == null
-            && !_battlefield[c].Terrain.BlocksMovement())
+            && !_battlefield[c].BlocksMovement)
         {
             _carryPile = false;
             _fusionCell = c;                    // ancrée sur la case (pile déplacée)
@@ -2342,7 +2499,7 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Rectangle (en coordonnées canvas) couvert par le plateau, épaisseur des sprites comprise.</summary>
-    private static Rectangle BoardRect(GridLayout layout)
+    private Rectangle BoardRect(GridLayout layout)
     {
         var pxW = Columns * layout.TileSize;
         var pxH = (Rows - 1) * layout.RowPitch + layout.SpriteHeight;
@@ -2400,7 +2557,10 @@ public sealed class GameplayScene : Scene
     {
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
-            sb.Draw(_tiles[_battlefield[cell].Terrain], layout.CellToSpriteRect(cell.Column, cell.Row), Color.White);
+        {
+            var (tex, src) = TileSprite(_battlefield[cell].Id);
+            sb.Draw(tex, layout.CellToSpriteRect(cell.Column, cell.Row), src, Color.White);
+        }
     }
 
     private void DrawDeploymentZone(SpriteBatch sb, GridLayout layout)

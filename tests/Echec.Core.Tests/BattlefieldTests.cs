@@ -17,9 +17,9 @@ public class BattlefieldTests
     [Fact]
     public void CreateFlat_FillsEveryCellWithTerrain()
     {
-        var field = Battlefield.CreateFlat(5, 5, TerrainType.Grass);
+        var field = Battlefield.CreateFlat(5, 5, BuiltInTiles.Grass);
 
-        Assert.All(field.Cells(), cell => Assert.Equal(TerrainType.Grass, field[cell].Terrain));
+        Assert.All(field.Cells(), cell => Assert.Equal("grass", field[cell].Id));
         Assert.Equal(25, field.Cells().Count());
     }
 

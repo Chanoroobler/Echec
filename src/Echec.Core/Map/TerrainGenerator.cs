@@ -37,7 +37,7 @@ public static class TerrainGenerator
                 continue;                        // déjà occupée : on retire
             taken.Add(mirror);
 
-            var terrain = rng.Next(2) == 0 ? TerrainType.Mountain : TerrainType.Water;
+            var terrain = rng.Next(2) == 0 ? BuiltInTiles.Mountain : BuiltInTiles.Water;
             field[cell] = new Tile(terrain);
             field[mirror] = new Tile(terrain);
             placed++;

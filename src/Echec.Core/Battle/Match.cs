@@ -36,13 +36,13 @@ public sealed class Match
         _terrain = terrain;
     }
 
-    /// <summary>Vrai si la tuile interdit le déplacement (eau ou montagne).</summary>
+    /// <summary>Vrai si la tuile interdit le déplacement (mur, eau).</summary>
     private bool BlocksMovement(Cell cell) =>
-        _terrain != null && _terrain[cell].Terrain.BlocksMovement();
+        _terrain != null && _terrain[cell].BlocksMovement;
 
-    /// <summary>Vrai si la tuile arrête une ligne de tir (montagne).</summary>
+    /// <summary>Vrai si la tuile arrête une ligne de tir (mur).</summary>
     private bool BlocksLineOfFire(Cell cell) =>
-        _terrain != null && _terrain[cell].Terrain.BlocksLineOfFire();
+        _terrain != null && _terrain[cell].BlocksLineOfFire;
 
     public int Width { get; }
     public int Height { get; }
