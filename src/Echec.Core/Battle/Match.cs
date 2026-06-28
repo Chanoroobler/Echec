@@ -21,6 +21,10 @@ public sealed class Match
     // (null = plateau entièrement traversable, comme avant l'ajout du terrain).
     private readonly Battlefield? _terrain;
 
+    // Cases de COUVERT (buissons, calque "objects" de la map) : une unité dessus encaisse moins de
+    // dégâts (cf. BushReduction). Vide = aucun couvert.
+    private readonly HashSet<Cell> _cover;
+
     // Unités essentielles posées sur le terrain (commandant joueur / boss ennemi).
     // On garde la référence même après leur mort pour évaluer la condition de victoire.
     private readonly List<Unit> _essential = new();
@@ -28,13 +32,18 @@ public sealed class Match
     // Buffer réutilisé par CanTakePlace (évite d'allouer une liste de coups à chaque kill).
     private readonly List<Cell> _placeBuffer = new();
 
-    public Match(int width, int height, Battlefield? terrain = null)
+    public Match(int width, int height, Battlefield? terrain = null,
+        IEnumerable<Cell>? coverCells = null)
     {
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
         _terrain = terrain;
+        _cover = coverCells is null ? new HashSet<Cell>() : new HashSet<Cell>(coverCells);
     }
+
+    /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
+    private bool IsCover(Cell cell) => _cover.Contains(cell);
 
     /// <summary>Vrai si la tuile interdit le déplacement (mur, eau).</summary>
     private bool BlocksMovement(Cell cell) =>
@@ -304,6 +313,7 @@ public sealed class Match
 
     // ─── TRAITS : dégâts effectifs, formes d'attaque, réactions ───────────────────────────────────
 
+    private const int BushReduction = 4;         // -4 dégâts quand la cible est sur un buisson (couvert)
     private const int RempartReduction = 4;     // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
     private const int RageBonus = 6;             // +6 puissance quand l'attaquant est sous le seuil PV
@@ -345,6 +355,8 @@ public sealed class Match
             dmg -= RempartReduction;
         if (distance == 1 && victim.HasTrait(Trait.Duelliste))
             dmg -= DuellisteReduction;
+        if (IsCover(victimCell))               // cible à couvert dans un buisson
+            dmg -= BushReduction;
 
         return System.Math.Max(0, dmg);
     }

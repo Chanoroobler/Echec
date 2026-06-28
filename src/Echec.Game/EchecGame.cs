@@ -57,6 +57,13 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         Content.RootDirectory = "Content";
         IsMouseVisible = false;   // on dessine notre propre curseur (le curseur OS disparaît en plein écran)
         Window.Title = "Echec";
+
+        // Hors focus, brider fortement la cadence. Sinon le rendu (notamment le shader d'eau) continue
+        // à pleine vitesse en arrière-plan dans une fenêtre borderless qui couvre tout l'écran : sur
+        // certaines machines/pilotes le GPU/compositeur sature, l'écran « lague » et le jeu devient
+        // dur à fermer. ~10 i/s suffisent à garder une capture OBS vivante sans charger la machine.
+        // (On NE minimise volontairement PAS : la fenêtre borderless doit rester capturable pour le stream.)
+        InactiveSleepTime = System.TimeSpan.FromMilliseconds(100);
     }
 
     protected override void Initialize()
@@ -205,22 +212,30 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _graphics.HardwareModeSwitch = false;
         _graphics.IsFullScreen = false;
 
-        if (settings.Fullscreen)
+        var screen = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode;
+        if (settings.Mode == WindowMode.Fullscreen)
         {
-            var mode = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode;
-            Window.IsBorderless = true;
-            _graphics.PreferredBackBufferWidth = mode.Width;
-            _graphics.PreferredBackBufferHeight = mode.Height;
+            _graphics.PreferredBackBufferWidth = screen.Width;
+            _graphics.PreferredBackBufferHeight = screen.Height;
             _graphics.ApplyChanges();
+            // IsBorderless / Position APRÈS ApplyChanges : sous DesktopGL (SDL), ApplyChanges peut
+            // redimensionner/repositionner la fenêtre et écraser ces drapeaux s'ils sont posés avant.
+            Window.IsBorderless = true;
             Window.Position = Point.Zero;   // coller la fenêtre au coin de l'écran principal
         }
         else
         {
-            // Fenêtré : la bordure (titre/cadre) suit le réglage « sans bordure ».
-            Window.IsBorderless = settings.Borderless;
             _graphics.PreferredBackBufferWidth = settings.Width;
             _graphics.PreferredBackBufferHeight = settings.Height;
             _graphics.ApplyChanges();
+            // Fenêtré : la bordure (titre/cadre) n'apparaît qu'en mode Windowed (pas Borderless).
+            Window.IsBorderless = settings.Mode == WindowMode.Borderless;
+            // Re-centrer SYSTÉMATIQUEMENT : en quittant le plein écran (qui colle la fenêtre en (0,0)
+            // à la taille de l'écran), elle y resterait collée et paraîtrait encore en plein écran
+            // alors que le mode est fenêtré. On la recentre donc à chaque application.
+            Window.Position = new Point(
+                System.Math.Max(0, (screen.Width  - settings.Width)  / 2),
+                System.Math.Max(0, (screen.Height - settings.Height) / 2));
         }
 
         ConfigureVirtualScreen();

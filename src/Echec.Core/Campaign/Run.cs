@@ -177,7 +177,9 @@ public sealed class Run
     /// <summary>
     /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : pion non essentiel
     /// (le commandant ne s'équipe jamais) et — pour un équipement de TRAIT — un pion dont la CLASSE ne
-    /// possède PAS déjà ce trait (pas de doublon de trait). Les équipements de stat passent toujours.
+    /// possède PAS déjà ce trait (pas de doublon de trait). Restrictions du domaine Cavalier (monté) :
+    /// objet de PORTÉE refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT refusé à
+    /// TOUS les cavaliers. Les autres équipements de stat passent toujours.
     /// </summary>
     public bool CanEquip(UnitSpec spec, Equipment equipment)
     {
@@ -185,6 +187,19 @@ public sealed class Run
             return false;
         if (equipment.Kind == EquipmentKind.Trait && equipment.Trait is { } t && ClassHasTrait(spec.UnitClass, t))
             return false;
+
+        // Le domaine Cavalier (monté) refuse deux familles d'objets :
+        if (spec.Domaine == Domaine.Cavalier)
+        {
+            // • PORTÉE (arc) : aucun sens sur un cavalier de mêlée (lance/épée à cheval) — mais OK pour
+            //   l'archer monté, déjà un tireur, repéré par sa zone morte de près (MinAttackRange > 1).
+            if (equipment.BonusFor(EquipStat.AttackRange) > 0 && spec.UnitClass.MinAttackRange <= 1)
+                return false;
+            // • MOUVEMENT (bottes) : la monture donne déjà la mobilité — interdit à TOUS les cavaliers,
+            //   sans exception (l'archer monté non plus).
+            if (equipment.BonusFor(EquipStat.MoveRange) > 0)
+                return false;
+        }
         return true;
     }
 

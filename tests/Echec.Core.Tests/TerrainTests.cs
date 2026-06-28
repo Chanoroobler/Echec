@@ -107,4 +107,29 @@ public class TerrainTests
 
         Assert.True(obstacles > 0, "la génération devrait poser au moins un obstacle");
     }
+
+    // ── Buisson (couvert) : la cible DESSUS reçoit -4 dégâts ─────────────────────────
+    [Fact]
+    public void Bush_ReducesIncomingDamageByFour_ForUnitStandingOnIt()
+    {
+        static Unit Fighter(Faction f, int hp, int dmg) =>
+            new(Domaine.Tour, f, new UnitClass("T", "t", tier: 1, maxHp: hp, damage: dmg,
+                moveRange: 1, attackRange: 3));
+
+        var bush = new Cell(0, 1);
+
+        // Cible SUR le buisson : -4.
+        var on = new Match(8, 8, coverCells: new[] { bush });
+        on.Place(new Cell(0, 0), Fighter(Faction.Player, 20, 10));
+        on.Place(bush, Fighter(Faction.Enemy, 20, 5));
+        on.TryAttack(new Cell(0, 0), bush);
+        Assert.Equal(14, on.UnitAt(bush)!.Hp);                  // 20 - (10 - 4)
+
+        // Cible HORS buisson : dégâts pleins.
+        var off = new Match(8, 8, coverCells: new[] { bush });
+        off.Place(new Cell(0, 0), Fighter(Faction.Player, 20, 10));
+        off.Place(new Cell(0, 3), Fighter(Faction.Enemy, 20, 5));   // (0,3) n'est pas un buisson
+        off.TryAttack(new Cell(0, 0), new Cell(0, 3));
+        Assert.Equal(10, off.UnitAt(new Cell(0, 3))!.Hp);       // 20 - 10
+    }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Echec.Engine.Localization;
 using Echec.Engine.Settings;
 
@@ -12,8 +13,16 @@ public sealed class SettingsDto
 {
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;
-    public bool Fullscreen { get; set; }
-    public bool Borderless { get; set; }
+    public WindowMode Mode { get; set; } = WindowMode.Windowed;
+
+    // Compat : anciens réglages booléens, d'avant la fusion en un seul « Mode d'affichage ».
+    // Lus pour migrer vers Mode quand un vieux options.json les contient ; jamais réécrits
+    // (null dans From() → omis à la sérialisation), si bien qu'ils disparaissent au prochain Save.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Fullscreen { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Borderless { get; set; }
+
     public int Master { get; set; } = 80;
     public int Music { get; set; } = 80;
     public int Sfx { get; set; } = 80;
@@ -23,8 +32,7 @@ public sealed class SettingsDto
     {
         Width = s.Display.Width,
         Height = s.Display.Height,
-        Fullscreen = s.Display.Fullscreen,
-        Borderless = s.Display.Borderless,
+        Mode = s.Display.Mode,
         Master = s.Audio.Master,
         Music = s.Audio.Music,
         Sfx = s.Audio.Sfx,
@@ -35,8 +43,13 @@ public sealed class SettingsDto
     {
         s.Display.Width = Width;
         s.Display.Height = Height;
-        s.Display.Fullscreen = Fullscreen;
-        s.Display.Borderless = Borderless;
+        // Migration : un ancien fichier n'a pas de « Mode » mais des booléens Fullscreen/Borderless.
+        // S'ils sont présents on en déduit le mode ; sinon on prend directement Mode.
+        s.Display.Mode = (Fullscreen.HasValue || Borderless.HasValue)
+            ? (Fullscreen == true ? WindowMode.Fullscreen
+             : Borderless == true ? WindowMode.Borderless
+             : WindowMode.Windowed)
+            : Mode;
         s.Audio.Master = Master;
         s.Audio.Music = Music;
         s.Audio.Sfx = Sfx;

@@ -57,11 +57,8 @@ public sealed class PauseMenuRenderer
             Label(sb, l.ResRow, Loc.T("options.resolution"));
             Stepper(sb, l.ResLeft, l.ResValue, l.ResRight, menu.ResolutionText, p, pointerDown, focus);
 
-            Label(sb, l.FsRow, Loc.T("options.fullscreen"));
-            Button(sb, l.FsToggle, menu.FullscreenText, p, pointerDown, focus);
-
-            Label(sb, l.BdRow, Loc.T("options.borderless"));
-            Button(sb, l.BdToggle, menu.BorderlessText, p, pointerDown, focus);
+            Label(sb, l.ModeRow, Loc.T("options.display_mode"));
+            Stepper(sb, l.ModeLeft, l.ModeValue, l.ModeRight, menu.ModeText, p, pointerDown, focus);
 
             Label(sb, l.MasterRow, Loc.T("options.volume_master"));
             Stepper(sb, l.MasterLeft, l.MasterValue, l.MasterRight, menu.MasterVolumeText, p, pointerDown, focus);

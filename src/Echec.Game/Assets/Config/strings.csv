@@ -14,8 +14,10 @@ menu.quit,QUITTER,QUIT
 # ── Options ─────────────────────────────────────────────────────────────────
 options.title,OPTIONS,OPTIONS
 options.resolution,RESOLUTION,RESOLUTION
-options.fullscreen,PLEIN ECRAN,FULLSCREEN
-options.borderless,SANS BORDURE,BORDERLESS
+options.display_mode,MODE D'AFFICHAGE,DISPLAY MODE
+display.windowed,FENETRE,WINDOWED
+display.borderless,SANS BORDURE,BORDERLESS
+display.fullscreen,PLEIN ECRAN,FULLSCREEN
 options.volume_master,VOLUME GLOBAL,MASTER VOLUME
 options.volume_music,VOLUME MUSIQUE,MUSIC VOLUME
 options.volume_sfx,VOLUME EFFETS,SFX VOLUME
@@ -63,6 +65,8 @@ equip.hint_gp_equip,A : EQUIPER / RETIRER,A : EQUIP / REMOVE
 equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB : ITEM   Y : FIGHT
 equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
 equip.stat_bonus,+{0} {1},+{0} {1}
+equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR KNIGHTS (EXCEPT MOUNTED ARCHER)
+equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR KNIGHTS
 equip.casque,CASQUE DE VIGUEUR,VIGOR HELMET
 equip.bouclier,ECU DE REMPART,BULWARK SHIELD
 equip.arc,ARC,BOW
@@ -73,6 +77,9 @@ stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
 stat.range,PORTEE,RANGE
 stat.hp,PV,HP
+# ── Environnement (objets de plateau survoles) ──────────────────────────────
+env.bush.name,BUISSON,BUSH
+env.bush.desc,-4 DEGATS RECUS,-4 DAMAGE TAKEN
 # ── Noms d'unites (cle = unit.<asset>) ──────────────────────────────────────
 unit.soldat,SOLDAT,SOLDIER
 unit.garde,GARDE,GUARD

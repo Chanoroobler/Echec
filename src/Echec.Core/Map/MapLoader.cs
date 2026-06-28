@@ -87,11 +87,13 @@ public static class MapLoader
                         case 'C': objects.Add(new MapObject(cell, MapObjectKind.ChestCommon)); break;
                         case 'K': objects.Add(new MapObject(cell, MapObjectKind.ChestRare)); break;
                         case 'k': objects.Add(new MapObject(cell, MapObjectKind.Key)); break;
+                        case 'R': objects.Add(new MapObject(cell, MapObjectKind.Recruit)); break;
+                        case 'B': objects.Add(new MapObject(cell, MapObjectKind.Bush)); break;
                         case '.':
                         case ' ': break;
                         default:
                             throw new FormatException(
-                                $"Caractère d'objet inconnu '{line[col]}' (ligne {row}). Attendu C, K, k ou '.'.");
+                                $"Caractère d'objet inconnu '{line[col]}' (ligne {row}). Attendu C, K, k, R, B ou '.'.");
                     }
                 }
             }

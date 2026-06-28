@@ -171,6 +171,72 @@ public class EquipmentTests
     }
 
     [Fact]
+    public void Equip_RangeItem_ForbiddenOnMeleeCavalier_ButAllowedOnMountedArcherAndOthers()
+    {
+        Equipment Arc() => Equipment.OfStat("arc", "Arc", EquipStat.AttackRange, 1);
+
+        // Cavalier de MÊLÉE (classe de base, MinAttackRange 1) : l'objet de portée est refusé.
+        var melee = new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass);
+        var run = RunWith(melee);
+        var meleeUnit = run.Roster.First(u => !u.Essential);
+        var arc = Arc();
+        run.AddEquipment(arc);
+        Assert.False(run.CanEquip(meleeUnit, arc));
+        Assert.False(run.Equip(meleeUnit, arc));
+        Assert.Null(meleeUnit.Equipment);
+        Assert.Contains(arc, run.EquipmentInventory);    // pas consommé
+
+        // Archer monté (évolution archère du Cavalier, MinAttackRange 2) : accepté.
+        var archer = Domaines.Cavalier.BaseClass.Evolutions[1];   // Archer monté
+        var run2 = RunWith(new UnitSpec(Domaine.Cavalier, archer));
+        var archerUnit = run2.Roster.First(u => !u.Essential);
+        var arc2 = Arc();
+        run2.AddEquipment(arc2);
+        Assert.True(run2.CanEquip(archerUnit, arc2));
+        Assert.True(run2.Equip(archerUnit, arc2));
+
+        // Hors domaine Cavalier (Soldat) : la restriction ne s'applique pas.
+        var run3 = RunWith(Soldat());
+        var soldat = run3.Roster.First(u => !u.Essential);
+        var arc3 = Arc();
+        run3.AddEquipment(arc3);
+        Assert.True(run3.CanEquip(soldat, arc3));
+        Assert.True(run3.Equip(soldat, arc3));
+    }
+
+    [Fact]
+    public void Equip_MoveItem_ForbiddenOnAllCavaliers_IncludingMountedArcher()
+    {
+        Equipment Bottes() => Equipment.OfStat("botte", "Bottes", EquipStat.MoveRange, 1);
+
+        // Cavalier de mêlée : refus de l'objet de mouvement.
+        var run = RunWith(new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass));
+        var melee = run.Roster.First(u => !u.Essential);
+        var b1 = Bottes();
+        run.AddEquipment(b1);
+        Assert.False(run.CanEquip(melee, b1));
+        Assert.False(run.Equip(melee, b1));
+        Assert.Contains(b1, run.EquipmentInventory);    // pas consommé
+
+        // Archer monté : refusé AUSSI (contrairement à l'objet de portée), aucune exception.
+        var archer = Domaines.Cavalier.BaseClass.Evolutions[1];   // Archer monté
+        var run2 = RunWith(new UnitSpec(Domaine.Cavalier, archer));
+        var archerUnit = run2.Roster.First(u => !u.Essential);
+        var b2 = Bottes();
+        run2.AddEquipment(b2);
+        Assert.False(run2.CanEquip(archerUnit, b2));
+        Assert.False(run2.Equip(archerUnit, b2));
+
+        // Hors domaine Cavalier (Soldat) : accepté.
+        var run3 = RunWith(Soldat());
+        var soldat = run3.Roster.First(u => !u.Essential);
+        var b3 = Bottes();
+        run3.AddEquipment(b3);
+        Assert.True(run3.CanEquip(soldat, b3));
+        Assert.True(run3.Equip(soldat, b3));
+    }
+
+    [Fact]
     public void Equip_Commander_IsRejected()
     {
         var run = new Run(seed: 1);

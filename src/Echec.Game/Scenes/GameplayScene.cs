@@ -79,8 +79,9 @@ public sealed class GameplayScene : Scene
     private const float BoardIntroRise = 0.32f;      // durée de montée d'une tuile
     private const float BoardIntroDrop = 0.6f;       // petite remontée (en hauteurs de sprite) : émergence, pas chute
 
-    // Tuiles « recrue » : un allié qui finit son déplacement dessus (en combat) gagne un pion (tier 1) en
-    // réserve, puis la tuile est consommée (usage unique). Détection par transition (absent→présent).
+    // Objets « recrue » (calque "objects" de la map, comme les coffres) : pion « ? » immobile ; un allié
+    // qui ENTRE dessus en combat gagne un pion (tier 1) en réserve, puis l'objet est consommé (usage
+    // unique). Détection par transition (absent→présent). Rendu : PNG, repli sur un pion « ? » placeholder.
     private readonly List<Cell> _recrueCells = new();        // cases recrue du combat courant
     private readonly HashSet<Cell> _recrueConsumed = new();  // déjà déclenchées
     private readonly HashSet<Cell> _recruePrev = new();      // cases recrue occupées par un allié à la frame précédente
@@ -88,6 +89,12 @@ public sealed class GameplayScene : Scene
     private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
     private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
+    private Texture2D? _recrueSprite;                        // PNG du pion « ? » (placeholder dessiné si absent)
+
+    // Objets « buisson » (calque "objects") : couvert PERMANENT (non consommé) — un pion DESSUS reçoit
+    // -4 dégâts (appliqué dans Match via les cases de couvert). Rendu sous les unités.
+    private readonly List<Cell> _bushCells = new();
+    private Texture2D? _bushSprite;                          // PNG du buisson (placeholder dessiné si absent)
 
     // Coffres (objet de map, calque "objects") : un allié qui ENTRE dessus en combat l'ouvre → équipement
     // commun tiré en inventaire de run, puis le coffre est consommé (usage unique). Même détection par
@@ -325,6 +332,9 @@ public sealed class GameplayScene : Scene
         // Coffre : PNG fermé (plateau) + spritesheet d'ouverture (révélation). Placeholders si absents.
         _chestSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffre.png"));
         _chestAnim = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffreAnimate.png"));
+        // Objets recrue (pion « ? ») et buisson : PNG optionnels, repli sur un placeholder dessiné.
+        _recrueSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/recrue.png"));
+        _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
         _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
         _water = LoadWater();
 
@@ -354,6 +364,10 @@ public sealed class GameplayScene : Scene
         _chestSprite = null;
         _chestAnim?.Dispose();
         _chestAnim = null;
+        _recrueSprite?.Dispose();
+        _recrueSprite = null;
+        _bushSprite?.Dispose();
+        _bushSprite = null;
         _equipSlotBg?.Dispose();
         _equipSlotBg = null;
         foreach (var sprite in _equipSprites.Values)
@@ -451,9 +465,6 @@ public sealed class GameplayScene : Scene
                     WithAlpha(Palette.WaterShallow, 48), WithAlpha(Palette.WaterShallow, 140)),
             "mountain" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
                 ?? Textures.CreateColorTile(Context.GraphicsDevice, Palette.Blue1, Palette.Black4),
-            // Tuile « recrue » (placeholder OR en attendant l'art) : marcher dessus = gagner un pion (effet à brancher).
-            "recrue" => Textures.LoadPngOrNull(Context.GraphicsDevice, path)
-                ?? Textures.CreateColorTile(Context.GraphicsDevice, Palette.Yellow2, Palette.Yellow1),
             _ => Textures.LoadTileOrPlaceholder(Context.GraphicsDevice, path),
         };
         _tiles[id] = tex;
@@ -577,25 +588,32 @@ public sealed class GameplayScene : Scene
             Rows = 8;
             _battlefield = _run.BuildBattlefield(Columns, Rows);
         }
-        _match = new Match(Columns, Rows, _battlefield);
+        // Objets de la map (calque "objects") : buissons (couvert permanent), recrues (pion « ? »),
+        // coffres communs. Les buissons doivent être recensés AVANT le Match (ils modifient les dégâts).
+        _bushCells.Clear();
+        _recrueCells.Clear();
+        _chestCells.Clear();
+        if (_map is { } cm)
+            foreach (var o in cm.Objects)
+                switch (o.Kind)
+                {
+                    case MapObjectKind.Bush: _bushCells.Add(o.Cell); break;
+                    case MapObjectKind.Recruit: _recrueCells.Add(o.Cell); break;
+                    case MapObjectKind.ChestCommon: _chestCells.Add(o.Cell); break;
+                }
+
+        _match = new Match(Columns, Rows, _battlefield, _bushCells);
 
         // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
         _boardIntro = 0f;
         _boardIntroTotal = Columns * Rows * BoardIntroStagger + BoardIntroRise;
 
-        // Recense les tuiles « recrue » de ce combat (récompense au passage d'un allié).
-        _recrueCells.Clear();
+        // Réinitialise l'état déclencheur des objets recrue / coffre (détection « entre dessus »).
         _recrueConsumed.Clear();
         _recruePrev.Clear();
         _recrueReveal = null;
         _recrueAdded = false;
         _recrueSettle = 0f;
-        foreach (var cell in _battlefield.Cells())
-            if (_battlefield[cell].Id == "recrue")
-                _recrueCells.Add(cell);
-
-        // Coffres communs de ce combat (calque "objects" de la map dessinée).
-        _chestCells.Clear();
         _chestConsumed.Clear();
         _chestPrev.Clear();
         _chestReveal = null;
@@ -603,10 +621,6 @@ public sealed class GameplayScene : Scene
         _chestPhaseTimer = 0;
         _equipDissolves.Clear();
         _equippedCells = new Dictionary<Unit, Cell>();   // snapshot vidé : pas de fausse mort au 1er combat frame
-        if (_map is { } cm)
-            foreach (var o in cm.Objects)
-                if (o.Kind == MapObjectKind.ChestCommon)
-                    _chestCells.Add(o.Cell);
 
         // Sous-phase Équipement : on (re)part toujours sur le placement normal.
         _equipPhase = false;
@@ -747,11 +761,11 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Tuiles « recrue » : quand un allié ENTRE sur une de ces cases en combat (déplacement terminé),
-    /// on gagne un pion aléatoire (tier 1) en réserve et la tuile est consommée (usage unique). La
+    /// Objets « recrue » : quand un allié ENTRE sur une de ces cases en combat (déplacement terminé),
+    /// on gagne un pion aléatoire (tier 1) en réserve et l'objet est consommé (usage unique). La
     /// détection par transition (absent→présent) évite de se déclencher sur une unité simplement placée là.
     /// </summary>
-    private void CheckRecrueTiles()
+    private void CheckRecrueObjects()
     {
         if (_recrueCells.Count == 0)
             return;
@@ -2124,7 +2138,7 @@ public sealed class GameplayScene : Scene
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
-        CheckRecrueTiles();        // récompense si un allié vient d'entrer sur une tuile « recrue »
+        CheckRecrueObjects();      // récompense si un allié vient d'entrer sur un objet « recrue »
         CheckChests();             // ouverture d'un coffre si un allié vient d'entrer dessus
 
         // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
@@ -3013,7 +3027,11 @@ public sealed class GameplayScene : Scene
                 if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, board);
                 if (BoardAssembled) DrawEnemyThreat(sb, board);
                 DrawChests(sb, board);                   // coffres (sous les unités : un allié peut être dessus)
+                DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
+                DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
+                DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
+                DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 if (_equipPhase)
                 {
                     DrawEquipBadgesPlacement(sb, board); // icône au-dessus de la tête (UNIQUEMENT en phase Équipement)
@@ -3055,7 +3073,11 @@ public sealed class GameplayScene : Scene
                 DrawHighlights(sb, board);
                 DrawEnemyThreat(sb, board);
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
+                DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
+                DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
+                DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
+                DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
                 sb.End();
@@ -3242,9 +3264,7 @@ public sealed class GameplayScene : Scene
             var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
             var (oy, a) = BoardIntroAnim(cell, layout);
             rect.Y += oy;
-            // Tuile « recrue » consommée : assombrie pour signaler qu'elle est épuisée.
-            var tint = (_recrueConsumed.Contains(cell) ? new Color(110, 110, 110) : Color.White) * a;
-            sb.Draw(tex, rect, src, tint);
+            sb.Draw(tex, rect, src, Color.White * a);
         }
     }
 
@@ -3431,10 +3451,31 @@ public sealed class GameplayScene : Scene
             var token = new Rectangle(zx + 9, zy + 8 - animLift, size - 18, size - 26);
             DrawChip(sb, unit.Class, unit.Faction, token);
         }
+        // La barre de vie est dessinée dans une passe SÉPARÉE (DrawUnitHpBars), APRÈS les buissons,
+        // pour qu'elle reste toujours visible (même quand le feuillage passe devant le pion).
+    }
 
-        // Barre de vie : visible seulement quand l'unité est blessée, verticale au bord droit du pion.
-        if (unit.Hp < unit.MaxHp)
-            DrawUnitHpBar(sb, zx, zy - animLift, size, unit.Hp, unit.MaxHp);
+    /// <summary>
+    /// Passe des barres de vie, dessinée AU-DESSUS de tout (unités + buissons) : la jauge d'un pion
+    /// reste lisible même si un buisson le masque. Mêmes exclusions et même position que <see cref="DrawUnit"/>.
+    /// </summary>
+    private void DrawUnitHpBars(SpriteBatch sb, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (_combatDragFrom == cell)            // pion porté : pas de barre sur sa case
+                continue;
+            if (_fx.Active && _fx.Attacker == cell) // attaquant animé : géré par la passe FX
+                continue;
+            if (unit.Hp >= unit.MaxHp)               // pleine vie : pas de barre
+                continue;
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            var (introY, _) = BoardIntroAnim(cell, layout);
+            var animLift = UnitLift(cell, size);
+            var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
+            DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp);
+        }
     }
 
     /// <summary>
@@ -3515,6 +3556,39 @@ public sealed class GameplayScene : Scene
             var m = Context.Input.MousePosition;
             DrawPieceCastShadow(sb, cs, m.X - size / 2, m.Y - size / 2, size, (int)(size * CarriedLiftFraction));
         }
+
+        // Ombres des objets de plateau (coffre, recrue, buisson) : même silhouette projetée que les
+        // pions, mais SEULEMENT quand un PNG existe (les placeholders n'ont pas de silhouette propre).
+        // Le COFFRE est une boîte large à sommet plat : avec le cisaillement plein (celui des pions) tout
+        // son haut s'étale loin à droite. On lui donne donc un cisaillement RÉDUIT. Buisson (rond) et
+        // recrue (pion) gardent le cisaillement par défaut.
+        DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, shear: ShadowShear * 0.45f);
+        DrawObjectCastShadows(sb, layout, _recrueCells, _recrueSprite, _recrueConsumed);
+        DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
+    }
+
+    /// <summary>
+    /// Ombre projetée des objets d'un type (coffre / recrue / buisson) : silhouette cisaillée du PNG,
+    /// posée au sol comme celle des pions. Sans PNG (placeholder) ou objet consommé : aucune ombre.
+    /// </summary>
+    private void DrawObjectCastShadows(SpriteBatch sb, GridLayout layout, List<Cell> cells,
+        Texture2D? sprite, HashSet<Cell>? consumed, float shear = ShadowShear)
+    {
+        if (sprite == null || cells.Count == 0)
+            return;
+        var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);
+        foreach (var c in cells)
+        {
+            if (consumed != null && consumed.Contains(c))
+                continue;
+            var top = layout.CellToScreen(c.Column, c.Row);
+            var (introY, introA) = BoardIntroAnim(c, layout);
+            // L'objet est dessiné à plat (top.Y), mais on ANCRE son ombre au niveau du socle d'un pion
+            // (top.Y - spriteLift) : sinon la silhouette rabattue vers l'avant déborderait dans la case
+            // du dessous. Ainsi l'ombre reste serrée à la base, dans la case. Objet immobile → lift 0.
+            DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift + introY, size, lift: 0, introA, shear);
+        }
     }
 
     /// <summary>
@@ -3522,7 +3596,8 @@ public sealed class GameplayScene : Scene
     /// <paramref name="destY"/>). Quand le pion est en l'air (<paramref name="lift"/> &gt; 0), l'ombre
     /// GLISSE dans la direction de la lumière et S'ÉCLAIRCIT → lecture nette du décollage.
     /// </summary>
-    private void DrawPieceCastShadow(SpriteBatch sb, Texture2D sprite, int destX, int destY, int size, int lift, float fade = 1f)
+    private void DrawPieceCastShadow(SpriteBatch sb, Texture2D sprite, int destX, int destY, int size, int lift,
+        float fade = 1f, float shear = ShadowShear)
     {
         var k = MathHelper.Clamp(lift / (size * CarriedLiftFraction), 0f, 1f);
         var slideX = (int)(lift * ShadowLiftSlide);          // glisse vers la lumière (droite, comme le cisaillement)
@@ -3531,7 +3606,7 @@ public sealed class GameplayScene : Scene
 
         var dest = new Rectangle(destX + slideX, destY + slideY, size, size);
         var anchor = new Vector2(dest.X + size / 2f, dest.Y + size * ShadowAnchorFraction);
-        DrawSilhouetteShadow(sb, sprite, dest, anchor, alpha);
+        DrawSilhouetteShadow(sb, sprite, dest, anchor, alpha, shear);
     }
 
     /// <summary>
@@ -3539,12 +3614,13 @@ public sealed class GameplayScene : Scene
     /// (la base du socle), cisaille latéralement et rabat/aplatit la silhouette vers le bas
     /// (<see cref="ShadowFlatten"/> &lt; 0 → l'ombre tombe vers l'avant). Teinte sombre semi-transparente.
     /// </summary>
-    private void DrawSilhouetteShadow(SpriteBatch sb, Texture2D sprite, Rectangle dest, Vector2 anchor, float alpha)
+    private void DrawSilhouetteShadow(SpriteBatch sb, Texture2D sprite, Rectangle dest, Vector2 anchor,
+        float alpha, float shear = ShadowShear)
     {
         var transform =
             Matrix.CreateTranslation(-anchor.X, -anchor.Y, 0f)
             * new Matrix(1f, 0f, 0f, 0f,
-                         -ShadowShear, ShadowFlatten, 0f, 0f,
+                         -shear, ShadowFlatten, 0f, 0f,
                          0f, 0f, 1f, 0f,
                          0f, 0f, 0f, 1f)
             * Matrix.CreateTranslation(anchor.X, anchor.Y, 0f);
@@ -4311,6 +4387,72 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Objets de RECRUTEMENT : pion « ? » immobile (PNG si présent, sinon placeholder). Caché une fois
+    /// consommé — la récompense se joue en modale (cf. <see cref="DrawRecrueReveal"/>). Sous les unités.
+    /// </summary>
+    private void DrawRecrueObjects(SpriteBatch sb, GridLayout layout)
+    {
+        if (_recrueCells.Count == 0)
+            return;
+        var size = layout.TileSize;
+        foreach (var c in _recrueCells)
+        {
+            if (_recrueConsumed.Contains(c))
+                continue;   // consommé : retiré du plateau
+            var (introY, introA) = BoardIntroAnim(c, layout);
+            var top = layout.CellToScreen(c.Column, c.Row);
+            var zx = (int)top.X;
+            var zy = (int)top.Y + introY;
+            if (_recrueSprite != null)
+            {
+                sb.Draw(_recrueSprite, new Rectangle(zx, zy, size, size), Color.White * introA);
+                continue;
+            }
+            // Placeholder : jeton de pion (corps + dessus éclairé) avec un « ? » jaune centré.
+            var box = size * 3 / 4;
+            var rect = new Rectangle(zx + (size - box) / 2, zy + (size - box) / 2, box, box);
+            DrawRect(sb, rect, Palette.Navy1 * introA);
+            DrawRect(sb, new Rectangle(rect.X, rect.Y, rect.Width, rect.Height / 3), Palette.Blue1 * introA);
+            DrawRectBorder(sb, rect, Palette.Black1 * introA, 2);
+            Context.Font.DrawCentered(sb, "?", rect, System.Math.Max(2, size / 16), Palette.Yellow2 * introA);
+        }
+    }
+
+    /// <summary>
+    /// Buissons (COUVERT) : un pion dessus reçoit -4 dégâts (appliqué dans <see cref="Match"/>). PNG si
+    /// présent, sinon une touffe verte. Permanents (jamais consommés). Dessinés en DEUX passes selon
+    /// <paramref name="occupied"/> : un buisson SANS pion passe DERRIÈRE les unités, un buisson AVEC un
+    /// pion dessus passe DEVANT (le feuillage masque le pion qui s'y cache). L'ombre, elle, reste au sol
+    /// (cf. <see cref="DrawCastShadows"/>).
+    /// </summary>
+    private void DrawBushes(SpriteBatch sb, GridLayout layout, bool occupied)
+    {
+        if (_bushCells.Count == 0)
+            return;
+        var size = layout.TileSize;
+        foreach (var c in _bushCells)
+        {
+            if ((_match.UnitAt(c) != null) != occupied)   // garde seulement les buissons de cette passe
+                continue;
+            var (introY, introA) = BoardIntroAnim(c, layout);
+            var top = layout.CellToScreen(c.Column, c.Row);
+            var zx = (int)top.X;
+            var zy = (int)top.Y + introY;
+            if (_bushSprite != null)
+            {
+                sb.Draw(_bushSprite, new Rectangle(zx, zy, size, size), Color.White * introA);
+                continue;
+            }
+            // Placeholder : touffe verte (base sombre + dessus plus clair) bordée de noir.
+            var box = size * 3 / 4;
+            var rect = new Rectangle(zx + (size - box) / 2, zy + (size - box) / 2, box, box);
+            DrawRect(sb, rect, Palette.Green2 * introA);
+            DrawRect(sb, new Rectangle(rect.X, rect.Y, rect.Width, rect.Height * 2 / 5), Palette.Green1 * introA);
+            DrawRectBorder(sb, rect, Palette.Black1 * introA, 2);
+        }
+    }
+
+    /// <summary>
     /// Rectangle 128×128 du coffre animé, dans la zone de jeu (à gauche du panneau d'inventaire), décalé un
     /// peu SOUS le centre pour laisser la place à l'objet + son tooltip au-dessus.
     /// </summary>
@@ -4627,6 +4769,20 @@ public sealed class GameplayScene : Scene
         return Loc.T("equip.stat_bonus", equip.Amount, label);
     }
 
+    /// <summary>
+    /// Restriction d'emploi à afficher SOUS l'effet (ligne séparée, en rouge doux), ou null si aucune.
+    /// Reflète <see cref="Run.CanEquip"/> : portée interdite aux cavaliers de mêlée (sauf archer monté),
+    /// mouvement interdit à TOUS les cavaliers.
+    /// </summary>
+    private static string? EquipRestriction(Equipment equip)
+    {
+        if (equip.BonusFor(EquipStat.AttackRange) > 0)
+            return Loc.T("equip.no_cavalier");        // … sauf l'archer monté
+        if (equip.BonusFor(EquipStat.MoveRange) > 0)
+            return Loc.T("equip.no_cavalier_all");    // tous les cavaliers, sans exception
+        return null;
+    }
+
     /// <summary>Tooltip au survol d'un badge d'équipement AU-DESSUS de la tête d'un pion (phase Équipement, souris, hors glisser).</summary>
     private void DrawEquipBadgeTooltip(SpriteBatch sb, GridLayout layout)
     {
@@ -4665,23 +4821,45 @@ public sealed class GameplayScene : Scene
         DrawEquipTooltipPanel(sb, equip, x, y);
     }
 
-    /// <summary>Hauteur du cadre tooltip d'un équipement (titre + description repliée), largeur fixe.</summary>
-    private int EquipTooltipHeight(Equipment equip) =>
-        8 + 11 + WrapText(EquipDescription(equip), EquipTooltipWidth - 16, 1).Count * 9 + 8;
+    // Géométrie partagée entre le calcul de hauteur et le rendu (pour rester synchronisés).
+    private const int EquipTooltipPad = 8;     // marge intérieure
+    private const int EquipTooltipLineH = 9;   // interligne du texte (scale 1)
+    private const int EquipTooltipTitleH = 11; // hauteur réservée au nom
+    private const int EquipTooltipGap = 6;     // espace AVANT la ligne de restriction
 
-    /// <summary>Dessine le cadre tooltip (nom jaune + description blanche repliée) à un coin haut-gauche donné.</summary>
+    /// <summary>Hauteur du cadre tooltip : nom + effet replié, plus l'éventuelle restriction (espacée), largeur fixe.</summary>
+    private int EquipTooltipHeight(Equipment equip)
+    {
+        int inner = EquipTooltipWidth - 2 * EquipTooltipPad;
+        int h = EquipTooltipPad + EquipTooltipTitleH
+              + WrapText(EquipDescription(equip), inner, 1).Count * EquipTooltipLineH;
+        if (EquipRestriction(equip) is { } r)
+            h += EquipTooltipGap + WrapText(r, inner, 1).Count * EquipTooltipLineH;
+        return h + EquipTooltipPad;
+    }
+
+    /// <summary>Dessine le cadre tooltip (nom jaune, effet crème, puis restriction en rouge doux) à un coin haut-gauche donné.</summary>
     private void DrawEquipTooltipPanel(SpriteBatch sb, Equipment equip, int x, int y)
     {
-        const int pad = 8, lineH = 9;
-        var lines = WrapText(EquipDescription(equip), EquipTooltipWidth - 2 * pad, 1);
-        var box = new Rectangle(x, y, EquipTooltipWidth, pad + 11 + lines.Count * lineH + pad);
+        int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EquipTooltipWidth - 2 * pad;
+        var box = new Rectangle(x, y, EquipTooltipWidth, EquipTooltipHeight(equip));
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
-        var ly = box.Y + pad + 11;
-        foreach (var line in lines)
+
+        var ly = box.Y + pad + EquipTooltipTitleH;
+        foreach (var line in WrapText(EquipDescription(equip), inner, 1))
         {
             Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
             ly += lineH;
+        }
+        if (EquipRestriction(equip) is { } r)
+        {
+            ly += EquipTooltipGap;   // respire entre l'effet et la mise en garde
+            foreach (var line in WrapText(r, inner, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.Purple5);
+                ly += lineH;
+            }
         }
     }
 
@@ -4706,12 +4884,78 @@ public sealed class GameplayScene : Scene
         var ownCell = _selected;
         if (ownCell is null && hovered is { } h && _match.UnitAt(h) is { Faction: Faction.Player })
             ownCell = h;
+        Rectangle? rightCard = null;
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
-            DrawUnitCard(sb, own, RightCardRect(board));
+        {
+            rightCard = RightCardRect(board);
+            DrawUnitCard(sb, own, rightCard.Value);
+        }
 
         // Carte de l'ennemi survolé (à gauche).
         if (hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } enemy)
             DrawUnitCard(sb, enemy, LeftCardRect(board));
+
+        // Tooltip d'environnement (buisson) de la case survolée.
+        DrawEnvironmentTooltip(sb, layout, hovered, ownCell, rightCard);
+    }
+
+    // ── Tooltip d'environnement (objets de plateau : buisson) ─────────────────────
+    private const int EnvTooltipWidth = 170;
+
+    /// <summary>Infos d'environnement d'une case (nom + effet), ou null si rien de notable dessus.</summary>
+    private (string Name, string Desc)? CellEnvironment(Cell cell) =>
+        _bushCells.Contains(cell) ? (Loc.T("env.bush.name"), Loc.T("env.bush.desc")) : null;
+
+    /// <summary>
+    /// Tooltip d'environnement au survol d'une case « notable » (buisson). S'il y a un pion DESSUS dont
+    /// la carte est affichée à droite, le tooltip se place AU-DESSUS de cette carte (l'objet est caché
+    /// par le pion) ; sinon il flotte juste au-dessus de la case.
+    /// </summary>
+    private void DrawEnvironmentTooltip(SpriteBatch sb, GridLayout layout, Cell? hovered, Cell? rightCardCell, Rectangle? rightCard)
+    {
+        if (hovered is not { } cell || CellEnvironment(cell) is not { } env)
+            return;
+
+        int h = EnvTooltipHeight(env.Desc);
+        if (rightCard is { } card && rightCardCell == cell)
+        {
+            // Un pion se tient sur la case (sa carte est à droite) : tooltip au-dessus de la carte.
+            int x = card.X + (CombatCardW - EnvTooltipWidth) / 2;
+            int y = System.Math.Max(8, card.Y - h - 8);
+            DrawEnvTooltipPanel(sb, env.Name, env.Desc, x, y);
+        }
+        else
+        {
+            // Case nue (objet visible) : tooltip flottant juste au-dessus de la case (repli en dessous).
+            var vp = VirtualViewport;
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            int cx = (int)top.X + layout.TileSize / 2;
+            int x = System.Math.Clamp(cx - EnvTooltipWidth / 2, 8, vp.Width - EnvTooltipWidth - 8);
+            int y = (int)top.Y - h - 6;
+            if (y < 8) y = (int)top.Y + layout.TileSize + 6;
+            DrawEnvTooltipPanel(sb, env.Name, env.Desc, x, y);
+        }
+    }
+
+    /// <summary>Hauteur du cadre tooltip d'environnement (nom + description repliée), largeur fixe.</summary>
+    private int EnvTooltipHeight(string desc) =>
+        EquipTooltipPad + EquipTooltipTitleH
+        + WrapText(desc, EnvTooltipWidth - 2 * EquipTooltipPad, 1).Count * EquipTooltipLineH
+        + EquipTooltipPad;
+
+    /// <summary>Dessine le cadre tooltip d'environnement (nom jaune + description crème) à un coin haut-gauche.</summary>
+    private void DrawEnvTooltipPanel(SpriteBatch sb, string name, string desc, int x, int y)
+    {
+        int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EnvTooltipWidth - 2 * pad;
+        var box = new Rectangle(x, y, EnvTooltipWidth, EnvTooltipHeight(desc));
+        Context.Style.DrawPanel(sb, box);
+        Context.Font.Draw(sb, name.ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
+        var ly = box.Y + pad + EquipTooltipTitleH;
+        foreach (var line in WrapText(desc, inner, 1))
+        {
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
+            ly += lineH;
+        }
     }
 
     /// <summary>
@@ -4847,7 +5091,7 @@ public sealed class GameplayScene : Scene
         return y + iconSize + 4;
     }
 
-    /// <summary>Texte « pv/max » centré, avec un « +N » jaune vif (scale 2) accolé si l'équipement augmente les PV.</summary>
+    /// <summary>Texte « pv/max » centré, avec un « +N » jaune vif accolé (MÊME taille que les PV) si l'équipement augmente les PV.</summary>
     private void DrawHpText(SpriteBatch sb, int x, int y, int width, int hp, int maxHp, int hpBonus)
     {
         var hpText = $"{hp}/{maxHp}";
@@ -4856,14 +5100,14 @@ public sealed class GameplayScene : Scene
             Context.Font.DrawCentered(sb, hpText, new Rectangle(x, y, width, 8), 1, Palette.White);
             return;
         }
-        // « (+N) » grand (scale 2) et jaune vif ; le « pv/max » (scale 1) bas-aligné dessous, groupe centré.
+        // « pv/max » blanc puis « (+N) » jaune vif, MÊME taille (scale 1), sur une seule ligne centrée.
         var bonusText = $"(+{hpBonus})";
         var wMain = Context.Font.Measure(hpText, 1);
-        var wBonus = Context.Font.Measure(bonusText, 2);
-        const int gap = 6;
+        var wBonus = Context.Font.Measure(bonusText, 1);
+        const int gap = 5;
         var startX = x + (width - (wMain + gap + wBonus)) / 2;
-        Context.Font.Draw(sb, hpText, new Vector2(startX, y + 7), 1, Palette.White);          // bas-aligné sur le +N
-        Context.Font.Draw(sb, bonusText, new Vector2(startX + wMain + gap, y), 2, Palette.Yellow2);
+        Context.Font.Draw(sb, hpText, new Vector2(startX, y), 1, Palette.White);
+        Context.Font.Draw(sb, bonusText, new Vector2(startX + wMain + gap, y), 1, Palette.Yellow2);
     }
 
     /// <summary>

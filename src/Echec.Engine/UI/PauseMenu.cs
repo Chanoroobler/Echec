@@ -21,7 +21,7 @@ public enum PauseElement
 {
     None,
     Resume, Options, MainMenu, Quit,
-    ResLeft, ResRight, FsToggle, BdToggle,
+    ResLeft, ResRight, ModeLeft, ModeRight,
     MasterLeft, MasterRight,
     MusicLeft, MusicRight,
     SfxLeft, SfxRight,
@@ -41,8 +41,7 @@ public struct PauseLayout
     public Rectangle Resume, Options, MainMenu, Quit;
     // Options : lignes (label à gauche, contrôle à droite)
     public Rectangle ResRow, ResLeft, ResValue, ResRight;
-    public Rectangle FsRow, FsToggle;
-    public Rectangle BdRow, BdToggle;
+    public Rectangle ModeRow, ModeLeft, ModeValue, ModeRight;
     public Rectangle MasterRow, MasterLeft, MasterValue, MasterRight;
     public Rectangle MusicRow, MusicLeft, MusicValue, MusicRight;
     public Rectangle SfxRow, SfxLeft, SfxValue, SfxRight;
@@ -113,7 +112,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? 4 : 8;
+    private int FocusCount => Panel == MenuPanel.Root ? 4 : 7;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -128,8 +127,8 @@ public sealed class PauseMenu
             return _focus switch { 0 => l.Resume, 1 => l.Options, 2 => l.MainMenu, _ => l.Quit };
         return _focus switch
         {
-            0 => l.ResRow, 1 => l.FsRow, 2 => l.BdRow,
-            3 => l.MasterRow, 4 => l.MusicRow, 5 => l.SfxRow, 6 => l.LangRow, _ => l.Back,
+            0 => l.ResRow, 1 => l.ModeRow,
+            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, _ => l.Back,
         };
     }
 
@@ -146,10 +145,8 @@ public sealed class PauseMenu
             };
         return _focus switch
         {
-            1 => ToggleFullscreen(),
-            2 => ToggleBorderless(),
-            7 => BackAction(),
-            _ => MenuAction.None,   // les pas (résolution, volumes, langue) se règlent avec gauche/droite
+            6 => BackAction(),
+            _ => MenuAction.None,   // les pas (résolution, mode, volumes, langue) se règlent avec gauche/droite
         };
     }
 
@@ -161,12 +158,11 @@ public sealed class PauseMenu
         switch (_focus)
         {
             case 0: StepResolution(dir); return MenuAction.GraphicsChanged;
-            case 1: _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged;
-            case 2: _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged;
-            case 3: _s.Audio.Master = Step(_s.Audio.Master, dir * 10); return MenuAction.VolumeChanged;
-            case 4: _s.Audio.Music = Step(_s.Audio.Music, dir * 10); return MenuAction.VolumeChanged;
-            case 5: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
-            case 6: StepLanguage(dir); return MenuAction.LanguageChanged;
+            case 1: StepMode(dir); return MenuAction.GraphicsChanged;
+            case 2: _s.Audio.Master = Step(_s.Audio.Master, dir * 10); return MenuAction.VolumeChanged;
+            case 3: _s.Audio.Music = Step(_s.Audio.Music, dir * 10); return MenuAction.VolumeChanged;
+            case 4: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
+            case 5: StepLanguage(dir); return MenuAction.LanguageChanged;
             default: return MenuAction.None;
         }
     }
@@ -174,13 +170,18 @@ public sealed class PauseMenu
     private MenuAction CloseReturning(MenuAction a) { Close(); return a; }
     private MenuAction OpenOptionsPanel() { Panel = MenuPanel.Options; _focus = 0; return MenuAction.None; }
     private MenuAction BackAction() { Back(); return MenuAction.None; }
-    private MenuAction ToggleFullscreen() { _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged; }
-    private MenuAction ToggleBorderless() { _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged; }
 
     // ── Valeurs affichées ──────────────────────────────────────────────────────
     public string ResolutionText => $"{_resolutions[_resIndex].X} X {_resolutions[_resIndex].Y}";
-    public string FullscreenText => _s.Display.Fullscreen ? Loc.T("common.yes") : Loc.T("common.no");
-    public string BorderlessText => _s.Display.Borderless ? Loc.T("common.yes") : Loc.T("common.no");
+
+    /// <summary>Libellé du mode d'affichage courant (Fenêtré / Sans bordure / Plein écran).</summary>
+    public string ModeText => _s.Display.Mode switch
+    {
+        WindowMode.Fullscreen => Loc.T("display.fullscreen"),
+        WindowMode.Borderless => Loc.T("display.borderless"),
+        _ => Loc.T("display.windowed"),
+    };
+
     public string MasterVolumeText => $"{_s.Audio.Master}%";
     public string MusicVolumeText => $"{_s.Audio.Music}%";
     public string SfxVolumeText => $"{_s.Audio.Sfx}%";
@@ -216,7 +217,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (7 * BtnH + 6 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (6 * BtnH + 5 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -229,12 +230,8 @@ public sealed class PauseMenu
         (l.ResLeft, l.ResValue, l.ResRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
-        l.FsRow = new Rectangle(panel.X, y, panel.Width, BtnH);
-        l.FsToggle = new Rectangle(ctrlX, y, CtrlW, BtnH);
-        y += BtnH + Gap;
-
-        l.BdRow = new Rectangle(panel.X, y, panel.Width, BtnH);
-        l.BdToggle = new Rectangle(ctrlX, y, CtrlW, BtnH);
+        l.ModeRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        (l.ModeLeft, l.ModeValue, l.ModeRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
         l.MasterRow = new Rectangle(panel.X, y, panel.Width, BtnH);
@@ -286,8 +283,8 @@ public sealed class PauseMenu
     {
         if (l.ResLeft.Contains(p)) { StepResolution(-1); return MenuAction.GraphicsChanged; }
         if (l.ResRight.Contains(p)) { StepResolution(+1); return MenuAction.GraphicsChanged; }
-        if (l.FsToggle.Contains(p)) { _s.Display.Fullscreen = !_s.Display.Fullscreen; return MenuAction.GraphicsChanged; }
-        if (l.BdToggle.Contains(p)) { _s.Display.Borderless = !_s.Display.Borderless; return MenuAction.GraphicsChanged; }
+        if (l.ModeLeft.Contains(p)) { StepMode(-1); return MenuAction.GraphicsChanged; }
+        if (l.ModeRight.Contains(p)) { StepMode(+1); return MenuAction.GraphicsChanged; }
 
         if (l.MasterLeft.Contains(p)) { _s.Audio.Master = Step(_s.Audio.Master, -10); return MenuAction.VolumeChanged; }
         if (l.MasterRight.Contains(p)) { _s.Audio.Master = Step(_s.Audio.Master, +10); return MenuAction.VolumeChanged; }
@@ -322,8 +319,8 @@ public sealed class PauseMenu
 
         if (l.ResLeft.Contains(p)) return PauseElement.ResLeft;
         if (l.ResRight.Contains(p)) return PauseElement.ResRight;
-        if (l.FsToggle.Contains(p)) return PauseElement.FsToggle;
-        if (l.BdToggle.Contains(p)) return PauseElement.BdToggle;
+        if (l.ModeLeft.Contains(p)) return PauseElement.ModeLeft;
+        if (l.ModeRight.Contains(p)) return PauseElement.ModeRight;
         if (l.MasterLeft.Contains(p)) return PauseElement.MasterLeft;
         if (l.MasterRight.Contains(p)) return PauseElement.MasterRight;
         if (l.MusicLeft.Contains(p)) return PauseElement.MusicLeft;
@@ -341,6 +338,15 @@ public sealed class PauseMenu
         _resIndex = MathHelper.Clamp(_resIndex + delta, 0, _resolutions.Count - 1);
         _s.Display.Width = _resolutions[_resIndex].X;
         _s.Display.Height = _resolutions[_resIndex].Y;
+    }
+
+    /// <summary>Fait défiler le mode d'affichage (sans bouclage : borné aux extrêmes).</summary>
+    private void StepMode(int dir)
+    {
+        var values = (WindowMode[])Enum.GetValues(typeof(WindowMode));
+        var i = Array.IndexOf(values, _s.Display.Mode);
+        i = MathHelper.Clamp(i + dir, 0, values.Length - 1);
+        _s.Display.Mode = values[i];
     }
 
     private static int Step(int value, int delta) => MathHelper.Clamp(value + delta, 0, 100);
