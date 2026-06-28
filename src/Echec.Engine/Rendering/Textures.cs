@@ -148,6 +148,32 @@ public static class Textures
         return texture;
     }
 
+    /// <summary>
+    /// Version « ombre tramée » d'un sprite : on garde sa SILHOUETTE (pixels opaques de la source) mais
+    /// réduite à un motif Bayer ordonné de pixels PLEINS (blancs), le reste transparent. Dessinée en
+    /// <see cref="SamplerState.PointClamp"/> et teintée à l'affichage, elle donne une ombre PIXEL-ART
+    /// (demi-teinte de pixels nets, palette respectée) au lieu d'un aplat semi-transparent lissé qui
+    /// jure avec le reste. <paramref name="threshold"/>/16 = densité du trame (8 = 50 %).
+    /// </summary>
+    public static Texture2D CreateShadowStipple(GraphicsDevice graphicsDevice, Texture2D source, int threshold = 8)
+    {
+        var src = new Color[source.Width * source.Height];
+        source.GetData(src);
+
+        var data = new Color[src.Length];
+        for (var y = 0; y < source.Height; y++)
+            for (var x = 0; x < source.Width; x++)
+            {
+                var i = y * source.Width + x;
+                var keep = src[i].A > 127 && Bayer4[y & 3, x & 3] < threshold;
+                data[i] = keep ? Color.White : Color.Transparent;
+            }
+
+        var texture = new Texture2D(graphicsDevice, source.Width, source.Height);
+        texture.SetData(data);
+        return texture;
+    }
+
     // Flèche de curseur pixel-art (pointe en haut-gauche = hot spot en 0,0).
     // 'O' = contour sombre, '#' = remplissage clair, '.' = transparent.
     private static readonly string[] CursorArrow =

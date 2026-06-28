@@ -58,12 +58,11 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         IsMouseVisible = false;   // on dessine notre propre curseur (le curseur OS disparaît en plein écran)
         Window.Title = "Echec";
 
-        // Hors focus, brider fortement la cadence. Sinon le rendu (notamment le shader d'eau) continue
-        // à pleine vitesse en arrière-plan dans une fenêtre borderless qui couvre tout l'écran : sur
-        // certaines machines/pilotes le GPU/compositeur sature, l'écran « lague » et le jeu devient
-        // dur à fermer. ~10 i/s suffisent à garder une capture OBS vivante sans charger la machine.
-        // (On NE minimise volontairement PAS : la fenêtre borderless doit rester capturable pour le stream.)
-        InactiveSleepTime = System.TimeSpan.FromMilliseconds(100);
+        // Hors focus, on bride la cadence (sinon le rendu — shader d'eau — continue à pleine vitesse en
+        // arrière-plan dans une fenêtre borderless plein écran : sur certaines machines le GPU sature,
+        // l'écran « lague » et le jeu devient dur à fermer). Valeur INITIALE = fort bridage ; Update
+        // l'ajuste ensuite selon que la souris survole ou non la fenêtre (cf. UpdateInactiveThrottle).
+        InactiveSleepTime = InactiveBackgroundSleep;
     }
 
     protected override void Initialize()
@@ -149,12 +148,33 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         base.UnloadContent();
     }
 
+    // Bridage hors focus : fort quand le jeu est VRAIMENT en arrière-plan (souris ailleurs), léger quand
+    // la souris survole la fenêtre — sinon le curseur logiciel « lague » dès qu'on repasse dessus.
+    private static readonly System.TimeSpan InactiveBackgroundSleep = System.TimeSpan.FromMilliseconds(100); // ~10 i/s
+    private static readonly System.TimeSpan InactiveHoverSleep = System.TimeSpan.FromMilliseconds(16);       // ~60 i/s
+
     protected override void Update(GameTime gameTime)
     {
+        UpdateInactiveThrottle();
         _input.Update(gameTime);
         _scenes.Update(gameTime);
         _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
         base.Update(gameTime);
+    }
+
+    /// <summary>
+    /// Ajuste le bridage de cadence hors focus : si la souris est AU-DESSUS de la fenêtre on garde une
+    /// cadence fluide (survol réactif), sinon (jeu réellement en arrière-plan) on bride fort pour ne pas
+    /// charger le GPU. Sans effet quand le jeu a le focus (la boucle ne dort pas).
+    /// </summary>
+    private void UpdateInactiveThrottle()
+    {
+        if (IsActive)
+            return;
+        var p = Mouse.GetState().Position;
+        var pp = GraphicsDevice.PresentationParameters;
+        var overWindow = p.X >= 0 && p.Y >= 0 && p.X < pp.BackBufferWidth && p.Y < pp.BackBufferHeight;
+        InactiveSleepTime = overWindow ? InactiveHoverSleep : InactiveBackgroundSleep;
     }
 
     protected override void Draw(GameTime gameTime)

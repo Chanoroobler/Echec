@@ -302,11 +302,14 @@ public sealed class GameplayScene : Scene
     // ancrée à la base du socle. Une vraie ombre portée plutôt qu'une ellipse posée.
     private const float ShadowShear = 0.55f;          // inclinaison latérale (0 = tout droit)
     private const float ShadowFlatten = -0.45f;       // < 0 : rabat la silhouette au sol vers l'avant + aplatit
-    private const float ShadowAlpha = 0.38f;          // opacité de l'ombre (au sol)
+    private const float ShadowAlpha = 0.60f;          // opacité de l'ombre (au sol)
     private const float ShadowAnchorFraction = 0.94f; // hauteur de la base du socle dans le sprite (0 haut … 1 bas)
     // Réaction au soulèvement : quand le pion est en l'air, l'ombre GLISSE (direction lumière) et S'ÉCLAIRCIT.
     private const float ShadowLiftSlide = 0.85f;      // px de glissement de l'ombre par px de soulèvement
     private const float ShadowLiftFade = 0.5f;        // part d'opacité perdue à pleine hauteur (0 = aucune)
+    // Cache des silhouettes TRAMÉES (pixel-art) par sprite : l'ombre est un motif Bayer de pixels pleins
+    // plutôt qu'un aplat semi-transparent lissé (cf. Textures.CreateShadowStipple). Disposé à l'Unload.
+    private readonly Dictionary<Texture2D, Texture2D> _shadowStipple = new();
 
     // Slot de sauvegarde piloté depuis le menu principal : la progression est auto-sauvegardée en
     // phase de placement et le slot est effacé à la fin de la run (victoire/défaite).
@@ -373,6 +376,9 @@ public sealed class GameplayScene : Scene
         foreach (var sprite in _equipSprites.Values)
             sprite?.Dispose();
         _equipSprites.Clear();
+        foreach (var stipple in _shadowStipple.Values)
+            stipple?.Dispose();
+        _shadowStipple.Clear();
     }
 
     /// <summary>
@@ -3031,6 +3037,7 @@ public sealed class GameplayScene : Scene
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
+                DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 if (_equipPhase)
                 {
@@ -3077,6 +3084,7 @@ public sealed class GameplayScene : Scene
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
+                DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
@@ -3409,6 +3417,23 @@ public sealed class GameplayScene : Scene
             DrawUnit(sb, layout, cell, unit);
     }
 
+    /// <summary>
+    /// Corrige le recouvrement des buissons « devant » : un pion sur la case JUSTE EN DESSOUS d'un
+    /// buisson occupé a le haut de sa tête (qui déborde vers le haut) masqué par le feuillage. La règle
+    /// étant « le buisson ne masque QUE le pion SUR sa case », on redessine ce pion par-dessus le buisson.
+    /// </summary>
+    private void DrawUnitsBelowOccupiedBushes(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var c in _bushCells)
+        {
+            if (_match.UnitAt(c) == null)              // buisson vide : dessiné DERRIÈRE → rien à corriger
+                continue;
+            var below = new Cell(c.Column, c.Row + 1);
+            if (_match.UnitAt(below) is { } u)
+                DrawUnit(sb, layout, below, u);        // pion du dessous redessiné AU-DESSUS du buisson
+        }
+    }
+
     private void DrawUnit(SpriteBatch sb, GridLayout layout, Cell cell, Unit unit)
     {
         // Pion porté à la souris : dessiné en flottant par DrawCarriedUnit, pas sur sa case.
@@ -3557,14 +3582,9 @@ public sealed class GameplayScene : Scene
             DrawPieceCastShadow(sb, cs, m.X - size / 2, m.Y - size / 2, size, (int)(size * CarriedLiftFraction));
         }
 
-        // Ombres des objets de plateau (coffre, recrue, buisson) : même silhouette projetée que les
-        // pions, mais SEULEMENT quand un PNG existe (les placeholders n'ont pas de silhouette propre).
-        // Le COFFRE est une boîte large à sommet plat : avec le cisaillement plein (celui des pions) tout
-        // son haut s'étale loin à droite. On lui donne donc un cisaillement RÉDUIT. Buisson (rond) et
-        // recrue (pion) gardent le cisaillement par défaut.
-        DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, shear: ShadowShear * 0.45f);
+        // Ombre projetée des objets : UNIQUEMENT la recrue (pion « ? »), et seulement si elle a un PNG.
+        // Le coffre et le buisson n'ont volontairement PAS d'ombre (rendu jugé indésirable).
         DrawObjectCastShadows(sb, layout, _recrueCells, _recrueSprite, _recrueConsumed);
-        DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
     }
 
     /// <summary>
@@ -3629,9 +3649,16 @@ public sealed class GameplayScene : Scene
         // sans ça le SpriteBatch l'éliminerait par culling et l'ombre serait invisible.
         sb.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform,
             rasterizerState: RasterizerState.CullNone);
-        sb.Draw(sprite, dest, Palette.Black1 * alpha);
+        // Silhouette TRAMÉE (demi-teinte Bayer de pixels pleins) plutôt qu'un aplat lissé → pixel-art.
+        sb.Draw(ShadowStipple(sprite), dest, Palette.Black1 * alpha);
         sb.End();
     }
+
+    /// <summary>Silhouette tramée (pixel-art) d'un sprite, générée à la demande puis mise en cache.</summary>
+    private Texture2D ShadowStipple(Texture2D sprite) =>
+        _shadowStipple.TryGetValue(sprite, out var s)
+            ? s
+            : _shadowStipple[sprite] = Textures.CreateShadowStipple(Context.GraphicsDevice, sprite);
 
     /// <summary>
     /// Pion soulevé à la souris pendant un glisser de combat : le sprite suit le curseur, nettement
