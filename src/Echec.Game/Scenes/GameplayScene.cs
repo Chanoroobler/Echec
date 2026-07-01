@@ -721,6 +721,12 @@ public sealed class GameplayScene : Scene
         // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur).
         PlaceEnemies(_run.BuildEnemyWave());
 
+        // Méta-progression : les tier 1 débloqués (donc visibles dans la vague qu'on affiche) sont désormais
+        // « vus ». Dès lors la tuile recrue peut les proposer à tout moment, y compris dans les runs suivantes
+        // (cf. RollSeenTier1). Idempotent : DiscoverUnit n'écrit sur disque que sur une vraie nouveauté.
+        foreach (var asset in _run.UnlockedTier1Assets())
+            Context.Saves.DiscoverUnit(asset);
+
         // Auto-sauvegarde : la progression n'est persistée qu'ici (phase de placement), jamais en
         // plein combat — on reprend toujours proprement au placement du combat courant. L'instantané
         // (RunSave.From) est pris ICI, sur le thread de jeu ; l'écriture disque part en arrière-plan pour
@@ -844,8 +850,9 @@ public sealed class GameplayScene : Scene
     {
         _recrueConsumed.Add(c);
         // Tirée mais PAS encore ajoutée : la carte est révélée, puis le pion vole vers l'inventaire (UpdateBattle),
-        // et il rejoint l'armée seulement à la fin du vol.
-        _recrueReveal = _run.RollRandomUnit(new System.Random());
+        // et il rejoint l'armée seulement à la fin du vol. Tirage parmi TOUS les tier 1 déjà vus (méta-progression),
+        // sans gating par combat : n'importe quel tier 1 rencontré dans une run peut sortir (cf. RollSeenTier1).
+        _recrueReveal = _run.RollSeenTier1(new System.Random(), Context.Saves.IsUnitDiscovered);
         Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
 
@@ -3072,7 +3079,7 @@ public sealed class GameplayScene : Scene
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
         if (_showGrid && BoardAssembled && _run.Phase is RunPhase.Placement or RunPhase.Battle)
-            DrawBoardGrid(sb, board, Palette.Black1);   // quadrillage permanent NOIR opaque (bascule F1/Select) — masqué pendant l'émergence
+            DrawBoardGrid(sb, board, Palette.Green4);   // quadrillage permanent VERT foncé (bascule F1/Select) — masqué pendant l'émergence
         sb.End();
 
         // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
@@ -3428,7 +3435,7 @@ public sealed class GameplayScene : Scene
                     DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
             }
             if (!_showGrid)   // si le quadrillage permanent est déjà là, pas besoin de le redessiner
-                DrawBoardGrid(sb, layout, Palette.Black1);   // + grille pleine NOIR opaque sur toute la map
+                DrawBoardGrid(sb, layout, Palette.Green4);   // + grille pleine VERT foncé sur toute la map
             return;
         }
 

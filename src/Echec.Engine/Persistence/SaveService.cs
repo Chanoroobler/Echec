@@ -78,14 +78,25 @@ public sealed class SaveService
     /// <summary>Vrai si le joueur a déjà obtenu l'unité d'asset <paramref name="asset"/> (toutes parties).</summary>
     public bool IsUnitDiscovered(string asset) => DiscoveredSet().Contains(asset);
 
-    /// <summary>Marque une unité comme découverte (persistée). Idempotent.</summary>
+    /// <summary>
+    /// Marque une unité comme découverte. Idempotent. Le set mémoire est mis à jour SYNCHRONE (IsUnitDiscovered
+    /// est correct dès le retour) ; la persistance disque (lecture-modification-écriture de profile.json, sous
+    /// verrou pour préserver les autres champs) part en arrière-plan pour ne pas figer la frame appelante.
+    /// </summary>
     public void DiscoverUnit(string asset)
     {
         if (!DiscoveredSet().Add(asset))
             return;
-        var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
-        dto.DiscoveredUnits = new List<string>(DiscoveredSet());
-        TryWrite(ProfilePath, dto);
+        var snapshot = new List<string>(DiscoveredSet());
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.DiscoveredUnits = snapshot;
+                TryWrite(ProfilePath, dto);
+            }
+        });
     }
 
     /// <summary>Efface toute la méta-progression (unités découvertes). Garde le reste du profil.</summary>

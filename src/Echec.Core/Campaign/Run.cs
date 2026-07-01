@@ -148,16 +148,29 @@ public sealed class Run
     /// de boss = boss + <see cref="BossEscorts"/> escortes tirées parmi TOUS les types.
     /// </summary>
     /// <summary>
-    /// Tire un pion ALÉATOIRE de TIER 1 (classe de base d'un type débloqué au combat courant) SANS
-    /// l'ajouter à l'armée — l'appelant l'ajoute via <see cref="AddUnit"/> (ex. après l'anim de la tuile
-    /// recrue). (Tier 2+ selon la progression : à venir.)
+    /// Tire un pion tier 1 ALÉATOIRE parmi les domaines dont la classe de base a DÉJÀ ÉTÉ VUE
+    /// (<paramref name="isSeen"/> = méta-progression : asset déjà rencontré dans une run), SANS l'ajouter à
+    /// l'armée — l'appelant l'ajoute via <see cref="AddUnit"/> (ex. tuile recrue). AUCUN gating par combat :
+    /// n'importe quel tier 1 déjà vu peut sortir à tout moment. Profil neuf (rien de vu) : repli sur le Pion.
+    /// (Tier 2+ selon la progression : à venir.)
     /// </summary>
-    public UnitSpec RollRandomUnit(Random rng)
+    public UnitSpec RollSeenTier1(Random rng, Func<string, bool> isSeen)
+    {
+        var pool = IntroOrder.Where(d => isSeen(Domaines.Of(d).BaseClass.Asset)).ToList();
+        var domaine = pool.Count > 0 ? pool[rng.Next(pool.Count)] : Domaine.Pion;
+        return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+    }
+
+    /// <summary>
+    /// Assets des classes de base tier 1 DÉBLOQUÉES au combat courant : à marquer « vues » (méta-progression)
+    /// quand la vague apparaît, pour que la tuile recrue puisse les proposer ensuite à tout moment.
+    /// </summary>
+    public IEnumerable<string> UnlockedTier1Assets()
     {
         var reach = FirstRun ? CombatNumber : CombatNumber + 1;
         var unlocked = Math.Min(reach, IntroOrder.Length);
-        var domaine = IntroOrder[rng.Next(unlocked)];
-        return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+        for (var i = 0; i < unlocked; i++)
+            yield return Domaines.Of(IntroOrder[i]).BaseClass.Asset;
     }
 
     /// <summary>Ajoute un pion à l'armée (réserve). Utilisé hors recrutement (ex. récompense d'une tuile recrue).</summary>
