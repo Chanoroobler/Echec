@@ -67,10 +67,11 @@ public sealed class GameplayScene : Scene
     private MapData? _map;
 
     // Tilesets : une tuile peut être rendue depuis une feuille (rectangle source) plutôt qu'un PNG
-    // individuel. _sheets : nom de feuille → texture ; _tileSheet : id → feuille ; _tileSrc : id → cellule.
+    // individuel. _sheets : nom de feuille → texture ; _tileSheet : id → feuille ; _tileVariants : id →
+    // une ou plusieurs cellules possibles (le rendu en choisit une, stable par case — voir TileSprite).
     private readonly Dictionary<string, Texture2D> _sheets = new();
     private readonly Dictionary<string, string> _tileSheet = new();
-    private readonly Dictionary<string, Rectangle> _tileSrc = new();
+    private readonly Dictionary<string, List<Rectangle>> _tileVariants = new();
 
     // Animation d'assemblage du plateau au début du placement : les tuiles montent du bas, en cascade.
     private float _boardIntro;          // temps écoulé depuis le début de l'assemblage (s)
@@ -301,6 +302,7 @@ public sealed class GameplayScene : Scene
     // Ombre PROJETÉE (silhouette du sprite) : cisaillement latéral + bascule/aplatissement vers le bas,
     // ancrée à la base du socle. Une vraie ombre portée plutôt qu'une ellipse posée.
     private const float ShadowShear = 0.55f;          // inclinaison latérale (0 = tout droit)
+    private const float ChestShadowShear = 0.28f;     // coffre : objet massif → cisaillement plus doux, ombre moins débordante à droite
     private const float ShadowFlatten = -0.45f;       // < 0 : rabat la silhouette au sol vers l'avant + aplatit
     private const float ShadowAlpha = 0.60f;          // opacité de l'ombre (au sol)
     private const float ShadowAnchorFraction = 0.94f; // hauteur de la base du socle dans le sprite (0 haut … 1 bas)
@@ -437,8 +439,9 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Map à utiliser pour un combat, choisie par TAILLE : combats 1-2 → 6×6, combats 3-4 → 7×7. Au-delà
-    /// (ou si aucune map de la bonne taille n'est chargée) → null = terrain aléatoire 8×8. S'il y a
-    /// plusieurs maps d'une taille, on en prend une (varie selon le numéro de combat).
+    /// (ou si aucune map de la bonne taille n'est chargée) → null = terrain aléatoire 8×8. Quand plusieurs
+    /// maps ont la bonne taille, on en prend une ALÉATOIREMENT (permutation dérivée de la graine de run :
+    /// varie d'une run à l'autre mais reste stable si on reprend le combat), pas dans l'ordre des fichiers.
     /// </summary>
     private MapData? MapForCombat(int combatNumber)
     {
@@ -449,7 +452,19 @@ public sealed class GameplayScene : Scene
         var matches = _maps
             .Where(m => m.Type == CombatType.Escarmouche && m.Width == s && m.Height == s)
             .ToList();
-        return matches.Count == 0 ? null : matches[(combatNumber - 1) % matches.Count];
+        if (matches.Count == 0)
+            return null;
+
+        // Permutation ALÉATOIRE mais DÉTERMINISTE par (graine de run, taille) — même logique que le terrain
+        // et la vague ennemie (cf. Run.CombatRng), avec un sel propre (2). Indépendante du numéro de combat :
+        // les combats d'une même taille (1-2 en 6×6, 3-4 en 7×7) piochent ainsi des maps DIFFÉRENTES.
+        var rng = new System.Random(unchecked(_run.Seed * 6151 + s * 1031 + 2));
+        for (var i = matches.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (matches[i], matches[j]) = (matches[j], matches[i]);
+        }
+        return matches[(combatNumber - 1) % matches.Count];
     }
 
     /// <summary>
@@ -501,21 +516,50 @@ public sealed class GameplayScene : Scene
             if (t.Id is null || t.Sheet is null || !doc.Tilesets.TryGetValue(t.Sheet, out var sheet))
                 continue;
             _tileSheet[t.Id] = t.Sheet;
-            _tileSrc[t.Id] = new Rectangle(t.Col * sheet.CellW, t.Row * sheet.CellH, sheet.CellW, sheet.CellH);
+
+            // Une tuile peut lister plusieurs cellules dans "variants" : le rendu en tire une au hasard
+            // (stable par case). Sans "variants", on retombe sur la cellule unique col/row.
+            var cells = t.Variants is { Count: > 0 }
+                ? t.Variants
+                : new List<CellRefDto> { new() { Col = t.Col, Row = t.Row } };
+            _tileVariants[t.Id] = cells
+                .Select(c => new Rectangle(c.Col * sheet.CellW, c.Row * sheet.CellH, sheet.CellW, sheet.CellH))
+                .ToList();
         }
     }
 
     /// <summary>
-    /// Texture + rectangle source d'une tuile : sa cellule dans la feuille si elle y est, sinon un PNG
-    /// individuel pris en entier (legacy grass/water/mountain, ou repli placeholder).
+    /// Texture + rectangle source d'une tuile pour une case donnée : sa cellule dans la feuille si elle y
+    /// est (une variante tirée au hasard mais STABLE par case si la tuile en déclare plusieurs), sinon un
+    /// PNG individuel pris en entier (legacy grass/water/mountain, ou repli placeholder).
     /// </summary>
-    private (Texture2D Texture, Rectangle Source) TileSprite(string id)
+    private (Texture2D Texture, Rectangle Source) TileSprite(string id, Cell cell)
     {
-        if (_tileSheet.TryGetValue(id, out var sheetName) && _sheets.TryGetValue(sheetName, out var sheet))
-            return (sheet, _tileSrc[id]);
+        if (_tileSheet.TryGetValue(id, out var sheetName) && _sheets.TryGetValue(sheetName, out var sheet)
+            && _tileVariants.TryGetValue(id, out var variants) && variants.Count > 0)
+        {
+            var src = variants.Count == 1 ? variants[0] : variants[VariantIndex(id, cell, variants.Count)];
+            return (sheet, src);
+        }
 
         var tex = TileTexture(id);
         return (tex, new Rectangle(0, 0, tex.Width, tex.Height));
+    }
+
+    /// <summary>
+    /// Indice de variante STABLE par case (hash déterministe id + colonne + rangée) : varie le rendu d'une
+    /// case à l'autre sans scintiller d'une frame à l'autre (même map = même motif à chaque partie).
+    /// </summary>
+    private static int VariantIndex(string id, Cell cell, int count)
+    {
+        unchecked
+        {
+            uint h = 2166136261u;                              // FNV-1a
+            foreach (var c in id) { h ^= c; h *= 16777619u; }
+            h ^= (uint)cell.Column; h *= 16777619u;
+            h ^= (uint)cell.Row;    h *= 16777619u;
+            return (int)(h % (uint)count);
+        }
     }
 
     private sealed class TilesDto
@@ -535,6 +579,13 @@ public sealed class GameplayScene : Scene
     {
         public string? Id { get; set; }
         public string? Sheet { get; set; }
+        public int Col { get; set; }
+        public int Row { get; set; }
+        public List<CellRefDto>? Variants { get; set; }   // plusieurs cellules possibles → tirage stable par case
+    }
+
+    private sealed class CellRefDto
+    {
         public int Col { get; set; }
         public int Row { get; set; }
     }
@@ -671,8 +722,10 @@ public sealed class GameplayScene : Scene
         PlaceEnemies(_run.BuildEnemyWave());
 
         // Auto-sauvegarde : la progression n'est persistée qu'ici (phase de placement), jamais en
-        // plein combat — on reprend toujours proprement au placement du combat courant.
-        Context.Saves.SaveSlot(_saveSlot, RunSave.From(_run));
+        // plein combat — on reprend toujours proprement au placement du combat courant. L'instantané
+        // (RunSave.From) est pris ICI, sur le thread de jeu ; l'écriture disque part en arrière-plan pour
+        // ne pas figer la frame où démarre l'émergence des tuiles (cf. SaveSlotAsync).
+        Context.Saves.SaveSlotAsync(_saveSlot, RunSave.From(_run));
     }
 
     /// <summary>
@@ -3268,7 +3321,7 @@ public sealed class GameplayScene : Scene
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
         {
-            var (tex, src) = TileSprite(_battlefield[cell].Id);
+            var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
             var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
             var (oy, a) = BoardIntroAnim(cell, layout);
             rect.Y += oy;
@@ -3278,14 +3331,9 @@ public sealed class GameplayScene : Scene
 
     private void DrawDeploymentZone(SpriteBatch sb, GridLayout layout)
     {
-        // Zone de déploiement : fond bleu TRANSPARENT (comme avant) + traits en BLEU (camp joueur) à la
-        // même épaisseur que la grille noire (1 pixel d'art).
-        var thick = System.Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
+        // Zone de déploiement : simple fond bleu TRANSPARENT (pas de traits de bordure).
         foreach (var cell in PlayerDeployCells())
-        {
             DrawZone(sb, layout, cell, Palette.Cyan1 * 0.38f);
-            DrawZoneBorder(sb, layout, cell, Palette.Navy1, thick);   // traits bleu foncé
-        }
     }
 
     /// <summary>
@@ -3582,9 +3630,11 @@ public sealed class GameplayScene : Scene
             DrawPieceCastShadow(sb, cs, m.X - size / 2, m.Y - size / 2, size, (int)(size * CarriedLiftFraction));
         }
 
-        // Ombre projetée des objets : UNIQUEMENT la recrue (pion « ? »), et seulement si elle a un PNG.
-        // Le coffre et le buisson n'ont volontairement PAS d'ombre (rendu jugé indésirable).
+        // Ombre projetée des objets (comme les pions), seulement si l'objet a un PNG. Le coffre et le
+        // buisson sont ancrés au sol comme la recrue ; le buisson n'est jamais consommé (couvert permanent).
         DrawObjectCastShadows(sb, layout, _recrueCells, _recrueSprite, _recrueConsumed);
+        DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, ChestShadowShear);
+        DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
     }
 
     /// <summary>

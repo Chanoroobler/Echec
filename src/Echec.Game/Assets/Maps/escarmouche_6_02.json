@@ -1,20 +1,20 @@
 {
-  "name": "escarmouche_01",
+  "name": "escarmouche_02",
   "type": "Escarmouche",
   "width": 6,
   "height": 6,
   "_comment": "tiles[] utilise les CLES GLOBALES de tiles.json (1=damier_clair, 5=damier_sombre, |=mur_vertical, _=mur_bas, [ ]=angles, ==ouverture, h/t/r/l=herbe, ~=eau). spawns[] : P=joueur, E=ennemi, B=boss, .=rien. objects[] : C=coffre commun (sans cle), K=coffre a cle, k=cle, R=recrue (pion ?), B=buisson (couvert -4 degats), .=rien. width/height doivent matcher la taille des grilles.",
   "tiles": [
-    "151515",
-    "515151",
-    "151515",
-    "515151",
-    "151515",
-    "515151"
+    "h8hhhh",
+    "40h644",
+    "hhh8hh",
+    "heh8eh",
+    "hhh947",
+    "hhhhh8"
   ],
   "spawns": [
-    ".EEEE.",
-    "......",
+    "..EE..",
+    "EE..EE",
     "......",
     "......",
     "PPPPPP",
@@ -22,9 +22,9 @@
   ],
   "objects": [
     "......",
-    "...R..",
-    "..C...",
-    "..B...",
+    "......",
+    ".B..B.",
+    "C....R",
     "......",
     "......"
   ]

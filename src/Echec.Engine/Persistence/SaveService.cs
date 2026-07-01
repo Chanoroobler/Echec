@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using Echec.Core.Campaign;
 using Echec.Engine.Settings;
 
@@ -28,6 +29,9 @@ public sealed class SaveService
     };
 
     private readonly string _dir;
+
+    // Sérialise les écritures de slot en arrière-plan (SaveSlotAsync) pour qu'elles ne se chevauchent pas.
+    private readonly object _ioLock = new();
 
     public SaveService()
     {
@@ -101,6 +105,23 @@ public sealed class SaveService
     public RunSave? LoadSlot(int index) => TryRead<RunSave>(SlotPath(index));
 
     public void SaveSlot(int index, RunSave save) => TryWrite(SlotPath(index), save);
+
+    /// <summary>
+    /// Sauvegarde un slot SANS bloquer l'appelant : la sérialisation JSON + l'écriture disque partent sur
+    /// un thread d'arrière-plan (évite un hitch sur la frame appelante, ex. l'entrée en placement).
+    /// <paramref name="save"/> doit être un INSTANTANÉ détaché (cf. <see cref="RunSave.From"/>), jamais muté
+    /// après l'appel. Les écritures sont sérialisées par un verrou pour ne pas se chevaucher. Tolérant aux
+    /// pannes comme <see cref="SaveSlot"/> (toute erreur est avalée).
+    /// </summary>
+    public void SaveSlotAsync(int index, RunSave save)
+    {
+        var path = SlotPath(index);
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+                TryWrite(path, save);
+        });
+    }
 
     public void DeleteSlot(int index)
     {

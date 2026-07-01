@@ -1,29 +1,163 @@
 {
   "tileSize": 64,
   "thickness": 16,
-  "_comment": "Catalogue + LEGENDE GLOBALE. 'key' = caractere a utiliser dans les grilles 'tiles' des maps (escarmouche_*.json). blocksMove = ni s'arreter ni passer. blocksFire = coupe la ligne de tir. sheet/col/row = cellule dans un tileset (voir 'tilesets', 64x64). col/row PROVISOIRES (rendu a affiner).",
+  "_comment": "Catalogue + LEGENDE GLOBALE. 'key' = caractere a utiliser dans les grilles 'tiles' des maps (escarmouche_*.json). blocksMove = ni s'arreter ni passer. blocksFire = coupe la ligne de tir. sheet/col/row = cellule dans un tileset (voir 'tilesets', 64x64). col/row PROVISOIRES (rendu a affiner). Une tuile peut lister plusieurs cellules via 'variants': [ {col,row}, ... ] au lieu de col/row : le rendu en tire une au hasard mais STABLE par case (meme motif a chaque partie). Voir 'herbe' pour un exemple.",
   "tilesets": {
-    "arene": { "file": "arene.png", "cellW": 64, "cellH": 80 }
+    "herb": {
+      "file": "tiles_herb.png",
+      "cellW": 64,
+      "cellH": 80
+    }
   },
   "tiles": [
-    { "id": "damier_clair",      "key": "1", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 0, "row": 1 },
-    { "id": "damier_clair_og",   "key": "2", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 1, "row": 1 },
-    { "id": "damier_clair_odb",  "key": "3", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 3, "row": 1 },
-    { "id": "damier_clair_vb",   "key": "4", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 2, "row": 1 },
-    { "id": "damier_sombre",     "key": "5", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 4, "row": 1 },
-    { "id": "damier_sombre_og",  "key": "6", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 3, "row": 2 },
-    { "id": "damier_sombre_od",  "key": "7", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 2, "row": 2 },
-    { "id": "damier_sombre_ogd", "key": "8", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 1, "row": 2 },
-
-    { "id": "mur_vertical",      "key": "|", "blocksMove": true,  "blocksFire": true,  "sheet": "arene", "col": 0, "row": 0 },
-    { "id": "mur_bas",           "key": "_", "blocksMove": true,  "blocksFire": true,  "sheet": "arene", "col": 2, "row": 0 },
-    { "id": "mur_angle_bg",      "key": "A", "blocksMove": true,  "blocksFire": true,  "sheet": "arene", "col": 1, "row": 0 },
-    { "id": "mur_muret_bd",      "key": "]", "blocksMove": true,  "blocksFire": true,  "sheet": "arene", "col": 3, "row": 0 },
-    { "id": "mur_muret_bg",      "key": "[", "blocksMove": true,  "blocksFire": true,  "sheet": "arene", "col": 4, "row": 0 },
-
-    { "id": "herbe",             "key": "h", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 4, "row": 2 },
-    { "id": "herbe_oh",          "key": "t", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 0, "row": 3 },
-    { "id": "herbe_od",          "key": "r", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 1, "row": 3 },
-    { "id": "herbe_og",          "key": "l", "blocksMove": false, "blocksFire": false, "sheet": "arene", "col": 2, "row": 3 }
+    {
+      "id": "herbe",
+      "key": "h",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 0,
+          "row": 0
+        },
+        {
+          "col": 1,
+          "row": 0
+        },
+        {
+          "col": 2,
+          "row": 0
+        }
+      ]
+    },
+    {
+      "id": "pierre",
+      "key": "p",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "herb",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "chemin_bas_v",
+      "key": "1",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "chemin_haut_v",
+      "key": "2",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "chemin_droite_h",
+      "key": "3",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "chemin_h",
+      "key": "4",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 2,
+          "row": 1
+        },
+        {
+          "col": 0,
+          "row": 2
+        },
+        {
+          "col": 1,
+          "row": 3
+        }
+      ]
+    },
+    {
+      "id": "chemin_gauche_h",
+      "key": "5",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "chemin_angle_hg",
+      "key": "6",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "chemin_angle_hd",
+      "key": "7",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "chemin_v",
+      "key": "8",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 2,
+          "row": 2
+        },
+        {
+          "col": 4,
+          "row": 2
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "key": "e",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "chemin_angle_bg",
+      "key": "9",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "chemin_angle_bd",
+      "key": "0",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 2,
+      "row": 3
+    }
   ]
 }
