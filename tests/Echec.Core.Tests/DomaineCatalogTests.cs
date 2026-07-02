@@ -11,7 +11,7 @@ public class DomaineCatalogTests
     {
       // commentaire autorisé
       "domaines": [
-        { "domaine": "Pion", "baseClass": { "name": "Recrue", "asset": "recrue", "hp": 7, "damage": 2, "moveRange": 1, "attackRange": 1 } },
+        { "domaine": "Dame", "baseClass": { "name": "Recrue", "asset": "recrue", "hp": 7, "damage": 2, "moveRange": 1, "attackRange": 1 } },
         { "domaine": "Tour", "baseClass": { "name": "Veilleur", "asset": "veilleur", "hp": 20, "damage": 3, "moveRange": 5, "attackRange": 4, "piercesAllies": true } },
       ]
     }
@@ -22,14 +22,14 @@ public class DomaineCatalogTests
     {
         var defs = DomaineCatalog.FromJson(Json);
 
-        var pion = defs.Single(d => d.Id == Domaine.Pion);
-        Assert.Equal("Recrue", pion.BaseClass.Name);
-        Assert.Equal("recrue", pion.BaseClass.Asset);
-        Assert.Equal(7, pion.BaseClass.MaxHp);
-        Assert.Equal(2, pion.BaseClass.Damage);
-        Assert.Equal(1, pion.BaseClass.MoveRange);
-        Assert.Equal(1, pion.BaseClass.AttackRange);
-        Assert.False(pion.BaseClass.PiercesAllies);   // champ absent → false par défaut
+        var dame = defs.Single(d => d.Id == Domaine.Dame);
+        Assert.Equal("Recrue", dame.BaseClass.Name);
+        Assert.Equal("recrue", dame.BaseClass.Asset);
+        Assert.Equal(7, dame.BaseClass.MaxHp);
+        Assert.Equal(2, dame.BaseClass.Damage);
+        Assert.Equal(1, dame.BaseClass.MoveRange);
+        Assert.Equal(1, dame.BaseClass.AttackRange);
+        Assert.False(dame.BaseClass.PiercesAllies);   // champ absent → false par défaut
 
         var tour = defs.Single(d => d.Id == Domaine.Tour);
         Assert.Equal(4, tour.BaseClass.AttackRange);
@@ -69,8 +69,8 @@ public class DomaineCatalogTests
         {
             Domaines.Load(DomaineCatalog.FromJson(Json));
 
-            Assert.Equal("Recrue", Domaines.Pion.BaseClass.Name);
-            Assert.Equal(7, Units.Pion(Faction.Player).MaxHp);
+            Assert.Equal("Recrue", Domaines.Dame.BaseClass.Name);
+            Assert.Equal(7, Units.Soldat(Faction.Player).MaxHp);
         }
         finally
         {

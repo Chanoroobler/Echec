@@ -15,7 +15,7 @@ public class RunTests
 
         Assert.Equal(3, run.Roster.Count);
         Assert.Single(run.Roster, u => u.Essential);
-        Assert.Equal(2, run.Roster.Count(u => u.UnitClass == Domaines.Pion.BaseClass));
+        Assert.Equal(2, run.Roster.Count(u => u.UnitClass == Domaines.Dame.BaseClass));
         Assert.Equal(1, run.CombatNumber);
         Assert.Equal(RunPhase.Placement, run.Phase);
     }
@@ -75,9 +75,9 @@ public class RunTests
         }
     }
 
-    // Ordre attendu des déblocages : soldat, lancier, cavalier, archer, mage.
+    // Ordre attendu des déblocages : soldat, lancier, cavalier, mage.
     private static readonly Domaine[] IntroOrder =
-        { Domaine.Pion, Domaine.Tour, Domaine.Cavalier, Domaine.Dame, Domaine.Fou };
+        { Domaine.Dame, Domaine.Tour, Domaine.Cavalier, Domaine.Fou };
 
     [Fact]
     public void FirstRun_Combat1_IsOnlySoldiers()
@@ -85,7 +85,7 @@ public class RunTests
         var run = new Run(seed: 1, firstRun: true);
         var wave = run.BuildEnemyWave();
 
-        Assert.All(wave, u => Assert.Equal(Domaine.Pion, u.Domaine)); // 1re campagne : soldat seul
+        Assert.All(wave, u => Assert.Equal(Domaine.Dame, u.Domaine)); // 1re campagne : soldat seul
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class RunTests
         // Combat 1 d'une campagne suivante : déjà soldat + lancier disponibles.
         var run = new Run(seed: 1, firstRun: false);
         var pool = run.BuildEnemyWave().Select(u => u.Domaine).ToHashSet();
-        Assert.Subset(new[] { Domaine.Pion, Domaine.Tour }.ToHashSet(), pool);
+        Assert.Subset(new[] { Domaine.Dame, Domaine.Tour }.ToHashSet(), pool);
     }
 
     // Vérifie sur les combats 1..5 que seuls les types attendus apparaissent et que le type
@@ -207,11 +207,11 @@ public class RunTests
         // 5 ennemis vaincus (instances distinctes) dans l'ordre de leur mort.
         var defeated = new[]
         {
-            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+            new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass),
             new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass),
-            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+            new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass),
             new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass),
-            new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass),
+            new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass),
         };
         run.CompleteCombat(Enumerable.Empty<UnitSpec>(), defeated);
 
@@ -259,7 +259,7 @@ public class RunTests
     {
         var wave = new UnitSpec[n];
         for (var i = 0; i < n; i++)
-            wave[i] = new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass);
+            wave[i] = new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass);
         return wave;
     }
 }
@@ -275,10 +275,10 @@ public class EssentialUnitTests
             .Spawn(Faction.Player);
         commander.TakeDamage(commander.Hp - 1); // à 1 PV
         match.Place(commanderCell, commander);
-        match.Place(new Cell(0, 7), Units.Pion(Faction.Player)); // un autre allié bien vivant
+        match.Place(new Cell(0, 7), Units.Soldat(Faction.Player)); // un autre allié bien vivant
 
         var enemyCell = new Cell(4, 5);
-        match.Place(enemyCell, Units.Pion(Faction.Enemy)); // adjacent au commandant
+        match.Place(enemyCell, Units.Soldat(Faction.Enemy)); // adjacent au commandant
 
         // Tour ennemi : passe la main via un déplacement du soldat.
         match.TryMove(new Cell(0, 7), new Cell(1, 6));
@@ -295,14 +295,14 @@ public class EssentialUnitTests
     {
         var match = new Match(8, 8);
         var playerCell = new Cell(4, 5);
-        match.Place(playerCell, Units.Pion(Faction.Player));
+        match.Place(playerCell, Units.Soldat(Faction.Player));
 
         var bossCell = new Cell(4, 4);
         var boss = new UnitSpec(Commandes.Boss.Movement, Commandes.Boss.BaseClass, essential: true)
             .Spawn(Faction.Enemy);
         boss.TakeDamage(boss.Hp - 1); // à 1 PV
         match.Place(bossCell, boss);
-        match.Place(new Cell(0, 0), Units.Pion(Faction.Enemy)); // sbire bien vivant
+        match.Place(new Cell(0, 0), Units.Soldat(Faction.Enemy)); // sbire bien vivant
 
         match.TryAttack(playerCell, bossCell); // tue le boss
 

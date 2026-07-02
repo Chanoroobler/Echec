@@ -33,7 +33,7 @@ public static class Commandes
     {
         new CommandeDef(CommandeRole.Commander, Domaine.Dame,
             new UnitClass("Commandant", "commandant", tier: 1, maxHp: 26, damage: 6, moveRange: 2, attackRange: 1)),
-        new CommandeDef(CommandeRole.Boss, Domaine.Pion,
+        new CommandeDef(CommandeRole.Boss, Domaine.Dame,
             new UnitClass("Boss", "boss", tier: 1, maxHp: 30, damage: 8, moveRange: 1, attackRange: 1)),
     };
 }

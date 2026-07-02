@@ -20,14 +20,14 @@ public class EquipmentTests
     private static Run RunWith(params UnitSpec[] units) =>
         Run.Restore(units.ToList(), combatNumber: 1, seed: 1, firstRun: false);
 
-    private static UnitSpec Soldat() => new(Domaine.Pion, Domaines.Pion.BaseClass);
+    private static UnitSpec Soldat() => new(Domaine.Dame, Domaines.Dame.BaseClass);
 
     // ─── Application au Unit (combat) ────────────────────────────────────────────────────────────
 
     [Fact]
     public void StatEquipment_RaisesMaxHp_AndStartsFull()
     {
-        var baseHp = Domaines.Pion.BaseClass.MaxHp;
+        var baseHp = Domaines.Dame.BaseClass.MaxHp;
         var spec = Soldat();
         spec.Equipment = Vigueur;
 
@@ -45,9 +45,9 @@ public class EquipmentTests
 
         var unit = spec.Spawn(Faction.Player);
 
-        Assert.Equal(Domaines.Pion.BaseClass.Damage + 3, unit.Damage);
-        Assert.Equal(Domaines.Pion.BaseClass.MaxHp, unit.MaxHp);          // PV inchangés
-        Assert.Equal(Domaines.Pion.BaseClass.MoveRange, unit.MoveRange);  // déplacement inchangé
+        Assert.Equal(Domaines.Dame.BaseClass.Damage + 3, unit.Damage);
+        Assert.Equal(Domaines.Dame.BaseClass.MaxHp, unit.MaxHp);          // PV inchangés
+        Assert.Equal(Domaines.Dame.BaseClass.MoveRange, unit.MoveRange);  // déplacement inchangé
     }
 
     [Fact]
@@ -149,9 +149,9 @@ public class EquipmentTests
     [Fact]
     public void Equip_TraitAlreadyOnClass_IsRejected_ButAllowedElsewhere()
     {
-        // Le Garde a nativement Rempart : refus de l'équipement de trait Rempart sur lui.
-        var garde = Domaines.Pion.BaseClass.Evolutions[0]; // Garde (Rempart)
-        var run = RunWith(new UnitSpec(Domaine.Pion, garde));
+        // Le Garde (domaine Tour) a nativement Rempart : refus de l'équipement de trait Rempart sur lui.
+        var garde = Domaines.Tour.BaseClass.Evolutions[0]; // Garde (Rempart)
+        var run = RunWith(new UnitSpec(Domaine.Tour, garde));
         var g = run.Roster.First(u => !u.Essential);
         var rempart = RempartEquip;
         run.AddEquipment(rempart);
@@ -175,7 +175,7 @@ public class EquipmentTests
     {
         Equipment Arc() => Equipment.OfStat("arc", "Arc", EquipStat.AttackRange, 1);
 
-        // Cavalier de MÊLÉE (classe de base, MinAttackRange 1) : l'objet de portée est refusé.
+        // Cavalier de MÊLÉE (classe de base, sans « Zone morte ») : l'objet de portée est refusé.
         var melee = new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass);
         var run = RunWith(melee);
         var meleeUnit = run.Roster.First(u => !u.Essential);
@@ -186,7 +186,7 @@ public class EquipmentTests
         Assert.Null(meleeUnit.Equipment);
         Assert.Contains(arc, run.EquipmentInventory);    // pas consommé
 
-        // Archer monté (évolution archère du Cavalier, MinAttackRange 2) : accepté.
+        // Archer monté (évolution archère du Cavalier, trait « Zone morte ») : accepté.
         var archer = Domaines.Cavalier.BaseClass.Evolutions[1];   // Archer monté
         var run2 = RunWith(new UnitSpec(Domaine.Cavalier, archer));
         var archerUnit = run2.Roster.First(u => !u.Essential);
@@ -298,7 +298,7 @@ public class EquipmentTests
         run.AddEquipment(vigueur);
         run.Equip(soldats[0], vigueur);     // un des 3 porte un équipement
 
-        var fused = run.Fuse(soldats[0], Domaines.Pion.BaseClass.Evolutions[0]);
+        var fused = run.Fuse(soldats[0], Domaines.Dame.BaseClass.Evolutions[0]);
 
         Assert.NotNull(fused);
         Assert.Null(fused!.Equipment);                     // l'évolution sort nue

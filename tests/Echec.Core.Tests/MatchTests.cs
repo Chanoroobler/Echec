@@ -11,8 +11,8 @@ public class MatchTests
         var match = new Match(8, 8);
         playerCell = new Cell(4, 4);
         enemyCell = new Cell(4, 3); // adjacente
-        match.Place(playerCell, Units.Pion(Faction.Player));
-        match.Place(enemyCell, Units.Pion(Faction.Enemy));
+        match.Place(playerCell, Units.Soldat(Faction.Player));
+        match.Place(enemyCell, Units.Soldat(Faction.Enemy));
         return match;
     }
 
@@ -85,7 +85,7 @@ public class MatchTests
         var tourCell = new Cell(3, 7);
         var enemyCell = new Cell(3, 5); // 2 cases en ligne : à portée de tir ET de déplacement (2)
         match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player));
-        var enemy = Units.Pion(Faction.Enemy);
+        var enemy = Units.Soldat(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
         match.Place(enemyCell, enemy);
 
@@ -101,9 +101,9 @@ public class MatchTests
     {
         var match = new Match(8, 8);
         var mageCell = new Cell(4, 7);
-        var enemyCell = new Cell(1, 4); // 3 en diagonale : à portée de TIR (4) mais hors DÉPLACEMENT (2)
-        match.Place(mageCell, Units.Of(Domaine.Fou, Faction.Player)); // Mage : tir 4, déplacement 2, diagonales
-        var enemy = Units.Pion(Faction.Enemy);
+        var enemyCell = new Cell(1, 4); // 3 en diagonale : à portée de TIR (3) mais hors DÉPLACEMENT (1)
+        match.Place(mageCell, Units.Of(Domaine.Fou, Faction.Player)); // Mage : tir 3, déplacement 1, diagonales
+        var enemy = Units.Soldat(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
         match.Place(enemyCell, enemy);
 
@@ -120,8 +120,8 @@ public class MatchTests
         var match = new Match(8, 8);
         var tourCell = new Cell(3, 7);
         match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player)); // tir 3, traverse ses alliés
-        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));       // allié sur la ligne
-        var enemy = Units.Pion(Faction.Enemy);
+        match.Place(new Cell(3, 6), Units.Soldat(Faction.Player));       // allié sur la ligne
+        var enemy = Units.Soldat(Faction.Enemy);
         enemy.TakeDamage(enemy.Hp - 1);
         match.Place(new Cell(3, 5), enemy);                            // ennemi DERRIÈRE l'allié
 
@@ -137,11 +137,13 @@ public class MatchTests
     {
         var match = new Match(8, 8);
         var archerCell = new Cell(3, 7);
-        match.Place(archerCell, Units.Of(Domaine.Dame, Faction.Player)); // Archer : tir 3, ne traverse PAS
-        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));  // allié qui bloque la ligne
-        match.Place(new Cell(3, 4), Units.Pion(Faction.Enemy));
+        // Archer (évolution du Soldat) : tir 2, ne traverse PAS ses alliés.
+        var archer = new Unit(Domaine.Dame, Faction.Player, Domaines.Dame.BaseClass.Evolutions[0]);
+        match.Place(archerCell, archer);
+        match.Place(new Cell(3, 6), Units.Soldat(Faction.Player));  // allié qui bloque la ligne
+        match.Place(new Cell(3, 5), Units.Soldat(Faction.Enemy));   // ennemi (distance 2) DERRIÈRE l'allié
 
-        Assert.DoesNotContain(new Cell(3, 4), match.AttackTargets(archerCell));
+        Assert.DoesNotContain(new Cell(3, 5), match.AttackTargets(archerCell));
     }
 
     [Fact]
@@ -150,8 +152,8 @@ public class MatchTests
         var match = new Match(8, 8);
         var lancier = new Cell(3, 7);
         match.Place(lancier, Units.Of(Domaine.Tour, Faction.Player)); // lancier : traverse ses alliés
-        match.Place(new Cell(3, 6), Units.Pion(Faction.Player));      // allié sur la ligne de tir
-        match.Place(new Cell(3, 5), Units.Pion(Faction.Enemy));       // ennemi DERRIÈRE l'allié
+        match.Place(new Cell(3, 6), Units.Soldat(Faction.Player));      // allié sur la ligne de tir
+        match.Place(new Cell(3, 5), Units.Soldat(Faction.Enemy));       // ennemi DERRIÈRE l'allié
 
         var targets = match.AttackTargets(lancier);
         Assert.Contains(new Cell(3, 5), targets);       // traverse l'allié sans le toucher, vise l'ennemi
@@ -164,8 +166,8 @@ public class MatchTests
         var match = new Match(8, 8);
         var lancier = new Cell(3, 7);
         match.Place(lancier, Units.Of(Domaine.Tour, Faction.Player)); // tir 3
-        match.Place(new Cell(3, 6), Units.Pion(Faction.Enemy));       // ennemi 1 (borne la ligne)
-        match.Place(new Cell(3, 5), Units.Pion(Faction.Enemy));       // ennemi 2 derrière
+        match.Place(new Cell(3, 6), Units.Soldat(Faction.Enemy));       // ennemi 1 (borne la ligne)
+        match.Place(new Cell(3, 5), Units.Soldat(Faction.Enemy));       // ennemi 2 derrière
 
         var targets = match.AttackTargets(lancier);
         Assert.Contains(new Cell(3, 6), targets);       // premier ennemi : ciblé
@@ -178,8 +180,8 @@ public class MatchTests
         var match = new Match(8, 8);
         var lancier = new Cell(3, 7);
         match.Place(lancier, Units.Of(Domaine.Tour, Faction.Enemy)); // lancier ennemi
-        match.Place(new Cell(3, 6), Units.Pion(Faction.Enemy));      // allié du lancier sur la ligne
-        match.Place(new Cell(3, 5), Units.Pion(Faction.Player));     // joueur derrière
+        match.Place(new Cell(3, 6), Units.Soldat(Faction.Enemy));      // allié du lancier sur la ligne
+        match.Place(new Cell(3, 5), Units.Soldat(Faction.Player));     // joueur derrière
 
         var threat = match.ThreatenedCells(lancier);
         Assert.DoesNotContain(new Cell(3, 6), threat); // traverse l'allié sans le menacer
@@ -192,7 +194,7 @@ public class MatchTests
         var match = new Match(8, 8);
         var tourCell = new Cell(3, 7);
         match.Place(tourCell, Units.Of(Domaine.Tour, Faction.Player)); // portée tir 3
-        match.Place(new Cell(3, 3), Units.Pion(Faction.Enemy));        // distance 4
+        match.Place(new Cell(3, 3), Units.Soldat(Faction.Enemy));        // distance 4
 
         Assert.Empty(match.AttackTargets(tourCell));
     }
@@ -228,7 +230,7 @@ public class MatchTests
         var tour = new Cell(3, 7);
         match.Place(tour, Units.Of(Domaine.Tour, Faction.Enemy)); // tir 3, glisse en croix
         var blocker = new Cell(3, 5);                             // 2 cases au nord
-        match.Place(blocker, Units.Pion(Faction.Player));
+        match.Place(blocker, Units.Soldat(Faction.Player));
 
         var threat = match.ThreatenedCells(tour);
         Assert.Contains(new Cell(3, 6), threat);       // case vide avant le bloqueur : menacée
@@ -243,10 +245,10 @@ public class MatchTests
         var weak = new Cell(4, 4);
         var enemy = new Cell(4, 3);
         var throwaway = new Cell(0, 0);
-        match.Place(weak, Units.Pion(Faction.Player));
+        match.Place(weak, Units.Soldat(Faction.Player));
         match.UnitAt(weak)!.TakeDamage(match.UnitAt(weak)!.Hp - 1);
-        match.Place(enemy, Units.Pion(Faction.Enemy));
-        match.Place(throwaway, Units.Pion(Faction.Player));
+        match.Place(enemy, Units.Soldat(Faction.Enemy));
+        match.Place(throwaway, Units.Soldat(Faction.Player));
 
         match.TryMove(throwaway, new Cell(1, 1)); // passe la main à l'IA
         Assert.Equal(Faction.Enemy, match.CurrentTurn);

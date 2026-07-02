@@ -40,6 +40,14 @@ public sealed class Unit
     public int MoveRange => Class.MoveRange + EquipBonus(EquipStat.MoveRange);
     public int AttackRange => Class.AttackRange + EquipBonus(EquipStat.AttackRange);
 
+    /// <summary>
+    /// Portée d'attaque MINIMALE effective : le trait « Zone morte » interdit de frapper au contact
+    /// (min = 2). Sinon la valeur de la classe (1 par défaut). Appliquée en ligne droite seulement
+    /// (cf. <see cref="Match.AttackTargets"/>) : le tir diagonal au contact reste possible.
+    /// </summary>
+    public int MinAttackRange =>
+        System.Math.Max(Class.MinAttackRange, HasTrait(Battle.Trait.ZoneMorte) ? 2 : 1);
+
     /// <summary>Bonus de l'équipement porté sur une stat (0 si aucun, ou si l'équipement vise une autre stat).</summary>
     private int EquipBonus(EquipStat stat) => Equipment?.BonusFor(stat) ?? 0;
 
@@ -74,5 +82,6 @@ public static class Units
     public static Unit Of(Domaine domaine, Faction faction) =>
         new(domaine, faction, Domaines.Of(domaine).BaseClass);
 
-    public static Unit Pion(Faction faction) => Of(Domaine.Pion, faction);
+    /// <summary>Soldat (base du domaine Dame) — l'unité de troupe élémentaire du joueur.</summary>
+    public static Unit Soldat(Faction faction) => Of(Domaine.Dame, faction);
 }

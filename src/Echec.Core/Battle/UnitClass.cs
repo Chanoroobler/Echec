@@ -11,10 +11,12 @@ public sealed class UnitClass
 {
     public UnitClass(string name, string asset, int tier, int maxHp, int damage,
         int moveRange, int attackRange, bool piercesAllies = false,
-        int minAttackRange = 1, IReadOnlyList<string>? traits = null, params UnitClass[] evolutions)
+        int minAttackRange = 1, IReadOnlyList<string>? traits = null, string? sprite = null,
+        params UnitClass[] evolutions)
     {
         Name = name;
         Asset = asset;
+        Sprite = string.IsNullOrEmpty(sprite) ? asset : sprite;
         Tier = tier;
         MaxHp = maxHp;
         Damage = damage;
@@ -26,10 +28,22 @@ public sealed class UnitClass
         Evolutions = evolutions;
     }
 
+    /// <summary>
+    /// Identifiant UNIQUE de la classe (colonne « Nom » technique) : sert de clé stable pour la
+    /// sauvegarde, la découverte (méta-progression) et le nom localisé (<c>unit.&lt;asset&gt;</c>).
+    /// Distinct de <see cref="Sprite"/> : deux classes peuvent partager un sprite sans partager d'asset.
+    /// </summary>
     public string Name { get; }
 
-    /// <summary>Identifiant d'asset (nom de sprite à charger plus tard).</summary>
+    /// <summary>Identifiant d'asset UNIQUE (voir <see cref="Name"/>). Ne pas confondre avec <see cref="Sprite"/>.</summary>
     public string Asset { get; }
+
+    /// <summary>
+    /// Famille de SPRITE (colonne « Classe » du tableau) : nom du PNG à charger dans
+    /// <c>Assets/Units/&lt;sprite&gt;_*.png</c>. PARTAGEABLE — ex. Archevêque et Oracle réutilisent le
+    /// sprite « clerc ». Vaut <see cref="Asset"/> par défaut si aucun sprite dédié n'est précisé.
+    /// </summary>
+    public string Sprite { get; }
 
     public int Tier { get; }
     public int MaxHp { get; }

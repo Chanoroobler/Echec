@@ -32,14 +32,14 @@ public sealed class Run
     public const int DraftSize = 3;
 
     // ORDRE D'INTRODUCTION des types ennemis : un nouveau type est débloqué à chaque combat —
-    // Soldat (Pion), Lancier (Tour), Cavalier (Cavalier), Archer (Dame), Mage (Fou). Le Cavalier
-    // arrive TÔT (rapide : move 3 + saut) pour varier la menace ; le Mage (le plus punitif, one-shot
-    // à portée 3) est introduit EN DERNIER, le temps que le joueur apprenne. Au combat N (1..5) le
-    // pool = les N premiers types, et le N-ième (« frais ») est garanti d'apparaître ; le combat de
-    // boss débloque tout le pool. Comme le recrutement propose les ennemis VAINCUS (voir BuildDraft),
-    // ces domaines deviennent jouables au fil des déblocages.
+    // Soldat (Dame), Lancier (Tour), Cavalier (Cavalier), Mage (Fou). Le Cavalier arrive TÔT
+    // (rapide : move 3 + saut) pour varier la menace ; le Mage (le plus punitif, one-shot à portée 3)
+    // est introduit EN DERNIER, le temps que le joueur apprenne. Au combat N le pool = les N premiers
+    // types, et le N-ième (« frais ») est garanti d'apparaître ; le combat de boss débloque tout le
+    // pool. Comme le recrutement propose les ennemis VAINCUS (voir BuildDraft), ces domaines deviennent
+    // jouables au fil des déblocages.
     private static readonly Domaine[] IntroOrder =
-        { Domaine.Pion, Domaine.Tour, Domaine.Cavalier, Domaine.Dame, Domaine.Fou };
+        { Domaine.Dame, Domaine.Tour, Domaine.Cavalier, Domaine.Fou };
 
     /// <summary>Nombre d'escortes accompagnant le boss (tirées parmi tous les types débloqués).</summary>
     private const int BossEscorts = 4;
@@ -104,8 +104,8 @@ public sealed class Run
     {
         _roster.Clear();
         _roster.Add(ToSpec(Commandes.Commander));
-        _roster.Add(new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass));
-        _roster.Add(new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass));
+        _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+        _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
         _draft.Clear();
         _equipment.Clear();
         CombatNumber = 1;
@@ -157,7 +157,7 @@ public sealed class Run
     public UnitSpec RollSeenTier1(Random rng, Func<string, bool> isSeen)
     {
         var pool = IntroOrder.Where(d => isSeen(Domaines.Of(d).BaseClass.Asset)).ToList();
-        var domaine = pool.Count > 0 ? pool[rng.Next(pool.Count)] : Domaine.Pion;
+        var domaine = pool.Count > 0 ? pool[rng.Next(pool.Count)] : Domaine.Dame;
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
     }
 
@@ -205,8 +205,8 @@ public sealed class Run
         if (spec.Domaine == Domaine.Cavalier)
         {
             // • PORTÉE (arc) : aucun sens sur un cavalier de mêlée (lance/épée à cheval) — mais OK pour
-            //   l'archer monté, déjà un tireur, repéré par sa zone morte de près (MinAttackRange > 1).
-            if (equipment.BonusFor(EquipStat.AttackRange) > 0 && spec.UnitClass.MinAttackRange <= 1)
+            //   l'archer monté, déjà un tireur, repéré par sa zone morte de près (trait « Zone morte »).
+            if (equipment.BonusFor(EquipStat.AttackRange) > 0 && !ClassHasTrait(spec.UnitClass, Trait.ZoneMorte))
                 return false;
             // • MOUVEMENT (bottes) : la monture donne déjà la mobilité — interdit à TOUS les cavaliers,
             //   sans exception (l'archer monté non plus).

@@ -24,11 +24,19 @@ public static class Trait
     public const string Rage = "Rage";                       // +RageBonus de puissance sous RageHpThreshold PV
     public const string BouclierDivin = "Bouclier divin";    // un allié adjacent ne peut pas mourir (PV >= 1)
     public const string Benediction = "Bénédiction";         // +BenedictionBonus de puissance aux alliés adjacents
+    public const string DrainDeVie = "Drain de vie";         // soigne l'attaquant de 50 % des dégâts infligés
+    public const string ZoneMorte = "Zone morte";            // ne peut pas frapper au contact (portée min = 2)
+    public const string Balistique = "Balistique";           // tir indirect : ignore les obstacles (montagne) sur la ligne
+    public const string Vol = "Vol";                         // déplacement : ignore les obstacles de terrain (eau/montagne)
+    public const string Formation = "Formation";             // +FormationBonus de puissance par allié adjacent
+    public const string Esquive = "Esquive";                 // EsquiveChance de chance d'annuler une attaque subie
+    public const string Embrochage = "Embrochage";           // l'attaque touche aussi les ennemis adjacents à la cible
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, DegatsDeZone, Franchissement, Transpercement, Interception,
         AuraDeRempart, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
+        DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage,
     };
 }

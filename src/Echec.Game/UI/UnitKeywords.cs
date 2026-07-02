@@ -30,6 +30,13 @@ public static class UnitKeywords
         ["Rage"] = "kw.rage",
         ["Bouclier divin"] = "kw.bouclier_divin",
         ["Bénédiction"] = "kw.benediction",
+        ["Drain de vie"] = "kw.drain_vie",
+        ["Zone morte"] = "kw.dead_zone",
+        ["Balistique"] = "kw.balistique",
+        ["Vol"] = "kw.vol",
+        ["Formation"] = "kw.formation",
+        ["Esquive"] = "kw.esquive",
+        ["Embrochage"] = "kw.embrochage",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="Echec.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

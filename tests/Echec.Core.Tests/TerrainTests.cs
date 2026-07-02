@@ -44,7 +44,7 @@ public class TerrainTests
         var tour = new Cell(3, 7);
         var enemy = new Cell(3, 5);                               // distance 2 = portée de tir
         match.Place(tour, Units.Of(Domaine.Tour, Faction.Player));
-        match.Place(enemy, Units.Pion(Faction.Enemy));
+        match.Place(enemy, Units.Soldat(Faction.Enemy));
 
         Assert.Contains(enemy, match.AttackTargets(tour));        // le tir passe au-dessus de l'eau
     }
@@ -57,7 +57,7 @@ public class TerrainTests
         var tour = new Cell(3, 7);
         var enemy = new Cell(3, 4);
         match.Place(tour, Units.Of(Domaine.Tour, Faction.Player));
-        match.Place(enemy, Units.Pion(Faction.Enemy));
+        match.Place(enemy, Units.Soldat(Faction.Enemy));
 
         Assert.DoesNotContain(enemy, match.AttackTargets(tour));   // la montagne arrête le tir
 

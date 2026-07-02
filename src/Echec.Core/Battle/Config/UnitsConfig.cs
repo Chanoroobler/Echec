@@ -39,6 +39,10 @@ public sealed class ClassConfig
 {
     public string Name { get; set; } = "";
     public string Asset { get; set; } = "";
+
+    /// <summary>Famille de sprite (« Classe » du tableau) : PNG à charger. Absent → identique à <see cref="Asset"/>.</summary>
+    public string? Sprite { get; set; }
+
     public int Hp { get; set; }
     public int Damage { get; set; }
     public int MoveRange { get; set; }

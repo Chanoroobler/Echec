@@ -15,7 +15,7 @@ public class FusionTests
     private static Run RunWith(params UnitSpec[] units) =>
         Run.Restore(units.ToList(), combatNumber: 1, seed: 1, firstRun: false);
 
-    private static UnitSpec Soldat() => new(Domaine.Pion, Domaines.Pion.BaseClass);
+    private static UnitSpec Soldat() => new(Domaine.Dame, Domaines.Dame.BaseClass);
     private static UnitSpec Mage() => new(Domaine.Fou, Domaines.Fou.BaseClass);
 
     [Fact]
@@ -26,7 +26,7 @@ public class FusionTests
 
         Assert.True(run.CanFuse(soldat));
         var options = run.FusionOptions(soldat);
-        Assert.Equal(Domaines.Pion.BaseClass.Evolutions, options); // Garde / Spadassin
+        Assert.Equal(Domaines.Dame.BaseClass.Evolutions, options); // Archer / Spadassin
         Assert.Equal(2, options.Count);
     }
 
@@ -38,7 +38,7 @@ public class FusionTests
 
         Assert.False(run.CanFuse(soldat));
         Assert.Empty(run.FusionOptions(soldat));
-        Assert.Null(run.Fuse(soldat, Domaines.Pion.BaseClass.Evolutions[0]));
+        Assert.Null(run.Fuse(soldat, Domaines.Dame.BaseClass.Evolutions[0]));
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class FusionTests
     {
         // 2 soldats + 1 mage : aucune classe n'atteint 3 exemplaires.
         var run = RunWith(Soldat(), Soldat(), Mage());
-        Assert.False(run.CanFuse(run.Roster.First(u => u.Domaine == Domaine.Pion && !u.Essential)));
+        Assert.False(run.CanFuse(run.Roster.First(u => u.Domaine == Domaine.Dame && !u.Essential)));
         Assert.False(run.CanFuse(run.Roster.First(u => u.Domaine == Domaine.Fou)));
     }
 
@@ -54,15 +54,15 @@ public class FusionTests
     public void Fuse_ConsumesThree_AddsChosenEvolution()
     {
         var run = RunWith(Soldat(), Soldat(), Soldat(), Mage());
-        var soldat = run.Roster.First(u => u.Domaine == Domaine.Pion && !u.Essential);
-        var spadassin = Domaines.Pion.BaseClass.Evolutions[1]; // Spadassin
+        var soldat = run.Roster.First(u => u.Domaine == Domaine.Dame && !u.Essential);
+        var spadassin = Domaines.Dame.BaseClass.Evolutions[1]; // Spadassin
 
         var before = run.Roster.Count;
         var fused = run.Fuse(soldat, spadassin);
 
         Assert.NotNull(fused);
         Assert.Equal(spadassin, fused!.UnitClass);
-        Assert.Equal(Domaine.Pion, fused.Domaine);
+        Assert.Equal(Domaine.Dame, fused.Domaine);
         Assert.Equal(before - 2, run.Roster.Count);                       // -3 +1
         Assert.Equal(0, run.Roster.Count(u => Run.SameClass(u, soldat))); // plus aucun soldat de base
         Assert.Contains(run.Roster, u => u.UnitClass == spadassin);
@@ -75,10 +75,10 @@ public class FusionTests
         var run = RunWith(Soldat(), Soldat(), Soldat(), Soldat());
         var soldat = run.Roster.First(u => !u.Essential);
 
-        run.Fuse(soldat, Domaines.Pion.BaseClass.Evolutions[0]);
+        run.Fuse(soldat, Domaines.Dame.BaseClass.Evolutions[0]);
 
-        Assert.Equal(1, run.Roster.Count(u => u.UnitClass == Domaines.Pion.BaseClass)); // 4 - 3 = 1
-        Assert.Single(run.Roster, u => u.UnitClass == Domaines.Pion.BaseClass.Evolutions[0]);
+        Assert.Equal(1, run.Roster.Count(u => u.UnitClass == Domaines.Dame.BaseClass)); // 4 - 3 = 1
+        Assert.Single(run.Roster, u => u.UnitClass == Domaines.Dame.BaseClass.Evolutions[0]);
     }
 
     [Fact]
@@ -93,15 +93,15 @@ public class FusionTests
     [Fact]
     public void LeafClass_CannotFuse()
     {
-        // 3 Gardes (tier 2, feuille) : pas d'évolution disponible → fusion refusée (tier 3 plus tard).
-        var garde = Domaines.Pion.BaseClass.Evolutions[0];
+        // 3 Arbalétriers (tier 3, feuille au sommet de l'arbre) : plus d'évolution → fusion refusée.
+        var arbaletrier = Domaines.Dame.BaseClass.Evolutions[0].Evolutions[0];
         var run = RunWith(
-            new UnitSpec(Domaine.Pion, garde),
-            new UnitSpec(Domaine.Pion, garde),
-            new UnitSpec(Domaine.Pion, garde));
+            new UnitSpec(Domaine.Dame, arbaletrier),
+            new UnitSpec(Domaine.Dame, arbaletrier),
+            new UnitSpec(Domaine.Dame, arbaletrier));
         var g = run.Roster.First(u => !u.Essential);
 
-        Assert.True(garde.IsLeaf);
+        Assert.True(arbaletrier.IsLeaf);
         Assert.False(run.CanFuse(g));
         Assert.Empty(run.FusionOptions(g));
     }
@@ -114,7 +114,7 @@ public class FusionTests
         var foreign = Domaines.Fou.BaseClass.Evolutions[0]; // Clerc : pas une évolution du Soldat
 
         Assert.Null(run.Fuse(soldat, foreign));
-        Assert.Equal(3, run.Roster.Count(u => u.UnitClass == Domaines.Pion.BaseClass)); // rien consommé
+        Assert.Equal(3, run.Roster.Count(u => u.UnitClass == Domaines.Dame.BaseClass)); // rien consommé
     }
 
     [Fact]
@@ -125,20 +125,23 @@ public class FusionTests
 
         run.StartBattle(); // on n'est plus en placement
         Assert.False(run.CanFuse(soldat));
-        Assert.Null(run.Fuse(soldat, Domaines.Pion.BaseClass.Evolutions[0]));
+        Assert.Null(run.Fuse(soldat, Domaines.Dame.BaseClass.Evolutions[0]));
     }
 
     [Fact]
-    public void FusedUnit_IsLeaf_AndCannotChainFuse_InV1()
+    public void Tier2_CanChainFuse_ToTier3()
     {
-        // Après fusion vers un tier 2 (feuille), même avec 3 exemplaires on ne peut pas re-fusionner.
-        var garde = Domaines.Pion.BaseClass.Evolutions[0];
+        // Arbre à 3 tiers : 3 Archers (tier 2, NON-feuille) peuvent re-fusionner vers un tier 3.
+        var archer = Domaines.Dame.BaseClass.Evolutions[0];
         var run = RunWith(
-            new UnitSpec(Domaine.Pion, garde),
-            new UnitSpec(Domaine.Pion, garde),
-            new UnitSpec(Domaine.Pion, garde));
+            new UnitSpec(Domaine.Dame, archer),
+            new UnitSpec(Domaine.Dame, archer),
+            new UnitSpec(Domaine.Dame, archer));
+        var a = run.Roster.First(u => !u.Essential);
 
-        Assert.False(run.CanFuse(run.Roster.First(u => !u.Essential)));
+        Assert.False(archer.IsLeaf);
+        Assert.True(run.CanFuse(a));
+        Assert.Equal(archer.Evolutions, run.FusionOptions(a)); // Arbalétrier / Rôdeur
     }
 
     [Fact]
@@ -150,7 +153,7 @@ public class FusionTests
         var group = soldiers.Take(3).ToList();
         var survivor = soldiers[3];
 
-        var fused = run.Fuse(group, Domaines.Pion.BaseClass.Evolutions[0]);
+        var fused = run.Fuse(group, Domaines.Dame.BaseClass.Evolutions[0]);
 
         Assert.NotNull(fused);
         Assert.Contains(survivor, run.Roster);                       // l'instance non listée survit
@@ -165,7 +168,7 @@ public class FusionTests
         var run = RunWith(Soldat(), Soldat(), Soldat());
         var one = run.Roster.First(u => !u.Essential);
 
-        Assert.Null(run.Fuse(new[] { one, one, one }, Domaines.Pion.BaseClass.Evolutions[0]));
+        Assert.Null(run.Fuse(new[] { one, one, one }, Domaines.Dame.BaseClass.Evolutions[0]));
         Assert.Equal(3, run.Roster.Count(u => !u.Essential));
     }
 
@@ -176,7 +179,7 @@ public class FusionTests
         var inRoster = run.Roster.Where(u => !u.Essential).ToList();
         var foreign = Soldat(); // instance jamais ajoutée au roster
 
-        Assert.Null(run.Fuse(new[] { inRoster[0], inRoster[1], foreign }, Domaines.Pion.BaseClass.Evolutions[0]));
+        Assert.Null(run.Fuse(new[] { inRoster[0], inRoster[1], foreign }, Domaines.Dame.BaseClass.Evolutions[0]));
         Assert.Equal(2, run.Roster.Count(u => !u.Essential));
     }
 
@@ -187,7 +190,7 @@ public class FusionTests
         // l'unité évoluée se reconstruit à l'identique depuis la sauvegarde.
         var run = RunWith(Soldat(), Soldat(), Soldat());
         var soldat = run.Roster.First(u => !u.Essential);
-        var spadassin = Domaines.Pion.BaseClass.Evolutions[1];
+        var spadassin = Domaines.Dame.BaseClass.Evolutions[1];
         run.Fuse(soldat, spadassin);
 
         var restored = RunSave.From(run).ToRun();

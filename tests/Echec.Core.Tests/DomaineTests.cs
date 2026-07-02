@@ -8,16 +8,15 @@ namespace Echec.Core.Tests;
 public class DomaineTests
 {
     [Fact]
-    public void FiveDomaines_NamedAfterChessPieces()
+    public void FourDomaines_NamedAfterChessPieces()
     {
         Assert.Equal(
-            new[] { "Pion", "Fou", "Cavalier", "Tour", "Dame" },
+            new[] { "Dame", "Fou", "Cavalier", "Tour" },
             Domaines.All.Select(d => d.Name));
     }
 
     [Theory]
-    [InlineData(Domaine.Pion, 8, MovementKind.Slide)]
-    [InlineData(Domaine.Dame, 8, MovementKind.Slide)]   // mêmes directions que le Pion
+    [InlineData(Domaine.Dame, 8, MovementKind.Slide)]   // 8 directions (base des unités de troupe)
     [InlineData(Domaine.Fou, 4, MovementKind.Slide)]
     [InlineData(Domaine.Tour, 4, MovementKind.Slide)]
     [InlineData(Domaine.Cavalier, 8, MovementKind.Jump)]
@@ -30,7 +29,7 @@ public class DomaineTests
     [Fact]
     public void BaseClass_CarriesAssetAndStats()
     {
-        var soldat = Domaines.Pion.BaseClass;
+        var soldat = Domaines.Dame.BaseClass;
 
         Assert.Equal("Soldat", soldat.Name);
         Assert.Equal("soldat", soldat.Asset);
@@ -40,11 +39,11 @@ public class DomaineTests
     }
 
     [Fact]
-    public void Pion_KingStep_Range1_HasEightMovesFromCenter()
+    public void Dame_KingStep_Range1_HasEightMovesFromCenter()
     {
         var match = new Match(8, 8);
         var from = new Cell(4, 4);
-        match.Place(from, Units.Of(Domaine.Pion, Faction.Player));
+        match.Place(from, Units.Of(Domaine.Dame, Faction.Player)); // Soldat : 1 pas, 8 directions
 
         Assert.Equal(8, match.LegalMoves(from).Count);
     }
@@ -54,14 +53,14 @@ public class DomaineTests
     {
         var match = new Match(8, 8);
         var from = new Cell(3, 3);
-        match.Place(from, Units.Of(Domaine.Fou, Faction.Player)); // Mage : déplacement 2
+        match.Place(from, Units.Of(Domaine.Fou, Faction.Player)); // Mage : déplacement 1
 
         var moves = match.LegalMoves(from);
-        Assert.Contains(new Cell(1, 1), moves);  // 2 cases en diagonale
-        Assert.Contains(new Cell(5, 5), moves);
-        Assert.DoesNotContain(new Cell(0, 0), moves); // 3 cases = hors portée
+        Assert.Contains(new Cell(2, 2), moves);  // 1 case en diagonale
+        Assert.Contains(new Cell(4, 4), moves);
+        Assert.DoesNotContain(new Cell(1, 1), moves); // 2 cases = hors portée (déplacement 1)
         Assert.DoesNotContain(new Cell(2, 3), moves); // pas de déplacement orthogonal
-        Assert.Equal(8, moves.Count);            // 4 diagonales × 2 cases
+        Assert.Equal(4, moves.Count);            // 4 diagonales × 1 case
     }
 
     [Fact]
@@ -83,8 +82,8 @@ public class DomaineTests
         var from = new Cell(3, 3);
         match.Place(from, Units.Of(Domaine.Cavalier, Faction.Player));
         // Entoure le cavalier d'alliés : il saute par-dessus.
-        foreach (var d in Movement.Vectors(Domaine.Pion))
-            match.Place(new Cell(3 + d.Column, 3 + d.Row), Units.Of(Domaine.Pion, Faction.Player));
+        foreach (var d in Movement.Vectors(Domaine.Dame))
+            match.Place(new Cell(3 + d.Column, 3 + d.Row), Units.Of(Domaine.Dame, Faction.Player));
 
         var moves = match.LegalMoves(from);
         Assert.Equal(8, moves.Count);              // tous les sauts en L restent possibles

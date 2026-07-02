@@ -32,14 +32,19 @@ public sealed class Match
     // Buffer réutilisé par CanTakePlace (évite d'allouer une liste de coups à chaque kill).
     private readonly List<Cell> _placeBuffer = new();
 
+    // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
+    // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
+    private readonly System.Random _rng;
+
     public Match(int width, int height, Battlefield? terrain = null,
-        IEnumerable<Cell>? coverCells = null)
+        IEnumerable<Cell>? coverCells = null, System.Random? rng = null)
     {
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
         _terrain = terrain;
         _cover = coverCells is null ? new HashSet<Cell>() : new HashSet<Cell>(coverCells);
+        _rng = rng ?? new System.Random();
     }
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
@@ -109,13 +114,14 @@ public sealed class Match
             return;
 
         var vectors = Movement.Vectors(unit.Domaine);
+        var flies = unit.HasTrait(Trait.Vol);   // Vol : les obstacles de terrain (eau/montagne) ne bloquent plus
 
         if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to) && _units[to.Column, to.Row] == null && !BlocksMovement(to))
+                if (InBounds(to) && _units[to.Column, to.Row] == null && (flies || !BlocksMovement(to)))
                     result.Add(to);
             }
             return;
@@ -127,8 +133,8 @@ public sealed class Match
             for (var step = 1; step <= unit.MoveRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || BlocksMovement(to))
-                    break; // hors plateau ou obstacle (eau/montagne) : on s'arrête
+                if (!InBounds(to) || (BlocksMovement(to) && !flies))
+                    break; // hors plateau, ou obstacle (eau/montagne) sauf si l'unité vole
                 if (_units[to.Column, to.Row] != null)
                 {
                     if (phases) continue;   // Franchissement : on enjambe l'unité (sans pouvoir s'y poser)
@@ -169,16 +175,19 @@ public sealed class Match
         }
 
         var piercesAllies = unit.Class.PiercesAllies;
+        var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
         foreach (var dir in vectors)
         {
             // Zone morte (portée min) UNIQUEMENT en ligne droite : en diagonale on peut tirer dès la
             // distance 1 (le contact « corps à corps » n'est interdit qu'en face/côté).
-            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.Class.MinAttackRange;
+            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.MinAttackRange;
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || BlocksLineOfFire(to))
-                    break; // hors plateau ou montagne : la ligne de tir s'arrête (l'eau, elle, laisse passer)
+                if (!InBounds(to))
+                    break; // hors plateau : la ligne de tir s'arrête
+                if (BlocksLineOfFire(to) && !balistique)
+                    break; // montagne : coupe la ligne (sauf tir balistique ; l'eau laisse toujours passer)
 
                 var target = _units[to.Column, to.Row];
                 if (target == null)
@@ -235,14 +244,17 @@ public sealed class Match
         }
 
         var piercesAllies = unit.Class.PiercesAllies;
+        var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
         foreach (var dir in vectors)
         {
-            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.Class.MinAttackRange;
+            var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.MinAttackRange;
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || BlocksLineOfFire(to))
-                    break; // hors plateau ou montagne : la menace ne porte pas au-delà (l'eau laisse passer)
+                if (!InBounds(to))
+                    break; // hors plateau : la menace ne porte pas au-delà
+                if (BlocksLineOfFire(to) && !balistique)
+                    break; // montagne : coupe la ligne (sauf tir balistique ; l'eau laisse passer)
 
                 var occupant = _units[to.Column, to.Row];
                 if (occupant != null && occupant.Faction == unit.Faction && piercesAllies)
@@ -277,10 +289,15 @@ public sealed class Match
             return MoveKind.Invalid;
 
         var victim = _units[target.Column, target.Row]!;
+        var victimHpBefore = victim.Hp;
         ApplyDamage(target, victim, EffectiveDamage(unit, from, victim, target));
 
-        // Dégâts de zone : éclaboussure (mêmes dégâts effectifs) sur les ennemis autour de la cible.
-        if (unit.HasTrait(Trait.DegatsDeZone))
+        // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (esquive/bouclier inclus).
+        if (unit.HasTrait(Trait.DrainDeVie))
+            unit.Heal((victimHpBefore - victim.Hp) / 2);
+
+        // Dégâts de zone / Embrochage : éclaboussure (mêmes dégâts effectifs) sur les ennemis autour de la cible.
+        if (unit.HasTrait(Trait.DegatsDeZone) || unit.HasTrait(Trait.Embrochage))
             SplashAround(target, unit, from);
 
         // Transpercement : l'unité juste DERRIÈRE la cible (même direction) est aussi touchée.
@@ -319,6 +336,8 @@ public sealed class Match
     private const int RageBonus = 6;             // +6 puissance quand l'attaquant est sous le seuil PV
     private const int RageHpThreshold = 10;      // seuil de PV de Rage
     private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
+    private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
+    private const double EsquiveChance = 0.25;   // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -336,6 +355,16 @@ public sealed class Match
         return false;
     }
 
+    /// <summary>Nombre d'unités alliées (même <paramref name="faction"/>) adjacentes à <paramref name="cell"/> (trait « Formation »).</summary>
+    private int AdjacentAllyCount(Cell cell, Faction faction)
+    {
+        var count = 0;
+        foreach (var (dc, dr) in Neighbors8)
+            if (UnitAt(new Cell(cell.Column + dc, cell.Row + dr)) is { } u && u.Faction == faction)
+                count++;
+        return count;
+    }
+
     /// <summary>
     /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Bénédiction (offensifs), Rempart / Aura de
     /// rempart (à distance ≥ 2) et Duelliste (corps à corps) en réduction. Borné à 0.
@@ -347,6 +376,8 @@ public sealed class Match
             dmg += RageBonus;
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.Benediction))
             dmg += BenedictionBonus;
+        if (attacker.HasTrait(Trait.Formation))
+            dmg += FormationBonus * AdjacentAllyCount(attackerCell, attacker.Faction);
 
         var distance = ChebyshevDistance(attackerCell, victimCell);
         var shielded = victim.HasTrait(Trait.Rempart)
@@ -361,11 +392,16 @@ public sealed class Match
         return System.Math.Max(0, dmg);
     }
 
-    /// <summary>Applique des dégâts ; un allié adjacent « Bouclier divin » empêche la mort (PV ≥ 1).</summary>
+    /// <summary>
+    /// Applique des dégâts. « Esquive » peut annuler entièrement l'attaque (25 %). Un allié adjacent
+    /// « Bouclier divin » empêche la mort (PV ≥ 1).
+    /// </summary>
     private void ApplyDamage(Cell cell, Unit unit, int amount)
     {
         if (amount <= 0)
             return;
+        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChance)
+            return;   // attaque esquivée : aucun dégât
         if (amount >= unit.Hp && HasAdjacentAlly(cell, unit.Faction, Trait.BouclierDivin))
             amount = unit.Hp - 1;   // laisse 1 PV : l'attaque n'est jamais mortelle
         if (amount > 0)

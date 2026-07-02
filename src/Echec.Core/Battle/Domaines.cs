@@ -36,7 +36,6 @@ public static class Domaines
         _byId.TryGetValue(domaine, out var def) ? def : _all[0];
 
     // Raccourcis pratiques.
-    public static DomaineDef Pion => Of(Domaine.Pion);
     public static DomaineDef Fou => Of(Domaine.Fou);
     public static DomaineDef Cavalier => Of(Domaine.Cavalier);
     public static DomaineDef Tour => Of(Domaine.Tour);
@@ -50,45 +49,73 @@ public static class Domaines
         return dict;
     }
 
-    // Repli codé (DOIT rester aligné avec Assets/Config/units.json) : 5 arbres de 3 classes.
+    // Repli codé (DOIT rester aligné avec Assets/Config/units.json) : 4 arbres à 3 tiers
+    // (base → 2 branches → 2 feuilles chacune). « Traverse allié » = pierces:true (pas dans les traits).
+    // « Zone morte » pilote la portée min (2) via le trait ; les sprites partagés sont donnés via sprite:.
     private static IReadOnlyList<DomaineDef> Defaults() => new[]
     {
-        new DomaineDef(Domaine.Pion, Cls("Soldat", "soldat", 12, 10, 1, 1, evolutions: new[]
-        {
-            Leaf("Garde", "garde", 20, 8, 1, 1, traits: new[] { "Rempart" }),
-            Leaf("Spadassin", "spadassin", 12, 14, 2, 1),
-        })),
-        new DomaineDef(Domaine.Fou, Cls("Mage", "mage", 6, 14, 2, 4, evolutions: new[]
-        {
-            Leaf("Clerc", "clerc", 8, 7, 4, 4, traits: new[] { "Soin" }),
-            Leaf("Sorcier", "sorcier", 6, 14, 4, 5, traits: new[] { "Dégâts de zone" }),
-        })),
-        new DomaineDef(Domaine.Cavalier, Cls("Cavalier", "cavalier", 14, 10, 3, 3, pierces: true, traits: new[] { "Franchissement" }, evolutions: new[]
-        {
-            Leaf("Chevalier", "chevalier", 18, 16, 3, 3, pierces: true, traits: new[] { "Franchissement" }),
-            Leaf("Archer monté", "archer_monte", 14, 10, 3, 4, minAtt: 2),
-        })),
-        new DomaineDef(Domaine.Tour, Cls("Lancier", "lancier", 10, 10, 2, 2, pierces: true, evolutions: new[]
-        {
-            Leaf("Empaleur", "empaleur", 14, 14, 3, 2, pierces: true, traits: new[] { "Transpercement" }),
-            Leaf("Hallebardier", "hallebardier", 18, 10, 3, 2, pierces: true, traits: new[] { "Interception" }),
-        })),
-        new DomaineDef(Domaine.Dame, Cls("Archer", "archer", 8, 6, 3, 3, minAtt: 2, evolutions: new[]
-        {
-            Leaf("Rôdeur", "rodeur", 10, 12, 4, 3),
-            Leaf("Maître archer", "maitre_archer", 12, 10, 3, 4, minAtt: 2),
-        })),
+        new DomaineDef(Domaine.Dame,
+            N(1, "Soldat", "soldat", 12, 10, 1, 1, evo: new[]
+            {
+                N(2, "Archer", "archer", 12, 12, 2, 2, traits: new[] { Trait.ZoneMorte }, evo: new[]
+                {
+                    N(3, "Arbalétrier", "arbaletrier", 18, 14, 2, 2, traits: new[] { Trait.ZoneMorte, Trait.Balistique }),
+                    N(3, "Rôdeur", "rodeur", 16, 14, 2, 3, traits: new[] { Trait.ZoneMorte }),
+                }),
+                N(2, "Spadassin", "spadassin", 14, 14, 2, 1, evo: new[]
+                {
+                    N(3, "Maître d'armes", "maitre_armes", 20, 16, 2, 1, traits: new[] { Trait.Duelliste }),
+                    N(3, "Barbare", "barbare", 18, 18, 2, 1, traits: new[] { Trait.Rage }),
+                }),
+            })),
+        new DomaineDef(Domaine.Fou,
+            N(1, "Mage", "mage", 6, 14, 1, 3, evo: new[]
+            {
+                N(2, "Clerc", "clerc", 8, 12, 2, 4, traits: new[] { Trait.Soin }, evo: new[]
+                {
+                    N(3, "Archevêque", "archeveque", 12, 14, 2, 4, traits: new[] { Trait.Soin, Trait.BouclierDivin }),
+                    N(3, "Oracle", "oracle", 14, 12, 2, 5, traits: new[] { Trait.Soin, Trait.Benediction }),
+                }),
+                N(2, "Sorcier", "sorcier", 6, 18, 2, 4, evo: new[]
+                {
+                    N(3, "Archimage", "archimage", 12, 22, 3, 4),
+                    N(3, "Démoniste", "demoniste", 16, 20, 3, 4, traits: new[] { Trait.DrainDeVie }),
+                }),
+            })),
+        new DomaineDef(Domaine.Cavalier,
+            N(1, "Cavalier", "cavalier", 12, 10, 3, 3, traits: new[] { Trait.Franchissement }, evo: new[]
+            {
+                N(2, "Cavalier lourd", "cavalier_lourd", 18, 14, 3, 3, traits: new[] { Trait.Franchissement }, sprite: "chevalier", evo: new[]
+                {
+                    N(3, "Paladin", "paladin", 22, 18, 3, 3, traits: new[] { Trait.Franchissement, Trait.AuraDeRempart }),
+                    N(3, "Cavalier griffon", "cavalier_griffon", 20, 16, 3, 3, traits: new[] { Trait.Vol }),
+                }),
+                N(2, "Archer monté", "archer_monte", 14, 10, 3, 3, pierces: true, traits: new[] { Trait.ZoneMorte, Trait.Franchissement }, evo: new[]
+                {
+                    N(3, "Archer griffon", "archer_griffon", 16, 14, 3, 3, pierces: true, traits: new[] { Trait.ZoneMorte, Trait.Vol }),
+                    N(3, "Arbalétrier monté", "arbaletrier_monte", 18, 14, 3, 3, traits: new[] { Trait.ZoneMorte, Trait.Vol, Trait.Balistique }),
+                }),
+            })),
+        new DomaineDef(Domaine.Tour,
+            N(1, "Lancier", "lancier", 10, 12, 2, 2, pierces: true, evo: new[]
+            {
+                N(2, "Garde", "garde", 20, 12, 2, 2, pierces: true, traits: new[] { Trait.Rempart }, sprite: "empaleur", evo: new[]
+                {
+                    N(3, "Phalange", "phalange", 24, 14, 2, 2, pierces: true, traits: new[] { Trait.Rempart, Trait.Formation }),
+                    N(3, "Forteresse", "forteresse", 28, 12, 1, 2, pierces: true, traits: new[] { Trait.Rempart }),
+                }),
+                N(2, "Tirailleur", "tirailleur", 14, 14, 2, 2, pierces: true, traits: new[] { Trait.Esquive }, evo: new[]
+                {
+                    N(3, "Javelinier d'élite", "javelinier_elite", 18, 16, 2, 3, pierces: true, traits: new[] { Trait.Embrochage }, sprite: "tirailleur"),
+                    N(3, "Voltigeur", "voltigeur", 14, 14, 2, 3, pierces: true, traits: new[] { Trait.Esquive, Trait.Riposte }, sprite: "tirailleur"),
+                }),
+            })),
     };
 
-    /// <summary>Classe de BASE (tier 1) avec ses évolutions (tier 2).</summary>
-    private static UnitClass Cls(string name, string asset, int hp, int dmg, int move, int attack,
-        int minAtt = 1, bool pierces = false, string[]? traits = null, params UnitClass[] evolutions) =>
-        new(name, asset, tier: 1, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack,
-            piercesAllies: pierces, minAttackRange: minAtt, traits: traits, evolutions: evolutions);
-
-    /// <summary>Classe FEUILLE (tier 2, sans évolution).</summary>
-    private static UnitClass Leaf(string name, string asset, int hp, int dmg, int move, int attack,
-        int minAtt = 1, bool pierces = false, string[]? traits = null) =>
-        new(name, asset, tier: 2, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack,
-            piercesAllies: pierces, minAttackRange: minAtt, traits: traits);
+    /// <summary>Nœud de l'arbre de classes (tier explicite, sprite/traits/évolutions optionnels).</summary>
+    private static UnitClass N(int tier, string name, string asset, int hp, int dmg, int move, int attack,
+        bool pierces = false, string[]? traits = null, string? sprite = null, UnitClass[]? evo = null) =>
+        new(name, asset, tier, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack,
+            piercesAllies: pierces, minAttackRange: 1, traits: traits, sprite: sprite,
+            evolutions: evo ?? System.Array.Empty<UnitClass>());
 }

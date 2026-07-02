@@ -231,4 +231,128 @@ public class TraitsTests
         Assert.True(pierces.HasTrait(Trait.TraverseAllie));
         Assert.False(normal.HasTrait(Trait.TraverseAllie));
     }
+
+    // ── Zone morte : contact interdit en ligne droite (portée min 2) ───────────────
+
+    [Fact]
+    public void ZoneMorte_CannotHitAdjacent_ButHitsAtRangeTwo()
+    {
+        var adjacent = Board();
+        adjacent.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.ZoneMorte }));
+        adjacent.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, None));   // au contact
+        Assert.DoesNotContain(new Cell(0, 1), adjacent.AttackTargets(new Cell(0, 0)));
+
+        var far = Board();
+        far.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.ZoneMorte }));
+        far.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));        // distance 2
+        Assert.Contains(new Cell(0, 2), far.AttackTargets(new Cell(0, 0)));
+    }
+
+    // ── Balistique : tir par-dessus la montagne ───────────────────────────────────
+
+    [Fact]
+    public void Balistique_ShootsOverMountain_WhereNormalFireIsBlocked()
+    {
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(0, 1)] = new Tile(BuiltInTiles.Mountain);   // obstacle entre tireur et cible
+
+        var balistic = new Match(8, 8, field);
+        balistic.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Balistique }));
+        balistic.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        Assert.Contains(new Cell(0, 2), balistic.AttackTargets(new Cell(0, 0)));   // ignore la montagne
+
+        var normal = new Match(8, 8, field);
+        normal.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
+        normal.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        Assert.DoesNotContain(new Cell(0, 2), normal.AttackTargets(new Cell(0, 0))); // montagne = ligne coupée
+    }
+
+    // ── Vol : déplacement par-dessus l'eau ────────────────────────────────────────
+
+    [Fact]
+    public void Vol_MovesOverWater_WhereNormalMovementIsBlocked()
+    {
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(0, 1)] = new Tile(BuiltInTiles.Water);
+
+        var flyer = new Match(8, 8, field);
+        flyer.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Vol }, moveRange: 3));
+        Assert.Contains(new Cell(0, 2), flyer.LegalMoves(new Cell(0, 0)));   // franchit l'eau
+
+        var normal = new Match(8, 8, field);
+        normal.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, moveRange: 3));
+        Assert.DoesNotContain(new Cell(0, 2), normal.LegalMoves(new Cell(0, 0))); // l'eau borne le déplacement
+    }
+
+    // ── Formation : +2 puissance par allié adjacent ───────────────────────────────
+
+    [Fact]
+    public void Formation_AddsTwoPowerPerAdjacentAlly()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Formation }));
+        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, None));   // allié adjacent (hors ligne de tir)
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 5, None));   // allié adjacent (diagonale)
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));    // cible
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 20 - (6 + 2×2 alliés)
+    }
+
+    // ── Esquive : 25 % d'annuler l'attaque (RNG injecté) ──────────────────────────
+
+    [Fact]
+    public void Esquive_NegatesAttack_WhenRollUnderChance_HitsOtherwise()
+    {
+        var dodged = new Match(8, 8, rng: new FixedRng(0.0));   // 0 < 0.25 → esquive
+        dodged.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        dodged.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
+        dodged.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(20, dodged.UnitAt(new Cell(0, 2))!.Hp);   // aucun dégât
+
+        var hit = new Match(8, 8, rng: new FixedRng(0.99));     // 0.99 >= 0.25 → touché
+        hit.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        hit.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
+        hit.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(10, hit.UnitAt(new Cell(0, 2))!.Hp);      // 20 - 10
+    }
+
+    // ── Embrochage : touche aussi les ennemis adjacents à la cible ────────────────
+
+    [Fact]
+    public void Embrochage_AlsoHitsEnemyAdjacentToTarget()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Embrochage }));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));   // adjacent à la cible → embroché
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 6
+        Assert.Equal(14, m.UnitAt(new Cell(1, 2))!.Hp);   // voisin : 20 - 6
+    }
+
+    // ── Drain de vie : soigne l'attaquant de 50 % des dégâts ──────────────────────
+
+    [Fact]
+    public void DrainDeVie_HealsAttackerHalfDamageDealt()
+    {
+        var m = Board();
+        var drainer = Make(Faction.Player, 20, 10, new[] { Trait.DrainDeVie });
+        drainer.TakeDamage(15);   // 5 PV avant l'attaque
+        m.Place(new Cell(0, 0), drainer);
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 10
+        Assert.Equal(10, drainer.Hp);                     // 5 + (10 / 2)
+    }
+
+    /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>
+    private sealed class FixedRng : System.Random
+    {
+        private readonly double _value;
+        public FixedRng(double value) => _value = value;
+        protected override double Sample() => _value;
+    }
 }

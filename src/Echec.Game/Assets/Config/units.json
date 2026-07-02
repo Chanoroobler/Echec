@@ -1,42 +1,79 @@
 {
-  // Paramétrage des classes par domaine. Le motif de déplacement (Pion/Dame = 8 dir, Fou = diagonales,
-  // Cavalier = saut, Tour = lignes) est fixé en code par le domaine ; ici : nom, asset (PNG dans
-  // Assets/Units/<asset>.png), PV (hp), dégâts (damage), portée de déplacement (moveRange), portée de
-  // tir MAX (attackRange) et MIN (minAttackRange, défaut 1 ; « X à Y » du tableau = X..Y).
+  // Paramétrage des classes par domaine. Le motif de déplacement (Dame = 8 dir, Fou = diagonales,
+  // Cavalier = saut en L, Tour = lignes) est fixé en code par le domaine ; ici : nom (identifiant
+  // unique), asset (identité stable : sauvegarde/nom/découverte), sprite (PNG dans
+  // Assets/Units/<sprite>_*.png, PARTAGEABLE — défaut = asset), PV (hp), dégâts (damage), portée de
+  // déplacement (moveRange) et portée d'attaque (attackRange).
   //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
-  //   "traits": [...]        => autres particularités (Rempart, Soin, Dégâts de zone, Franchissement,
-  //                             Transpercement, Interception) — DONNÉE seule, mécaniques à venir (tiers 2).
-  //   "evolutions": [...]    => les 2 classes de tier 2 de l'arbre.
-  // NB JEU : la vague ennemie pioche Soldat (Pion), Lancier (Tour) et Mage (Fou) ; le roster de
-  // départ du joueur reste Soldat + Commandant. Le reste est posé comme données, pas encore jouable.
+  //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
+  //                             Formation, Esquive, Embrochage, Drain de vie, Rempart, Soin, Duelliste,
+  //                             Rage, Bouclier divin, Bénédiction, Franchissement, Aura de rempart, Riposte…
+  //   "evolutions": [...]    => les sous-classes (arbre à 3 tiers : base → 2 branches → 2 feuilles).
+  // NB : « Zone morte » pilote la portée d'attaque min (2, contact interdit en ligne droite) via le trait.
   "domaines": [
     {
-      "domaine": "Pion",
+      "domaine": "Dame",
       "baseClass": {
         "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
         "evolutions": [
-          { "name": "Garde",     "asset": "garde",     "hp": 20, "damage": 8,  "moveRange": 1, "attackRange": 1, "traits": ["Rempart"] },
-          { "name": "Spadassin", "asset": "spadassin", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 1 }
+          {
+            "name": "Archer", "asset": "archer", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte"],
+            "evolutions": [
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 14, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte"] }
+            ]
+          },
+          {
+            "name": "Spadassin", "asset": "spadassin", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 1,
+            "evolutions": [
+              { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"] },
+              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
+            ]
+          }
         ]
       }
     },
     {
       "domaine": "Fou",
       "baseClass": {
-        "name": "Mage", "asset": "mage", "hp": 5, "damage": 14, "moveRange": 1, "attackRange": 3,
+        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 1, "attackRange": 3,
         "evolutions": [
-          { "name": "Clerc",   "asset": "clerc",   "hp": 8, "damage": 7,  "moveRange": 3, "attackRange": 5, "traits": ["Soin"] },
-          { "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Dégâts de zone"] }
+          {
+            "name": "Clerc", "asset": "clerc", "hp": 8, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin"],
+            "evolutions": [
+              { "name": "Archevêque", "asset": "archeveque", "sprite": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
+              { "name": "Oracle",     "asset": "oracle",     "sprite": "oracle", "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 5, "traits": ["Soin", "Bénédiction"] }
+            ]
+          },
+          {
+            "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 18, "moveRange": 2, "attackRange": 4,
+            "evolutions": [
+              { "name": "Archimage", "asset": "archimage", "sprite": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4 },
+              { "name": "Démoniste", "asset": "demoniste", "sprite": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
+            ]
+          }
         ]
       }
     },
     {
       "domaine": "Cavalier",
       "baseClass": {
-        "name": "Cavalier", "asset": "cavalier", "hp": 10, "damage": 12, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"],
+        "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
         "evolutions": [
-          { "name": "Chevalier",    "asset": "chevalier",    "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Franchissement"] },
-          { "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
+          {
+            "name": "Cavalier lourd", "asset": "cavalier_lourd", "sprite": "chevalier", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+            "evolutions": [
+              { "name": "Paladin",          "asset": "paladin",          "sprite": "paladin", "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
+              { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
+            ]
+          },
+          {
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Franchissement"],
+            "evolutions": [
+              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol"] },
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Vol", "Balistique"] }
+            ]
+          }
         ]
       }
     },
@@ -45,27 +82,29 @@
       "baseClass": {
         "name": "Lancier", "asset": "lancier", "hp": 10, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true,
         "evolutions": [
-          { "name": "Empaleur",     "asset": "empaleur",     "hp": 14, "damage": 14, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Transpercement"] },
-          { "name": "Hallebardier", "asset": "hallebardier", "hp": 18, "damage": 12, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Interception"] }
-        ]
-      }
-    },
-    {
-      "domaine": "Dame",
-      "baseClass": {
-        "name": "Archer", "asset": "archer", "hp": 8, "damage": 6, "moveRange": 2, "attackRange": 2, "minAttackRange": 2,
-        "evolutions": [
-          { "name": "Rôdeur",        "asset": "rodeur",        "hp": 10, "damage": 12, "moveRange": 4, "attackRange": 3, "minAttackRange": 1 },
-          { "name": "Maître archer", "asset": "maitre_archer", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 4, "minAttackRange": 2 }
+          {
+            "name": "Garde", "asset": "garde", "sprite": "empaleur", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
+            "evolutions": [
+              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Formation"] },
+              { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"] }
+            ]
+          },
+          {
+            "name": "Tirailleur", "asset": "tirailleur", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
+            "evolutions": [
+              { "name": "Javelinier d'élite", "asset": "javelinier_elite", "sprite": "tirailleur", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
+              { "name": "Voltigeur",          "asset": "voltigeur",        "sprite": "tirailleur", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
+            ]
+          }
         ]
       }
     }
   ],
 
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
-  // de déplacement d'un des 5 domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
+  // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   "commandes": [
-    { "role": "Commander", "domaine": "Pion", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1 },
-    { "role": "Boss",      "domaine": "Pion", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1 }
+    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 2, "attackRange": 1 },
+    { "role": "Boss",      "domaine": "Dame", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1 }
   ]
 }

@@ -40,8 +40,7 @@ public static class Movement
     /// <summary>Directions (glissé) ou décalages (sauté) du domaine.</summary>
     public static IReadOnlyList<Cell> Vectors(Domaine domaine) => domaine switch
     {
-        Domaine.Pion => EightWay,        // comme le roi : 8 directions, 1 pas de base
-        Domaine.Dame => EightWay,        // mêmes directions que le Pion, distance via la classe
+        Domaine.Dame => EightWay,        // 8 directions (base des unités de troupe), distance via la classe
         Domaine.Fou => Diagonals,
         Domaine.Tour => Orthogonals,
         Domaine.Cavalier => KnightJumps,

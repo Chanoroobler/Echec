@@ -767,11 +767,11 @@ public sealed class GameplayScene : Scene
         // Commandant déjà posé (montre l'unité essentielle), 1 SOLDAT à déployer dans l'inventaire.
         var commanderCell = new Cell(Columns / 2, Rows - 1);
         PlacePlayer(_run.Commander, commanderCell);
-        _pending.Add(new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass));
+        _pending.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
 
         // 1 Soldat ennemi NORMAL (12 PV, dégâts 10) : il survit à la 1re attaque et contre-attaque.
         var enemyCell = new Cell(Columns / 2, 1);
-        _match.Place(enemyCell, new UnitSpec(Domaine.Pion, Domaines.Pion.BaseClass).Spawn(Faction.Enemy));
+        _match.Place(enemyCell, new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass).Spawn(Faction.Enemy));
 
         _tutorial = new TutorialGuide { Commander = commanderCell, EnemySoldier = enemyCell };
         _cursor = commanderCell;        // curseur manette sur la zone joueur
@@ -2497,11 +2497,11 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawTutorialCardReview(SpriteBatch sb, Viewport viewport)
     {
-        var soldier = Domaines.Pion.BaseClass;
+        var soldier = Domaines.Dame.BaseClass;
         // La carte du pion qu'on vient de poser, à sa place d'aperçu habituelle (à gauche du panneau).
         var cardRect = new Rectangle(PanelRect().X - CombatCardGap - CombatCardW,
             (viewport.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
-        DrawCardLayout(sb, cardRect, soldier, Faction.Player, Domaine.Pion, soldier.MaxHp, soldier.MaxHp);
+        DrawCardLayout(sb, cardRect, soldier, Faction.Player, Domaine.Dame, soldier.MaxHp, soldier.MaxHp);
 
         // Ordre haut→bas sur la carte : icône de DÉPLACEMENT (domaine), PV, Puissance, Mouvement, Portée.
         string[] keys = { "tuto.card_domaine", "tuto.card_hp", "tuto.card_power", "tuto.card_move", "tuto.card_range" };
@@ -2967,12 +2967,13 @@ public sealed class GameplayScene : Scene
         return kind;
     }
 
-    /// <summary>Style d'animation d'attaque selon l'unité : cavalier = charge sautée, mage = projectile, autres = fente.</summary>
+    /// <summary>Style d'animation d'attaque selon l'unité : cavalier = charge sautée, mage = projectile,
+    /// archer (trait « Zone morte ») = tir, autres = fente. Le Soldat (base Dame) reste en mêlée.</summary>
     private static AttackStyle AttackStyleFor(Unit unit) => unit.Domaine switch
     {
         Domaine.Cavalier => AttackStyle.Leap,
         Domaine.Fou      => AttackStyle.Cast,
-        Domaine.Dame     => AttackStyle.Shoot,   // archer (Archer / Rôdeur / Maître archer)
+        _ when unit.HasTrait(Trait.ZoneMorte) => AttackStyle.Shoot, // archers (Archer / Arbalétrier / Rôdeur…)
         _                => AttackStyle.Lunge,
     };
 
@@ -5245,7 +5246,6 @@ public sealed class GameplayScene : Scene
         // Placeholder : pastille colorée + initiale du domaine.
         var color = domaine switch
         {
-            Domaine.Pion => Palette.Cyan1,
             Domaine.Fou => Palette.Brown2,
             Domaine.Cavalier => Palette.Green1,
             Domaine.Tour => Palette.Navy1,
@@ -5764,13 +5764,17 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private Texture2D? UnitSprite(Unit unit) => SpriteFor(unit.Class, unit.Faction, front: FacesDown(unit));
 
-    /// <summary><paramref name="front"/> = l'unité regarde vers le bas (face caméra).</summary>
+    /// <summary>
+    /// <paramref name="front"/> = l'unité regarde vers le bas (face caméra). Le PNG est choisi par la
+    /// FAMILLE de sprite (<see cref="UnitClass.Sprite"/>), partageable entre classes (ex. Archevêque/
+    /// Oracle → « clerc ») — distincte de l'identité <see cref="UnitClass.Asset"/> (nom/découverte).
+    /// </summary>
     private Texture2D? SpriteFor(UnitClass cls, Faction faction, bool front = false)
     {
         var variant = faction == Faction.Player
-            ? $"{cls.Asset}_{(front ? "front" : "back")}"
-            : $"{cls.Asset}_ia_{(front ? "front" : "back")}";
-        return SpriteFor(variant) ?? SpriteFor(cls.Asset);
+            ? $"{cls.Sprite}_{(front ? "front" : "back")}"
+            : $"{cls.Sprite}_ia_{(front ? "front" : "back")}";
+        return SpriteFor(variant) ?? SpriteFor(cls.Sprite);
     }
 
     /// <summary>Orientation par défaut : le joueur regarde vers le haut (l'ennemi), l'ennemi vers le bas.</summary>
