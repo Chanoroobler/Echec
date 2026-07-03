@@ -20,32 +20,87 @@ public enum RunPhase
 /// <summary>
 /// État de la campagne (première boucle de gameplay) : inventaire du joueur,
 /// numéro de combat, génération des vagues ennemies (difficulté croissante) et du
-/// draft de recrutement. Boucle : Placement → Battle → Recruitment → Placement … ;
-/// au <see cref="TotalCombats"/>e combat, c'est le combat de BOSS (tuer le boss).
+/// draft de recrutement. Boucle : Placement → Battle → Recruitment → Placement …
+///
+/// Une run = <see cref="PhaseCount"/> phases de <see cref="MissionsPerPhase"/> missions, jouées
+/// selon le rythme fixe <see cref="PhaseLayout"/> (Escarmouche ×2, Speciale, Escarmouche ×2, Boss),
+/// soit <see cref="TotalCombats"/> combats et 3 boss. Seul le boss FINAL (phase 3) gagne la run ;
+/// les boss des phases 1-2 enchaînent vers le recrutement. <see cref="CombatNumber"/> (1..18) est le
+/// seul curseur : <see cref="PhaseIndex"/> et <see cref="MissionInPhase"/> en dérivent.
 ///
 /// Persistance : permadeath (les unités mortes quittent l'inventaire) + soin complet
 /// (les survivantes reviennent à PV pleins, via un nouveau Spawn au combat suivant).
 /// </summary>
 public sealed class Run
 {
-    public const int TotalCombats = 6;
+    /// <summary>Nombre de phases d'une run.</summary>
+    public const int PhaseCount = 3;
+
+    /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
+    public const int MissionsPerPhase = 6;
+
+    /// <summary>Nombre total de combats d'une run (1..<see cref="TotalCombats"/>).</summary>
+    public const int TotalCombats = PhaseCount * MissionsPerPhase; // 18
+
     public const int DraftSize = 3;
+
+    /// <summary>
+    /// Rythme fixe d'une phase (6 slots) : deux escarmouches, une mission spéciale, deux escarmouches,
+    /// un boss. La spéciale est déjà TYPÉE <see cref="CombatType.Speciale"/> mais générée comme une
+    /// escarmouche tant qu'elle n'a pas de contenu propre.
+    /// </summary>
+    private static readonly CombatType[] PhaseLayout =
+    {
+        CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
+        CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Boss,
+    };
 
     // ORDRE D'INTRODUCTION des types ennemis : un nouveau type est débloqué à chaque combat —
     // Soldat (Dame), Lancier (Tour), Cavalier (Cavalier), Mage (Fou). Le Cavalier arrive TÔT
     // (rapide : move 3 + saut) pour varier la menace ; le Mage (le plus punitif, one-shot à portée 3)
-    // est introduit EN DERNIER, le temps que le joueur apprenne. Au combat N le pool = les N premiers
-    // types, et le N-ième (« frais ») est garanti d'apparaître ; le combat de boss débloque tout le
-    // pool. Comme le recrutement propose les ennemis VAINCUS (voir BuildDraft), ces domaines deviennent
-    // jouables au fil des déblocages.
+    // est introduit EN DERNIER, le temps que le joueur apprenne. Le pool grandit d'un type par combat
+    // (cf. UnlockedDomaines) : tout est ouvert dès la fin de la phase 1, les phases 2-3 tirant parmi
+    // les 4 domaines. Comme le recrutement propose les ennemis VAINCUS (voir BuildDraft), ces domaines
+    // deviennent jouables au fil des déblocages.
     private static readonly Domaine[] IntroOrder =
         { Domaine.Dame, Domaine.Tour, Domaine.Cavalier, Domaine.Fou };
 
-    /// <summary>Nombre d'escortes accompagnant le boss (tirées parmi tous les types débloqués).</summary>
-    private const int BossEscorts = 4;
-
-    /// <summary>Taille de la vague ennemie par combat NON-boss (index 0 = combat 1) : 2,3,3,4,4.</summary>
-    private static readonly int[] EnemyCounts = { 2, 3, 3, 4, 4 };
+    /// <summary>
+    /// Composition en TIERS des ESCORTES par (phase, mission), indexée <c>[PhaseIndex-1][MissionInPhase-1]</c>
+    /// (18 entrées). SOURCE DE VÉRITÉ de l'effectif et de la force des vagues (cf. <see cref="BuildEnemyWave"/>).
+    /// Pour une mission Boss, le pion <see cref="Commandes.Boss"/> s'AJOUTE à cette liste (« Boss + N pions »).
+    /// L'effectif monte de 3 à ~12, le tier glisse de T1 à T3 phase après phase.
+    /// </summary>
+    private static readonly int[][][] WaveTiers =
+    {
+        new[] // Phase 1 — apprentissage (T1, le T2 arrive à l'escarmouche 4)
+        {
+            new[] { 1, 1 },                              // m1 Escarmouche : 2× T1 (démarrage doux)
+            new[] { 1, 1, 1 },                           // m2 Escarmouche : 3× T1
+            new[] { 1, 1, 1, 1 },                        // m3 Speciale    : 4× T1 (temporaire — en attendant la vraie mission spéciale)
+            new[] { 1, 1, 1, 1, 1, 2 },                  // m4 Escarmouche : 5× T1 + 1× T2
+            new[] { 1, 1, 1, 1, 1, 2, 2 },               // m5 Escarmouche : 5× T1 + 2× T2
+            new[] { 1, 1, 1, 1, 1, 1, 1, 2, 2 },         // m6 Boss        : + 7× T1 + 2× T2
+        },
+        new[] // Phase 2 — montée en puissance (T2 dominant)
+        {
+            new[] { 1, 1, 1, 1, 2, 2, 2 },               // m1 : 4× T1 + 3× T2
+            new[] { 1, 1, 1, 1, 2, 2, 2, 2 },            // m2 : 4× T1 + 4× T2
+            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2 },         // m3 Speciale : 3× T1 + 6× T2
+            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2 },         // m4 : 3× T1 + 6× T2
+            new[] { 1, 1, 2, 2, 2, 2, 2, 2, 2, 2 },      // m5 : 2× T1 + 8× T2
+            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2, 2 },      // m6 Boss : + 3× T1 + 7× T2
+        },
+        new[] // Phase 3 — fin de run (T2 → T3)
+        {
+            new[] { 2, 2, 2, 2, 2, 3, 3, 3 },            // m1 : 5× T2 + 3× T3
+            new[] { 2, 2, 2, 2, 2, 3, 3, 3, 3 },         // m2 : 5× T2 + 4× T3
+            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 },      // m3 Speciale : 4× T2 + 6× T3
+            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 },      // m4 : 4× T2 + 6× T3
+            new[] { 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 },   // m5 : 3× T2 + 8× T3
+            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 },// m6 BossFinal : + 4× T2 + 8× T3
+        },
+    };
 
     private readonly List<UnitSpec> _roster = new();
     private readonly List<UnitSpec> _draft = new();
@@ -96,7 +151,33 @@ public sealed class Run
     public int CombatNumber { get; private set; }
     public RunPhase Phase { get; private set; }
 
-    public bool IsBossCombat => CombatNumber == TotalCombats;
+    /// <summary>Phase courante (1..<see cref="PhaseCount"/>), dérivée de <see cref="CombatNumber"/>.</summary>
+    public int PhaseIndex => (CombatNumber - 1) / MissionsPerPhase + 1;
+
+    /// <summary>Rang de la mission dans sa phase (1..<see cref="MissionsPerPhase"/>).</summary>
+    public int MissionInPhase => (CombatNumber - 1) % MissionsPerPhase + 1;
+
+    /// <summary>Nature de la mission courante selon le rythme fixe <see cref="PhaseLayout"/>.</summary>
+    public CombatType CurrentMission => PhaseLayout[MissionInPhase - 1];
+
+    /// <summary>Vrai si la mission courante est un combat de boss (dernière de chaque phase).</summary>
+    public bool IsBossCombat => CurrentMission == CombatType.Boss;
+
+    /// <summary>Vrai pour le boss FINAL (boss de la dernière phase) : seul à conclure la run en victoire.</summary>
+    public bool IsFinalBoss => IsBossCombat && PhaseIndex == PhaseCount;
+
+    /// <summary>Nature de la mission au rang <paramref name="missionInPhase"/> (1..<see cref="MissionsPerPhase"/>)
+    /// du rythme fixe <see cref="PhaseLayout"/> — identique dans les 3 phases (sert à la frise UI).</summary>
+    public static CombatType MissionKindAt(int missionInPhase) => PhaseLayout[missionInPhase - 1];
+
+    /// <summary>
+    /// Effectif ennemi TOTAL d'une mission (phase 1..3, rang 1..6) = escortes de la table + le boss
+    /// éventuel. Sert à l'UI (tooltip de la frise) ; cohérent avec <see cref="BuildEnemyWave"/>.
+    /// </summary>
+    public static int EnemyCount(int phaseIndex, int missionInPhase) =>
+        WaveTiers[phaseIndex - 1][missionInPhase - 1].Length
+        + (MissionKindAt(missionInPhase) == CombatType.Boss ? 1 : 0);
+
     public UnitSpec Commander => _roster.First(u => u.Essential);
 
     /// <summary>(Re)démarre une campagne : commandant + 2 soldats, combat 1.</summary>
@@ -139,14 +220,6 @@ public sealed class Run
     public Battlefield BuildBattlefield(int width, int height) =>
         TerrainGenerator.Generate(width, height, CombatRng(0));
 
-    /// <summary>
-    /// Vague ennemie du combat courant (le placement est assuré par la scène). Déblocage progressif :
-    /// un nouveau type par combat, dans l'ordre de <see cref="IntroOrder"/>. La PREMIÈRE campagne
-    /// (<see cref="FirstRun"/>) démarre soldat seul (tout débloqué au combat 5) ; les suivantes
-    /// démarrent soldat+lancier (tout débloqué dès le combat 4). Le type fraîchement débloqué CE
-    /// combat est garanti d'apparaître ; le reste est tiré au hasard parmi le pool débloqué. Le combat
-    /// de boss = boss + <see cref="BossEscorts"/> escortes tirées parmi TOUS les types.
-    /// </summary>
     /// <summary>
     /// Tire un pion tier 1 ALÉATOIRE parmi les domaines dont la classe de base a DÉJÀ ÉTÉ VUE
     /// (<paramref name="isSeen"/> = méta-progression : asset déjà rencontré dans une run), SANS l'ajouter à
@@ -252,40 +325,96 @@ public sealed class Run
         }
     }
 
-    public List<UnitSpec> BuildEnemyWave()
+    /// <summary>
+    /// Vague ennemie du combat courant (le placement est assuré par la scène). L'effectif et la
+    /// composition en TIERS viennent de la table maître <see cref="WaveTiers"/>, indexée par
+    /// (<see cref="PhaseIndex"/>, <see cref="MissionInPhase"/>) — TOUJOURS exacts et déterministes. Pour
+    /// chaque tier requis : on tire un domaine dans le pool débloqué (<see cref="UnlockedDomaines"/>),
+    /// puis une <see cref="UnitClass"/> de CE tier (<see cref="ClassesAtTier"/>). Aux tiers 2-3, si
+    /// <paramref name="isSeen"/> est fourni (méta-progression), on PRIVILÉGIE AU MAXIMUM les unités déjà
+    /// découvertes (cf. <see cref="PickEnemy"/>). Sur une mission boss, le pion <see cref="Commandes.Boss"/>
+    /// est ajouté EN TÊTE. RNG déterministe (<see cref="CombatRng"/>) : « Continuer » rejoue la même vague
+    /// tant que la découverte n'a pas changé (l'effectif et les tiers, eux, ne bougent jamais).
+    /// </summary>
+    public List<UnitSpec> BuildEnemyWave(Func<string, bool>? isSeen = null)
     {
-        var rng = CombatRng(1);   // RNG déterministe propre à la vague de CE combat
+        var rng = CombatRng(1);   // RNG déterministe propre à la vague de CE combat (reprise = même vague)
         var wave = new List<UnitSpec>();
 
+        var pool = UnlockedDomaines();
+        foreach (var tier in WaveTiers[PhaseIndex - 1][MissionInPhase - 1])
+            wave.Add(PickEnemy(rng, pool, tier, isSeen));
+        Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
+
+        // Mission boss : le boss est placé EN TÊTE (la scène le pose en premier). TODO : un boss distinct
+        // par phase — on réutilise Commandes.Boss pour les 3 phases pour l'instant, seules les escortes varient.
         if (IsBossCombat)
-        {
-            wave.Add(ToSpec(Commandes.Boss));
-            // Escortes tirées entre elles avec plafond anti-triplon (le boss, pièce unique, ne compte pas).
-            var escorts = new List<UnitSpec>();
-            for (var i = 0; i < BossEscorts; i++)
-                escorts.Add(RandomEnemy(rng, IntroOrder.Length, escorts));
-            wave.AddRange(escorts);
-            return wave;
-        }
+            wave.Insert(0, ToSpec(Commandes.Boss));
 
-        // Campagnes suivantes : +1 type d'avance dès le départ (soldat+lancier au combat 1).
-        var reach = FirstRun ? CombatNumber : CombatNumber + 1;
-        var unlocked = Math.Min(reach, IntroOrder.Length);          // nb de types disponibles
-        var freshlyUnlocked = reach <= IntroOrder.Length;           // un type vient d'être débloqué ?
-        var count = EnemyCounts[CombatNumber - 1];                  // 2,3,3,4,4 (combats 1..5)
-
-        // Si un type est fraîchement débloqué ce combat, on en garantit une unité (le dernier du pool).
-        if (freshlyUnlocked)
-        {
-            var fresh = IntroOrder[unlocked - 1];
-            wave.Add(new UnitSpec(fresh, Domaines.Of(fresh).BaseClass));
-        }
-        // Le reste : au hasard parmi les types débloqués, en évitant un 3e exemplaire d'un même type.
-        for (var i = wave.Count; i < count; i++)
-            wave.Add(RandomEnemy(rng, unlocked, wave));
-
-        Shuffle(wave, rng);   // pour que le type frais ne soit pas toujours à la même position
         return wave;
+    }
+
+    /// <summary>
+    /// Tire un ennemi de tier <paramref name="tier"/>. Tier 1 (ou <paramref name="isSeen"/> absent) : un
+    /// domaine du pool débloqué puis une classe de ce tier, au hasard. Tiers 2-3 AVEC méta-progression :
+    /// on PRIVILÉGIE AU MAXIMUM les unités déjà découvertes — si au moins une classe découverte existe
+    /// dans le pool à ce tier, on tire uniquement parmi elles ; sinon repli sur toutes. Le nombre d'appels
+    /// RNG sans prédicat est identique à l'ancien comportement (déterminisme des tests préservé).
+    /// </summary>
+    private static UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier, Func<string, bool>? isSeen)
+    {
+        if (tier >= 2 && isSeen != null)
+        {
+            var all = new List<(Domaine Domaine, UnitClass Class)>();
+            var seen = new List<(Domaine Domaine, UnitClass Class)>();
+            foreach (var domaine in pool)
+                foreach (var cls in ClassesAtTier(domaine, tier))
+                {
+                    all.Add((domaine, cls));
+                    if (isSeen(cls.Asset))
+                        seen.Add((domaine, cls));
+                }
+            var from = seen.Count > 0 ? seen : all;
+            var pick = from[rng.Next(from.Count)];
+            return new UnitSpec(pick.Domaine, pick.Class);
+        }
+
+        var d = pool[rng.Next(pool.Count)];
+        var classes = ClassesAtTier(d, tier);
+        return new UnitSpec(d, classes[rng.Next(classes.Count)]);
+    }
+
+    /// <summary>
+    /// Domaines ennemis DÉBLOQUÉS au combat courant (pool où l'on tire les types de la vague). Un type
+    /// de plus par combat dans l'ordre d'<see cref="IntroOrder"/>, la première campagne
+    /// (<see cref="FirstRun"/>) démarrant un cran plus doux (soldat seul au combat 1). Tout est ouvert
+    /// dès la fin de la phase 1 : les phases 2-3 tirent parmi les 4 domaines.
+    /// </summary>
+    private IReadOnlyList<Domaine> UnlockedDomaines()
+    {
+        var reach = FirstRun ? CombatNumber : CombatNumber + 1;
+        var unlocked = Math.Min(reach, IntroOrder.Length);
+        return IntroOrder.Take(unlocked).ToList();
+    }
+
+    /// <summary>
+    /// Toutes les <see cref="UnitClass"/> de tier <paramref name="tier"/> dans l'arbre du domaine
+    /// (parcours en profondeur de la classe de base + ses évolutions). Sert à composer les vagues :
+    /// un tier requis → une classe de ce tier tirée ici. Jamais vide pour un tier de l'arbre (1..3).
+    /// </summary>
+    public static IReadOnlyList<UnitClass> ClassesAtTier(Domaine domaine, int tier)
+    {
+        var result = new List<UnitClass>();
+        CollectTier(Domaines.Of(domaine).BaseClass, tier, result);
+        return result;
+    }
+
+    private static void CollectTier(UnitClass node, int tier, List<UnitClass> acc)
+    {
+        if (node.Tier == tier)
+            acc.Add(node);
+        foreach (var evolution in node.Evolutions)
+            CollectTier(evolution, tier, acc);
     }
 
     /// <summary>Fin du placement : on passe au combat.</summary>
@@ -301,15 +430,15 @@ public sealed class Run
     /// <summary>
     /// Combat gagné. <paramref name="casualties"/> = gabarits du roster morts pendant le combat
     /// (retirés : permadeath). <paramref name="defeatedEnemies"/> = ennemis vaincus DANS L'ORDRE de
-    /// leur mort ; le recrutement propose les 3 derniers (le boss n'y figure jamais). Combat de boss
-    /// → victoire ; sinon → recrutement.
+    /// leur mort ; le recrutement propose les 3 derniers (le boss n'y figure jamais). Seul le boss
+    /// FINAL (phase 3) → victoire ; tout le reste — y compris les boss des phases 1-2 — → recrutement.
     /// </summary>
     public void CompleteCombat(IEnumerable<UnitSpec> casualties, IReadOnlyList<UnitSpec> defeatedEnemies)
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
 
-        if (IsBossCombat)
+        if (IsFinalBoss)   // seul le boss final gagne la run ; les boss des phases 1-2 enchaînent
         {
             Phase = RunPhase.Victory;
             return;
@@ -433,29 +562,6 @@ public sealed class Run
         var start = Math.Max(0, defeatedEnemies.Count - DraftSize);
         for (var i = start; i < defeatedEnemies.Count; i++)
             _draft.Add(defeatedEnemies[i]);
-    }
-
-    /// <summary>Au-delà de ce nombre d'exemplaires d'un même type dans une vague, on évite d'en rajouter.</summary>
-    private const int SameTypeCap = 2;
-
-    /// <summary>
-    /// Ennemi au hasard parmi les <paramref name="poolSize"/> premiers types débloqués, en ÉVITANT un
-    /// type déjà présent <see cref="SameTypeCap"/> fois (≥3 exemplaires) dans <paramref name="soFar"/>.
-    /// Si tous les types disponibles ont atteint le plafond (pool trop petit pour l'effectif), on autorise
-    /// quand même n'importe quel type plutôt que de boucler.
-    /// </summary>
-    private static UnitSpec RandomEnemy(Random rng, int poolSize, List<UnitSpec> soFar)
-    {
-        var room = new List<Domaine>();
-        for (var i = 0; i < poolSize; i++)
-        {
-            var d = IntroOrder[i];
-            if (soFar.Count(u => u.Domaine == d) < SameTypeCap)
-                room.Add(d);
-        }
-
-        var domaine = room.Count > 0 ? room[rng.Next(room.Count)] : IntroOrder[rng.Next(poolSize)];
-        return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
     }
 
     /// <summary>Mélange en place (Fisher-Yates) avec le RNG déterministe du combat.</summary>

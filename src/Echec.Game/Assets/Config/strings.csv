@@ -39,6 +39,12 @@ mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGO
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
+combat.phase,PHASE {0}/3 - {1},PHASE {0}/3 - {1}
+hud.phase,PHASE {0}/{1},PHASE {0}/{1}
+hud.enemies,{0} ENNEMIS,{0} ENEMIES
+mission.escarmouche,ESCARMOUCHE,SKIRMISH
+mission.speciale,MISSION SPECIALE,SPECIAL MISSION
+mission.boss,BOSS,BOSS
 placement.title,PLACEMENT,DEPLOYMENT
 placement.inventory,INVENTAIRE,INVENTORY
 placement.deployed,DEPLOYES {0}/{1},DEPLOYED {0}/{1}

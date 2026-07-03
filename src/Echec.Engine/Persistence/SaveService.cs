@@ -112,8 +112,9 @@ public sealed class SaveService
 
     public bool SlotExists(int index) => File.Exists(SlotPath(index));
 
-    /// <summary>Lit le slot, ou null s'il est vide / illisible.</summary>
-    public RunSave? LoadSlot(int index) => TryRead<RunSave>(SlotPath(index));
+    /// <summary>Lit le slot, ou null s'il est vide / illisible / hors échelle (cf. <see cref="RunSave.IsUsable"/>).</summary>
+    public RunSave? LoadSlot(int index) =>
+        TryRead<RunSave>(SlotPath(index)) is { IsUsable: true } save ? save : null;
 
     public void SaveSlot(int index, RunSave save) => TryWrite(SlotPath(index), save);
 

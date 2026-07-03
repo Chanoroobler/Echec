@@ -1,8 +1,8 @@
 {
   // Paramétrage des classes par domaine. Le motif de déplacement (Dame = 8 dir, Fou = diagonales,
   // Cavalier = saut en L, Tour = lignes) est fixé en code par le domaine ; ici : nom (identifiant
-  // unique), asset (identité stable : sauvegarde/nom/découverte), sprite (PNG dans
-  // Assets/Units/<sprite>_*.png, PARTAGEABLE — défaut = asset), PV (hp), dégâts (damage), portée de
+  // unique), asset (identité stable : sauvegarde/nom/découverte, ET nom du PNG dans
+  // Assets/Units/<asset>_*.png — un sprite par classe), PV (hp), dégâts (damage), portée de
   // déplacement (moveRange) et portée d'attaque (attackRange).
   //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
   //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
@@ -41,15 +41,15 @@
           {
             "name": "Clerc", "asset": "clerc", "hp": 8, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin"],
             "evolutions": [
-              { "name": "Archevêque", "asset": "archeveque", "sprite": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
-              { "name": "Oracle",     "asset": "oracle",     "sprite": "oracle", "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 5, "traits": ["Soin", "Bénédiction"] }
+              { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
+              { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 5, "traits": ["Soin", "Bénédiction"] }
             ]
           },
           {
             "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 18, "moveRange": 2, "attackRange": 4,
             "evolutions": [
-              { "name": "Archimage", "asset": "archimage", "sprite": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4 },
-              { "name": "Démoniste", "asset": "demoniste", "sprite": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
+              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4 },
+              { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
             ]
           }
         ]
@@ -61,9 +61,9 @@
         "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
         "evolutions": [
           {
-            "name": "Cavalier lourd", "asset": "cavalier_lourd", "sprite": "chevalier", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
-              { "name": "Paladin",          "asset": "paladin",          "sprite": "paladin", "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
+              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
               { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
             ]
           },
@@ -83,7 +83,7 @@
         "name": "Lancier", "asset": "lancier", "hp": 10, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true,
         "evolutions": [
           {
-            "name": "Garde", "asset": "garde", "sprite": "empaleur", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
+            "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
               { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Formation"] },
               { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"] }
@@ -92,8 +92,8 @@
           {
             "name": "Tirailleur", "asset": "tirailleur", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
-              { "name": "Javelinier d'élite", "asset": "javelinier_elite", "sprite": "tirailleur", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
-              { "name": "Voltigeur",          "asset": "voltigeur",        "sprite": "tirailleur", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
+              { "name": "Javelinier d'élite", "asset": "javelinier_elite", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
+              { "name": "Voltigeur",          "asset": "voltigeur",        "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
             ]
           }
         ]

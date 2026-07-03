@@ -51,7 +51,7 @@ public static class Domaines
 
     // Repli codé (DOIT rester aligné avec Assets/Config/units.json) : 4 arbres à 3 tiers
     // (base → 2 branches → 2 feuilles chacune). « Traverse allié » = pierces:true (pas dans les traits).
-    // « Zone morte » pilote la portée min (2) via le trait ; les sprites partagés sont donnés via sprite:.
+    // « Zone morte » pilote la portée min (2) via le trait. Un sprite par classe (PNG = asset).
     private static IReadOnlyList<DomaineDef> Defaults() => new[]
     {
         new DomaineDef(Domaine.Dame,
@@ -85,7 +85,7 @@ public static class Domaines
         new DomaineDef(Domaine.Cavalier,
             N(1, "Cavalier", "cavalier", 12, 10, 3, 3, traits: new[] { Trait.Franchissement }, evo: new[]
             {
-                N(2, "Cavalier lourd", "cavalier_lourd", 18, 14, 3, 3, traits: new[] { Trait.Franchissement }, sprite: "chevalier", evo: new[]
+                N(2, "Cavalier lourd", "cavalier_lourd", 18, 14, 3, 3, traits: new[] { Trait.Franchissement }, evo: new[]
                 {
                     N(3, "Paladin", "paladin", 22, 18, 3, 3, traits: new[] { Trait.Franchissement, Trait.AuraDeRempart }),
                     N(3, "Cavalier griffon", "cavalier_griffon", 20, 16, 3, 3, traits: new[] { Trait.Vol }),
@@ -99,23 +99,23 @@ public static class Domaines
         new DomaineDef(Domaine.Tour,
             N(1, "Lancier", "lancier", 10, 12, 2, 2, pierces: true, evo: new[]
             {
-                N(2, "Garde", "garde", 20, 12, 2, 2, pierces: true, traits: new[] { Trait.Rempart }, sprite: "empaleur", evo: new[]
+                N(2, "Garde", "garde", 20, 12, 2, 2, pierces: true, traits: new[] { Trait.Rempart }, evo: new[]
                 {
                     N(3, "Phalange", "phalange", 24, 14, 2, 2, pierces: true, traits: new[] { Trait.Rempart, Trait.Formation }),
                     N(3, "Forteresse", "forteresse", 28, 12, 1, 2, pierces: true, traits: new[] { Trait.Rempart }),
                 }),
                 N(2, "Tirailleur", "tirailleur", 14, 14, 2, 2, pierces: true, traits: new[] { Trait.Esquive }, evo: new[]
                 {
-                    N(3, "Javelinier d'élite", "javelinier_elite", 18, 16, 2, 3, pierces: true, traits: new[] { Trait.Embrochage }, sprite: "tirailleur"),
-                    N(3, "Voltigeur", "voltigeur", 14, 14, 2, 3, pierces: true, traits: new[] { Trait.Esquive, Trait.Riposte }, sprite: "tirailleur"),
+                    N(3, "Javelinier d'élite", "javelinier_elite", 18, 16, 2, 3, pierces: true, traits: new[] { Trait.Embrochage }),
+                    N(3, "Voltigeur", "voltigeur", 14, 14, 2, 3, pierces: true, traits: new[] { Trait.Esquive, Trait.Riposte }),
                 }),
             })),
     };
 
     /// <summary>Nœud de l'arbre de classes (tier explicite, sprite/traits/évolutions optionnels).</summary>
     private static UnitClass N(int tier, string name, string asset, int hp, int dmg, int move, int attack,
-        bool pierces = false, string[]? traits = null, string? sprite = null, UnitClass[]? evo = null) =>
+        bool pierces = false, string[]? traits = null, UnitClass[]? evo = null) =>
         new(name, asset, tier, maxHp: hp, damage: dmg, moveRange: move, attackRange: attack,
-            piercesAllies: pierces, minAttackRange: 1, traits: traits, sprite: sprite,
+            piercesAllies: pierces, minAttackRange: 1, traits: traits,
             evolutions: evo ?? System.Array.Empty<UnitClass>());
 }

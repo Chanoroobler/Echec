@@ -13,10 +13,24 @@ namespace Echec.Core.Campaign;
 /// </summary>
 public sealed class RunSave
 {
-    /// <summary>Version du format (pour migrer/ignorer une sauvegarde incompatible plus tard).</summary>
-    public int Version { get; set; } = 1;
+    /// <summary>
+    /// Version du format. v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> = 18).
+    /// v1 = ancienne boucle plate de 6 combats : ces sauvegardes restent LISIBLES (leur
+    /// <see cref="CombatNumber"/> 1..6 tombe dans 1..18 et pointe désormais vers la nouvelle grille —
+    /// combat 6 devient le boss de la PHASE 1, non plus le boss final ; migration acceptée telle quelle).
+    /// En revanche un <see cref="CombatNumber"/> hors [1..18] est impossible sous ce format → à ignorer
+    /// (cf. <see cref="IsUsable"/>).
+    /// </summary>
+    public int Version { get; set; } = 2;
 
     public int CombatNumber { get; set; } = 1;
+
+    /// <summary>
+    /// Vrai si la sauvegarde est exploitable sur la grille de campagne actuelle : <see cref="CombatNumber"/>
+    /// dans [1..<see cref="Run.TotalCombats"/>]. Hors bornes (données corrompues ou format futur
+    /// incompatible) → slot traité comme vide au chargement.
+    /// </summary>
+    public bool IsUsable => CombatNumber >= 1 && CombatNumber <= Run.TotalCombats;
 
     /// <summary>Graine de la run : rejoue EXACTEMENT la même vague/terrain au combat repris.</summary>
     public int Seed { get; set; }

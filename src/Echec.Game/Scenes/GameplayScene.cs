@@ -438,33 +438,45 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Map à utiliser pour un combat, choisie par TAILLE : combats 1-2 → 6×6, combats 3-4 → 7×7. Au-delà
-    /// (ou si aucune map de la bonne taille n'est chargée) → null = terrain aléatoire 8×8. Quand plusieurs
-    /// maps ont la bonne taille, on en prend une ALÉATOIREMENT (permutation dérivée de la graine de run :
-    /// varie d'une run à l'autre mais reste stable si on reprend le combat), pas dans l'ordre des fichiers.
+    /// Taille (côté du plateau) d'une mission : 6×6 en phase 1, 7×7 en phase 2, 8×8 en phase 3 — SAUF les
+    /// escarmouches 4 et 5 de la PHASE 1 qui passent en 7×7 (montée en effectif + arrivée du T2).
     /// </summary>
-    private MapData? MapForCombat(int combatNumber)
+    private static int MapSizeFor(int phaseIndex, int missionInPhase)
     {
-        var size = combatNumber switch { 1 or 2 => 6, 3 or 4 => 7, _ => (int?)null };
-        if (size is not { } s)
-            return null;
+        if (phaseIndex == 1 && (missionInPhase == 4 || missionInPhase == 5))
+            return 7;
+        return phaseIndex switch { 1 => 6, 2 => 7, _ => 8 };
+    }
+
+    /// <summary>
+    /// Map à utiliser pour le combat courant, à la taille <paramref name="size"/> (cf. <see cref="MapSizeFor"/>) :
+    /// le TYPE dépend de la mission (un boss pioche une map <see cref="CombatType.Boss"/> ; une escarmouche —
+    /// ou une spéciale, faute de map dédiée — pioche une <see cref="CombatType.Escarmouche"/>). Si aucune map
+    /// ne correspond → null = terrain aléatoire de cette taille. Quand plusieurs maps conviennent, on en prend
+    /// une ALÉATOIREMENT (permutation dérivée de la graine de run : varie d'une run à l'autre mais reste stable
+    /// si on reprend le combat), pas dans l'ordre des fichiers.
+    /// </summary>
+    private MapData? MapForCombat(int size)
+    {
+        // Speciale : pas encore de map dédiée → traitée comme une escarmouche.
+        var wanted = _run.CurrentMission == CombatType.Boss ? CombatType.Boss : CombatType.Escarmouche;
 
         var matches = _maps
-            .Where(m => m.Type == CombatType.Escarmouche && m.Width == s && m.Height == s)
+            .Where(m => m.Type == wanted && m.Width == size && m.Height == size)
             .ToList();
         if (matches.Count == 0)
             return null;
 
         // Permutation ALÉATOIRE mais DÉTERMINISTE par (graine de run, taille) — même logique que le terrain
         // et la vague ennemie (cf. Run.CombatRng), avec un sel propre (2). Indépendante du numéro de combat :
-        // les combats d'une même taille (1-2 en 6×6, 3-4 en 7×7) piochent ainsi des maps DIFFÉRENTES.
-        var rng = new System.Random(unchecked(_run.Seed * 6151 + s * 1031 + 2));
+        // les combats d'une même taille piochent ainsi des maps DIFFÉRENTES au fil de la phase.
+        var rng = new System.Random(unchecked(_run.Seed * 6151 + size * 1031 + 2));
         for (var i = matches.Count - 1; i > 0; i--)
         {
             var j = rng.Next(i + 1);
             (matches[i], matches[j]) = (matches[j], matches[i]);
         }
-        return matches[(combatNumber - 1) % matches.Count];
+        return matches[(_run.CombatNumber - 1) % matches.Count];
     }
 
     /// <summary>
@@ -631,8 +643,10 @@ public sealed class GameplayScene : Scene
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
     private void BeginPlacement()
     {
-        // Map du combat selon sa taille (1-2 → 6×6, 3-4 → 7×7) ; sinon terrain aléatoire 8×8. Cf. MapForCombat.
-        _map = MapForCombat(_run.CombatNumber);
+        // Taille du plateau selon (phase, mission) — cf. MapSizeFor : phase 1 = 6×6, sauf missions 4-5 = 7×7 ;
+        // phase 2 = 7×7 ; phase 3 = 8×8. Map dessinée de cette taille si dispo, sinon terrain aléatoire de même taille.
+        var size = MapSizeFor(_run.PhaseIndex, _run.MissionInPhase);
+        _map = MapForCombat(size);
         if (_map is { } map)
         {
             Columns = map.Width;
@@ -641,8 +655,8 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            Columns = 8;
-            Rows = 8;
+            Columns = size;
+            Rows = size;
             _battlefield = _run.BuildBattlefield(Columns, Rows);
         }
         // Objets de la map (calque "objects") : buissons (couvert permanent), recrues (pion « ? »),
@@ -719,7 +733,7 @@ public sealed class GameplayScene : Scene
 
         // La vague ennemie est posée dès le placement : le joueur voit le déploiement
         // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur).
-        PlaceEnemies(_run.BuildEnemyWave());
+        PlaceEnemies(_run.BuildEnemyWave(Context.Saves.IsUnitDiscovered));   // T2/T3 : priorité aux unités déjà découvertes
 
         // Méta-progression : les tier 1 débloqués (donc visibles dans la vague qu'on affiche) sont désormais
         // « vus ». Dès lors la tuile recrue peut les proposer à tout moment, y compris dans les runs suivantes
@@ -1159,6 +1173,7 @@ public sealed class GameplayScene : Scene
         var scene = _run.Phase switch
         {
             RunPhase.Placement => MusicScene.Calm,
+            // Piste boss sur les 3 boss de phase. TODO : piste distincte sur _run.IsFinalBoss (boss final).
             RunPhase.Battle => _run.IsBossCombat ? MusicScene.Boss : MusicScene.Combat,
             _ => MusicScene.Combat,   // recrutement / victoire / défaite : « sinon », la playlist
         };
@@ -3127,6 +3142,7 @@ public sealed class GameplayScene : Scene
                 }
                 sb.End();
 
+                DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (FusionOpen)
@@ -3168,6 +3184,7 @@ public sealed class GameplayScene : Scene
                     sb.End();
                 }
 
+                DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (_recrueReveal != null)
@@ -5365,8 +5382,16 @@ public sealed class GameplayScene : Scene
         sb.End();
     }
 
-    private string CombatTitle() =>
-        _run.IsBossCombat ? Loc.T("combat.boss") : Loc.T("combat.number", _run.CombatNumber, Run.TotalCombats);
+    private string CombatTitle()
+    {
+        var mission = _run.CurrentMission switch
+        {
+            CombatType.Boss => Loc.T("mission.boss"),
+            CombatType.Speciale => Loc.T("mission.speciale"),
+            _ => Loc.T("mission.escarmouche"),
+        };
+        return Loc.T("combat.phase", _run.PhaseIndex, mission);
+    }
 
     /// <summary>
     /// Dessine un sprite à sa TAILLE NATIVE (jamais agrandi ni rétréci), centré dans
@@ -5632,6 +5657,168 @@ public sealed class GameplayScene : Scene
     private static Rectangle Inflate(Rectangle r, int by) =>
         new(r.X - by, r.Y - by, r.Width + 2 * by, r.Height + 2 * by);
 
+    // ── Frise chronologique de la phase (HUD haut) ──────────────────────────────
+    private const int TimelineIconSize = 32;   // icône de mission (PNG Assets/Icons/mission_*.png = 32×32)
+    private const int TimelineNodeSize = 40;   // côté d'un nœud (icône 32 + marge)
+    private const int TimelineGap = 30;         // espace entre deux nœuds
+    private const int TimelineTopY = 24;        // haut des nœuds (le libellé est au-dessus)
+
+    /// <summary>
+    /// Frise en haut de l'écran : les <see cref="Run.MissionsPerPhase"/> missions de la PHASE courante,
+    /// une icône par nature (escarmouche / spéciale / boss). Avancement lisible : missions passées =
+    /// liseré vert + connecteur doré ; mission en cours = liseré doré pulsé ; à venir = sombre. Overlay
+    /// dessiné au-dessus du plateau, centré dans la zone à gauche du panneau (jamais sous lui). Masquée
+    /// en tutoriel (ce n'est pas une vraie phase de campagne).
+    /// </summary>
+    private void DrawPhaseTimeline(SpriteBatch sb, Viewport viewport)
+    {
+        if (_tutorial != null)
+            return;
+
+        const int count = Run.MissionsPerPhase;
+        const int pitch = TimelineNodeSize + TimelineGap;
+        var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
+        var railW = viewport.Width - RightPanelWidth;               // zone du plateau (jamais sous le panneau)
+        var startX = (railW - contentW) / 2;
+        var centerY = TimelineTopY + TimelineNodeSize / 2;
+        var current = _run.MissionInPhase;                          // 1..6
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+
+        // Fond tramé pixel-art (style maison des panneaux) pour détacher la frise du plateau.
+        var bg = new Rectangle(startX - 14, 6, contentW + 28, TimelineTopY + TimelineNodeSize + 2);
+        Context.Style.FillDither(sb, bg);
+        DrawRectBorder(sb, bg, Palette.Navy1, 2);
+
+        // Libellé « PHASE n/3 » centré au-dessus des nœuds.
+        Context.Font.DrawCentered(sb, Loc.T("hud.phase", _run.PhaseIndex, Run.PhaseCount),
+            new Rectangle(startX, TimelineTopY - 16, contentW, 12), 1, Palette.Yellow1);
+
+        // Connecteurs (derrière les nœuds) : segment i→i+1 doré s'il est franchi, sombre sinon.
+        for (var i = 0; i < count - 1; i++)
+        {
+            var x0 = startX + i * pitch + TimelineNodeSize;
+            var color = (i + 1) < current ? Palette.Yellow2 : Palette.Navy1;
+            DrawRect(sb, new Rectangle(x0, centerY - 1, TimelineGap, 2), color);
+        }
+
+        // Nœuds.
+        for (var i = 0; i < count; i++)
+        {
+            var mission = i + 1;
+            var type = Run.MissionKindAt(mission);
+            var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
+            var past = mission < current;
+
+            DrawRect(sb, Inflate(area, 1), Palette.Black1);   // contour sombre
+            DrawRect(sb, area, Palette.Navy2);                // fond sombre du nœud
+            DrawMissionIcon(sb, type, CenteredSquare(area, TimelineIconSize), dim: past);
+
+            if (mission == current)
+            {
+                var pulse = 1 + (int)System.Math.Round((System.Math.Sin(_time * 6) + 1) * 0.5);   // 1..2 px
+                DrawRectBorder(sb, Inflate(area, pulse), Palette.Yellow2, 2);   // en cours : liseré doré pulsé
+            }
+            else if (past)
+                DrawRectBorder(sb, area, Palette.Green1, 2);   // fait
+            else
+                DrawRectBorder(sb, area, Palette.Navy1, 1);    // à venir
+        }
+
+        // Tooltip au survol souris : nature de la mission + effectif ennemi (escortes + boss éventuel).
+        if (!Context.Input.UsingGamepad)
+        {
+            var mouse = Context.Input.MousePosition;
+            for (var i = 0; i < count; i++)
+            {
+                var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
+                if (!area.Contains(mouse))
+                    continue;
+                DrawMissionTooltip(sb, area, Run.MissionKindAt(i + 1), Run.EnemyCount(_run.PhaseIndex, i + 1));
+                break;
+            }
+        }
+
+        sb.End();
+    }
+
+    /// <summary>Carré de côté <paramref name="size"/> centré dans <paramref name="area"/>.</summary>
+    private static Rectangle CenteredSquare(Rectangle area, int size) =>
+        new(area.X + (area.Width - size) / 2, area.Y + (area.Height - size) / 2, size, size);
+
+    /// <summary>
+    /// Bulle d'info d'un nœud de frise, sous le nœud : nom de la mission + « N ENNEMIS ». Bornée à la
+    /// zone du plateau (jamais sous le panneau). Style tramé + liseré doré, comme les autres infobulles.
+    /// </summary>
+    private void DrawMissionTooltip(SpriteBatch sb, Rectangle node, CombatType type, int enemies)
+    {
+        var title = type switch
+        {
+            CombatType.Boss => Loc.T("mission.boss"),
+            CombatType.Speciale => Loc.T("mission.speciale"),
+            _ => Loc.T("mission.escarmouche"),
+        };
+        var sub = Loc.T("hud.enemies", enemies);
+
+        var w = System.Math.Max(Context.Font.Measure(title, 1), Context.Font.Measure(sub, 1)) + 16;
+        const int h = 32;
+        var railRight = VirtualViewport.Width - RightPanelWidth;
+        var x = System.Math.Clamp(node.Center.X - w / 2, 4, railRight - w - 4);
+        var box = new Rectangle(x, node.Bottom + 8, w, h);
+
+        Context.Style.FillDither(sb, box);
+        DrawRectBorder(sb, box, Palette.Yellow1, 2);
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, box.Y + 6, box.Width, 8), 1, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, box.Y + 18, box.Width, 8), 1, Palette.White);
+    }
+
+    /// <summary>
+    /// Icône d'une nature de mission dans un nœud de frise. PNG d'art <c>Assets/Icons/mission_&lt;type&gt;.png</c>
+    /// si présent, sinon placeholder procédural distinct par type (escarmouche = épées croisées bleues,
+    /// spéciale = étincelle dorée, boss = gemme rouge). <paramref name="dim"/> atténue les missions passées.
+    /// </summary>
+    private void DrawMissionIcon(SpriteBatch sb, CombatType type, Rectangle area, bool dim)
+    {
+        var alpha = dim ? 0.45f : 1f;
+
+        if (IconOrNull($"mission_{type}".ToLowerInvariant()) is { } png)
+        {
+            DrawSpriteFit(sb, png, area);
+            if (dim)
+                DrawRect(sb, area, Palette.Black1 * 0.5f);   // voile pour les missions passées (PNG non teinté)
+            return;
+        }
+
+        var center = new Vector2(area.Center.X, area.Center.Y);
+        switch (type)
+        {
+            case CombatType.Boss:   // gemme (losange plein)
+                var d = area.Width * 0.64f;
+                sb.Draw(Context.Pixel, center, null, Palette.Purple5 * alpha, MathHelper.PiOver4,
+                    new Vector2(0.5f, 0.5f), new Vector2(d, d), SpriteEffects.None, 0f);
+                break;
+            case CombatType.Speciale:   // étincelle (croix + diagonales)
+                var s = Palette.Yellow2 * alpha;
+                var l = area.Width * 0.95f;
+                DrawBar(sb, center, l, 3, 0f, s);
+                DrawBar(sb, center, l, 3, MathHelper.PiOver2, s);
+                DrawBar(sb, center, l * 0.7f, 2, MathHelper.PiOver4, s);
+                DrawBar(sb, center, l * 0.7f, 2, -MathHelper.PiOver4, s);
+                break;
+            default:   // Escarmouche : épées croisées (X)
+                var e = Palette.Cyan1 * alpha;
+                var el = area.Width * 0.95f;
+                DrawBar(sb, center, el, 3, MathHelper.PiOver4, e);
+                DrawBar(sb, center, el, 3, -MathHelper.PiOver4, e);
+                break;
+        }
+    }
+
+    /// <summary>Barre pleine (texture 1×1 étirée) centrée sur <paramref name="center"/>, tournée de <paramref name="rotation"/> rad.</summary>
+    private void DrawBar(SpriteBatch sb, Vector2 center, float length, float thickness, float rotation, Color c) =>
+        sb.Draw(Context.Pixel, center, null, c, rotation, new Vector2(0.5f, 0.5f),
+            new Vector2(length, thickness), SpriteEffects.None, 0f);
+
     // Marge autour du terrain (px à l'écran).
     private const int BoardMargin = 24;
 
@@ -5765,16 +5952,15 @@ public sealed class GameplayScene : Scene
     private Texture2D? UnitSprite(Unit unit) => SpriteFor(unit.Class, unit.Faction, front: FacesDown(unit));
 
     /// <summary>
-    /// <paramref name="front"/> = l'unité regarde vers le bas (face caméra). Le PNG est choisi par la
-    /// FAMILLE de sprite (<see cref="UnitClass.Sprite"/>), partageable entre classes (ex. Archevêque/
-    /// Oracle → « clerc ») — distincte de l'identité <see cref="UnitClass.Asset"/> (nom/découverte).
+    /// <paramref name="front"/> = l'unité regarde vers le bas (face caméra). Le PNG est choisi par
+    /// l'<see cref="UnitClass.Asset"/> de la classe (un sprite par classe) : <c>&lt;asset&gt;_*.png</c>.
     /// </summary>
     private Texture2D? SpriteFor(UnitClass cls, Faction faction, bool front = false)
     {
         var variant = faction == Faction.Player
-            ? $"{cls.Sprite}_{(front ? "front" : "back")}"
-            : $"{cls.Sprite}_ia_{(front ? "front" : "back")}";
-        return SpriteFor(variant) ?? SpriteFor(cls.Sprite);
+            ? $"{cls.Asset}_{(front ? "front" : "back")}"
+            : $"{cls.Asset}_ia_{(front ? "front" : "back")}";
+        return SpriteFor(variant) ?? SpriteFor(cls.Asset);
     }
 
     /// <summary>Orientation par défaut : le joueur regarde vers le haut (l'ennemi), l'ennemi vers le bas.</summary>
