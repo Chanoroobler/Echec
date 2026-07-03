@@ -1,0 +1,30 @@
+{
+  "name": "escarmouche_6_05",
+  "type": "Escarmouche",
+  "width": 6,
+  "height": 6,
+  "tiles": [
+    "hhh8hh",
+    "hhh8hh",
+    "phe8hp",
+    "6440hh",
+    "0hhhhh",
+    "hhhhhh"
+  ],
+  "spawns": [
+    "EEEEEE",
+    "......",
+    "......",
+    "......",
+    "......",
+    "PPPPPP"
+  ],
+  "objects": [
+    "......",
+    "......",
+    "......",
+    "C....R",
+    ".B..B.",
+    "......"
+  ]
+}
