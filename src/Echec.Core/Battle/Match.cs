@@ -36,8 +36,19 @@ public sealed class Match
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
     private readonly System.Random _rng;
 
+    // Vrai (défaut) : éliminer tout un camp décide la partie (escarmouche/boss). Faux : l'élimination des
+    // ENNEMIS ne gagne PAS le combat (mission spéciale à objectif : c'est la scène qui décide la réussite ;
+    // seule la chute du commandant reste une défaite). Voir UpdateWinner.
+    private readonly bool _eliminationEndsGame;
+
+    // Cases interdites au DÉPLACEMENT du JOUEUR uniquement (les ennemis y vont) : les paysans de la mission
+    // « protéger » (le joueur ne peut pas camper dessus ; il défend en interceptant). Le joueur peut GLISSER
+    // au travers mais pas s'y arrêter ; les ennemis les traitent normalement. Vide = aucune restriction.
+    private readonly HashSet<Cell> _playerBlocked;
+
     public Match(int width, int height, Battlefield? terrain = null,
-        IEnumerable<Cell>? coverCells = null, System.Random? rng = null)
+        IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
+        IEnumerable<Cell>? playerBlockedCells = null)
     {
         Width = width;
         Height = height;
@@ -45,6 +56,8 @@ public sealed class Match
         _terrain = terrain;
         _cover = coverCells is null ? new HashSet<Cell>() : new HashSet<Cell>(coverCells);
         _rng = rng ?? new System.Random();
+        _eliminationEndsGame = eliminationEndsGame;
+        _playerBlocked = playerBlockedCells is null ? new HashSet<Cell>() : new HashSet<Cell>(playerBlockedCells);
     }
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
@@ -57,6 +70,17 @@ public sealed class Match
     /// <summary>Vrai si la tuile arrête une ligne de tir (mur).</summary>
     private bool BlocksLineOfFire(Cell cell) =>
         _terrain != null && _terrain[cell].BlocksLineOfFire;
+
+    /// <summary>Vrai si <paramref name="unit"/> (un JOUEUR) ne peut pas s'arrêter sur <paramref name="cell"/>
+    /// — case paysan de la mission « protéger ». Les ennemis n'y sont jamais bloqués.</summary>
+    private bool BlocksPlayerLanding(Cell cell, Unit unit) =>
+        _playerBlocked.Count > 0 && unit.Faction == Faction.Player && _playerBlocked.Contains(cell);
+
+    /// <summary>
+    /// Lève l'interdiction du JOUEUR sur une case (mission « protéger » : un paysan CAPTURÉ n'est plus là,
+    /// sa case redevient accessible). Sans effet si la case n'était pas bloquée.
+    /// </summary>
+    public void UnblockPlayerCell(Cell cell) => _playerBlocked.Remove(cell);
 
     public int Width { get; }
     public int Height { get; }
@@ -121,7 +145,8 @@ public sealed class Match
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to) && _units[to.Column, to.Row] == null && (flies || !BlocksMovement(to)))
+                if (InBounds(to) && _units[to.Column, to.Row] == null && (flies || !BlocksMovement(to))
+                    && !BlocksPlayerLanding(to, unit))   // le joueur ne se pose pas sur un paysan (mission « protéger »)
                     result.Add(to);
             }
             return;
@@ -140,6 +165,8 @@ public sealed class Match
                     if (phases) continue;   // Franchissement : on enjambe l'unité (sans pouvoir s'y poser)
                     break;                  // sinon une unité borne le déplacement
                 }
+                if (BlocksPlayerLanding(to, unit))
+                    continue;   // le joueur GLISSE au travers d'un paysan (protéger) mais ne s'y arrête pas
                 result.Add(to);
             }
         }
@@ -161,9 +188,11 @@ public sealed class Match
         if (unit == null)
             return;
 
-        var vectors = Movement.Vectors(unit.Domaine);
+        // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
+        var attackDomaine = unit.AttackDomaine;
+        var vectors = Movement.Vectors(attackDomaine);
 
-        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        if (Movement.Kind(attackDomaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
             {
@@ -230,9 +259,11 @@ public sealed class Match
         if (unit == null)
             return;
 
-        var vectors = Movement.Vectors(unit.Domaine);
+        // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
+        var attackDomaine = unit.AttackDomaine;
+        var vectors = Movement.Vectors(attackDomaine);
 
-        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        if (Movement.Kind(attackDomaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
             {
@@ -485,8 +516,9 @@ public sealed class Match
         if (unit == null || !unit.HasTrait(Trait.Soin))
             return;
 
-        var vectors = Movement.Vectors(unit.Domaine);
-        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        var attackDomaine = unit.AttackDomaine;   // le soin suit aussi le pattern d'attaque
+        var vectors = Movement.Vectors(attackDomaine);
+        if (Movement.Kind(attackDomaine) == MovementKind.Jump)
         {
             foreach (var off in vectors)
             {
@@ -607,7 +639,10 @@ public sealed class Match
             else enemyLeaderDown = true;
         }
 
+        // Camp joueur anéanti (ou commandant tombé) = défaite : toujours décisif, même à objectif.
         if (!hasPlayer || playerLeaderDown) Winner = Faction.Enemy;
-        else if (!hasEnemy || enemyLeaderDown) Winner = Faction.Player;
+        // Camp ennemi anéanti = victoire, SAUF en mode objectif (mission spéciale) où l'on laisse le
+        // joueur poursuivre l'objectif. Le boss tué reste décisif dans tous les cas.
+        else if ((!hasEnemy && _eliminationEndsGame) || enemyLeaderDown) Winner = Faction.Player;
     }
 }

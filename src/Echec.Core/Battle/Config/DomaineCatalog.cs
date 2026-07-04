@@ -55,7 +55,14 @@ public static class DomaineCatalog
             .Select(e => ToClass(e, tier + 1))
             .ToArray();
 
+        Domaine? attackDomaine = null;
+        if (!string.IsNullOrWhiteSpace(c.AttackDomaine))
+            attackDomaine = Enum.TryParse<Domaine>(c.AttackDomaine, ignoreCase: true, out var ad)
+                ? ad
+                : throw new InvalidOperationException(
+                    $"Domaine d'attaque inconnu pour la classe '{c.Name}' : '{c.AttackDomaine}'.");
+
         return new UnitClass(c.Name, c.Asset, tier, c.Hp, c.Damage, c.MoveRange, c.AttackRange,
-            c.PiercesAllies, c.MinAttackRange ?? 1, c.Traits, evolutions);
+            c.PiercesAllies, c.MinAttackRange ?? 1, c.Traits, attackDomaine, evolutions);
     }
 }

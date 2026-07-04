@@ -17,6 +17,66 @@ public class MatchTests
     }
 
     [Fact]
+    public void MountedArcher_MovesInL_ButAttacksInLines()
+    {
+        // Cavalier monté (archer) : DÉPLACEMENT en L (domaine Cavalier), mais TIR en lignes (attaque = Dame).
+        var cls = new UnitClass("MA", "ma", tier: 1, maxHp: 12, damage: 10,
+            moveRange: 2, attackRange: 3, attackDomaine: Domaine.Dame);
+        var match = new Match(8, 8);
+        var from = new Cell(4, 4);
+        match.Place(from, new Unit(Domaine.Cavalier, Faction.Player, cls));
+
+        var moves = match.LegalMoves(from);
+        Assert.Contains(new Cell(6, 5), moves);         // saut en L (décalage 2,1)
+        Assert.DoesNotContain(new Cell(4, 6), moves);   // une ligne droite n'est PAS un déplacement
+
+        match.Place(new Cell(4, 6), Units.Soldat(Faction.Enemy));   // ennemi en ligne droite (distance 2)
+        match.Place(new Cell(6, 5), Units.Soldat(Faction.Enemy));   // ennemi en position de L
+        var targets = match.AttackTargets(from);
+        Assert.Contains(new Cell(4, 6), targets);         // tire en LIGNE
+        Assert.DoesNotContain(new Cell(6, 5), targets);   // ne tire PAS en L
+    }
+
+    [Fact]
+    public void LegalMoves_Player_CannotLandOnPlayerBlockedCell()
+    {
+        // Mission « protéger » : le joueur ne peut pas s'arrêter sur une case paysan.
+        var blocked = new Cell(4, 3);
+        var match = new Match(8, 8, playerBlockedCells: new[] { blocked });
+        var pCell = new Cell(4, 4);
+        match.Place(pCell, Units.Soldat(Faction.Player));
+
+        Assert.DoesNotContain(blocked, match.LegalMoves(pCell));
+    }
+
+    [Fact]
+    public void LegalMoves_Enemy_CanLandOnPlayerBlockedCell()
+    {
+        // La même case reste accessible aux ENNEMIS (ils vont capturer le paysan).
+        var blocked = new Cell(4, 3);
+        var match = new Match(8, 8, playerBlockedCells: new[] { blocked });
+        var eCell = new Cell(4, 4);
+        match.Place(eCell, Units.Soldat(Faction.Enemy));
+        match.PassTurn();   // → tour ennemi
+
+        Assert.Contains(blocked, match.LegalMoves(eCell));
+    }
+
+    [Fact]
+    public void UnblockPlayerCell_MakesPaysanCellLandableAgain()
+    {
+        // Paysan CAPTURÉ (mission « protéger ») : sa case redevient accessible au joueur.
+        var paysan = new Cell(4, 3);
+        var match = new Match(8, 8, playerBlockedCells: new[] { paysan });
+        var pCell = new Cell(4, 4);
+        match.Place(pCell, Units.Soldat(Faction.Player));
+        Assert.DoesNotContain(paysan, match.LegalMoves(pCell));   // avant : interdit
+
+        match.UnblockPlayerCell(paysan);
+        Assert.Contains(paysan, match.LegalMoves(pCell));         // après capture : accessible
+    }
+
+    [Fact]
     public void LegalMoves_OnlyEmptyCells_OccupiedCellsBlock()
     {
         var match = TwoUnitMatch(out var playerCell, out var enemyCell);

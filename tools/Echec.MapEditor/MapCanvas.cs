@@ -107,6 +107,8 @@ internal sealed class MapCanvas : Panel
         {
             'P' => Color.FromArgb(60, 200, 90),
             'E' => Color.FromArgb(220, 70, 70),
+            'D' => Color.FromArgb(230, 120, 40),
+            'O' => Color.FromArgb(200, 40, 140),
             'B' => Color.FromArgb(170, 90, 220),
             _ => Color.Gray,
         };

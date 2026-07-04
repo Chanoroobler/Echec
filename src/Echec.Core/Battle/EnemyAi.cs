@@ -5,31 +5,71 @@ using Echec.Core.Map;
 
 namespace Echec.Core.Battle;
 
+/// <summary>Comportement d'IA d'une unité ennemie.</summary>
+public enum AiKind
+{
+    /// <summary>Fonce sur le joueur : attaque à portée, sinon se met à portée, sinon avance. Défaut.</summary>
+    Normal,
+
+    /// <summary>
+    /// Garde défensif (mission « libérer les paysans ») : n'avance JAMAIS vers le joueur ; attaque tout joueur
+    /// déjà à portée ; réagit seulement si un joueur s'approche à <see cref="EnemyAi.AlertRadius"/> cases ;
+    /// sinon se repositionne vers/autour de la case gardée (paysan) la plus proche, SANS jamais s'y poser.
+    /// </summary>
+    Defensif,
+
+    /// <summary>
+    /// Assaillant offensif (mission « protéger les paysans ») : AGRESSIF — attaque un joueur à portée, se
+    /// JETTE sur un joueur atteignable (s'engage même au risque de mourir), et sinon fonce vers le paysan le
+    /// plus proche pour lui SAUTER DESSUS (se pose sur la case = capture). L'engagement passe avant le paysan.
+    /// </summary>
+    Offensif,
+}
+
 /// <summary>Action choisie par l'IA : un déplacement ou une attaque.</summary>
 public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
 
 /// <summary>
-/// IA du camp ennemi (un tour = UNE action). Priorités :
-///   1. ATTAQUER une cible à portée (mortelle d'abord, sinon quelconque) ;
-///   2. sinon SE METTRE À PORTÉE : un déplacement qui amène l'unité à pouvoir attaquer un joueur,
-///      sans atterrir sur une case où elle se ferait tuer (« sans mourir ») ;
-///   3. sinon faire avancer un PION ALÉATOIRE vers le joueur le plus proche.
+/// IA du camp ennemi (un tour = UNE action pour tout le camp). Chaque unité agit selon son
+/// <see cref="Unit.AiKind"/> ; on agrège les coups candidats de toutes les unités puis on choisit UN
+/// coup par priorité :
+///   1. ATTAQUER une cible à portée (mortelle d'abord, sinon quelconque) — TOUS les comportements ;
+///   2. SE METTRE À PORTÉE du joueur — un pion NORMAL (sans mourir) et un OFFENSIF (agressif : même au
+///      risque de mourir) ; un DÉFENSIF seulement s'il est alerté (un joueur à ≤ <see cref="AlertRadius"/> cases) ;
+///   3. AVANCER vers sa CIBLE — un NORMAL vers le joueur, un OFFENSIF vers le paysan le plus proche (il peut
+///      s'y poser = le capturer) ; départage aléatoire entre unités ;
+///   4. GARDER — un pion DÉFENSIF se repositionne vers/autour de la case gardée (paysan) la plus proche
+///      sans s'y poser : il produit TOUJOURS un coup s'il peut bouger (déjà au contact → il tourne autour) ;
+///   5. repli anti-blocage : n'importe quel coup légal (tous comportements).
 ///
-/// Le tirage aléatoire (mise à portée comme avancée) évite de toujours pousser la même pièce :
-/// l'armée progresse en se renouvelant au lieu d'envoyer un éclaireur solitaire.
+/// EXIGENCE : l'ennemi doit BOUGER quoi qu'il arrive. Un pion ne reste jamais sur place s'il a un
+/// déplacement légal ; <see cref="ChooseAction(Match, IReadOnlyCollection{Cell}, Random)"/> ne renvoie
+/// <c>null</c> (⇒ tour passé par l'appelant) que si PLUS AUCUN ennemi ne peut bouger, ou s'il n'y a plus
+/// de joueur.
 ///
-/// SUICIDAIRE en fin de partie : quand il ne reste plus qu'UNE unité ennemie, elle abandonne le
-/// filet « sans mourir » et s'engage même si elle doit y rester — sinon elle fuit et le joueur lui
-/// court après indéfiniment.
+/// Le tirage aléatoire (mise à portée comme avancée) évite de toujours pousser la même pièce : l'armée
+/// progresse en se renouvelant au lieu d'envoyer un éclaireur solitaire.
+///
+/// SUICIDAIRE en fin de partie : quand il ne reste plus qu'UNE unité ennemie, elle abandonne le filet
+/// « sans mourir » et s'engage même si elle doit y rester — sinon elle fuit et le joueur lui court après.
 /// </summary>
 public static class EnemyAi
 {
+    /// <summary>Distance (Chebyshev) à laquelle un joueur « réveille » un garde défensif.</summary>
+    public const int AlertRadius = 2;
+
     private static readonly Random SharedRng = new();
+    private static readonly IReadOnlyCollection<Cell> NoPaysans = Array.Empty<Cell>();
 
-    public static AiAction? ChooseAction(Match match) => ChooseAction(match, SharedRng);
+    public static AiAction? ChooseAction(Match match) => ChooseAction(match, NoPaysans, SharedRng);
 
+    public static AiAction? ChooseAction(Match match, IReadOnlyCollection<Cell> paysanCells) =>
+        ChooseAction(match, paysanCells, SharedRng);
+
+    /// <param name="paysanCells">Cases des paysans (tuiles recrue non résolues) : GARDÉES par les défensifs,
+    /// ASSAILLIES par les offensifs.</param>
     /// <param name="rng">Source d'aléa (injectable pour des tests déterministes).</param>
-    public static AiAction? ChooseAction(Match match, Random rng)
+    public static AiAction? ChooseAction(Match match, IReadOnlyCollection<Cell> paysanCells, Random rng)
     {
         if (match.IsOver || match.CurrentTurn != Faction.Enemy)
             return null;
@@ -45,19 +85,17 @@ public static class EnemyAi
         // de fuir et de faire courir le joueur après elle jusqu'à la fin de la partie.
         var suicidal = enemies.Count <= 1;
 
-        // 1. Attaques. On garde la première mortelle et la première quelconque rencontrées.
-        AiAction? bestKill = null, bestAttack = null;
-
-        // 2. Coups qui amènent à PORTÉE D'ATTAQUE sans mourir (départage aléatoire entre eux).
-        var engage = new List<AiAction>();
-
-        // 3. Avancées : un pion ALÉATOIRE parmi ceux qui peuvent se rapprocher (on retient, par
-        //    unité, son meilleur coup ; puis on choisit l'unité au hasard).
-        var advanceByUnit = new List<AiAction>();
-        var anyLegalMove = new List<AiAction>();   // repli anti-blocage (le tour doit passer)
+        AiAction? bestKill = null, bestAttack = null;   // 1. attaques (mortelle prioritaire)
+        var engage = new List<AiAction>();              // 2. mise à portée (normal / défensif alerté)
+        var advanceByUnit = new List<AiAction>();       // 3. avancée vers la cible (normal → joueur, offensif → paysan)
+        var guardByUnit = new List<AiAction>();         // 4. repositionnement des gardes défensifs
+        var anyLegalMove = new List<AiAction>();        // 5. repli anti-blocage (tous)
 
         foreach (var (from, unit) in enemies)
         {
+            var defensif = unit.AiKind == AiKind.Defensif;
+            var offensif = unit.AiKind == AiKind.Offensif;
+
             foreach (var target in match.AttackTargets(from))
             {
                 var victim = match.UnitAt(target)!;
@@ -67,38 +105,91 @@ public static class EnemyAi
                     bestAttack ??= new AiAction(from, target, IsAttack: true);
             }
 
-            var currentDistance = playerCells.Min(p => Chebyshev(from, p));
+            // S'ENGAGER = se mettre à portée du joueur. Un normal ET un OFFENSIF le font (l'offensif est
+            // AGRESSIF : il attaque vite et prend des risques, cf. le filet levé plus bas). Un garde défensif
+            // seulement s'il est ALERTÉ (un joueur à ≤ AlertRadius). Priorité globale : engager passe AVANT
+            // l'avancée → un offensif se jette sur un joueur atteignable plutôt que de filer vers le paysan.
+            var canEngage = !defensif || playerCells.Any(p => Chebyshev(from, p) <= AlertRadius);
+
+            // Cases vers lesquelles l'unité AVANCE (null pour un défensif, qui garde). Un offensif vise le
+            // paysan le plus proche (et peut S'Y POSER pour le capturer), à défaut le joueur ; un normal vise le joueur.
+            IReadOnlyList<Cell>? advanceTargets =
+                defensif ? null
+                : offensif ? (paysanCells.Count > 0 ? paysanCells.ToList() : playerCells)
+                : playerCells;
+
             AiAction? bestAdvanceForUnit = null;
-            var bestAdvanceDistance = currentDistance;   // strictement mieux = se rapprocher
+            var bestAdvanceDistance = advanceTargets is null ? 0 : advanceTargets.Min(t => Chebyshev(from, t));
+
+            // Case gardée la plus proche (défensif) : on vise le coup qui en RESTE le plus près, sans s'y poser.
+            // Départ à MAX (et non la distance courante) : le garde produit TOUJOURS un coup s'il peut bouger.
+            var guard = defensif ? NearestCell(from, paysanCells) : (Cell?)null;
+            AiAction? bestGuardForUnit = null;
+            var bestGuardDistance = int.MaxValue;
 
             foreach (var to in match.LegalMoves(from))
             {
-                anyLegalMove.Add(new AiAction(from, to, IsAttack: false));
+                anyLegalMove.Add(new AiAction(from, to, IsAttack: false));   // repli : garantit que l'ennemi bouge
 
-                // Mise à portée : depuis « to », l'unité aurait au moins une cible, et « to » n'est pas
-                // une case où un joueur la tuerait.
-                if (match.TargetsAfterMove(from, to).Count > 0 &&
-                    (suicidal || !WouldBeKilledAt(match, to, unit, players)))
+                // L'offensif PREND DES RISQUES : il s'engage même vers une case où il pourrait se faire tuer
+                // (comme la dernière unité « suicidaire »). Le normal, lui, évite les cases mortelles.
+                if (canEngage
+                    && match.TargetsAfterMove(from, to).Count > 0
+                    && (suicidal || offensif || !WouldBeKilledAt(match, to, unit, players)))
                     engage.Add(new AiAction(from, to, IsAttack: false));
 
-                var distance = playerCells.Min(p => Chebyshev(to, p));
-                if (distance < bestAdvanceDistance)
+                if (advanceTargets is not null)
                 {
-                    bestAdvanceDistance = distance;
-                    bestAdvanceForUnit = new AiAction(from, to, IsAttack: false);
+                    var distance = advanceTargets.Min(t => Chebyshev(to, t));
+                    if (distance < bestAdvanceDistance)
+                    {
+                        bestAdvanceDistance = distance;
+                        bestAdvanceForUnit = new AiAction(from, to, IsAttack: false);
+                    }
+                }
+                else if (guard is { } g
+                    && !paysanCells.Contains(to)                             // le garde ne se pose JAMAIS sur un paysan
+                    && (suicidal || !WouldBeKilledAt(match, to, unit, players)))
+                {
+                    var gd = Chebyshev(to, g);
+                    if (gd < bestGuardDistance)
+                    {
+                        bestGuardDistance = gd;
+                        bestGuardForUnit = new AiAction(from, to, IsAttack: false);
+                    }
                 }
             }
 
             if (bestAdvanceForUnit is { } adv)
                 advanceByUnit.Add(adv);
+            if (bestGuardForUnit is { } grd)
+                guardByUnit.Add(grd);
         }
 
         if (bestKill is { } kill) return kill;
         if (bestAttack is { } attack) return attack;
         if (engage.Count > 0) return engage[rng.Next(engage.Count)];
         if (advanceByUnit.Count > 0) return advanceByUnit[rng.Next(advanceByUnit.Count)];
+        if (guardByUnit.Count > 0) return guardByUnit[rng.Next(guardByUnit.Count)];
         if (anyLegalMove.Count > 0) return anyLegalMove[rng.Next(anyLegalMove.Count)];
         return null;
+    }
+
+    /// <summary>Case de <paramref name="cells"/> la plus proche de <paramref name="from"/> (Chebyshev), ou null si aucune.</summary>
+    private static Cell? NearestCell(Cell from, IReadOnlyCollection<Cell> cells)
+    {
+        Cell? best = null;
+        var bestDist = int.MaxValue;
+        foreach (var c in cells)
+        {
+            var d = Chebyshev(from, c);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = c;
+            }
+        }
+        return best;
     }
 
     /// <summary>

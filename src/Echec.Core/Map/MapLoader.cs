@@ -18,6 +18,9 @@ public static class MapLoader
                   ?? throw new FormatException("Map vide ou illisible.");
 
         var type = ParseType(dto.Type);
+        var objective = ParseObjective(dto.Objective);
+        var phase = ParsePhase(dto.Phase);
+        var turnLimit = ParseTurnLimit(dto.TurnLimit);
         var width = dto.Width;
         var height = dto.Height;
         if (width <= 0 || height <= 0)
@@ -48,6 +51,8 @@ public static class MapLoader
         var player = new List<Cell>();
         var enemy = new List<Cell>();
         var boss = new List<Cell>();
+        var defensive = new List<Cell>();
+        var offensive = new List<Cell>();
         if (dto.Spawns is not null)
         {
             RequireGrid(dto.Spawns, width, height, "spawns");
@@ -61,12 +66,16 @@ public static class MapLoader
                     {
                         case 'P': player.Add(cell); break;
                         case 'E': enemy.Add(cell); break;
+                        // Ennemi DÉFENSIF (garde) / OFFENSIF (assaillant des paysans) : deux cases d'apparition
+                        // ennemies, marquées en plus par leur IA (cf. MapData.Defensive/OffensiveEnemySpawns).
+                        case 'D': enemy.Add(cell); defensive.Add(cell); break;
+                        case 'O': enemy.Add(cell); offensive.Add(cell); break;
                         case 'B': boss.Add(cell); break;
                         case '.':
                         case ' ': break;
                         default:
                             throw new FormatException(
-                                $"Caractère de spawn inconnu '{line[col]}' (ligne {row}). Attendu P, E, B ou '.'.");
+                                $"Caractère de spawn inconnu '{line[col]}' (ligne {row}). Attendu P, E, D, O, B ou '.'.");
                     }
                 }
             }
@@ -99,7 +108,7 @@ public static class MapLoader
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects);
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)
@@ -115,7 +124,35 @@ public static class MapLoader
     private static CombatType ParseType(string? type) =>
         Enum.TryParse<CombatType>(type, ignoreCase: true, out var t)
             ? t
-            : throw new FormatException($"Type de combat inconnu : '{type}'. Attendu Escarmouche ou Boss.");
+            : throw new FormatException($"Type de combat inconnu : '{type}'. Attendu Escarmouche, Speciale ou Boss.");
+
+    /// <summary>Sous-type d'objectif (absent/vide = <see cref="SpecialObjective.Aucun"/>). Lève sur une valeur inconnue.</summary>
+    private static SpecialObjective ParseObjective(string? objective)
+    {
+        if (string.IsNullOrWhiteSpace(objective))
+            return SpecialObjective.Aucun;
+        return Enum.TryParse<SpecialObjective>(objective, ignoreCase: true, out var o)
+            ? o
+            : throw new FormatException($"Objectif spécial inconnu : '{objective}'. Attendu Aucun, LibererPaysans ou ProtegerPaysans.");
+    }
+
+    /// <summary>Phase réservée (0 = toutes, 1..3 = phase précise). Absent = 0. Lève hors de 0..3.</summary>
+    private static int ParsePhase(int? phase)
+    {
+        var p = phase ?? 0;
+        if (p is < 0 or > 3)
+            throw new FormatException($"Phase de map invalide : {p}. Attendu 0 (toutes) ou 1..3.");
+        return p;
+    }
+
+    /// <summary>Limite de tours d'une mission spéciale (0 = valeur par défaut du jeu). Absent = 0. Lève si négatif.</summary>
+    private static int ParseTurnLimit(int? turnLimit)
+    {
+        var t = turnLimit ?? 0;
+        if (t < 0)
+            throw new FormatException($"Limite de tours invalide : {t}. Attendu 0 (défaut) ou un entier positif.");
+        return t;
+    }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -128,6 +165,9 @@ public static class MapLoader
     {
         public string? Name { get; set; }
         public string? Type { get; set; }
+        public string? Objective { get; set; }
+        public int? Phase { get; set; }
+        public int? TurnLimit { get; set; }
         public int Width { get; set; }
         public int Height { get; set; }
         public Dictionary<string, string>? Legend { get; set; }

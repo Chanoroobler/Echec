@@ -98,6 +98,115 @@ public class MapLoaderTests
     }
 
     [Fact]
+    public void Parse_DefensiveSpawn_CountsAsEnemyAndIsMarkedDefensive()
+    {
+        // 'D' = garde défensif : c'est une case d'apparition ennemie ET une case défensive.
+        var json = Map2x2.Replace("\"E.\", \".P\"", "\"ED\", \".P\"");
+        var map = MapLoader.Parse(json, Catalog());
+
+        Assert.Equal(new[] { new Cell(0, 0), new Cell(1, 0) }, map.EnemySpawns);
+        Assert.Equal(new[] { new Cell(1, 0) }, map.DefensiveEnemySpawns);
+    }
+
+    [Fact]
+    public void Parse_NoDefensiveSpawn_GivesEmpty()
+    {
+        var map = MapLoader.Parse(Map2x2, Catalog());
+        Assert.Empty(map.DefensiveEnemySpawns);
+    }
+
+    [Fact]
+    public void Parse_OffensiveSpawn_CountsAsEnemyAndIsMarkedOffensive()
+    {
+        // 'O' = assaillant offensif : case d'apparition ennemie ET case offensive.
+        var json = Map2x2.Replace("\"E.\", \".P\"", "\"EO\", \".P\"");
+        var map = MapLoader.Parse(json, Catalog());
+
+        Assert.Equal(new[] { new Cell(0, 0), new Cell(1, 0) }, map.EnemySpawns);
+        Assert.Equal(new[] { new Cell(1, 0) }, map.OffensiveEnemySpawns);
+        Assert.Empty(map.DefensiveEnemySpawns);
+    }
+
+    [Fact]
+    public void Parse_ReadsProtegerObjective()
+    {
+        var json = Map2x2.Replace("\"type\": \"Escarmouche\",",
+            "\"type\": \"Speciale\", \"objective\": \"ProtegerPaysans\",");
+        var map = MapLoader.Parse(json, Catalog());
+        Assert.Equal(SpecialObjective.ProtegerPaysans, map.Objective);
+    }
+
+    [Fact]
+    public void Parse_ReadsSpecialObjective()
+    {
+        var json = Map2x2.Replace("\"type\": \"Escarmouche\",",
+            "\"type\": \"Speciale\", \"objective\": \"LibererPaysans\",");
+        var map = MapLoader.Parse(json, Catalog());
+
+        Assert.Equal(CombatType.Speciale, map.Type);
+        Assert.Equal(SpecialObjective.LibererPaysans, map.Objective);
+    }
+
+    [Fact]
+    public void Parse_NoObjective_DefaultsToAucun()
+    {
+        var map = MapLoader.Parse(Map2x2, Catalog());
+        Assert.Equal(SpecialObjective.Aucun, map.Objective);
+    }
+
+    [Fact]
+    public void Parse_UnknownObjective_Throws()
+    {
+        var json = Map2x2.Replace("\"type\": \"Escarmouche\",",
+            "\"type\": \"Speciale\", \"objective\": \"SauverLeMonde\",");
+        Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
+    [Fact]
+    public void Parse_ReadsPhase()
+    {
+        var json = Map2x2.Replace("\"width\": 2,", "\"phase\": 2, \"width\": 2,");
+        var map = MapLoader.Parse(json, Catalog());
+        Assert.Equal(2, map.Phase);
+    }
+
+    [Fact]
+    public void Parse_NoPhase_DefaultsToZero()
+    {
+        var map = MapLoader.Parse(Map2x2, Catalog());
+        Assert.Equal(0, map.Phase);   // 0 = toutes phases
+    }
+
+    [Fact]
+    public void Parse_PhaseOutOfRange_Throws()
+    {
+        var json = Map2x2.Replace("\"width\": 2,", "\"phase\": 5, \"width\": 2,");
+        Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
+    [Fact]
+    public void Parse_ReadsTurnLimit()
+    {
+        var json = Map2x2.Replace("\"width\": 2,", "\"turnLimit\": 20, \"width\": 2,");
+        var map = MapLoader.Parse(json, Catalog());
+        Assert.Equal(20, map.TurnLimit);
+    }
+
+    [Fact]
+    public void Parse_NoTurnLimit_DefaultsToZero()
+    {
+        var map = MapLoader.Parse(Map2x2, Catalog());
+        Assert.Equal(0, map.TurnLimit);   // 0 = valeur par défaut du jeu
+    }
+
+    [Fact]
+    public void Parse_NegativeTurnLimit_Throws()
+    {
+        var json = Map2x2.Replace("\"width\": 2,", "\"turnLimit\": -3, \"width\": 2,");
+        Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
+    [Fact]
     public void Parse_ReadsObjectsLayer_Chest()
     {
         var json = Map2x2.TrimEnd().TrimEnd('}') + """

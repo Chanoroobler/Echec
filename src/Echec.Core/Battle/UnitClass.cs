@@ -12,6 +12,7 @@ public sealed class UnitClass
     public UnitClass(string name, string asset, int tier, int maxHp, int damage,
         int moveRange, int attackRange, bool piercesAllies = false,
         int minAttackRange = 1, IReadOnlyList<string>? traits = null,
+        Domaine? attackDomaine = null,
         params UnitClass[] evolutions)
     {
         Name = name;
@@ -24,6 +25,7 @@ public sealed class UnitClass
         PiercesAllies = piercesAllies;
         MinAttackRange = minAttackRange;
         Traits = traits ?? System.Array.Empty<string>();
+        AttackDomaine = attackDomaine;
         Evolutions = evolutions;
     }
 
@@ -72,6 +74,14 @@ public sealed class UnitClass
     /// Particularité du Lancier. Réglé par classe dans <c>units.json</c> (champ <c>piercesAllies</c>).
     /// </summary>
     public bool PiercesAllies { get; }
+
+    /// <summary>
+    /// Domaine dont la classe emprunte le pattern d'ATTAQUE (directions + glissé/sauté), s'il DIFFÈRE du
+    /// domaine de DÉPLACEMENT. <c>null</c> = même que le déplacement (cas général). Sert au cavalier monté
+    /// (archer) : il SE DÉPLACE en L (domaine Cavalier) mais TIRE en lignes comme un archer (attaque = Dame).
+    /// Réglé par classe dans <c>units.json</c> (champ <c>attackDomaine</c>).
+    /// </summary>
+    public Domaine? AttackDomaine { get; }
 
     /// <summary>Classes vers lesquelles évoluer (0 = feuille, 2 sinon).</summary>
     public IReadOnlyList<UnitClass> Evolutions { get; }

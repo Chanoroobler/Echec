@@ -44,6 +44,10 @@ public sealed class Run
 
     public const int DraftSize = 3;
 
+    /// <summary>Nombre MAXIMAL de pions dans la réserve (roster HORS commandant). Au-delà, il faut fusionner
+    /// ou supprimer pour recruter/récupérer de nouveaux pions.</summary>
+    public const int ReserveLimit = 8;
+
     /// <summary>
     /// Rythme fixe d'une phase (6 slots) : deux escarmouches, une mission spéciale, deux escarmouches,
     /// un boss. La spéciale est déjà TYPÉE <see cref="CombatType.Speciale"/> mais générée comme une
@@ -135,6 +139,12 @@ public sealed class Run
 
     /// <summary>Inventaire du joueur (commandant inclus).</summary>
     public IReadOnlyList<UnitSpec> Roster => _roster;
+
+    /// <summary>Nombre de pions dans la réserve (roster HORS commandant), comparé à <see cref="ReserveLimit"/>.</summary>
+    public int ReserveCount => _roster.Count(u => !u.Essential);
+
+    /// <summary>Vrai si la réserve est pleine (<see cref="ReserveLimit"/> pions non-commandant).</summary>
+    public bool IsReserveFull => ReserveCount >= ReserveLimit;
 
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
@@ -249,6 +259,23 @@ public sealed class Run
     /// <summary>Ajoute un pion à l'armée (réserve). Utilisé hors recrutement (ex. récompense d'une tuile recrue).</summary>
     public void AddUnit(UnitSpec spec) => _roster.Add(spec);
 
+    /// <summary>
+    /// Supprime définitivement un pion de la réserve (jamais le commandant), pour faire de la place sous le
+    /// plafond <see cref="ReserveLimit"/>. Son équipement éventuel retourne à l'inventaire. Faux si le pion
+    /// est essentiel ou absent du roster.
+    /// </summary>
+    public bool DeleteUnit(UnitSpec spec)
+    {
+        if (spec.Essential || !_roster.Contains(spec))
+            return false;
+        if (spec.Equipment is { } e)   // l'équipement du pion supprimé n'est pas perdu
+        {
+            _equipment.Add(e);
+            spec.Equipment = null;
+        }
+        return _roster.Remove(spec);
+    }
+
     // ─── ÉQUIPEMENT ──────────────────────────────────────────────────────────────────────────────
     // Un équipement est « collé au pion » : posé sur un UnitSpec, il le suit d'un combat à l'autre et
     // disparaît avec lui (permadeath — voir CompleteCombat). L'inventaire (_equipment) ne contient que les
@@ -342,8 +369,9 @@ public sealed class Run
         var wave = new List<UnitSpec>();
 
         var pool = UnlockedDomaines();
+        var counts = new Dictionary<UnitClass, int>();   // pour éviter au max plus de 2 fois la même classe
         foreach (var tier in WaveTiers[PhaseIndex - 1][MissionInPhase - 1])
-            wave.Add(PickEnemy(rng, pool, tier, isSeen));
+            wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
 
         // Mission boss : le boss est placé EN TÊTE (la scène le pose en premier). TODO : un boss distinct
@@ -355,33 +383,61 @@ public sealed class Run
     }
 
     /// <summary>
-    /// Tire un ennemi de tier <paramref name="tier"/>. Tier 1 (ou <paramref name="isSeen"/> absent) : un
-    /// domaine du pool débloqué puis une classe de ce tier, au hasard. Tiers 2-3 AVEC méta-progression :
-    /// on PRIVILÉGIE AU MAXIMUM les unités déjà découvertes — si au moins une classe découverte existe
-    /// dans le pool à ce tier, on tire uniquement parmi elles ; sinon repli sur toutes. Le nombre d'appels
-    /// RNG sans prédicat est identique à l'ancien comportement (déterminisme des tests préservé).
+    /// Vague d'une MISSION SPÉCIALE : EXACTEMENT <paramref name="count"/> ennemis (= le nombre de spawns
+    /// dessinés sur la map), et non l'effectif fixe de la table. Les TIERS suivent le gabarit de la mission
+    /// (<see cref="WaveTiers"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), mais
+    /// l'effectif est piloté par la map. Déterministe (<see cref="CombatRng"/>) : reprise = même vague.
     /// </summary>
-    private static UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier, Func<string, bool>? isSeen)
+    public List<UnitSpec> BuildSpecialEnemyWave(int count, Func<string, bool>? isSeen = null)
     {
-        if (tier >= 2 && isSeen != null)
-        {
-            var all = new List<(Domaine Domaine, UnitClass Class)>();
-            var seen = new List<(Domaine Domaine, UnitClass Class)>();
-            foreach (var domaine in pool)
-                foreach (var cls in ClassesAtTier(domaine, tier))
-                {
-                    all.Add((domaine, cls));
-                    if (isSeen(cls.Asset))
-                        seen.Add((domaine, cls));
-                }
-            var from = seen.Count > 0 ? seen : all;
-            var pick = from[rng.Next(from.Count)];
-            return new UnitSpec(pick.Domaine, pick.Class);
-        }
+        var rng = CombatRng(1);
+        var wave = new List<UnitSpec>();
+        if (count <= 0)
+            return wave;
 
-        var d = pool[rng.Next(pool.Count)];
-        var classes = ClassesAtTier(d, tier);
-        return new UnitSpec(d, classes[rng.Next(classes.Count)]);
+        var pool = UnlockedDomaines();
+        var counts = new Dictionary<UnitClass, int>();   // éviter au max plus de 2 fois la même classe
+        var template = WaveTiers[PhaseIndex - 1][MissionInPhase - 1];   // gabarit de tiers de la mission
+        for (var k = 0; k < count; k++)
+            wave.Add(PickEnemy(rng, pool, template[k % template.Length], isSeen, counts));
+        Shuffle(wave, rng);
+        return wave;
+    }
+
+    /// <summary>Nombre MAX d'exemplaires d'une même classe qu'on cherche à ne pas dépasser dans une vague.</summary>
+    private const int MaxSameUnit = 2;
+
+    /// <summary>
+    /// Tire un ennemi de tier <paramref name="tier"/> parmi le pool débloqué. Aux tiers 2-3 AVEC
+    /// méta-progression (<paramref name="isSeen"/>), on PRIVILÉGIE AU MAXIMUM les classes déjà découvertes.
+    /// Dans tous les cas on ÉVITE AU MAXIMUM les doublons : on tire d'abord parmi les classes (préférées) qui
+    /// n'ont pas encore <see cref="MaxSameUnit"/> exemplaires dans <paramref name="counts"/> ; si TOUTES sont
+    /// saturées (pool trop petit), on autorise un exemplaire de plus (le tirage ne bloque jamais). Renvoie une
+    /// classe du bon tier dans tous les cas (effectif/tiers de la table préservés).
+    /// </summary>
+    private static UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier,
+        Func<string, bool>? isSeen, Dictionary<UnitClass, int> counts)
+    {
+        var all = new List<(Domaine Domaine, UnitClass Class)>();
+        var seen = new List<(Domaine Domaine, UnitClass Class)>();
+        foreach (var domaine in pool)
+            foreach (var cls in ClassesAtTier(domaine, tier))
+            {
+                all.Add((domaine, cls));
+                if (tier >= 2 && isSeen != null && isSeen(cls.Asset))
+                    seen.Add((domaine, cls));
+            }
+
+        // Sous-ensemble PRÉFÉRÉ : les découverts (méta) s'il y en a, sinon tout. On évite les doublons À
+        // L'INTÉRIEUR de ce sous-ensemble (fallback sur les préférés, jamais sur « tout », pour ne pas casser
+        // la priorité méta ni la contrainte de domaine du 1er combat).
+        var preferred = seen.Count > 0 ? seen : all;
+        var notMaxed = preferred.Where(x => counts.GetValueOrDefault(x.Class, 0) < MaxSameUnit).ToList();
+        var from = notMaxed.Count > 0 ? notMaxed : preferred;
+
+        var pick = from[rng.Next(from.Count)];
+        counts[pick.Class] = counts.GetValueOrDefault(pick.Class, 0) + 1;
+        return new UnitSpec(pick.Domaine, pick.Class);
     }
 
     /// <summary>
@@ -460,6 +516,35 @@ public sealed class Run
         Phase = RunPhase.Placement;
     }
 
+    /// <summary>
+    /// Passe le recrutement SANS rien recruter et enchaîne le combat suivant. Cas d'une mission dont le
+    /// draft est vide (ex. mission spéciale réussie sans avoir tué de garde) : la récompense était ailleurs
+    /// (paysans ralliés en combat), il n'y a personne à drafter, mais la run doit avancer sans se bloquer.
+    /// </summary>
+    public void SkipRecruitment()
+    {
+        if (Phase != RunPhase.Recruitment)
+            return;
+
+        _draft.Clear();
+        CombatNumber++;
+        Phase = RunPhase.Placement;
+    }
+
+    /// <summary>
+    /// Combat spécial terminé SANS draft : retire les pertes (permadeath) et passe à l'écran post-combat
+    /// (<see cref="RunPhase.Recruitment"/>) où la SCÈNE affiche sa propre récompense (ex. « protéger » :
+    /// tous les paysans sauvés). Aucune carte de draft n'est construite ; la scène ajoute les pions et
+    /// avance via <see cref="AddUnit"/> + <see cref="SkipRecruitment"/>.
+    /// </summary>
+    public void CompleteSpecialNoDraft(IEnumerable<UnitSpec> casualties)
+    {
+        var dead = new HashSet<UnitSpec>(casualties);
+        _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+        _draft.Clear();
+        Phase = RunPhase.Recruitment;
+    }
+
     public void Defeat() => Phase = RunPhase.Defeat;
 
     // ─── FUSION ────────────────────────────────────────────────────────────────────────────────
@@ -525,7 +610,9 @@ public sealed class Run
     /// </summary>
     public UnitSpec? Fuse(IReadOnlyList<UnitSpec> group, UnitClass evolution)
     {
-        if (Phase != RunPhase.Placement || group.Count != FusionSize)
+        // Autorisée au PLACEMENT (drag-stack habituel) ET au RECRUTEMENT (faire de la place sous le plafond
+        // de réserve en fusionnant, cf. écrans draft/récompense).
+        if (Phase is not (RunPhase.Placement or RunPhase.Recruitment) || group.Count != FusionSize)
             return null;
 
         var first = group[0];

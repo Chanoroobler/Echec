@@ -27,6 +27,9 @@ internal sealed class MainForm : Form
     };
     private readonly TextBox _nameBox = new() { Width = 160 };
     private readonly ComboBox _typeBox = new() { Width = 120, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _objectiveBox = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _phaseBox = new() { Width = 90, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly NumericUpDown _turnsNum = new() { Minimum = 1, Maximum = 99, Value = 15, Width = 55 };
     private readonly NumericUpDown _widthNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly NumericUpDown _heightNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly ToolStripStatusLabel _status = new("Prêt.");
@@ -128,8 +131,32 @@ internal sealed class MainForm : Form
         bar.Controls.Add(Label("Type :"));
         _typeBox.Items.AddRange(new object[] { "Escarmouche", "Speciale", "Boss" });
         _typeBox.SelectedIndex = 0;
-        _typeBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Type = _typeBox.Text; MarkDirty(); } };
+        _typeBox.SelectedIndexChanged += (_, _) =>
+        {
+            if (_doc is not null) { _doc.Type = _typeBox.Text; MarkDirty(); }
+            SyncSpecialFields();
+        };
         bar.Controls.Add(_typeBox);
+
+        // Sous-type d'objectif : pertinent UNIQUEMENT pour le type Speciale (grisé sinon → forcé « Aucun »).
+        bar.Controls.Add(Label("Objectif :"));
+        _objectiveBox.Items.AddRange(new object[] { "Aucun", "LibererPaysans", "ProtegerPaysans" });
+        _objectiveBox.SelectedIndex = 0;
+        _objectiveBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Objective = _objectiveBox.Text; MarkDirty(); } };
+        bar.Controls.Add(_objectiveBox);
+
+        // Phase réservée (Speciale uniquement) : l'index du combo EST la valeur (0=Toutes, 1..3). Le tirage
+        // des maps spéciales se fait parmi celles de la phase courante (ou « Toutes »).
+        bar.Controls.Add(Label("Phase :"));
+        _phaseBox.Items.AddRange(new object[] { "Toutes", "1", "2", "3" });
+        _phaseBox.SelectedIndex = 0;
+        _phaseBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Phase = _phaseBox.SelectedIndex; MarkDirty(); } };
+        bar.Controls.Add(_phaseBox);
+
+        // Limite de tours (rounds) de la mission spéciale — Speciale uniquement.
+        bar.Controls.Add(Label("Tours :"));
+        _turnsNum.ValueChanged += (_, _) => { if (_doc is not null && _typeBox.Text == "Speciale") { _doc.TurnLimit = (int)_turnsNum.Value; MarkDirty(); } };
+        bar.Controls.Add(_turnsNum);
 
         bar.Controls.Add(Sep());
         bar.Controls.Add(Label("Taille :"));
@@ -193,6 +220,8 @@ internal sealed class MainForm : Form
             case EditLayer.Spawns:
                 AddBrushButton('P', "Joueur", Color.FromArgb(60, 200, 90));
                 AddBrushButton('E', "Ennemi", Color.FromArgb(220, 70, 70));
+                AddBrushButton('D', "Ennemi défensif", Color.FromArgb(230, 120, 40));
+                AddBrushButton('O', "Ennemi offensif", Color.FromArgb(200, 40, 140));
                 AddBrushButton('B', "Boss", Color.FromArgb(170, 90, 220));
                 AddBrushButton('.', "Effacer", Color.DimGray);
                 break;
@@ -267,6 +296,10 @@ internal sealed class MainForm : Form
         }
         _doc = MapDocument.NewMap(w, h, DefaultTileKey);
         _doc.Type = _typeBox.Text;
+        _objectiveBox.SelectedItem = _doc.Objective;
+        _phaseBox.SelectedIndex = _doc.Phase;
+        _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
+        SyncSpecialFields();
         _nameBox.Text = _doc.Name;
         SyncSizeFields();
         _canvas.SetContent(_doc, _catalog);
@@ -290,6 +323,10 @@ internal sealed class MainForm : Form
             _doc = MapDocument.Load(dlg.FileName);
             _nameBox.Text = _doc.Name;
             _typeBox.SelectedItem = _typeBox.Items.Contains(_doc.Type) ? _doc.Type : "Escarmouche";
+            _objectiveBox.SelectedItem = _objectiveBox.Items.Contains(_doc.Objective) ? _doc.Objective : "Aucun";
+            _phaseBox.SelectedIndex = Math.Clamp(_doc.Phase, 0, 3);
+            _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
+            SyncSpecialFields();
             SyncSizeFields();
             _canvas.SetContent(_doc, _catalog);
             _dirty = false;
@@ -308,6 +345,9 @@ internal sealed class MainForm : Form
         if (_doc is null || _catalog is null) return;
         _doc.Name = string.IsNullOrWhiteSpace(_nameBox.Text) ? "map" : _nameBox.Text.Trim();
         _doc.Type = _typeBox.Text;
+        _doc.Objective = _objectiveBox.Text;
+        _doc.Phase = _phaseBox.SelectedIndex;
+        _doc.TurnLimit = _typeBox.Text == "Speciale" ? (int)_turnsNum.Value : 0;
 
         // Filet de sécurité : re-valider avec le MÊME code que le jeu avant d'écrire.
         try
@@ -365,6 +405,30 @@ internal sealed class MainForm : Form
         _canvas.Zoom = Math.Clamp(scale, 0.25f, 4f);
         _canvas.UpdateExtent();
         _status.Text = $"Zoom : {_canvas.Zoom * 100:0}%";
+    }
+
+    /// <summary>
+    /// Active objectif + phase UNIQUEMENT pour le type Speciale (objectif défaut « LibererPaysans »). Grisés
+    /// et remis à « Aucun » / « Toutes » pour Escarmouche/Boss. Appelé au changement de type et à l'ouverture/création.
+    /// </summary>
+    private void SyncSpecialFields()
+    {
+        var special = _typeBox.Text == "Speciale";
+        _objectiveBox.Enabled = special;
+        _phaseBox.Enabled = special;
+        _turnsNum.Enabled = special;
+        if (!special)
+        {
+            _objectiveBox.SelectedItem = "Aucun";
+            _phaseBox.SelectedIndex = 0;          // Toutes
+            if (_doc is not null) _doc.TurnLimit = 0;   // pas de limite spéciale hors Speciale
+        }
+        else
+        {
+            if (_objectiveBox.SelectedItem is null or "Aucun")
+                _objectiveBox.SelectedItem = "LibererPaysans";   // seul objectif dispo pour l'instant
+            if (_doc is not null) _doc.TurnLimit = (int)_turnsNum.Value;   // reflète le contrôle
+        }
     }
 
     // ---------------------------------------------------------------- Helpers

@@ -1,0 +1,38 @@
+{
+  "name": "special_prot_01",
+  "type": "Speciale",
+  "objective": "ProtegerPaysans",
+  "turnLimit": 15,
+  "width": 8,
+  "height": 8,
+  "tiles": [
+    "7hhhh644",
+    "944440hh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "eeheehee",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh"
+  ],
+  "spawns": [
+    "O......O",
+    ".OOOOOO.",
+    "........",
+    "........",
+    "........",
+    "........",
+    ".PP..PP.",
+    ".PPPPPP."
+  ],
+  "objects": [
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "...RR...",
+    "R......R"
+  ]
+}

@@ -100,6 +100,33 @@ public class RunTests
         Assert.Equal(t3, escorts.Count(u => u.UnitClass.Tier == 3));
     }
 
+    [Theory]
+    [InlineData(3, 5)]    // phase 1 mission 3 (spéciale) : 5 spawns
+    [InlineData(3, 12)]   // effectif > gabarit de la table : le gabarit de tiers est cyclé
+    [InlineData(9, 6)]    // phase 2 mission 3 : 6 spawns
+    public void BuildSpecialEnemyWave_HasExactlyRequestedCount_NoBoss(int combat, int count)
+    {
+        var wave = RunAt(combat).BuildSpecialEnemyWave(count);
+
+        Assert.Equal(count, wave.Count);                 // EXACTEMENT le nombre demandé (= spawns de la map)
+        Assert.DoesNotContain(wave, u => u.Essential);   // jamais de boss en mission spéciale
+    }
+
+    [Fact]
+    public void BuildSpecialEnemyWave_ZeroOrNegative_IsEmpty()
+    {
+        Assert.Empty(RunAt(3).BuildSpecialEnemyWave(0));
+        Assert.Empty(RunAt(3).BuildSpecialEnemyWave(-2));
+    }
+
+    [Fact]
+    public void BuildSpecialEnemyWave_IsDeterministic()
+    {
+        var a = RunAt(3, seed: 7).BuildSpecialEnemyWave(6);
+        var b = RunAt(3, seed: 7).BuildSpecialEnemyWave(6);
+        Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
+    }
+
     [Fact]
     public void Boss_AppearsOnlyOnBossMissions_FinalOnlyInPhase3()
     {
@@ -170,6 +197,18 @@ public class RunTests
         Assert.Equal(3, wave.Count(u => u.UnitClass.Tier == 3));
         Assert.All(wave.Where(u => u.UnitClass.Tier == 2), u => Assert.Equal(seenT2.Asset, u.UnitClass.Asset));
         Assert.All(wave.Where(u => u.UnitClass.Tier == 3), u => Assert.Equal(seenT3.Asset, u.UnitClass.Asset));
+    }
+
+    [Fact]
+    public void BuildEnemyWave_AvoidsMoreThanTwoOfSameClass_WhenPoolAllowsIt()
+    {
+        // Phase 3 : pool riche (4 domaines × 2 classes/tier = 8 par tier) → aucune classe ne dépasse 2.
+        for (var combat = 13; combat <= 17; combat++)
+        {
+            var wave = RunAt(combat).BuildEnemyWave();
+            var maxSame = wave.Where(u => !u.Essential).GroupBy(u => u.UnitClass).Max(g => g.Count());
+            Assert.True(maxSame <= 2, $"combat {combat} : une classe apparaît {maxSame} fois");
+        }
     }
 
     [Fact]
@@ -312,6 +351,48 @@ public class RunTests
     }
 
     // Fait sauter la run directement au combat voulu (la vague ne dépend que de seed + CombatNumber).
+    [Fact]
+    public void ReserveCount_ExcludesCommander_AndTracksLimit()
+    {
+        var run = new Run(seed: 1);                 // commandant + 2 soldats
+        Assert.Equal(2, run.ReserveCount);
+        Assert.False(run.IsReserveFull);
+
+        while (run.ReserveCount < Run.ReserveLimit)
+            run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+        Assert.Equal(Run.ReserveLimit, run.ReserveCount);
+        Assert.True(run.IsReserveFull);
+    }
+
+    [Fact]
+    public void DeleteUnit_RemovesReservePion_RefusesCommander()
+    {
+        var run = new Run(seed: 1);
+        var pion = run.Roster.First(u => !u.Essential);
+
+        Assert.True(run.DeleteUnit(pion));
+        Assert.DoesNotContain(pion, run.Roster);
+        Assert.False(run.DeleteUnit(run.Commander));   // jamais le commandant
+    }
+
+    [Fact]
+    public void Fuse_WorksInRecruitmentPhase_ToMakeRoom()
+    {
+        var run = new Run(seed: 1);
+        run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));   // 3 soldats de base au total
+        run.CompleteCombat(System.Array.Empty<UnitSpec>(),
+            new[] { new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass) });
+        Assert.Equal(RunPhase.Recruitment, run.Phase);
+
+        var group = run.Roster.Where(u => !u.Essential && u.UnitClass == Domaines.Dame.BaseClass).Take(3).ToList();
+        var evo = Domaines.Dame.BaseClass.Evolutions[0];
+
+        var fused = run.Fuse(group, evo);
+
+        Assert.NotNull(fused);
+        Assert.Equal(evo, fused!.UnitClass);
+    }
+
     private static Run RunAt(int combatNumber, int seed = 1, bool firstRun = false)
     {
         var commander = new UnitSpec(Commandes.Commander.Movement, Commandes.Commander.BaseClass, essential: true);

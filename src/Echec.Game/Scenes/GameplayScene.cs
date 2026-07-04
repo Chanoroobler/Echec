@@ -92,6 +92,48 @@ public sealed class GameplayScene : Scene
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
     private Texture2D? _recrueSprite;                        // PNG du pion « ? » (placeholder dessiné si absent)
 
+    // Missions SPÉCIALES à paysans (tuiles recrue _recrueCells), selon le sous-objectif de la map Speciale :
+    //   • LibererPaysans : le JOUEUR marche dessus pour les libérer (rejoignent l'armée) — IA gardes défensifs.
+    //   • ProtegerPaysans : les ENNEMIS (IA offensive) tentent de les capturer ; le joueur les protège.
+    // Objectif = résoudre le MAXIMUM avant la limite de tours ; aucune défaite hors chute du commandant
+    // (la limite atteinte clôt juste la mission). _recrueConsumed = paysans RÉSOLUS (libérés OU capturés).
+    private const int SpecialTurnLimit = 15;   // limite de rounds PAR DÉFAUT (surchargée par la map via `turnLimit`)
+    private bool _specialMission;              // vrai si le combat courant est une vraie mission spéciale
+    private SpecialObjective _specialObjective = SpecialObjective.Aucun;   // sous-objectif de la map courante
+    private int _specialRoundsLeft;            // rounds restants (décrémenté à chaque action ennemie résolue)
+
+    // Écran de récompense « protéger » (post-combat) : les pions gagnés (1 par paysan sauvé) sont affichés
+    // en cartes ; un clic les envoie TOUS en réserve (pas de draft « choisir 1 parmi 3 »). Non-null = actif.
+    private List<UnitSpec>? _protectReward;
+    private float _protectRewardFlight;   // > 0 = vol en cours (les pions filent vers la réserve) ; 0 = attente du clic
+    private readonly List<bool> _rewardKeep = new();   // par pion gagné : coché = à récupérer (limité par la place)
+    private int _rewardFocus;             // MANETTE : carte de récompense focalisée
+    private float _reserveFullFlash;      // > 0 = feedback « plus de place » (récup/recrutement bloqué) en cours
+    private UnitSpec? _reserveDrag;        // pion de réserve en cours de DRAG (fusion souris) ; null = aucun
+
+    // Édition de la réserve sur les écrans draft/récompense (plafond Run.ReserveLimit) : un pion sélectionné
+    // peut être SUPPRIMÉ ou FUSIONNÉ (3 identiques → évolution choisie) pour faire de la place.
+    private UnitSpec? _reserveSel;      // pion de la réserve sélectionné (null = aucun)
+    private bool _reserveFuseChoice;    // vrai = on affiche le choix d'évolution pour fusionner le pion sélectionné
+    private bool _reserveZone;          // MANETTE : focus dans le panneau réserve (vs sur les cartes)
+    private int _reserveFocus;          // MANETTE : indice du pion de réserve focalisé (avant sélection)
+    private int _reserveActionFocus;    // MANETTE : indice du bouton d'action / de l'évolution focalisé
+
+    /// <summary>Vrai si la mission courante est « protéger les paysans » (ennemis offensifs les capturent).</summary>
+    private bool IsProtectMission => _specialObjective == SpecialObjective.ProtegerPaysans;
+
+    /// <summary>Paysans RÉSOLUS (tuiles recrue consommées) : libérés (Liberer) ou capturés (Proteger).</summary>
+    private int PaysansResolved => _recrueConsumed.Count;
+
+    /// <summary>Paysans encore protégés (mission Proteger) : total moins ceux capturés.</summary>
+    private int PaysansProtected => PaysansTotal - PaysansResolved;
+
+    /// <summary>Nombre total de paysans sur la map (tuiles recrue).</summary>
+    private int PaysansTotal => _recrueCells.Count;
+
+    /// <summary>Limite de tours effective de la mission spéciale : celle de la map si fixée, sinon le défaut.</summary>
+    private int SpecialTurnBudget() => _map is { TurnLimit: > 0 } m ? m.TurnLimit : SpecialTurnLimit;
+
     // Objets « buisson » (calque "objects") : couvert PERMANENT (non consommé) — un pion DESSUS reçoit
     // -4 dégâts (appliqué dans Match via les cases de couvert). Rendu sous les unités.
     private readonly List<Cell> _bushCells = new();
@@ -449,27 +491,46 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Map à utiliser pour le combat courant, à la taille <paramref name="size"/> (cf. <see cref="MapSizeFor"/>) :
-    /// le TYPE dépend de la mission (un boss pioche une map <see cref="CombatType.Boss"/> ; une escarmouche —
-    /// ou une spéciale, faute de map dédiée — pioche une <see cref="CombatType.Escarmouche"/>). Si aucune map
-    /// ne correspond → null = terrain aléatoire de cette taille. Quand plusieurs maps conviennent, on en prend
-    /// une ALÉATOIREMENT (permutation dérivée de la graine de run : varie d'une run à l'autre mais reste stable
-    /// si on reprend le combat), pas dans l'ordre des fichiers.
+    /// Map à utiliser pour le combat courant. Escarmouche / boss : une map de CE type à la taille
+    /// <paramref name="size"/> attendue par la phase (cf. <see cref="MapSizeFor"/>), sinon null = terrain
+    /// aléatoire de cette taille. MISSION SPÉCIALE : tirage ALÉATOIRE parmi les maps
+    /// <see cref="CombatType.Speciale"/> RÉSERVÉES À LA PHASE courante (<see cref="MapData.Phase"/> == phase)
+    /// ou marquées « toutes phases » (Phase == 0) ; la TAILLE du plateau vient de la map. Faute de spéciale
+    /// éligible : repli sur une escarmouche (combat normal, sans paysans). Le tirage est DÉTERMINISTE (stable
+    /// si on reprend le combat) mais varie d'une run à l'autre.
     /// </summary>
     private MapData? MapForCombat(int size)
     {
-        // Speciale : pas encore de map dédiée → traitée comme une escarmouche.
-        var wanted = _run.CurrentMission == CombatType.Boss ? CombatType.Boss : CombatType.Escarmouche;
+        if (_run.CurrentMission == CombatType.Speciale)
+        {
+            var phase = _run.PhaseIndex;
+            var specials = MapsOfType(CombatType.Speciale)
+                .Where(m => m.Phase == phase || m.Phase == 0)   // réservées à cette phase, ou « toutes phases »
+                .ToList();
+            return PickMap(specials, size)
+                ?? PickMap(MatchingMaps(CombatType.Escarmouche, size), size);
+        }
 
-        var matches = _maps
-            .Where(m => m.Type == wanted && m.Width == size && m.Height == size)
-            .ToList();
+        var wanted = _run.CurrentMission == CombatType.Boss ? CombatType.Boss : CombatType.Escarmouche;
+        return PickMap(MatchingMaps(wanted, size), size);
+    }
+
+    /// <summary>Maps chargées du type et de la taille (côté carré) demandés.</summary>
+    private List<MapData> MatchingMaps(CombatType type, int size) =>
+        _maps.Where(m => m.Type == type && m.Width == size && m.Height == size).ToList();
+
+    /// <summary>Toutes les maps chargées d'un type (toutes tailles confondues).</summary>
+    private List<MapData> MapsOfType(CombatType type) =>
+        _maps.Where(m => m.Type == type).ToList();
+
+    /// <summary>
+    /// Choisit une map dans <paramref name="matches"/> par permutation DÉTERMINISTE (graine de run + taille,
+    /// sel 2 — même logique que terrain/vague), puis index par numéro de combat. Null si la liste est vide.
+    /// </summary>
+    private MapData? PickMap(List<MapData> matches, int size)
+    {
         if (matches.Count == 0)
             return null;
-
-        // Permutation ALÉATOIRE mais DÉTERMINISTE par (graine de run, taille) — même logique que le terrain
-        // et la vague ennemie (cf. Run.CombatRng), avec un sel propre (2). Indépendante du numéro de combat :
-        // les combats d'une même taille piochent ainsi des maps DIFFÉRENTES au fil de la phase.
         var rng = new System.Random(unchecked(_run.Seed * 6151 + size * 1031 + 2));
         for (var i = matches.Count - 1; i > 0; i--)
         {
@@ -643,6 +704,17 @@ public sealed class GameplayScene : Scene
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
     private void BeginPlacement()
     {
+        _protectReward = null;   // écran de récompense « protéger » du combat précédent : soldé
+        _protectRewardFlight = 0f;
+        _reserveSel = null;
+        _reserveFuseChoice = false;
+        _reserveZone = false;
+        _reserveFocus = 0;
+        _reserveActionFocus = 0;
+        _reserveDrag = null;
+        _reserveFullFlash = 0f;
+        _rewardKeep.Clear();
+        _rewardFocus = 0;
         // Taille du plateau selon (phase, mission) — cf. MapSizeFor : phase 1 = 6×6, sauf missions 4-5 = 7×7 ;
         // phase 2 = 7×7 ; phase 3 = 8×8. Map dessinée de cette taille si dispo, sinon terrain aléatoire de même taille.
         var size = MapSizeFor(_run.PhaseIndex, _run.MissionInPhase);
@@ -673,7 +745,16 @@ public sealed class GameplayScene : Scene
                     case MapObjectKind.ChestCommon: _chestCells.Add(o.Cell); break;
                 }
 
-        _match = new Match(Columns, Rows, _battlefield, _bushCells);
+        // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
+        // éliminer tous les ennemis ne gagne PAS le combat : le joueur poursuit son objectif (seule la chute
+        // du commandant reste une défaite — cf. CheckBattleEnd).
+        _specialObjective = _map is { Type: CombatType.Speciale } sm ? sm.Objective : SpecialObjective.Aucun;
+        _specialMission = _specialObjective != SpecialObjective.Aucun;
+        // Mission « protéger » : le joueur ne peut pas se poser sur les cases paysan (il les défend, ne les
+        // squatte pas) ; les ennemis, eux, y vont pour les capturer.
+        var playerBlocked = IsProtectMission ? _recrueCells : null;
+        _match = new Match(Columns, Rows, _battlefield, _bushCells,
+            eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
 
         // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
         _boardIntro = 0f;
@@ -732,8 +813,14 @@ public sealed class GameplayScene : Scene
                 _pending.Add(spec);
 
         // La vague ennemie est posée dès le placement : le joueur voit le déploiement
-        // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur).
-        PlaceEnemies(_run.BuildEnemyWave(Context.Saves.IsUnitDiscovered));   // T2/T3 : priorité aux unités déjà découvertes
+        // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur). MISSION SPÉCIALE :
+        // l'effectif = EXACTEMENT le nombre de spawns dessinés sur la map (pas l'effectif fixe de la table).
+        List<UnitSpec> wave;
+        if (_specialMission && _map is { } spMap)
+            wave = _run.BuildSpecialEnemyWave(spMap.EnemySpawns.Count, Context.Saves.IsUnitDiscovered);
+        else
+            wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);   // T2/T3 : priorité aux unités déjà découvertes
+        PlaceEnemies(wave);
 
         // Méta-progression : les tier 1 débloqués (donc visibles dans la vague qu'on affiche) sont désormais
         // « vus ». Dès lors la tuile recrue peut les proposer à tout moment, y compris dans les runs suivantes
@@ -825,6 +912,10 @@ public sealed class GameplayScene : Scene
         _aiTimer = 0;
         Context.Sounds.Play("battle_start");
 
+        // Mission spéciale : le compte à rebours de tours démarre au combat (le joueur joue le round 1 en
+        // premier). La limite vient de la map (`turnLimit`) si elle en fixe une, sinon la valeur par défaut.
+        _specialRoundsLeft = SpecialTurnBudget();
+
         // Base de référence : un allié DÉJÀ posé sur une recrue (placement) ne déclenche pas — seule une
         // ENTRÉE pendant le combat compte.
         _recruePrev.Clear();
@@ -860,9 +951,35 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    /// <summary>
+    /// Mission « protéger les paysans » : quand un ENNEMI (IA offensive) atteint une case paysan, celui-ci
+    /// est CAPTURÉ — la tuile est consommée (le paysan disparaît, il n'est plus protégé). Pas de transition à
+    /// suivre : l'ennemi n'y arrive qu'en s'y déplaçant, et la case consommée ne se redéclenche pas.
+    /// </summary>
+    private void CheckPaysanCapture()
+    {
+        if (_recrueCells.Count == 0)
+            return;
+
+        foreach (var c in _recrueCells)
+        {
+            if (_recrueConsumed.Contains(c))
+                continue;
+            if (_match.UnitAt(c) is { Faction: Faction.Enemy })
+            {
+                _recrueConsumed.Add(c);          // paysan capturé
+                _match.UnblockPlayerCell(c);     // le paysan n'est plus là → sa case redevient accessible au joueur
+                Context.Sounds.Play("unit_place");   // repère sonore léger de capture
+            }
+        }
+    }
+
     private void TriggerRecrue(Cell c)
     {
         _recrueConsumed.Add(c);
+        // Le pion est TOUJOURS révélé (on VOIT la recrue). La révélation (UpdateBattle/DrawRecrueReveal) gère
+        // le cas RÉSERVE PLEINE : le joueur fait de la place (supprimer/fusionner des pions NON déployés) pour
+        // la récupérer, ou l'ABANDONNE. Il ne rejoint l'armée qu'à la fin du vol, seulement s'il y a la place.
         // Tirée mais PAS encore ajoutée : la carte est révélée, puis le pion vole vers l'inventaire (UpdateBattle),
         // et il rejoint l'armée seulement à la fin du vol. Tirage parmi TOUS les tier 1 déjà vus (méta-progression),
         // sans gating par combat : n'importe quel tier 1 rencontré dans une run peut sortir (cf. RollSeenTier1).
@@ -1044,8 +1161,15 @@ public sealed class GameplayScene : Scene
     private void PlaceEnemies(List<UnitSpec> wave)
     {
         var cells = EnemyDeployCells().ToList();
-        if (_map != null)
+        if (_map is { } m)
+        {
             _run.ShuffleForCombat(cells);   // map dessinée : ennemis sur des cases tirées au hasard parmi les E (déterministe pour ce combat)
+            // Mission spéciale : les cases à IA spéciale (défensive D / offensive O) sont servies EN PREMIER
+            // (tri stable), pour que les rôles clés soient tenus même si la vague a moins d'unités que de cases.
+            if (m.DefensiveEnemySpawns.Count > 0 || m.OffensiveEnemySpawns.Count > 0)
+                cells = cells.OrderByDescending(
+                    c => m.DefensiveEnemySpawns.Contains(c) || m.OffensiveEnemySpawns.Contains(c)).ToList();
+        }
         var i = 0;
         foreach (var spec in wave)
         {
@@ -1054,6 +1178,15 @@ public sealed class GameplayScene : Scene
                 i++;
             if (i >= cells.Count) break;
             var unit = spec.Spawn(Faction.Enemy);
+            // IA selon la case de spawn (mission spéciale) : « D » = garde défensif, « O » = assaillant
+            // offensif ; sinon IA normale.
+            if (_map is { } dm)
+            {
+                if (dm.DefensiveEnemySpawns.Contains(cells[i]))
+                    unit.AiKind = AiKind.Defensif;
+                else if (dm.OffensiveEnemySpawns.Contains(cells[i]))
+                    unit.AiKind = AiKind.Offensif;
+            }
             _match.Place(cells[i], unit);
             _enemySpec[unit] = spec;          // pour retrouver le gabarit à la mort (recrutement)
             i++;
@@ -2219,7 +2352,13 @@ public sealed class GameplayScene : Scene
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
-        CheckRecrueObjects();      // récompense si un allié vient d'entrer sur un objet « recrue »
+        // Paysans (tuiles recrue) : en mission « protéger », ce sont les ENNEMIS qui les capturent (le joueur
+        // les défend, il ne les ramasse pas) ; partout ailleurs, un ALLIÉ qui entre dessus recrute (Liberer /
+        // escarmouche normale).
+        if (IsProtectMission)
+            CheckPaysanCapture();
+        else
+            CheckRecrueObjects();
         CheckChests();             // ouverture d'un coffre si un allié vient d'entrer dessus
 
         // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
@@ -2233,12 +2372,31 @@ public sealed class GameplayScene : Scene
         // d'inventaire et ne rejoint l'armée qu'à la fin du vol. Combat FIGÉ pendant toute la séquence.
         if (_recrueReveal is { } gained)
         {
-            if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : on attend le clic / Entrée / A
+            // Fusion FAÇON PLACEMENT pendant la révélation (empiler → popup au centre → évolution). Pendant le
+            // combat, _pending = la réserve NON déployée → fusionner dessus ne touche pas le plateau.
+            if (EvoPlaying) { UpdateEvolutionAnimation(dt); return; }
+            if (FusionOpen) { UpdateFusionPopup(); return; }
+
+            if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : on voit le pion, on décide
             {
+                var vp = VirtualViewport;
+                var availW = vp.Width - RightPanelWidth;
+                var mouse = Context.Input.MousePosition;
+                if (_run.IsReserveFull)
+                {
+                    // Réserve pleine : gérer la RÉSERVE (empiler/supprimer) pour faire de la place, ou
+                    // ABANDONNER le pion (bouton / B ; le paysan reste compté pour l'objectif).
+                    if (HandleReserveDrag())
+                        return;
+                    if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availW, vp.Height).Contains(mouse)
+                        || Context.Input.WasCancelPressed)
+                    { _recrueReveal = null; _recrueAdded = false; }
+                    return;
+                }
+                // Place dispo : un clic (carte / ailleurs) / Entrée / A → le pion vole vers la réserve.
                 if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
                 {
-                    var vp = VirtualViewport;
-                    var card = DraftCardRect(0, 1, vp.Width - RightPanelWidth, vp.Height);
+                    var card = DraftCardRect(0, 1, availW, vp.Height);
                     _recruitFrom = new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f);
                     _recruitChoice = gained;
                     _recruitHold = RecruitFlightDuration;
@@ -2251,6 +2409,7 @@ public sealed class GameplayScene : Scene
                 if (_recruitHold <= 0f)
                 {
                     _run.AddUnit(gained);   // la recrue rejoint l'armée (réserve), dans son slot
+                    _pending.Add(gained);   // …ET la vue locale du panneau, sinon elle disparaît à la fin du vol
                     _recruitChoice = null;
                     _recrueAdded = true;
                     _recrueSettle = RecrueSettleDuration;
@@ -2276,6 +2435,16 @@ public sealed class GameplayScene : Scene
             if (_fx.HasImpacted && !_impactHandled)
                 OnImpact();
             return;
+        }
+
+        // Mission spéciale : dès que TOUS les paysans sont libérés (dernière révélation close), on clôt la
+        // mission AVANT que l'ennemi ne rejoue — sinon sa dernière action pourrait tuer le commandant et
+        // transformer une réussite en défaite.
+        if (_specialMission && PaysansTotal > 0 && PaysansResolved >= PaysansTotal)
+        {
+            CheckBattleEnd();
+            if (_run.Phase != RunPhase.Battle)
+                return;
         }
 
         if (_match.CurrentTurn == Faction.Enemy)
@@ -2647,34 +2816,108 @@ public sealed class GameplayScene : Scene
     {
         if (_tutorial != null)   // en tuto : pas de recrutement/défaite/sauvegarde — géré par le guide
             return;
-        if (!_match.IsOver)
-            return;
 
-        if (_match.Winner == Faction.Player)
-        {
-            var casualties = _playerSpec
-                .Where(kv => !kv.Key.IsAlive)
-                .Select(kv => kv.Value)
-                .ToList();
-            _run.CompleteCombat(casualties, _enemyKillOrder);
-        }
-        else
+        // Défaite (commandant tombé / armée anéantie) : décisive dans TOUS les modes, y compris spéciale.
+        if (_match.IsOver && _match.Winner == Faction.Enemy)
         {
             _defeatReason = CommanderAlive() ? Loc.T("defeat.army_destroyed") : Loc.T("defeat.commander_fallen");
             _run.Defeat();
+            FinishBattleEnd();
+            return;
         }
 
+        // Mission spéciale (mode objectif) : clôture quand TOUS les paysans sont résolus (libérés/capturés),
+        // OU quand la limite de tours est atteinte (« trop tard » — jamais une défaite hors commandant).
+        if (_specialMission)
+        {
+            var done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0;
+            if (!done)
+                return;
+
+            if (IsProtectMission)
+            {
+                // « Protéger » : PAS de draft. On tire 1 recrue par paysan sauvé et on affiche l'écran de
+                // récompense (_protectReward) ; le clic les enverra TOUS en réserve (cf. UpdateRecruitment).
+                var rewards = RollProtectedPaysanRecruits();
+                _run.CompleteSpecialNoDraft(PlayerCasualties());   // retire les pertes, va à l'écran post-combat
+                _protectReward = rewards.Count > 0 ? rewards : null;   // 0 sauvé → rien à montrer (auto-skip)
+                _rewardKeep.Clear();
+                for (var k = 0; _protectReward != null && k < _protectReward.Count; k++)
+                    _rewardKeep.Add(true);   // tous cochés par défaut (le joueur décoche si pas la place)
+                _rewardFocus = 0;
+            }
+            else
+            {
+                _run.CompleteCombat(PlayerCasualties(), _enemyKillOrder);   // « libérer » : draft normal
+            }
+            FinishBattleEnd();
+            return;
+        }
+
+        // Escarmouche / boss : issue classique (dernier camp debout / essentiel tué).
+        if (!_match.IsOver)
+            return;
+        if (_match.Winner == Faction.Player)
+            _run.CompleteCombat(PlayerCasualties(), _enemyKillOrder);
+        FinishBattleEnd();
+    }
+
+    /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
+    private List<UnitSpec> PlayerCasualties() =>
+        _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
+
+    /// <summary>
+    /// Récompense de la mission « protéger » : 1 recrue (pion tier-1 déjà vu, comme une tuile recrue) par
+    /// paysan encore VIVANT à la fin. Tirée mais PAS encore ajoutée au roster — l'écran de récompense
+    /// (_protectReward) les montre, puis le clic les verse en réserve (cf. UpdateRecruitment).
+    /// </summary>
+    private List<UnitSpec> RollProtectedPaysanRecruits()
+    {
+        var rng = new System.Random();
+        var list = new List<UnitSpec>();
+        // Borné au plafond de réserve : on ne peut de toute façon pas en garder plus (évite un écran de
+        // récompense incollectable si la map a beaucoup de paysans).
+        var n = System.Math.Min(PaysansProtected, Run.ReserveLimit);
+        for (var k = 0; k < n; k++)
+            list.Add(_run.RollSeenTier1(rng, Context.Saves.IsUnitDiscovered));
+        return list;
+    }
+
+    /// <summary>Clôture commune d'un combat (recrutement / victoire / défaite) : sélection, focus, sons, sauvegarde.</summary>
+    private void FinishBattleEnd()
+    {
         ClearSelection();
         _recruitFocus = 0;   // focus manette sur la première carte du draft
 
         // Repère sonore de fin : campagne gagnée/perdue, ou combat remporté (→ recrutement).
         if (_run.Phase == RunPhase.Victory) Context.Sounds.Play("victory");
         else if (_run.Phase == RunPhase.Defeat) Context.Sounds.Play("defeat");
-        else if (_match.Winner == Faction.Player) Context.Sounds.Play("combat_won");
+        else Context.Sounds.Play("combat_won");   // recrutement : escarmouche, boss non final, mission spéciale
+
+        if (_run.Phase == RunPhase.Recruitment)
+            SetupReserveScreen();   // réserve = armée dans _pending → fusion façon placement (empiler → popup)
 
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
         if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)
             Context.Saves.DeleteSlot(_saveSlot);
+    }
+
+    /// <summary>
+    /// Prépare l'écran post-combat (recrutement / récompense) : la RÉSERVE = l'armée (hors commandant) mise
+    /// dans <see cref="_pending"/>, exactement comme l'inventaire du placement — ainsi la FUSION réutilise le
+    /// MÊME système (empiler 3 identiques → popup de choix au centre → évolution). Reset des états fusion/drag.
+    /// </summary>
+    private void SetupReserveScreen()
+    {
+        _fusionGroup.Clear();
+        _fusionCell = null;
+        _carryPile = false;
+        _fusionReserveSlot = 0;
+        _evoPhase = EvoPhase.None;
+        _dragSpec = null;
+        _dragFrom = null;
+        _pending.Clear();
+        _pending.AddRange(ArmyMinusCommander());
     }
 
     private bool CommanderAlive() =>
@@ -2854,9 +3097,15 @@ public sealed class GameplayScene : Scene
         if (_aiTimer > 0)
             return;
 
-        var action = EnemyAi.ChooseAction(_match);
+        var action = EnemyAi.ChooseAction(_match, PaysanCells());
         if (action is not { } a)
+        {
+            // Aucun coup productif (ex. gardes défensifs déjà en place, joueur hors de portée) : l'ennemi
+            // PASSE, sinon le tour resterait bloqué côté ennemi. Le round est tout de même consommé.
+            _match.PassTurn();
+            OnEnemyTurnResolved();
             return;
+        }
 
         if (a.IsAttack)
         {
@@ -2869,22 +3118,113 @@ public sealed class GameplayScene : Scene
             TriggerLanding(a.To);
             Context.Sounds.Play("unit_move");
         }
+        OnEnemyTurnResolved();
+    }
+
+    /// <summary>
+    /// Cases des paysans encore EN JEU (tuiles recrue non résolues), passées à l'IA : GARDÉES par les
+    /// défensifs (Liberer), ASSAILLIES par les offensifs (Proteger). Vide hors mission spéciale.
+    /// </summary>
+    private List<Cell> PaysanCells()
+    {
+        var cells = new List<Cell>();
+        if (!_specialMission)
+            return cells;
+        foreach (var c in _recrueCells)
+            if (!_recrueConsumed.Contains(c))
+                cells.Add(c);
+        return cells;
+    }
+
+    /// <summary>Fin d'un tour ennemi (action jouée ou passée) = un round écoulé : décompte la limite spéciale.</summary>
+    private void OnEnemyTurnResolved()
+    {
+        if (_specialMission && _specialRoundsLeft > 0)
+            _specialRoundsLeft--;
     }
 
     private void UpdateRecruitment(GameTime gameTime)
     {
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _sparks.Update(dt);
+        if (_reserveFullFlash > 0f)   // feedback « plus de place » (draft ou récompense)
+            _reserveFullFlash -= dt;
 
-        // Vol en cours : le pion choisi rejoint le panneau d'inventaire, puis on recrute et on place.
+        // FUSION (façon placement) : popup de choix ouverte ou animation d'évolution → prioritaires, gèlent le reste.
+        if (EvoPlaying) { UpdateEvolutionAnimation(dt); return; }
+        if (FusionOpen) { UpdateFusionPopup(); return; }
+
+        // Écran de récompense « protéger » : on COCHE les pions gagnés à garder (limité par la place), puis
+        // « Récupérer » les fait voler vers la réserve. Les décochés sont abandonnés.
+        if (_protectReward is { } rewards)
+        {
+            if (_protectRewardFlight > 0f)   // vol en cours : on ajoute les cochés à la fin
+            {
+                _protectRewardFlight -= dt;
+                if (_protectRewardFlight <= 0f)
+                {
+                    for (var i = 0; i < rewards.Count; i++)
+                        if (i < _rewardKeep.Count && _rewardKeep[i])
+                            _run.AddUnit(rewards[i]);
+                    _protectReward = null;
+                    _run.SkipRecruitment();
+                    BeginPlacement();
+                }
+                return;
+            }
+
+            if (HandleReserveDrag())   // empiler (fusion) / supprimer pour faire de la place
+                return;
+            UpdateRewardChecks(rewards);
+            return;
+        }
+
+        // Un pion a été choisi : soit il VOLE vers la réserve (place dispo), soit il est TENU en attente
+        // (réserve pleine) — on affiche le pion et on laisse le joueur faire de la place (fusion/suppression)
+        // pour le garder, ou l'ABANDONNER (le perdre) pour enchaîner.
         if (_recruitChoice is { } choice)
         {
-            _recruitHold -= dt;
-            if (_recruitHold <= 0f)
+            if (_recruitHold > 0f)   // vol en cours
             {
-                _run.Recruit(choice);    // BeginPlacement remet _recruitChoice à null
-                BeginPlacement();
+                _recruitHold -= dt;
+                if (_recruitHold <= 0f)
+                {
+                    _run.Recruit(choice);    // BeginPlacement remet _recruitChoice à null
+                    BeginPlacement();
+                }
+                return;
             }
+
+            if (!_run.IsReserveFull)   // place libérée (fusion/suppression) → le pion s'envole enfin
+            {
+                _recruitHold = RecruitFlightDuration;
+                Context.Sounds.Play("recruit");
+                return;
+            }
+
+            // Tenu, réserve pleine : gérer la réserve (empiler/supprimer), re-choisir une carte, ou abandonner.
+            if (HandleReserveDrag())
+                return;
+            var vpH = VirtualViewport;
+            var availWH = vpH.Width - RightPanelWidth;
+            var mouseH = Context.Input.MousePosition;
+            if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availWH, vpH.Height).Contains(mouseH)
+                || Context.Input.WasCancelPressed)
+            {
+                _recruitChoice = null;   // ABANDONNER : on perd le pion
+                _run.SkipRecruitment();
+                BeginPlacement();
+                return;
+            }
+            if (Context.Input.WasLeftClicked)
+                for (var i = 0; i < _run.Draft.Count; i++)
+                    if (DraftCardRect(i, _run.Draft.Count, availWH, vpH.Height).Contains(mouseH))
+                    {
+                        SelectRecruit(i, availWH, vpH.Height);   // re-choisir une autre carte
+                        return;
+                    }
+            if (Context.Input.Nav(NavDir.Left)) { _recruitFocus = (_recruitFocus - 1 + _run.Draft.Count) % _run.Draft.Count; SelectRecruit(_recruitFocus, availWH, vpH.Height); }
+            if (Context.Input.Nav(NavDir.Right)) { _recruitFocus = (_recruitFocus + 1) % _run.Draft.Count; SelectRecruit(_recruitFocus, availWH, vpH.Height); }
             return;
         }
 
@@ -2892,6 +3232,16 @@ public sealed class GameplayScene : Scene
         var availW = viewport.Width - RightPanelWidth;   // cartes centrées à GAUCHE du panneau
         var count = _run.Draft.Count;
         if (count == 0)
+        {
+            // Aucun pion à drafter (ex. mission spéciale réussie sans avoir tué de garde) : la récompense
+            // était les paysans ralliés en combat. On saute le recrutement et on enchaîne, sans se bloquer.
+            _run.SkipRecruitment();
+            BeginPlacement();
+            return;
+        }
+        // La réserve reste gérable (fusion/suppression) ; on peut CHOISIR un pion même si elle est pleine :
+        // il sera « tenu » (affiché) jusqu'à ce qu'on fasse de la place ou qu'on l'abandonne.
+        if (HandleReserveDrag())
             return;
         _recruitFocus = System.Math.Clamp(_recruitFocus, 0, count - 1);
 
@@ -2900,7 +3250,7 @@ public sealed class GameplayScene : Scene
         if (Context.Input.Nav(NavDir.Right)) _recruitFocus = (_recruitFocus + 1) % count;
         if (Context.Input.WasConfirmPressed) { SelectRecruit(_recruitFocus, availW, viewport.Height); return; }
 
-        // Souris : le survol fixe le focus, le clic sélectionne.
+        // Souris : le survol fixe le focus, le clic choisit le pion.
         var mouse = Context.Input.MousePosition;
         for (var i = 0; i < count; i++)
         {
@@ -2913,15 +3263,383 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    /// <summary>Lance le vol de recrutement de la carte <paramref name="index"/> vers l'inventaire.</summary>
+    /// <summary>
+    /// Choisit la carte <paramref name="index"/>. Si la réserve a de la place, le pion S'ENVOLE vers
+    /// l'inventaire ; si elle est PLEINE, il est TENU (affiché) le temps que le joueur fasse de la place ou
+    /// l'abandonne (cf. bloc « pion choisi » de UpdateRecruitment).
+    /// </summary>
     private void SelectRecruit(int index, int availW, int vpH)
     {
         var rect = DraftCardRect(index, _run.Draft.Count, availW, vpH);
         _recruitChoice = _run.Draft[index];
-        _recruitHold = RecruitFlightDuration;
         // Départ du vol = centre du sprite de la carte (cf. disposition dans DrawCardLayout).
         _recruitFrom = new Vector2(rect.X + rect.Width / 2f, rect.Y + CardPad + 22 + 32);
+        _recruitHold = _run.IsReserveFull ? 0f : RecruitFlightDuration;   // pleine → tenu (pas de vol tout de suite)
         Context.Sounds.Play("recruit");
+    }
+
+    // ─── RÉSERVE des écrans post-combat (recrutement/récompense/révélation) ─────────────────────────
+    // La réserve = _pending (comme l'inventaire du placement) → la FUSION réutilise EXACTEMENT le système du
+    // placement : glisser un portrait sur un identique empile (« N/3 »), la 3e ouvre la popup de choix au
+    // centre puis l'animation d'évolution (cf. TryStackOnReserve / DrawFusionStack / DrawFusionPopup). En plus :
+    // clic DROIT sur un portrait = suppression (faire de la place sans fusionner).
+
+    /// <summary>
+    /// Entrée souris de la réserve post-combat (drag de fusion façon placement + suppression au clic droit).
+    /// Renvoie vrai si l'entrée a été CONSOMMÉE (le caller ne doit pas enchaîner sur un recrutement/collecte).
+    /// </summary>
+    private bool HandleReserveDrag()
+    {
+        var mouse = Context.Input.MousePosition;
+
+        // Drag en cours : le relâchement empile sur un identique (fusion) ou remet le pion en réserve.
+        if (_dragSpec is { } dragged)
+        {
+            if (Context.Input.WasLeftReleased)
+            {
+                if (!TryStackOnReserve(dragged, mouse))
+                    _pending.Add(dragged);
+                _dragSpec = null;
+                _dragFrom = null;
+            }
+            return true;
+        }
+
+        if (Context.Input.WasLeftClicked)
+        {
+            if (FusionStacking && FusionInReserve && FusionStackCancelRect().Contains(mouse))
+            {
+                CancelFusion();
+                return true;
+            }
+            if (PanelCardAt(mouse) is { } i)   // prise d'un portrait pour l'empiler
+            {
+                _dragSpec = _pending[i];
+                _pending.RemoveAt(i);
+                _dragFrom = null;
+                Context.Sounds.Play("unit_pick");
+                return true;
+            }
+        }
+
+        // Clic DROIT sur un portrait : suppression (faire de la place).
+        if (Context.Input.WasRightClicked && PanelCardAt(mouse) is { } d)
+        {
+            _run.DeleteUnit(_pending[d]);
+            _pending.RemoveAt(d);
+            Context.Sounds.Play("unit_deselect");
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Dessine la réserve post-combat (panneau de droite) EXACTEMENT comme l'inventaire du placement :
+    /// portraits <see cref="_pending"/> + pile de fusion « N/3 » + compteur RESERVE X/8. Batch OUVERT requis.
+    /// </summary>
+    private void DrawReservePanelFusion(SpriteBatch sb)
+    {
+        for (var i = 0; i < _pending.Count; i++)
+            DrawInventoryCard(sb, _pending[i], PendingCardRect(i));
+        DrawFusionStack(sb);   // pile « N/3 » + bouton X (comme au placement)
+
+        var panel = PanelRect();
+        var counter = Loc.T("reserve.count", _run.ReserveCount, Run.ReserveLimit);
+        Context.Font.Draw(sb, counter,
+            new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
+            1, _run.IsReserveFull ? Palette.Purple5 : Palette.Cyan1);
+
+        // Rappel (souris) : fusion par empilement + suppression au clic droit.
+        if (!Context.Input.UsingGamepad)
+        {
+            var y = panel.Bottom - 32;
+            Context.Font.Draw(sb, Loc.T("reserve.hint_fuse"), new Vector2(panel.X + PanelPad, y), 1, Palette.Yellow2);
+            Context.Font.Draw(sb, Loc.T("reserve.hint_del"), new Vector2(panel.X + PanelPad, y + 14), 1, Palette.Blue1);
+        }
+    }
+
+    /// <summary>Rectangle du bouton « Abandonner » (perdre le pion tenu), sous les cartes de draft.</summary>
+    private Rectangle RecruitAbandonBtnRect(int availW, int vpH)
+    {
+        var cards = DraftCardRect(0, 1, availW, vpH);
+        const int w = 220, h = 30;
+        return new Rectangle((availW - w) / 2, cards.Bottom + 14, w, h);
+    }
+
+    private const float ReserveFlashDuration = 0.8f;   // durée du feedback « plus de place »
+
+    /// <summary>
+    /// Écran de récompense : coche/décoche les pions gagnés (souris = clic carte, manette = X sur la carte
+    /// focalisée), puis « Récupérer » (bouton souris / A / Entrée). La collecte n'est possible que si le
+    /// nombre de cochés tient dans la place restante ; sinon feedback « plus de place » (_reserveFullFlash).
+    /// </summary>
+    private void UpdateRewardChecks(List<UnitSpec> rewards)
+    {
+        var vp = VirtualViewport;
+        var availW = vp.Width - RightPanelWidth;
+        var mouse = Context.Input.MousePosition;
+        var gp = Context.Input.UsingGamepad;
+
+        if (!gp && Context.Input.WasLeftClicked)
+            for (var i = 0; i < rewards.Count; i++)
+                if (i < _rewardKeep.Count && DraftCardRect(i, rewards.Count, availW, vp.Height).Contains(mouse))
+                {
+                    _rewardKeep[i] = !_rewardKeep[i];
+                    Context.Sounds.Play("unit_deselect");
+                    return;
+                }
+        if (gp && !_reserveZone && rewards.Count > 0)
+        {
+            if (Context.Input.Nav(NavDir.Left)) _rewardFocus = (_rewardFocus - 1 + rewards.Count) % rewards.Count;
+            if (Context.Input.Nav(NavDir.Right)) _rewardFocus = (_rewardFocus + 1) % rewards.Count;
+            _rewardFocus = System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1);
+            if (Context.Input.WasTertiaryPressed && _rewardFocus < _rewardKeep.Count)
+            {
+                _rewardKeep[_rewardFocus] = !_rewardKeep[_rewardFocus];
+                Context.Sounds.Play("unit_deselect");
+                return;
+            }
+        }
+
+        var collect = (Context.Input.WasLeftClicked && RewardCollectBtnRect(availW, vp.Height).Contains(mouse))
+            || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter);
+        if (!collect)
+            return;
+        if (RewardCheckedCount() <= Run.ReserveLimit - _run.ReserveCount)
+        {
+            _protectRewardFlight = RecruitFlightDuration;   // les cochés s'envolent vers la réserve
+            Context.Sounds.Play("recruit");
+        }
+        else
+        {
+            _reserveFullFlash = ReserveFlashDuration;        // pas assez de place : feedback
+            Context.Sounds.Play("unit_deselect");
+        }
+    }
+
+    /// <summary>Nombre de pions de récompense COCHÉS (à récupérer).</summary>
+    private int RewardCheckedCount()
+    {
+        var n = 0;
+        for (var i = 0; i < _rewardKeep.Count; i++)
+            if (_rewardKeep[i]) n++;
+        return n;
+    }
+
+    /// <summary>Rectangle du bouton « Récupérer » (sous les cartes de récompense).</summary>
+    private Rectangle RewardCollectBtnRect(int availW, int vpH)
+    {
+        var cards = DraftCardRect(0, 1, availW, vpH);   // y identique quel que soit le nombre de cartes
+        const int w = 220, h = 30;
+        return new Rectangle((availW - w) / 2, cards.Bottom + 14, w, h);
+    }
+
+    // ── Édition de la réserve (écrans draft / récompense) ───────────────────────────────────────────
+    // Le plafond Run.ReserveLimit borne la réserve (roster hors commandant). Quand elle est pleine, on ne
+    // peut plus recruter/récupérer tant qu'on n'a pas fusionné (3 identiques → évolution) ou supprimé un pion.
+
+    /// <summary>
+    /// Vrai si <paramref name="spec"/> peut être fusionné DEPUIS <paramref name="pool"/> (non-feuille + ≥3
+    /// exemplaires DANS le pool). Le pool borne les instances consommables : réserve non déployée en combat
+    /// (pas de désync plateau), tout le roster hors combat.
+    /// </summary>
+    private static bool CanFuseReserve(UnitSpec spec, List<UnitSpec> pool) =>
+        !spec.UnitClass.IsLeaf
+        && pool.Count(u => !u.Essential && Run.SameClass(u, spec)) >= Run.FusionSize;
+
+    /// <summary>Indice de la carte de RÉSERVE (armée hors commandant) sous <paramref name="p"/>, ou null.</summary>
+    private int? ArmyPanelCardAt(Point p, int armyCount)
+    {
+        for (var i = 0; i < armyCount; i++)
+            if (PanelCardRect(i).Contains(p))
+                return i;
+        return null;
+    }
+
+    /// <summary>Rectangle d'un bouton d'action de réserve (0 = haut, 1 = bas) au bas du panneau de droite.</summary>
+    private Rectangle ReserveBtnRect(int slot)
+    {
+        var panel = PanelRect();
+        return new Rectangle(panel.X + PanelPad, panel.Bottom - 74 + slot * 32, panel.Width - 2 * PanelPad, 26);
+    }
+
+    /// <summary>
+    /// Édition de réserve (souris OU manette) : sélectionner un pion, puis SUPPRIMER / FUSIONNER (→ choix
+    /// d'une des 2 évolutions) pour faire de la place. Renvoie vrai si l'entrée a été CONSOMMÉE (le caller
+    /// n'enchaîne pas sur un recrutement/collecte).
+    /// </summary>
+    private bool UpdateReserveEditing(List<UnitSpec> army)
+    {
+        if (_reserveSel is { } cur && !army.Contains(cur))   // sélection devenue invalide (supprimée/fusionnée)
+        {
+            _reserveSel = null;
+            _reserveFuseChoice = false;
+        }
+        return Context.Input.UsingGamepad
+            ? UpdateReserveEditingGamepad(army)
+            : UpdateReserveEditingMouse(army);
+    }
+
+    /// <summary>
+    /// Édition de réserve à la SOURIS : clics sur les boutons (Supprimer/Fusionner/évolution), et DRAG-DROP
+    /// d'un pion sur un pion identique pour FUSIONNER (≥3 exemplaires → choix d'évolution). Un clic simple sur
+    /// un pion (drag relâché sur lui-même) le (dé)sélectionne pour les boutons.
+    /// </summary>
+    private bool UpdateReserveEditingMouse(List<UnitSpec> army)
+    {
+        var mouse = Context.Input.MousePosition;
+
+        // Drag en cours : résolu au relâchement (fusion si drop sur un identique, sinon (dé)sélection).
+        if (_reserveDrag is { } drag)
+        {
+            if (Context.Input.WasLeftReleased)
+            {
+                var over = ArmyPanelCardAt(mouse, army.Count);
+                if (over is { } oi && !ReferenceEquals(army[oi], drag)
+                    && Run.SameClass(army[oi], drag) && CanFuseReserve(drag, army))
+                {
+                    _reserveSel = drag;          // drop sur un pion identique → ouvre le choix d'évolution
+                    _reserveFuseChoice = true;
+                    _reserveActionFocus = 0;
+                    Context.Sounds.Play("unit_place");
+                }
+                else if (over is { } oj && ReferenceEquals(army[oj], drag))
+                {
+                    _reserveSel = ReferenceEquals(_reserveSel, drag) ? null : drag;   // clic simple → (dé)sélection
+                    _reserveFuseChoice = false;
+                }
+                _reserveDrag = null;
+            }
+            return true;   // pendant tout le drag, on capte l'entrée
+        }
+
+        if (!Context.Input.WasLeftClicked)
+            return false;
+
+        // Choix d'évolution en cours : cliquer une des 2 options fusionne 3 exemplaires en cette évolution.
+        if (_reserveSel is { } fspec && _reserveFuseChoice)
+        {
+            var evos = fspec.UnitClass.Evolutions;
+            for (var e = 0; e < evos.Count; e++)
+                if (ReserveBtnRect(e).Contains(mouse))
+                {
+                    FuseReserve(fspec, evos[e], army);
+                    return true;
+                }
+            _reserveFuseChoice = false;   // clic ailleurs : on annule le choix
+            return true;
+        }
+
+        // Pion sélectionné : boutons Supprimer (slot 0) / Fusionner (slot 1, si ≥3 identiques).
+        if (_reserveSel is { } sel)
+        {
+            if (ReserveBtnRect(0).Contains(mouse))
+            {
+                _run.DeleteUnit(sel);
+                Context.Sounds.Play("unit_deselect");
+                _reserveSel = null;
+                return true;
+            }
+            if (CanFuseReserve(sel, army) && ReserveBtnRect(1).Contains(mouse))
+            {
+                _reserveFuseChoice = true;
+                return true;
+            }
+        }
+
+        // Clic sur un pion de la réserve : DÉMARRE un drag (résolu au relâchement).
+        if (ArmyPanelCardAt(mouse, army.Count) is { } idx)
+        {
+            _reserveDrag = army[idx];
+            return true;
+        }
+
+        // Clic hors panneau : on désélectionne mais on LAISSE le caller gérer (ex. clic sur une carte draft).
+        _reserveSel = null;
+        _reserveFuseChoice = false;
+        return false;
+    }
+
+    /// <summary>
+    /// Édition de réserve à la MANETTE : RB entre/sort du panneau ; dans le panneau, Nav choisit un pion, A le
+    /// sélectionne, puis Nav ↑/↓ + A choisit Supprimer/Fusionner (→ une des 2 évolutions), B revient en arrière.
+    /// Renvoie vrai dès qu'on est dans la réserve (l'entrée manette est alors captée, pas les cartes).
+    /// </summary>
+    private bool UpdateReserveEditingGamepad(List<UnitSpec> army)
+    {
+        // Pion sélectionné (manette OU souris) : choix de l'action / de l'évolution.
+        if (_reserveSel is { } sel)
+        {
+            var count = _reserveFuseChoice ? sel.UnitClass.Evolutions.Count
+                : CanFuseReserve(sel, army) ? 2 : 1;
+            if (Context.Input.Nav(NavDir.Down)) _reserveActionFocus = (_reserveActionFocus + 1) % count;
+            if (Context.Input.Nav(NavDir.Up)) _reserveActionFocus = (_reserveActionFocus - 1 + count) % count;
+            _reserveActionFocus = System.Math.Clamp(_reserveActionFocus, 0, count - 1);
+
+            if (Context.Input.WasConfirmPressed)
+            {
+                if (_reserveFuseChoice)
+                    FuseReserve(sel, sel.UnitClass.Evolutions[_reserveActionFocus], army);
+                else if (_reserveActionFocus == 0) { _run.DeleteUnit(sel); Context.Sounds.Play("unit_deselect"); _reserveSel = null; }
+                else { _reserveFuseChoice = true; _reserveActionFocus = 0; }   // → choix d'évolution
+                _reserveFocus = System.Math.Clamp(_reserveFocus, 0, System.Math.Max(0, army.Count - 1));
+            }
+            else if (Context.Input.WasCancelPressed)
+            {
+                if (_reserveFuseChoice) { _reserveFuseChoice = false; _reserveActionFocus = 0; }
+                else _reserveSel = null;   // retour au choix de pion
+            }
+            return true;
+        }
+
+        // Dans le panneau réserve (pas encore de pion sélectionné) : navigation + sélection.
+        if (_reserveZone)
+        {
+            if (army.Count == 0) { _reserveZone = false; return false; }
+            MoveGridFocus(ref _reserveFocus, army.Count, InvCols);
+            if (Context.Input.WasConfirmPressed)
+            {
+                _reserveSel = army[System.Math.Clamp(_reserveFocus, 0, army.Count - 1)];
+                _reserveActionFocus = 0;
+                _reserveFuseChoice = false;
+            }
+            else if (Context.Input.WasCancelPressed || Context.Input.WasRightShoulderPressed)
+                _reserveZone = false;   // sortir de la réserve → retour aux cartes
+            return true;
+        }
+
+        // Sur les cartes : RB entre dans la gestion de réserve.
+        if (Context.Input.WasRightShoulderPressed && army.Count > 0)
+        {
+            _reserveZone = true;
+            _reserveFocus = System.Math.Clamp(_reserveFocus, 0, army.Count - 1);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Fusionne 3 exemplaires de la classe de <paramref name="rep"/> (pris dans <paramref name="pool"/>) en
+    /// l'évolution donnée, et solde la sélection. Le pool évite de consommer un pion déployé en combat.
+    /// </summary>
+    private void FuseReserve(UnitSpec rep, UnitClass evolution, List<UnitSpec> pool)
+    {
+        var group = pool.Where(u => !u.Essential && Run.SameClass(u, rep)).Take(Run.FusionSize).ToList();
+        _run.Fuse(group, evolution);
+        Context.Sounds.Play("recruit");
+        _reserveSel = null;
+        _reserveFuseChoice = false;
+    }
+
+    /// <summary>Déplace un focus en GRILLE (largeur <paramref name="cols"/>) selon la Nav manette, borné à [0,count).</summary>
+    private void MoveGridFocus(ref int focus, int count, int cols)
+    {
+        if (count <= 0) { focus = 0; return; }
+        if (Context.Input.Nav(NavDir.Right)) focus = (focus + 1) % count;
+        if (Context.Input.Nav(NavDir.Left)) focus = (focus - 1 + count) % count;
+        if (Context.Input.Nav(NavDir.Down)) focus = System.Math.Min(count - 1, focus + cols);
+        if (Context.Input.Nav(NavDir.Up)) focus = System.Math.Max(0, focus - cols);
+        focus = System.Math.Clamp(focus, 0, count - 1);
     }
 
     private void ClearSelection()
@@ -2982,14 +3700,14 @@ public sealed class GameplayScene : Scene
         return kind;
     }
 
-    /// <summary>Style d'animation d'attaque selon l'unité : cavalier = charge sautée, mage = projectile,
-    /// archer (trait « Zone morte ») = tir, autres = fente. Le Soldat (base Dame) reste en mêlée.</summary>
-    private static AttackStyle AttackStyleFor(Unit unit) => unit.Domaine switch
+    /// <summary>Style d'animation d'attaque selon l'unité : archer (« Zone morte ») = tir — y compris le
+    /// cavalier MONTÉ archer ; cavalier de mêlée = charge sautée ; mage = projectile ; autres = fente.</summary>
+    private static AttackStyle AttackStyleFor(Unit unit) => unit switch
     {
-        Domaine.Cavalier => AttackStyle.Leap,
-        Domaine.Fou      => AttackStyle.Cast,
-        _ when unit.HasTrait(Trait.ZoneMorte) => AttackStyle.Shoot, // archers (Archer / Arbalétrier / Rôdeur…)
-        _                => AttackStyle.Lunge,
+        _ when unit.HasTrait(Trait.ZoneMorte) => AttackStyle.Shoot,     // archers, montés compris (tire, ne charge pas)
+        { Domaine: Domaine.Cavalier }         => AttackStyle.Leap,      // cavalier de mêlée : charge sautée
+        { Domaine: Domaine.Fou }              => AttackStyle.Cast,
+        _                                     => AttackStyle.Lunge,
     };
 
     /// <summary>
@@ -3143,6 +3861,8 @@ public sealed class GameplayScene : Scene
                 sb.End();
 
                 DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
+                if (_specialMission && !_equipPhase)
+                    DrawSpecialBriefing(sb, viewport);   // rappel de l'objectif sous la frise (placement)
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (FusionOpen)
@@ -3185,6 +3905,8 @@ public sealed class GameplayScene : Scene
                 }
 
                 DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
+                if (_specialMission)
+                    DrawSpecialObjective(sb, viewport);   // paysans X/N + tours restants (sous la frise)
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (_recrueReveal != null)
@@ -4193,30 +4915,47 @@ public sealed class GameplayScene : Scene
         if (_recrueReveal is not { } spec)
             return;
 
-        var army = ArmyMinusCommander();                 // armée SANS le commandant ni la recrue (pas encore ajoutée)
         var availW = viewport.Width - RightPanelWidth;    // zone des cartes, à gauche du panneau
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawDim(sb, viewport);
 
-        // Inventaire ouvert à droite : on voit l'armée et le slot où la recrue va atterrir.
+        // Réserve (= _pending, non déployés en combat) à droite : on voit où la recrue va atterrir + on peut
+        // FUSIONNER façon placement (empiler → popup) pour faire de la place.
         DrawPanelBackground(sb);
-        DrawArmyInventory(sb, army);
+        DrawReservePanelFusion(sb);
 
-        if (_recruitChoice == null && !_recrueAdded)   // phase CARTE seulement : carte centrée + invite au clic
+        if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : carte centrée, puis décision
         {
             var card = DraftCardRect(0, 1, availW, viewport.Height);
             Context.Font.DrawCentered(sb, Loc.T("recrue.join"),
                 new Rectangle(0, card.Y - 44, availW, 24), 2, Palette.Yellow2);
             DrawCardLayout(sb, card, spec.UnitClass, Faction.Player, spec.Domaine, spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
-            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),
-                new Rectangle(0, card.Bottom + 14, availW, 16), 1, Palette.Cyan1);
+
+            if (_run.IsReserveFull)
+            {
+                var ab = RecruitAbandonBtnRect(availW, viewport.Height);
+                Context.Style.FillDither(sb, ab);
+                DrawRectBorder(sb, ab, Palette.Purple5, 2);
+                Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
+                Context.Font.DrawCentered(sb, Loc.T("recruit.hold_prompt"),
+                    new Rectangle(0, ab.Bottom + 6, availW, 12), 1, Palette.Cyan1);
+            }
+            else
+            {
+                Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),
+                    new Rectangle(0, card.Bottom + 14, availW, 16), 1, Palette.Cyan1);
+            }
         }
         sb.End();
 
-        // Phase VOL : la recrue file de la carte vers son slot d'inventaire (slot suivant = army.Count).
-        if (_recruitChoice is { } flying)
-            DrawRecruitFlight(sb, flying, army.Count);
+        DrawDragGhost(sb);   // portrait de réserve en cours de drag de fusion (souris)
+        if (FusionOpen) DrawFusionPopup(sb, viewport);
+        if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
+
+        // Phase VOL : la recrue file de la carte vers son slot de réserve (slot suivant = _pending.Count).
+        if (_recruitChoice is { } flying && _recruitHold > 0f)
+            DrawRecruitFlight(sb, flying, _pending.Count);
     }
 
     // Bornes internes de la phase REVEAL (fractions de EvoRevealDuration).
@@ -5519,7 +6258,12 @@ public sealed class GameplayScene : Scene
 
     private void DrawRecruitment(SpriteBatch sb, Viewport viewport)
     {
-        var army = ArmyMinusCommander();
+        if (_protectReward is { } rewards)   // mission « protéger » : écran de récompense (tous les pions sauvés)
+        {
+            DrawProtectReward(sb, viewport, rewards);
+            return;
+        }
+
         var availW = viewport.Width - RightPanelWidth;   // zone des cartes, à GAUCHE du panneau
 
         sb.Begin(samplerState: SamplerState.PointClamp);
@@ -5529,27 +6273,232 @@ public sealed class GameplayScene : Scene
         var boxW = System.Math.Max(titleW, subW) + 56;
         Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, 48, boxW, 72));
         Context.Font.DrawCentered(sb, Loc.T("recruit.title"), new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, Loc.T("recruit.subtitle"),
-            new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);
+        var held = _recruitChoice is not null && _recruitHold <= 0f;   // pion tenu (réserve pleine)
+        Context.Font.DrawCentered(sb, Loc.T(held ? "recruit.hold_prompt" : "recruit.subtitle"),
+            new Rectangle(0, 100, availW, 12), 1, held ? Palette.Cyan1 : Palette.Blue1);
         for (var i = 0; i < _run.Draft.Count; i++)
             DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height));
 
-        // Surbrillance de la carte FOCUS (souris ou manette) — sauf pendant le vol de sélection.
-        if (_recruitChoice == null && _run.Draft.Count > 0)
+        if (held)
+        {
+            // Pion TENU : carte choisie surlignée, autres grisées, + bouton « Abandonner » (perdre le pion).
+            var ci = -1;
+            for (var i = 0; i < _run.Draft.Count; i++)
+                if (ReferenceEquals(_run.Draft[i], _recruitChoice))
+                    ci = i;
+            for (var i = 0; i < _run.Draft.Count; i++)
+                if (i != ci)
+                    DrawRect(sb, DraftCardRect(i, _run.Draft.Count, availW, viewport.Height), Palette.Black1 * 0.55f);
+            if (ci >= 0)
+                DrawRectBorder(sb, Inflate(DraftCardRect(ci, _run.Draft.Count, availW, viewport.Height), 3), Palette.Yellow2, 3);
+            var ab = RecruitAbandonBtnRect(availW, viewport.Height);
+            Context.Style.FillDither(sb, ab);
+            DrawRectBorder(sb, ab, Palette.Purple5, 2);
+            Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
+        }
+        // Surbrillance de la carte FOCUS (souris ou manette) — sauf si un pion est déjà choisi (vol/tenu).
+        else if (_recruitChoice == null && _run.Draft.Count > 0)
         {
             var fi = System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1);
             var fr = DraftCardRect(fi, _run.Draft.Count, availW, viewport.Height);
             DrawRectBorder(sb, Inflate(fr, 3), Palette.Yellow2, 3);
         }
 
-        // Panneau d'inventaire (à droite) : ton armée actuelle, hors commandant.
+        // Panneau RÉSERVE (à droite) = _pending, avec FUSION façon placement (empiler → pile « N/3 »).
         DrawPanelBackground(sb);
-        DrawArmyInventory(sb, army);
+        DrawReservePanelFusion(sb);
+        DrawReserveFullFlash(sb, availW, viewport.Height);   // feedback « plus de place »
         sb.End();
 
-        // Pion de la carte choisie en vol vers son emplacement d'inventaire (par-dessus le reste).
-        if (_recruitChoice is { } choice)
-            DrawRecruitFlight(sb, choice, army.Count);   // nouveau slot = à la suite de l'armée
+        DrawDragGhost(sb);                       // portrait de réserve en cours de drag de fusion
+        if (FusionOpen) DrawFusionPopup(sb, viewport);        // choix d'évolution au CENTRE (comme au placement)
+        if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
+
+        // Pion de la carte choisie en VOL vers son emplacement de réserve (par-dessus le reste).
+        if (_recruitChoice is { } choice && _recruitHold > 0f)
+            DrawRecruitFlight(sb, choice, _pending.Count);   // nouveau slot = à la suite de la réserve
+    }
+
+    /// <summary>
+    /// Écran de récompense « protéger » : les pions gagnés en cartes AVEC CASE À COCHER (coché = à garder,
+    /// limité par la place restante), un bouton « Récupérer », et le panneau réserve éditable à droite. Les
+    /// pions cochés volent en réserve ; les décochés sont abandonnés.
+    /// </summary>
+    private void DrawProtectReward(SpriteBatch sb, Viewport viewport, List<UnitSpec> rewards)
+    {
+        var availW = viewport.Width - RightPanelWidth;
+        var flying = _protectRewardFlight > 0f;
+        var canCollect = RewardCheckedCount() <= Run.ReserveLimit - _run.ReserveCount;
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        var title = Loc.T("reward.title");
+        var sub = Loc.T("reward.subtitle");
+        var boxW = System.Math.Max(Context.Font.Measure(title, 3), Context.Font.Measure(sub, 1)) + 56;
+        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, 48, boxW, 72));
+        Context.Font.DrawCentered(sb, title, new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
+        if (!flying)
+            Context.Font.DrawCentered(sb, sub, new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);
+
+        for (var i = 0; i < rewards.Count; i++)
+        {
+            var rect = DraftCardRect(i, rewards.Count, availW, viewport.Height);
+            DrawDraftCard(sb, rewards[i], rect);
+            var kept = i < _rewardKeep.Count && _rewardKeep[i];
+            if (!kept)
+                DrawRect(sb, rect, Palette.Black1 * 0.6f);   // décochée : grisée
+            DrawCheckbox(sb, new Rectangle(rect.X + 6, rect.Y + 6, 18, 18), kept);
+        }
+
+        if (!flying)
+        {
+            // Manette : carte de récompense focalisée.
+            if (Context.Input.UsingGamepad && !_reserveZone && rewards.Count > 0)
+                DrawRectBorder(sb, Inflate(DraftCardRect(System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1),
+                    rewards.Count, availW, viewport.Height), 3), Palette.Cyan1, 3);
+
+            // Bouton « Récupérer (N) » : doré si collectable, rouge sinon.
+            var btn = RewardCollectBtnRect(availW, viewport.Height);
+            Context.Style.FillDither(sb, btn);
+            DrawRectBorder(sb, btn, canCollect ? Palette.Yellow1 : Palette.Purple5, 2);
+            Context.Font.DrawCentered(sb, Loc.T("reward.collect", RewardCheckedCount()), btn, 1,
+                canCollect ? Palette.Yellow2 : Palette.Purple5);
+        }
+
+        DrawPanelBackground(sb);
+        DrawReservePanelFusion(sb);   // réserve _pending + fusion façon placement
+        DrawReserveFullFlash(sb, availW, viewport.Height);
+        sb.End();
+
+        DrawDragGhost(sb);                       // portrait de réserve en cours de drag de fusion
+        if (FusionOpen) DrawFusionPopup(sb, viewport);        // choix d'évolution au CENTRE
+        if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
+
+        // Vol : seuls les pions COCHÉS filent vers la réserve (slots consécutifs après la réserve).
+        if (flying)
+        {
+            var t = MathHelper.Clamp(1f - _protectRewardFlight / RecruitFlightDuration, 0f, 1f);
+            var ease = t * t;
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            var slotIdx = 0;
+            for (var i = 0; i < rewards.Count; i++)
+            {
+                if (i >= _rewardKeep.Count || !_rewardKeep[i])
+                    continue;
+                var card = DraftCardRect(i, rewards.Count, availW, viewport.Height);
+                var from = new Vector2(card.X + card.Width / 2f, card.Y + CardPad + 22 + 32);
+                var slot = PanelCardRect(_pending.Count + slotIdx++);
+                var target = new Vector2(slot.X + slot.Width / 2f, slot.Y + slot.Height / 2f);
+                var pos = Vector2.Lerp(from, target, ease);
+                var dest = new Rectangle((int)(pos.X - InvIconSize / 2f), (int)(pos.Y - InvIconSize / 2f),
+                    InvIconSize, InvIconSize);
+                if (SpriteFor(rewards[i].UnitClass, Faction.Player, front: true) is { } sprite)
+                    sb.Draw(sprite, dest, Color.White);
+                else
+                    DrawChip(sb, rewards[i].UnitClass, Faction.Player, dest, front: true);
+            }
+            sb.End();
+        }
+    }
+
+    /// <summary>Petite case à cocher (fond tramé + liseré ; carré plein doré à l'intérieur si cochée).</summary>
+    private void DrawCheckbox(SpriteBatch sb, Rectangle r, bool on)
+    {
+        Context.Style.FillDither(sb, r);
+        DrawRectBorder(sb, r, Palette.Yellow1, 2);
+        if (on)
+            DrawRect(sb, new Rectangle(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8), Palette.Yellow2);
+    }
+
+    /// <summary>Feedback « plus de place » (bandeau rouge pulsé), déclenché sur un recrutement/collecte bloqué.</summary>
+    private void DrawReserveFullFlash(SpriteBatch sb, int availW, int vpH)
+    {
+        if (_reserveFullFlash <= 0f)
+            return;
+        var pulse = 0.45f + 0.55f * (float)System.Math.Abs(System.Math.Sin(_time * 18));
+        var msg = Loc.T("reserve.no_room");
+        var w = Context.Font.Measure(msg, 2) + 40;
+        var box = new Rectangle((availW - w) / 2, 126, w, 30);
+        Context.Style.FillDither(sb, box);
+        DrawRectBorder(sb, box, Palette.Purple5, 2);
+        Context.Font.DrawCentered(sb, msg, box, 2, Palette.Purple5 * (0.5f + 0.5f * pulse));
+    }
+
+    /// <summary>Pion de réserve en cours de DRAG de fusion (souris) : suit le curseur, au-dessus de tout.</summary>
+    private void DrawReserveDrag(SpriteBatch sb)
+    {
+        if (_reserveDrag is not { } spec)
+            return;
+        var m = Context.Input.MousePosition;
+        var dest = new Rectangle(m.X - InvIconSize / 2, m.Y - InvIconSize / 2, InvIconSize, InvIconSize);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        if (SpriteFor(spec.UnitClass, Faction.Player, front: true) is { } sprite)
+            sb.Draw(sprite, dest, Color.White * 0.85f);
+        else
+            DrawChip(sb, spec.UnitClass, Faction.Player, dest, front: true);
+        sb.End();
+    }
+
+    /// <summary>
+    /// Overlay d'édition de réserve (panneau de droite) : compteur RESERVE X/8, surbrillance du pion
+    /// sélectionné + boutons Supprimer/Fusionner (ou le choix des 2 évolutions). Suppose un batch OUVERT.
+    /// </summary>
+    private void DrawReserveEditing(SpriteBatch sb, List<UnitSpec> army)
+    {
+        var panel = PanelRect();
+        var full = _run.IsReserveFull;
+        var gp = Context.Input.UsingGamepad;
+
+        var counter = Loc.T("reserve.count", _run.ReserveCount, Run.ReserveLimit);
+        Context.Font.Draw(sb, counter,
+            new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
+            1, full ? Palette.Purple5 : Palette.Cyan1);
+
+        var si = _reserveSel is { } sel ? army.IndexOf(sel) : -1;
+        if (si >= 0)
+        {
+            DrawRectBorder(sb, Inflate(PanelCardRect(si), 2), Palette.Yellow2, 2);
+            if (_reserveFuseChoice)
+            {
+                var evos = army[si].UnitClass.Evolutions;
+                for (var e = 0; e < evos.Count; e++)
+                    DrawReserveButton(sb, ReserveBtnRect(e), evos[e].Name, gp && e == _reserveActionFocus);
+            }
+            else
+            {
+                DrawReserveButton(sb, ReserveBtnRect(0), Loc.T("reserve.delete"), gp && _reserveActionFocus == 0);
+                if (CanFuseReserve(army[si], army))
+                    DrawReserveButton(sb, ReserveBtnRect(1), Loc.T("reserve.fuse"), gp && _reserveActionFocus == 1);
+            }
+        }
+        else
+        {
+            // Manette : pion focalisé dans la réserve (avant sélection).
+            if (gp && _reserveZone && army.Count > 0)
+                DrawRectBorder(sb, Inflate(PanelCardRect(System.Math.Clamp(_reserveFocus, 0, army.Count - 1)), 2),
+                    Palette.Cyan1, 2);
+            if (full)
+                Context.Font.DrawCentered(sb, Loc.T("reserve.full_hint"),
+                    new Rectangle(panel.X + PanelPad, panel.Bottom - 68, panel.Width - 2 * PanelPad, 12),
+                    1, Palette.Purple5);
+        }
+
+        // Aide manette : comment gérer la réserve (jamais à la souris — le clic est explicite).
+        if (gp)
+        {
+            var hint = _reserveSel is not null ? Loc.T("reserve.hint_act")
+                : _reserveZone ? Loc.T("reserve.hint_pick")
+                : Loc.T("reserve.hint_enter");
+            Context.Font.DrawCentered(sb, hint,
+                new Rectangle(panel.X + PanelPad, panel.Bottom - 16, panel.Width - 2 * PanelPad, 10), 1, Palette.Blue1);
+        }
+    }
+
+    /// <summary>Bouton texte du panneau de réserve (fond tramé + liseré ; focalisé = liseré cyan plus épais).</summary>
+    private void DrawReserveButton(SpriteBatch sb, Rectangle r, string label, bool focused)
+    {
+        Context.Style.FillDither(sb, r);
+        DrawRectBorder(sb, r, focused ? Palette.Cyan1 : Palette.Yellow1, focused ? 3 : 2);
+        Context.Font.DrawCentered(sb, label, r, 1, Palette.Yellow2);
     }
 
     /// <summary>L'armée actuelle hors commandant — affichée dans le panneau d'inventaire au recrutement.</summary>
@@ -5561,6 +6510,22 @@ public sealed class GameplayScene : Scene
             if (spec != commander)
                 army.Add(spec);
         return army;
+    }
+
+    /// <summary>
+    /// Pions de la RÉSERVE NON déployés (roster hors commandant ET hors pions posés sur le plateau). Sert à
+    /// la gestion de réserve PENDANT le combat (révélation de recrue) : supprimer/fusionner ceux-là ne
+    /// touche pas le plateau (aucun désync). Il y en a toujours ≥1 quand la réserve est pleine (MaxDeployed &lt; ReserveLimit).
+    /// </summary>
+    private List<UnitSpec> ReserveUndeployed()
+    {
+        var deployed = new HashSet<UnitSpec>(_playerSpec.Values);
+        var commander = _run.Commander;
+        var reserve = new List<UnitSpec>();
+        foreach (var spec in _run.Roster)
+            if (spec != commander && !deployed.Contains(spec))
+                reserve.Add(spec);
+        return reserve;
     }
 
     /// <summary>Contenu du panneau d'inventaire au recrutement : titre + portraits de l'armée.</summary>
@@ -5657,6 +6622,67 @@ public sealed class GameplayScene : Scene
     private static Rectangle Inflate(Rectangle r, int by) =>
         new(r.X - by, r.Y - by, r.Width + 2 * by, r.Height + 2 * by);
 
+    /// <summary>
+    /// HUD d'objectif de la mission spéciale, sous la frise : paysans libérés X/N et tours restants. Le
+    /// compteur de tours passe en alerte dans les 3 derniers rounds. Centré dans la zone du plateau.
+    /// </summary>
+    private void DrawSpecialObjective(SpriteBatch sb, Viewport viewport)
+    {
+        var railW = (int)CenteringWidth();   // même centrage que le plateau/la frise (suit le départ du panneau)
+        // Proteger : paysans encore PROTÉGÉS X/N ; Liberer : paysans LIBÉRÉS X/N.
+        var line1 = IsProtectMission
+            ? Loc.T("special.protected", PaysansProtected, PaysansTotal)
+            : Loc.T("special.paysans", PaysansResolved, PaysansTotal);
+        var line2 = Loc.T("special.rounds", System.Math.Max(0, _specialRoundsLeft));
+        var textW = System.Math.Max(Context.Font.Measure(line1, 1), Context.Font.Measure(line2, 1));
+        var box = new Rectangle((railW - ((int)textW + 28)) / 2, 78, (int)textW + 28, 40);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Style.FillDither(sb, box);
+        DrawRectBorder(sb, box, Palette.Navy1, 2);
+        Context.Font.DrawCentered(sb, line1, new Rectangle(box.X, box.Y + 6, box.Width, 12), 1, Palette.Cyan1);
+        var timeColor = _specialRoundsLeft <= 3 ? Palette.Purple5 : Palette.Yellow1;   // alerte fin de temps
+        Context.Font.DrawCentered(sb, line2, new Rectangle(box.X, box.Y + 22, box.Width, 12), 1, timeColor);
+        sb.End();
+    }
+
+    /// <summary>
+    /// Encart de BRIEFING de la mission spéciale, sous la frise, pendant le PLACEMENT : rappelle l'objectif
+    /// (libérer le maximum de paysans dans la limite de tours). Centré dans la zone du plateau. Texte replié
+    /// pour tenir dans le cadre.
+    /// </summary>
+    private void DrawSpecialBriefing(SpriteBatch sb, Viewport viewport)
+    {
+        const int innerW = 360;   // largeur cible du texte (le rail 1280-240 est bien plus large)
+        var title = Loc.T("mission.speciale");
+        var goalKey = IsProtectMission ? "special.brief_protect" : "special.brief_goal";
+        var body = new List<string>();
+        body.AddRange(WrapText(Loc.T(goalKey, SpecialTurnBudget()), innerW, 1));
+
+        var textW = Context.Font.Measure(title, 1);
+        foreach (var l in body)
+            textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
+
+        const int padH = 12, padV = 7, titleH = 11, lineH = 10;
+        var railW = (int)CenteringWidth();
+        var boxW = textW + 2 * padH;
+        var boxH = padV + titleH + body.Count * lineH + padV;
+        var box = new Rectangle((railW - boxW) / 2, 78, boxW, boxH);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Style.FillDither(sb, box);
+        DrawRectBorder(sb, box, Palette.Yellow1, 2);
+        var y = box.Y + padV;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Yellow2);
+        y += titleH;
+        foreach (var l in body)
+        {
+            Context.Font.DrawCentered(sb, l, new Rectangle(box.X, y, box.Width, 7), 1, Palette.White);
+            y += lineH;
+        }
+        sb.End();
+    }
+
     // ── Frise chronologique de la phase (HUD haut) ──────────────────────────────
     private const int TimelineIconSize = 32;   // icône de mission (PNG Assets/Icons/mission_*.png = 32×32)
     private const int TimelineNodeSize = 40;   // côté d'un nœud (icône 32 + marge)
@@ -5678,7 +6704,10 @@ public sealed class GameplayScene : Scene
         const int count = Run.MissionsPerPhase;
         const int pitch = TimelineNodeSize + TimelineGap;
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
-        var railW = viewport.Width - RightPanelWidth;               // zone du plateau (jamais sous le panneau)
+        // Même largeur de centrage que le PLATEAU (cf. CenteringWidth) : à gauche du panneau en placement,
+        // plein écran en combat (animée pendant le glissement d'entrée) → la frise suit le plateau au lieu
+        // de rester décalée quand le panneau part.
+        var railW = (int)CenteringWidth();
         var startX = (railW - contentW) / 2;
         var centerY = TimelineTopY + TimelineNodeSize / 2;
         var current = _run.MissionInPhase;                          // 1..6

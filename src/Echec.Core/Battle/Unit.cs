@@ -23,6 +23,13 @@ public sealed class Unit
     public Faction Faction { get; }
     public UnitClass Class { get; }
 
+    /// <summary>
+    /// Domaine du pattern d'ATTAQUE (directions + glissé/sauté) : celui de la classe s'il diffère, sinon le
+    /// domaine de DÉPLACEMENT. Cavalier monté (archer) : déplacement en L (<see cref="Domaine"/> Cavalier),
+    /// mais tir en lignes (attaque = Dame). Voir <see cref="UnitClass.AttackDomaine"/> et <see cref="Match"/>.
+    /// </summary>
+    public Domaine AttackDomaine => Class.AttackDomaine ?? Domaine;
+
     /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant.</summary>
     public Equipment? Equipment { get; }
 
@@ -33,6 +40,13 @@ public sealed class Unit
     /// boss (ennemi). Voir <see cref="Match"/> pour les conditions de victoire.
     /// </summary>
     public bool IsEssential { get; init; }
+
+    /// <summary>
+    /// Comportement d'IA de cette unité (ennemis seulement). <see cref="AiKind.Normal"/> par défaut :
+    /// fonce sur le joueur. <see cref="AiKind.Defensif"/> : garde une position (mission spéciale),
+    /// posé à la pose de la vague selon la case de spawn de la map. Voir <see cref="EnemyAi"/>.
+    /// </summary>
+    public AiKind AiKind { get; set; } = AiKind.Normal;
 
     public MovementKind MovementKind => Movement.Kind(Domaine);
     public int MaxHp => Class.MaxHp + EquipBonus(EquipStat.Hp);

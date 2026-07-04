@@ -53,6 +53,12 @@ public sealed class ClassConfig
     /// <summary>Traits/particularités (hors « Traverse allié » = piercesAllies). Absent → aucun.</summary>
     public List<string>? Traits { get; set; }
 
+    /// <summary>
+    /// Domaine du pattern d'ATTAQUE s'il diffère du déplacement (ex. cavalier monté : déplacement Cavalier
+    /// en L, mais attaque « Dame » en lignes comme un archer). Absent → attaque = déplacement.
+    /// </summary>
+    public string? AttackDomaine { get; set; }
+
     /// <summary>Sous-classes (arbre d'évolution) ; null/absent = feuille.</summary>
     public List<ClassConfig>? Evolutions { get; set; }
 }
