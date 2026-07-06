@@ -91,6 +91,12 @@ stat.hp,PV,HP
 # ── Environnement (objets de plateau survoles) ──────────────────────────────
 env.bush.name,BUISSON,BUSH
 env.bush.desc,-4 DEGATS RECUS,-4 DAMAGE TAKEN
+env.chest.name,COFFRE,CHEST
+env.chest.desc,OFFRE UN EQUIPEMENT,GIVES AN ITEM
+env.recrue.name,RECRUTEMENT,RECRUITMENT
+env.recrue.desc,RECRUTE UN PION ALEATOIRE,RECRUITS A RANDOM PIECE
+env.paysan.name,PAYSAN,PEASANT
+env.paysan.desc,A PROTEGER DES ENNEMIS,PROTECT FROM ENEMIES
 # ── Noms d'unites (cle = unit.<asset>) ──────────────────────────────────────
 unit.soldat,SOLDAT,SOLDIER
 unit.archer,ARCHER,ARCHER

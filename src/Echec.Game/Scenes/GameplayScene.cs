@@ -90,7 +90,11 @@ public sealed class GameplayScene : Scene
     private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
     private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
-    private Texture2D? _recrueSprite;                        // PNG du pion « ? » (placeholder dessiné si absent)
+    // Looks du pion recrue : chaque paire <Nom>_front.png (+ <Nom>_back.png optionnel) de Assets/Objects/ =
+    // une variante ; une seule est tirée STABLE par case (cf. RecrueSpriteFor). En mission « Protéger », on
+    // prend le _back (le paysan fait face comme une unité alliée) ; sinon le _front (jeton face caméra).
+    // Liste vide → placeholder « ? » dessiné.
+    private readonly List<(Texture2D Front, Texture2D? Back)> _recrueLooks = new();
 
     // Missions SPÉCIALES à paysans (tuiles recrue _recrueCells), selon le sous-objectif de la map Speciale :
     //   • LibererPaysans : le JOUEUR marche dessus pour les libérer (rejoignent l'armée) — IA gardes défensifs.
@@ -380,7 +384,7 @@ public sealed class GameplayScene : Scene
         _chestSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffre.png"));
         _chestAnim = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffreAnimate.png"));
         // Objets recrue (pion « ? ») et buisson : PNG optionnels, repli sur un placeholder dessiné.
-        _recrueSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/recrue.png"));
+        LoadRecrueSprites();   // tous les looks recrue (Assets/Objects/*_front.png) : une variante par case
         _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
         _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
         _water = LoadWater();
@@ -411,8 +415,12 @@ public sealed class GameplayScene : Scene
         _chestSprite = null;
         _chestAnim?.Dispose();
         _chestAnim = null;
-        _recrueSprite?.Dispose();
-        _recrueSprite = null;
+        foreach (var (front, back) in _recrueLooks)
+        {
+            front.Dispose();
+            back?.Dispose();
+        }
+        _recrueLooks.Clear();
         _bushSprite?.Dispose();
         _bushSprite = null;
         _equipSlotBg?.Dispose();
@@ -4379,7 +4387,7 @@ public sealed class GameplayScene : Scene
 
         // Ombre projetée des objets (comme les pions), seulement si l'objet a un PNG. Le coffre et le
         // buisson sont ancrés au sol comme la recrue ; le buisson n'est jamais consommé (couvert permanent).
-        DrawObjectCastShadows(sb, layout, _recrueCells, _recrueSprite, _recrueConsumed);
+        DrawObjectCastShadows(sb, layout, _recrueCells, RecrueSpriteFor, _recrueConsumed);
         DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, ChestShadowShear);
         DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
     }
@@ -4390,14 +4398,21 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawObjectCastShadows(SpriteBatch sb, GridLayout layout, List<Cell> cells,
         Texture2D? sprite, HashSet<Cell>? consumed, float shear = ShadowShear)
+        => DrawObjectCastShadows(sb, layout, cells, _ => sprite, consumed, shear);
+
+    /// <summary>Variante par-case : la silhouette dépend de la case (objet à plusieurs PNG, cf. recrue).</summary>
+    private void DrawObjectCastShadows(SpriteBatch sb, GridLayout layout, List<Cell> cells,
+        System.Func<Cell, Texture2D?> spriteFor, HashSet<Cell>? consumed, float shear = ShadowShear)
     {
-        if (sprite == null || cells.Count == 0)
+        if (cells.Count == 0)
             return;
         var size = layout.TileSize;
         var spriteLift = (int)(size * SpriteLiftFraction);
         foreach (var c in cells)
         {
             if (consumed != null && consumed.Contains(c))
+                continue;
+            if (spriteFor(c) is not { } sprite)
                 continue;
             var top = layout.CellToScreen(c.Column, c.Row);
             var (introY, introA) = BoardIntroAnim(c, layout);
@@ -5228,14 +5243,51 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Objets de RECRUTEMENT : pion « ? » immobile (PNG si présent, sinon placeholder). Caché une fois
-    /// consommé — la récompense se joue en modale (cf. <see cref="DrawRecrueReveal"/>). Sous les unités.
+    /// Charge les looks possibles de l'objet recrue : chaque paire <c>&lt;Nom&gt;_front.png</c> (+
+    /// <c>&lt;Nom&gt;_back.png</c> optionnel) de <c>Assets/Objects/</c> (p. ex. <c>Paysan_front.png</c>) =
+    /// une variante. Ordre stable (tri par nom) pour que le tirage par case soit reproductible. Aucun PNG
+    /// → placeholder « ? » dessiné.
+    /// </summary>
+    private void LoadRecrueSprites()
+    {
+        _recrueLooks.Clear();
+        var dir = AssetPath("Assets/Objects");
+        if (!System.IO.Directory.Exists(dir))
+            return;
+        foreach (var file in System.IO.Directory.GetFiles(dir, "*_front.png")
+                     .OrderBy(f => f, System.StringComparer.OrdinalIgnoreCase))
+        {
+            if (Textures.LoadPngOrNull(Context.GraphicsDevice, file) is not { } front)
+                continue;
+            // Dos optionnel (même nom, suffixe _back) : utilisé en mission « Protéger les paysans ».
+            var back = Textures.LoadPngOrNull(Context.GraphicsDevice, file[..^"_front.png".Length] + "_back.png");
+            _recrueLooks.Add((front, back));
+        }
+    }
+
+    /// <summary>
+    /// Look de l'objet recrue pour une case (variante tirée STABLE par case), ou null si aucun PNG. En
+    /// mission « Protéger les paysans », on prend le dos (<c>_back</c>) — le paysan fait face comme une unité
+    /// alliée ; sinon la face (<c>_front</c>, jeton tourné vers la caméra). Repli sur la face si pas de dos.
+    /// </summary>
+    private Texture2D? RecrueSpriteFor(Cell cell)
+    {
+        if (_recrueLooks.Count == 0)
+            return null;
+        var look = _recrueLooks[VariantIndex("recrue", cell, _recrueLooks.Count)];
+        return IsProtectMission ? look.Back ?? look.Front : look.Front;
+    }
+
+    /// <summary>
+    /// Objets de RECRUTEMENT : pion recrue immobile (un look tiré par case, sinon placeholder). Caché une
+    /// fois consommé — la récompense se joue en modale (cf. <see cref="DrawRecrueReveal"/>). Sous les unités.
     /// </summary>
     private void DrawRecrueObjects(SpriteBatch sb, GridLayout layout)
     {
         if (_recrueCells.Count == 0)
             return;
         var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);   // même remontée que les pions (socle en bas, haut qui déborde)
         foreach (var c in _recrueCells)
         {
             if (_recrueConsumed.Contains(c))
@@ -5244,9 +5296,10 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(c.Column, c.Row);
             var zx = (int)top.X;
             var zy = (int)top.Y + introY;
-            if (_recrueSprite != null)
+            if (RecrueSpriteFor(c) is { } sprite)
             {
-                sb.Draw(_recrueSprite, new Rectangle(zx, zy, size, size), Color.White * introA);
+                // Positionné comme un pion classique (cf. DrawUnit) : remonté de spriteLift, centré sur la case.
+                sb.Draw(sprite, new Rectangle(zx, zy - spriteLift, size, size), Color.White * introA);
                 continue;
             }
             // Placeholder : jeton de pion (corps + dessus éclairé) avec un « ? » jaune centré.
@@ -5743,9 +5796,21 @@ public sealed class GameplayScene : Scene
     // ── Tooltip d'environnement (objets de plateau : buisson) ─────────────────────
     private const int EnvTooltipWidth = 170;
 
-    /// <summary>Infos d'environnement d'une case (nom + effet), ou null si rien de notable dessus.</summary>
-    private (string Name, string Desc)? CellEnvironment(Cell cell) =>
-        _bushCells.Contains(cell) ? (Loc.T("env.bush.name"), Loc.T("env.bush.desc")) : null;
+    /// <summary>Infos d'environnement d'une case (nom + effet), ou null si rien de notable dessus. Buisson
+    /// (permanent), coffre et recrue tant qu'ils ne sont pas consommés. En mission « Protéger », la recrue
+    /// est un paysan à défendre (pas à recruter).</summary>
+    private (string Name, string Desc)? CellEnvironment(Cell cell)
+    {
+        if (_bushCells.Contains(cell))
+            return (Loc.T("env.bush.name"), Loc.T("env.bush.desc"));
+        if (_chestCells.Contains(cell) && !_chestConsumed.Contains(cell))
+            return (Loc.T("env.chest.name"), Loc.T("env.chest.desc"));
+        if (_recrueCells.Contains(cell) && !_recrueConsumed.Contains(cell))
+            return IsProtectMission
+                ? (Loc.T("env.paysan.name"), Loc.T("env.paysan.desc"))
+                : (Loc.T("env.recrue.name"), Loc.T("env.recrue.desc"));
+        return null;
+    }
 
     /// <summary>
     /// Tooltip d'environnement au survol d'une case « notable » (buisson). S'il y a un pion DESSUS dont
