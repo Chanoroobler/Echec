@@ -36,9 +36,11 @@ public static class DomaineCatalog
             throw new InvalidOperationException($"Role de commande inconnu dans units.json : '{c.Role}'.");
         if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
             throw new InvalidOperationException($"Domaine de mouvement inconnu pour la commande '{c.Name}' : '{c.Domaine}'.");
+        if (c.Phase is < 0 or > 3)
+            throw new InvalidOperationException($"Phase de boss invalide pour '{c.Name}' : {c.Phase}. Attendu 0 (toutes) ou 1..3.");
 
         return new CommandeDef(role, domaine,
-            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange));
+            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange), c.Phase);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

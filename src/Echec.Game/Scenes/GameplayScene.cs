@@ -499,28 +499,64 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Map à utiliser pour le combat courant. Escarmouche / boss : une map de CE type à la taille
+    /// Map à utiliser pour le combat courant. ESCARMOUCHE : une map d'escarmouche à la taille
     /// <paramref name="size"/> attendue par la phase (cf. <see cref="MapSizeFor"/>), sinon null = terrain
-    /// aléatoire de cette taille. MISSION SPÉCIALE : tirage ALÉATOIRE parmi les maps
-    /// <see cref="CombatType.Speciale"/> RÉSERVÉES À LA PHASE courante (<see cref="MapData.Phase"/> == phase)
-    /// ou marquées « toutes phases » (Phase == 0) ; la TAILLE du plateau vient de la map. Faute de spéciale
-    /// éligible : repli sur une escarmouche (combat normal, sans paysans). Le tirage est DÉTERMINISTE (stable
-    /// si on reprend le combat) mais varie d'une run à l'autre.
+    /// aléatoire de cette taille. BOSS : tirage par PHASE (cf. <see cref="BossMapFor"/>), sans tenir compte
+    /// de la taille — c'est la map qui impose la taille du plateau. MISSION SPÉCIALE : tirage ALÉATOIRE parmi
+    /// les maps <see cref="CombatType.Speciale"/> RÉSERVÉES À LA PHASE courante (<see cref="MapData.Phase"/> ==
+    /// phase) ou marquées « toutes phases » (Phase == 0), la TAILLE venant aussi de la map. Le tirage est
+    /// DÉTERMINISTE (stable si on reprend le combat) mais varie d'une run à l'autre.
     /// </summary>
     private MapData? MapForCombat(int size)
     {
         if (_run.CurrentMission == CombatType.Speciale)
-        {
-            var phase = _run.PhaseIndex;
-            var specials = MapsOfType(CombatType.Speciale)
-                .Where(m => m.Phase == phase || m.Phase == 0)   // réservées à cette phase, ou « toutes phases »
-                .ToList();
-            return PickMap(specials, size)
-                ?? PickMap(MatchingMaps(CombatType.Escarmouche, size), size);
-        }
+            return SpecialMapFor(_run.PhaseIndex, _run.MissionInPhase);
 
-        var wanted = _run.CurrentMission == CombatType.Boss ? CombatType.Boss : CombatType.Escarmouche;
-        return PickMap(MatchingMaps(wanted, size), size);
+        if (_run.CurrentMission == CombatType.Boss)
+            return BossMapFor(_run.PhaseIndex, _run.MissionInPhase);
+
+        return PickMap(MatchingMaps(CombatType.Escarmouche, size), size);
+    }
+
+    /// <summary>
+    /// Map d'un combat BOSS : tirage parmi les maps de type <see cref="CombatType.Boss"/> RÉSERVÉES à la
+    /// phase courante (<see cref="MapData.Phase"/> == phase, ou « toutes phases » Phase == 0). Faute de map
+    /// pour cette phase, repli sur N'IMPORTE QUELLE map Boss (au hasard, toutes phases confondues). Aucune
+    /// map Boss du tout → null = terrain aléatoire. Contrairement aux escarmouches, la TAILLE n'entre PAS
+    /// dans le tri : c'est la map choisie qui impose la taille du plateau (cf. appelant). Déterministe
+    /// (graine de run + rang du combat) — sert au combat courant ET à la frise —, mais varie d'une run à l'autre.
+    /// </summary>
+    private MapData? BossMapFor(int phaseIndex, int missionInPhase)
+    {
+        var combatNumber = (phaseIndex - 1) * Run.MissionsPerPhase + missionInPhase;
+        var all = MapsOfType(CombatType.Boss);
+        var ofPhase = all.Where(m => m.Phase == phaseIndex || m.Phase == 0).ToList();
+        return PickMap(ofPhase.Count > 0 ? ofPhase : all, phaseIndex, combatNumber);
+    }
+
+    /// <summary>
+    /// Nombre d'escortes d'un boss sur map dessinée : une par case de spawn ennemie (B + E) SAUF celle
+    /// occupée par le boss lui-même. Ainsi boss + escortes = exactement le nombre de cases dessinées.
+    /// </summary>
+    private static int BossEscortCount(MapData map) =>
+        System.Math.Max(0, map.BossSpawns.Count + map.EnemySpawns.Count - 1);
+
+    /// <summary>
+    /// Map d'une mission SPÉCIALE au rang (<paramref name="phaseIndex"/>, <paramref name="missionInPhase"/>) :
+    /// tirage ALÉATOIRE parmi les maps <see cref="CombatType.Speciale"/> réservées à la phase
+    /// (<see cref="MapData.Phase"/> == phase) ou « toutes phases » (Phase == 0), repli sur une escarmouche
+    /// si aucune spéciale éligible. Déterministe (graine de run + rang du combat). Sert au combat courant
+    /// (via <see cref="MapForCombat"/>) ET à la frise (l'effectif = nb de spawns de la map tirée).
+    /// </summary>
+    private MapData? SpecialMapFor(int phaseIndex, int missionInPhase)
+    {
+        var combatNumber = (phaseIndex - 1) * Run.MissionsPerPhase + missionInPhase;
+        var size = MapSizeFor(phaseIndex, missionInPhase);
+        var specials = MapsOfType(CombatType.Speciale)
+            .Where(m => m.Phase == phaseIndex || m.Phase == 0)   // réservées à cette phase, ou « toutes phases »
+            .ToList();
+        return PickMap(specials, size, combatNumber)
+            ?? PickMap(MatchingMaps(CombatType.Escarmouche, size), size, combatNumber);
     }
 
     /// <summary>Maps chargées du type et de la taille (côté carré) demandés.</summary>
@@ -535,7 +571,7 @@ public sealed class GameplayScene : Scene
     /// Choisit une map dans <paramref name="matches"/> par permutation DÉTERMINISTE (graine de run + taille,
     /// sel 2 — même logique que terrain/vague), puis index par numéro de combat. Null si la liste est vide.
     /// </summary>
-    private MapData? PickMap(List<MapData> matches, int size)
+    private MapData? PickMap(List<MapData> matches, int size, int? combatNumber = null)
     {
         if (matches.Count == 0)
             return null;
@@ -545,7 +581,7 @@ public sealed class GameplayScene : Scene
             var j = rng.Next(i + 1);
             (matches[i], matches[j]) = (matches[j], matches[i]);
         }
-        return matches[(_run.CombatNumber - 1) % matches.Count];
+        return matches[((combatNumber ?? _run.CombatNumber) - 1) % matches.Count];
     }
 
     /// <summary>
@@ -826,6 +862,9 @@ public sealed class GameplayScene : Scene
         List<UnitSpec> wave;
         if (_specialMission && _map is { } spMap)
             wave = _run.BuildSpecialEnemyWave(spMap.EnemySpawns.Count, Context.Saves.IsUnitDiscovered);
+        else if (_run.IsBossCombat && _map is { } bossMap)
+            // Boss sur map dessinée : le boss + une escorte par case de spawn restante → toutes occupées.
+            wave = _run.BuildBossEnemyWave(BossEscortCount(bossMap), Context.Saves.IsUnitDiscovered);
         else
             wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);   // T2/T3 : priorité aux unités déjà découvertes
         PlaceEnemies(wave);
@@ -1168,6 +1207,14 @@ public sealed class GameplayScene : Scene
 
     private void PlaceEnemies(List<UnitSpec> wave)
     {
+        // Boss sur map dessinée : placement dédié (boss sur une case B, escortes sur toutes les autres).
+        if (_run.IsBossCombat && _map is { BossSpawns.Count: > 0 } bossMap
+            && wave.Count > 0 && wave[0].Essential)
+        {
+            PlaceBossWave(wave, bossMap);
+            return;
+        }
+
         var cells = EnemyDeployCells().ToList();
         if (_map is { } m)
         {
@@ -1185,20 +1232,58 @@ public sealed class GameplayScene : Scene
                 && (_match.UnitAt(cells[i]) != null || _battlefield[cells[i]].BlocksMovement))
                 i++;
             if (i >= cells.Count) break;
-            var unit = spec.Spawn(Faction.Enemy);
             // IA selon la case de spawn (mission spéciale) : « D » = garde défensif, « O » = assaillant
-            // offensif ; sinon IA normale.
+            // offensif ; sinon IA normale. L'assaut/capture de paysans (« O ») n'a de sens QU'en mission
+            // « protéger » : hors de ce mode, un marqueur « O » retombe sur l'IA normale (fonce sur le joueur),
+            // pour que la capture de paysan par l'IA reste STRICTEMENT réservée à « protéger les paysans ».
+            var ai = AiKind.Normal;
             if (_map is { } dm)
             {
                 if (dm.DefensiveEnemySpawns.Contains(cells[i]))
-                    unit.AiKind = AiKind.Defensif;
-                else if (dm.OffensiveEnemySpawns.Contains(cells[i]))
-                    unit.AiKind = AiKind.Offensif;
+                    ai = AiKind.Defensif;
+                else if (IsProtectMission && dm.OffensiveEnemySpawns.Contains(cells[i]))
+                    ai = AiKind.Offensif;
             }
-            _match.Place(cells[i], unit);
-            _enemySpec[unit] = spec;          // pour retrouver le gabarit à la mort (recrutement)
+            SpawnEnemyOn(spec, cells[i], ai);
             i++;
         }
+    }
+
+    /// <summary>
+    /// Placement d'un combat de BOSS sur map dessinée : le boss (essentiel, en tête de vague) sur une case
+    /// <c>B</c> ; les escortes sur TOUTES les autres cases ennemies (B en surplus + E), pour qu'AUCUNE case
+    /// de spawn ne reste vide. Ordre des cases tiré au hasard (déterministe pour ce combat).
+    /// </summary>
+    private void PlaceBossWave(List<UnitSpec> wave, MapData map)
+    {
+        var bossCells = map.BossSpawns.ToList();
+        _run.ShuffleForCombat(bossCells);
+        // Case B non bloquante de préférence (filet si un B a été peint sur une tuile infranchissable).
+        var bossCell = bossCells.FirstOrDefault(c => !_battlefield[c].BlocksMovement, bossCells[0]);
+        SpawnEnemyOn(wave[0], bossCell, AiKind.Normal);   // le boss sur sa case dédiée
+
+        // Toutes les cases ennemies restantes (B non utilisées + E), tirées au hasard, remplies par les escortes.
+        var rest = map.BossSpawns.Concat(map.EnemySpawns).Where(c => c != bossCell).ToList();
+        _run.ShuffleForCombat(rest);
+        var i = 0;
+        for (var k = 1; k < wave.Count; k++)
+        {
+            while (i < rest.Count
+                && (_match.UnitAt(rest[i]) != null || _battlefield[rest[i]].BlocksMovement))
+                i++;
+            if (i >= rest.Count) break;
+            SpawnEnemyOn(wave[k], rest[i], AiKind.Normal);
+            i++;
+        }
+    }
+
+    /// <summary>Instancie l'ennemi du gabarit sur la case, fixe son IA et l'enregistre (retrouvé à la mort).</summary>
+    private void SpawnEnemyOn(UnitSpec spec, Cell cell, AiKind ai)
+    {
+        var unit = spec.Spawn(Faction.Enemy);
+        unit.AiKind = ai;
+        _match.Place(cell, unit);
+        _enemySpec[unit] = spec;   // pour retrouver le gabarit à la mort (recrutement)
     }
 
     // Colonnes du centre vers les bords (déploiement groupé au milieu), pour la largeur courante.
@@ -3439,7 +3524,9 @@ public sealed class GameplayScene : Scene
     {
         var cards = DraftCardRect(0, 1, availW, vpH);   // y identique quel que soit le nombre de cartes
         const int w = 220, h = 30;
-        return new Rectangle((availW - w) / 2, cards.Bottom + 14, w, h);
+        // AU-DESSUS des cartes (sous le titre) : sous les cartes, il passerait devant les infobulles de
+        // mots-clés dessinées au bas de chaque carte.
+        return new Rectangle((availW - w) / 2, cards.Top - h - 14, w, h);
     }
 
     // ── Édition de la réserve (écrans draft / récompense) ───────────────────────────────────────────
@@ -4962,9 +5049,9 @@ public sealed class GameplayScene : Scene
                     new Rectangle(0, card.Bottom + 14, availW, 16), 1, Palette.Cyan1);
             }
         }
+        DrawDragGhost(sb);   // pion tenu (drag de fusion réserve, souris) AU-DESSUS du panneau, dans le batch actif
         sb.End();
 
-        DrawDragGhost(sb);   // portrait de réserve en cours de drag de fusion (souris)
         if (FusionOpen) DrawFusionPopup(sb, viewport);
         if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
 
@@ -5943,17 +6030,29 @@ public sealed class GameplayScene : Scene
         y = dom.Bottom + 10;
 
         // Barre de PV (une rangée, carrés ajustés à la largeur) + texte « pv/max » (+ bonus d'équipement).
+        // Évolution NON DÉCOUVERTE (méta) : on masque tout l'effectif — barre neutre + « ??? » au lieu des PV,
+        // et « ??? » à la place de chaque caractéristique (en plus de la silhouette du sprite).
+        const string unknown = "???";
         var barRect = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
-        DrawHpBar(sb, barRect, hp, maxHp);
-        y = barRect.Bottom + 2;
-        DrawHpText(sb, rect.X, y, rect.Width, hp, maxHp, hpBonus);
+        if (revealed)
+        {
+            DrawHpBar(sb, barRect, hp, maxHp);
+            y = barRect.Bottom + 2;
+            DrawHpText(sb, rect.X, y, rect.Width, hp, maxHp, hpBonus);
+        }
+        else
+        {
+            DrawRect(sb, barRect, Palette.Purple2);   // barre « inconnue » : ne révèle pas le nombre de PV
+            y = barRect.Bottom + 2;
+            Context.Font.DrawCentered(sb, unknown, new Rectangle(rect.X, y, rect.Width, 8), 1, Palette.White);
+        }
         y += 14;
 
         // Caractéristiques : icône 32×32 + libellé + valeur (effective, équipement inclus) + « +N ».
         // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
-        y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), $"{c.Damage + dmgBonus}", Palette.Brown3, dmgBonus);
-        y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), $"{c.MoveRange + moveBonus}", Palette.Cyan2, moveBonus);
-        DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), $"{c.AttackRange + rangeBonus}", Palette.Yellow2, rangeBonus);
+        y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), revealed ? $"{c.Damage + dmgBonus}" : unknown, Palette.Brown3, revealed ? dmgBonus : 0);
+        y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), revealed ? $"{c.MoveRange + moveBonus}" : unknown, Palette.Cyan2, revealed ? moveBonus : 0);
+        DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
 
         // Liste des mots-clés en bas de carte (séparés par « | »), détaillés dans les popups.
         var keywords = KeywordsFor(c, equip);
@@ -6373,9 +6472,9 @@ public sealed class GameplayScene : Scene
         DrawPanelBackground(sb);
         DrawReservePanelFusion(sb);
         DrawReserveFullFlash(sb, availW, viewport.Height);   // feedback « plus de place »
+        DrawDragGhost(sb);            // pion tenu (drag de fusion réserve) AU-DESSUS du panneau, dans le batch actif
         sb.End();
 
-        DrawDragGhost(sb);                       // portrait de réserve en cours de drag de fusion
         if (FusionOpen) DrawFusionPopup(sb, viewport);        // choix d'évolution au CENTRE (comme au placement)
         if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
 
@@ -6432,9 +6531,9 @@ public sealed class GameplayScene : Scene
         DrawPanelBackground(sb);
         DrawReservePanelFusion(sb);   // réserve _pending + fusion façon placement
         DrawReserveFullFlash(sb, availW, viewport.Height);
+        DrawDragGhost(sb);            // pion tenu (drag de fusion réserve) AU-DESSUS du panneau, dans le batch actif
         sb.End();
 
-        DrawDragGhost(sb);                       // portrait de réserve en cours de drag de fusion
         if (FusionOpen) DrawFusionPopup(sb, viewport);        // choix d'évolution au CENTRE
         if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
 
@@ -6800,7 +6899,7 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < count; i++)
         {
             var mission = i + 1;
-            var type = Run.MissionKindAt(mission);
+            var type = Run.MissionKindAt(_run.PhaseIndex, mission);
             var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
             var past = mission < current;
 
@@ -6828,7 +6927,7 @@ public sealed class GameplayScene : Scene
                 var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
                 if (!area.Contains(mouse))
                     continue;
-                DrawMissionTooltip(sb, area, Run.MissionKindAt(i + 1), Run.EnemyCount(_run.PhaseIndex, i + 1));
+                DrawMissionTooltip(sb, area, Run.MissionKindAt(_run.PhaseIndex, i + 1), TimelineEnemyCount(_run.PhaseIndex, i + 1));
                 break;
             }
         }
@@ -6839,6 +6938,24 @@ public sealed class GameplayScene : Scene
     /// <summary>Carré de côté <paramref name="size"/> centré dans <paramref name="area"/>.</summary>
     private static Rectangle CenteredSquare(Rectangle area, int size) =>
         new(area.X + (area.Width - size) / 2, area.Y + (area.Height - size) / 2, size, size);
+
+    /// <summary>
+    /// Effectif ennemi affiché dans la frise pour la mission (phase, rang). MISSION SPÉCIALE : nb de spawns
+    /// de la map tirée (cf. <see cref="Run.BuildSpecialEnemyWave"/>). BOSS avec map dessinée : nb total de
+    /// cases de spawn ennemies (boss + escortes, cf. <see cref="Run.BuildBossEnemyWave"/>). Sinon repli sur
+    /// la table (<see cref="Run.EnemyCount"/>) — escarmouche, ou spéciale/boss retombant sur du terrain aléatoire.
+    /// </summary>
+    private int TimelineEnemyCount(int phaseIndex, int missionInPhase)
+    {
+        var kind = Run.MissionKindAt(phaseIndex, missionInPhase);
+        if (kind == CombatType.Speciale
+            && SpecialMapFor(phaseIndex, missionInPhase) is { Type: CombatType.Speciale } sp)
+            return sp.EnemySpawns.Count;
+        if (kind == CombatType.Boss
+            && BossMapFor(phaseIndex, missionInPhase) is { } bm)
+            return bm.BossSpawns.Count + bm.EnemySpawns.Count;
+        return Run.EnemyCount(phaseIndex, missionInPhase);
+    }
 
     /// <summary>
     /// Bulle d'info d'un nœud de frise, sous le nœud : nom de la mission + « N ENNEMIS ». Bornée à la

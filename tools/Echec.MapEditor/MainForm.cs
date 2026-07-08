@@ -35,10 +35,19 @@ internal sealed class MainForm : Form
     private readonly ToolStripStatusLabel _status = new("Prêt.");
     private Button? _selectedPaletteButton;
 
+    // Inspecteur (colonne de droite) : édite blocksMove/blocksFire de la tuile de terrain focalisée.
+    private readonly PictureBox _tilePreview = new();
+    private readonly Label _tileTitle = new();
+    private readonly CheckBox _blocksMoveChk = new();
+    private readonly CheckBox _blocksFireChk = new();
+    private readonly Label _inspectorHint = new();
+    private TileInfo? _focusedTile;
+    private bool _updatingInspector;
+
     public MainForm()
     {
         Text = "Éditeur de maps — Echec";
-        Width = 1340;
+        Width = 1400;
         Height = 800;
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.CenterScreen;
@@ -83,13 +92,15 @@ internal sealed class MainForm : Form
         left.Controls.Add(layerSel, 0, 0);
         left.Controls.Add(_palette, 0, 1);
 
-        // Zone centrale : colonne gauche fixe (220) + canvas.
-        var middle = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        // Zone centrale : palette (gauche, fixe) + canvas + inspecteur (droite, fixe).
+        var middle = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
         middle.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         middle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        middle.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         middle.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         middle.Controls.Add(left, 0, 0);
         middle.Controls.Add(_canvas, 1, 0);
+        middle.Controls.Add(BuildInspector(), 2, 0);
 
         var strip = new StatusStrip { BackColor = Color.FromArgb(30, 32, 38), Dock = DockStyle.Fill };
         _status.ForeColor = Color.Gainsboro;
@@ -145,8 +156,8 @@ internal sealed class MainForm : Form
         _objectiveBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Objective = _objectiveBox.Text; MarkDirty(); } };
         bar.Controls.Add(_objectiveBox);
 
-        // Phase réservée (Speciale uniquement) : l'index du combo EST la valeur (0=Toutes, 1..3). Le tirage
-        // des maps spéciales se fait parmi celles de la phase courante (ou « Toutes »).
+        // Phase réservée (Speciale ET Boss) : l'index du combo EST la valeur (0=Toutes, 1..3). Le tirage des
+        // maps spéciales/boss se fait parmi celles de la phase courante (ou « Toutes »).
         bar.Controls.Add(Label("Phase :"));
         _phaseBox.Items.AddRange(new object[] { "Toutes", "1", "2", "3" });
         _phaseBox.SelectedIndex = 0;
@@ -243,6 +254,9 @@ internal sealed class MainForm : Form
                 SelectPaletteButton(b);
                 break;
             }
+
+        // L'inspecteur ne concerne que les tuiles de terrain (blocksMove/blocksFire du catalogue).
+        FocusTile(_canvas.Layer == EditLayer.Terrain ? _catalog?.TileForKey(_canvas.Brush) : null);
     }
 
     private Button TilePaletteButton(TileInfo tile)
@@ -257,10 +271,15 @@ internal sealed class MainForm : Form
         btn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
         if (tile.Image is not null)
             btn.Image = ScaleNearest(tile.Image, 50, 62);
-        var blocks = (tile.BlocksMove ? "bloque déplacement " : "") + (tile.BlocksFire ? "bloque tir" : "");
-        _tips.SetToolTip(btn, $"{tile.Id} ('{tile.Key}')\n{(blocks.Length == 0 ? "libre" : blocks.Trim())}");
-        btn.Click += (_, _) => { _canvas.Brush = tile.Key; SelectPaletteButton(btn); };
+        _tips.SetToolTip(btn, TileTooltip(tile));
+        btn.Click += (_, _) => { _canvas.Brush = tile.Key; SelectPaletteButton(btn); FocusTile(tile); };
         return btn;
+    }
+
+    private static string TileTooltip(TileInfo tile)
+    {
+        var blocks = (tile.BlocksMove ? "bloque déplacement " : "") + (tile.BlocksFire ? "bloque tir" : "");
+        return $"{tile.Id} ('{tile.Key}')\n{(blocks.Length == 0 ? "libre" : blocks.Trim())}";
     }
 
     private void AddBrushButton(char ch, string label, Color color)
@@ -283,6 +302,130 @@ internal sealed class MainForm : Form
         _selectedPaletteButton = btn;
         btn.FlatAppearance.BorderColor = Color.Gold;
         btn.FlatAppearance.BorderSize = 3;
+    }
+
+    // ---------------------------------------------------------------- Inspecteur de tuile
+    /// <summary>
+    /// Colonne de droite : aperçu de la tuile de terrain focalisée + deux cases à cocher qui écrivent
+    /// <c>blocksMove</c>/<c>blocksFire</c> dans tiles.json (via <see cref="TileRenderCatalog.SetBlocking"/>).
+    /// </summary>
+    private Control BuildInspector()
+    {
+        var host = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = Color.FromArgb(45, 47, 54),
+        };
+        host.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        host.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var header = new Label
+        {
+            Text = "Propriétés de la tuile", Dock = DockStyle.Fill, ForeColor = Color.Gainsboro,
+            TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0),
+            BackColor = Color.FromArgb(30, 32, 38), Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+        };
+
+        var body = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = true, Padding = new Padding(12),
+        };
+
+        _tilePreview.Size = new Size(80, 100);
+        _tilePreview.SizeMode = PictureBoxSizeMode.Normal;
+        _tilePreview.BackColor = Color.FromArgb(60, 62, 70);
+        _tilePreview.Margin = new Padding(0, 0, 0, 8);
+
+        _tileTitle.AutoSize = true;
+        _tileTitle.ForeColor = Color.Gainsboro;
+        _tileTitle.Font = new Font("Consolas", 9f, FontStyle.Bold);
+        _tileTitle.Margin = new Padding(0, 0, 0, 12);
+
+        _blocksMoveChk.Text = "Bloque le déplacement";
+        _blocksFireChk.Text = "Bloque le tir";
+        foreach (var chk in new[] { _blocksMoveChk, _blocksFireChk })
+        {
+            chk.AutoSize = true;
+            chk.ForeColor = Color.Gainsboro;
+            chk.Margin = new Padding(0, 4, 0, 4);
+        }
+        _blocksMoveChk.CheckedChanged += (_, _) => ApplyBlockingFromInspector();
+        _blocksFireChk.CheckedChanged += (_, _) => ApplyBlockingFromInspector();
+
+        _inspectorHint.AutoSize = true;
+        _inspectorHint.MaximumSize = new Size(220, 0);
+        _inspectorHint.ForeColor = Color.Gray;
+        _inspectorHint.Margin = new Padding(0, 14, 0, 0);
+
+        body.Controls.Add(_tilePreview);
+        body.Controls.Add(_tileTitle);
+        body.Controls.Add(_blocksMoveChk);
+        body.Controls.Add(_blocksFireChk);
+        body.Controls.Add(_inspectorHint);
+
+        host.Controls.Add(header, 0, 0);
+        host.Controls.Add(body, 0, 1);
+
+        FocusTile(null);
+        return host;
+    }
+
+    /// <summary>Charge une tuile dans l'inspecteur (ou vide/désactive si <paramref name="tile"/> est null).</summary>
+    private void FocusTile(TileInfo? tile)
+    {
+        _focusedTile = tile;
+        _updatingInspector = true;   // évite de réécrire tiles.json pendant qu'on remplit les cases
+
+        _tilePreview.Image?.Dispose();
+        if (tile is null)
+        {
+            _tilePreview.Image = null;
+            _tileTitle.Text = "—";
+            _blocksMoveChk.Checked = _blocksFireChk.Checked = false;
+            _blocksMoveChk.Enabled = _blocksFireChk.Enabled = false;
+            _inspectorHint.Text = "Sélectionne une tuile de terrain pour éditer ses règles.";
+        }
+        else
+        {
+            _tilePreview.Image = tile.Image is not null ? ScaleNearest(tile.Image, 80, 100) : null;
+            _tileTitle.Text = $"{tile.Id}  ('{tile.Key}')";
+            _blocksMoveChk.Enabled = _blocksFireChk.Enabled = true;
+            _blocksMoveChk.Checked = tile.BlocksMove;
+            _blocksFireChk.Checked = tile.BlocksFire;
+            _inspectorHint.Text = "Enregistré aussitôt dans tiles.json (vaut pour toutes les maps).";
+        }
+
+        _updatingInspector = false;
+    }
+
+    /// <summary>Répercute les cases à cocher sur le catalogue + tiles.json, puis rafraîchit l'infobulle.</summary>
+    private void ApplyBlockingFromInspector()
+    {
+        if (_updatingInspector || _focusedTile is null || _catalog is null) return;
+        try
+        {
+            _catalog.SetBlocking(_focusedTile.Id, _blocksMoveChk.Checked, _blocksFireChk.Checked);
+            RefreshTileTooltip(_focusedTile);
+            var move = _blocksMoveChk.Checked ? "bloqué" : "libre";
+            var fire = _blocksFireChk.Checked ? "bloqué" : "libre";
+            _status.Text = $"Tuile '{_focusedTile.Id}' : déplacement {move}, tir {fire} — tiles.json enregistré.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Impossible d'écrire tiles.json :\n{ex.Message}", "Erreur",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>Met à jour l'infobulle du bouton de palette d'une tuile après changement de ses règles.</summary>
+    private void RefreshTileTooltip(TileInfo tile)
+    {
+        foreach (Control c in _palette.Controls)
+            if (c is Button b && b.Tag is char ch && ch == tile.Key)
+            {
+                _tips.SetToolTip(b, TileTooltip(tile));
+                break;
+            }
     }
 
     // ---------------------------------------------------------------- Actions
@@ -408,27 +551,32 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
-    /// Active objectif + phase UNIQUEMENT pour le type Speciale (objectif défaut « LibererPaysans »). Grisés
-    /// et remis à « Aucun » / « Toutes » pour Escarmouche/Boss. Appelé au changement de type et à l'ouverture/création.
+    /// Active la PHASE pour les types Speciale ET Boss (les deux se tirent par phase), l'objectif + la limite
+    /// de tours UNIQUEMENT pour Speciale (objectif défaut « LibererPaysans »). Grise et remet à « Aucun » /
+    /// « Toutes » les champs hors de leur portée. Appelé au changement de type et à l'ouverture/création.
     /// </summary>
     private void SyncSpecialFields()
     {
         var special = _typeBox.Text == "Speciale";
+        var boss = _typeBox.Text == "Boss";
         _objectiveBox.Enabled = special;
-        _phaseBox.Enabled = special;
+        _phaseBox.Enabled = special || boss;   // la phase sert au tirage des maps Speciale ET Boss
         _turnsNum.Enabled = special;
         if (!special)
         {
             _objectiveBox.SelectedItem = "Aucun";
-            _phaseBox.SelectedIndex = 0;          // Toutes
             if (_doc is not null) _doc.TurnLimit = 0;   // pas de limite spéciale hors Speciale
         }
-        else
+        else if (_objectiveBox.SelectedItem is null or "Aucun")
         {
-            if (_objectiveBox.SelectedItem is null or "Aucun")
-                _objectiveBox.SelectedItem = "LibererPaysans";   // seul objectif dispo pour l'instant
+            _objectiveBox.SelectedItem = "LibererPaysans";   // seul objectif dispo pour l'instant
+        }
+        if (special)
+        {
             if (_doc is not null) _doc.TurnLimit = (int)_turnsNum.Value;   // reflète le contrôle
         }
+        if (!special && !boss)
+            _phaseBox.SelectedIndex = 0;   // Escarmouche : la phase ne s'applique pas → « Toutes »
     }
 
     // ---------------------------------------------------------------- Helpers

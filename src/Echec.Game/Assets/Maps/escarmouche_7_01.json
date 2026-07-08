@@ -3,15 +3,14 @@
   "type": "Escarmouche",
   "width": 7,
   "height": 7,
-  "_comment": "tiles[] utilise les CLES GLOBALES de tiles.json (1=damier_clair, 5=damier_sombre, |=mur_vertical, _=mur_bas, [ ]=angles, ==ouverture, h/t/r/l=herbe, ~=eau). spawns[] : P=joueur, E=ennemi, B=boss, .=rien. width/height doivent matcher la taille des grilles.",
   "tiles": [
     "hhhhhhh",
-    "hhhhhhh",
-    "hhhhhhh",
-    "hhhhhhh",
-    "hhhhhhh",
-    "hhhhhhh",
-    "hhhhhhh"
+    "h64447h",
+    "h8eee8h",
+    "h8eee8h",
+    "h8eee8h",
+    "h944u0h",
+    "hhhh8hh"
   ],
   "spawns": [
     "EEEEEEE",
@@ -19,7 +18,16 @@
     ".......",
     ".......",
     ".......",
-    "PPPPPPP",
-    "PPPPPPP"
+    "PP.P.PP",
+    ".P.P.P."
+  ],
+  "objects": [
+    ".......",
+    ".......",
+    "C.....R",
+    ".......",
+    ".......",
+    ".......",
+    "......."
   ]
 }

@@ -40,8 +40,9 @@ public sealed class MapData
 
     /// <summary>
     /// Phase de campagne (1..3) à laquelle cette map est réservée, ou <c>0</c> = « toutes phases ». Sert à
-    /// filtrer les maps SPÉCIALES par phase (tirage aléatoire parmi celles de la phase courante). Ignoré pour
-    /// les autres types (sélectionnés par taille).
+    /// filtrer les maps SPÉCIALES et BOSS par phase (tirage parmi celles de la phase courante, repli sur les
+    /// « toutes phases » puis, pour un boss, sur n'importe quelle map boss). Ignoré pour les escarmouches
+    /// (sélectionnées par taille).
     /// </summary>
     public int Phase { get; }
 

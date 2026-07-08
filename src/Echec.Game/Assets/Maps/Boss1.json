@@ -1,29 +1,28 @@
 {
-  "name": "special_prot_01",
-  "type": "Speciale",
-  "objective": "ProtegerPaysans",
-  "turnLimit": 20,
+  "name": "Boss1",
+  "type": "Boss",
+  "phase": 1,
   "width": 8,
   "height": 8,
   "tiles": [
-    "7hhhh644",
-    "944440hh",
     "hhhhhhhh",
     "hhhhhhhh",
-    "eeheehee",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
     "hhhhhhhh",
     "hhhhhhhh",
     "hhhhhhhh"
   ],
   "spawns": [
-    "O......O",
-    ".OOOOOO.",
+    "E..BE..E",
+    ".OO..OO.",
     "........",
     "........",
     "........",
     "........",
-    ".PP..PP.",
-    ".PPPPPP."
+    "PPPPPPPP",
+    "PPPPPPPP"
   ],
   "objects": [
     "........",
@@ -32,7 +31,7 @@
     "........",
     "........",
     "........",
-    "...RR...",
-    "R......R"
+    "........",
+    "........"
   ]
 }

@@ -160,6 +160,23 @@ public class EnemyAiTests
     }
 
     [Fact]
+    public void Offensive_CanCaptureAndAttack_PrefersCapture()
+    {
+        // Objectif de mission : capturer un paysan À PORTÉE passe AVANT une attaque disponible sur un joueur.
+        var player = new Cell(3, 3);   // adjacent → attaque possible
+        var from = new Cell(4, 3);
+        var paysan = new Cell(4, 4);   // adjacent → capture possible (se poser dessus)
+        var match = EnemyTurn(player, from, out var enemy);
+        enemy.AiKind = AiKind.Offensif;
+
+        var action = EnemyAi.ChooseAction(match, new[] { paysan }, Rng());
+
+        Assert.NotNull(action);
+        Assert.False(action!.Value.IsAttack);
+        Assert.Equal(paysan, action.Value.To);   // capture plutôt qu'attaque
+    }
+
+    [Fact]
     public void Offensive_PlayerReachable_EngagesInsteadOfRushingPaysan()
     {
         // Agressif : un joueur atteignable en un coup → l'offensif se JETTE dessus (se met au contact) au

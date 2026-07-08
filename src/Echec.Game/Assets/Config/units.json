@@ -39,14 +39,14 @@
         "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 1, "attackRange": 3,
         "evolutions": [
           {
-            "name": "Clerc", "asset": "clerc", "hp": 8, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin"],
+            "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
               { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
               { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 5, "traits": ["Soin", "Bénédiction"] }
             ]
           },
           {
-            "name": "Sorcier", "asset": "sorcier", "hp": 6, "damage": 18, "moveRange": 2, "attackRange": 4,
+            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 4,
             "evolutions": [
               { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4 },
               { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
@@ -90,7 +90,7 @@
             ]
           },
           {
-            "name": "Tirailleur", "asset": "tirailleur", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
+            "name": "Javelinier", "asset": "Javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
               { "name": "Javelinier d'élite", "asset": "javelinier_elite", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
               { "name": "Voltigeur",          "asset": "voltigeur",        "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
@@ -103,8 +103,13 @@
 
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
   // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
+  // Pour un Boss, "phase" (1..3) le réserve à cette phase de campagne ; 0 ou absent = toutes phases (repli).
+  // Le combat de boss d'une phase prend le boss de CETTE phase, sinon un boss "toutes phases", sinon le 1er.
   "commandes": [
     { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1 },
-    { "role": "Boss",      "domaine": "Dame", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1 }
+    { "role": "Boss",      "domaine": "Dame", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase":1 }
+    // Exemples de boss par phase (à définir — décommenter/adapter) :
+    // { "role": "Boss", "domaine": "Dame", "name": "Boss Phase 1", "asset": "boss", "hp": 30, "damage":  9, "moveRange": 1, "attackRange": 1, "phase": 1 },
+    // { "role": "Boss", "domaine": "Tour", "name": "Boss Phase 2", "asset": "boss", "hp": 40, "damage": 11, "moveRange": 1, "attackRange": 2, "phase": 2 }
   ]
 }

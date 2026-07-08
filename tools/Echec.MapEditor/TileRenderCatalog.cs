@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Echec.MapEditor;
@@ -13,8 +15,9 @@ internal sealed class TileInfo
 {
     public required string Id { get; init; }
     public char Key { get; init; }
-    public bool BlocksMove { get; init; }
-    public bool BlocksFire { get; init; }
+    // Modifiables via l'inspecteur (persistés dans tiles.json par TileRenderCatalog.SetBlocking).
+    public bool BlocksMove { get; set; }
+    public bool BlocksFire { get; set; }
     /// <summary>Cellule découpée du tileset (cellW × cellH), ou null si la tuile n'a pas d'art.</summary>
     public Bitmap? Image { get; init; }
 }
@@ -30,9 +33,45 @@ internal sealed class TileRenderCatalog
     public required IReadOnlyDictionary<char, TileInfo> ByKey { get; init; }
     public int TileSize { get; init; } = 64;
     public int Thickness { get; init; } = 16;
-    public required string RawJson { get; init; }
+    public string RawJson { get; private set; } = "";
+    /// <summary>Chemin du tiles.json chargé, pour réécrire au même endroit (cf. <see cref="SetBlocking"/>).</summary>
+    public string SourcePath { get; private set; } = "";
 
     public TileInfo? TileForKey(char key) => ByKey.TryGetValue(key, out var t) ? t : null;
+
+    /// <summary>
+    /// Met à jour <c>blocksMove</c>/<c>blocksFire</c> d'une tuile en mémoire ET dans tiles.json, en
+    /// préservant le reste du fichier (tilesets, variants, commentaires, ordre des tuiles). Écrit
+    /// immédiatement sur le disque : c'est le fichier lu par le jeu et par l'éditeur.
+    /// </summary>
+    public void SetBlocking(string id, bool blocksMove, bool blocksFire)
+    {
+        foreach (var t in Tiles)
+            if (t.Id == id) { t.BlocksMove = blocksMove; t.BlocksFire = blocksFire; }
+
+        var root = JsonNode.Parse(RawJson, documentOptions: new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+        }) as JsonObject ?? throw new FormatException("tiles.json illisible.");
+
+        if (root["tiles"] is JsonArray arr)
+            foreach (var node in arr)
+                if (node is JsonObject obj && obj["id"]?.GetValue<string>() == id)
+                {
+                    obj["blocksMove"] = blocksMove;
+                    obj["blocksFire"] = blocksFire;
+                }
+
+        RawJson = root.ToJsonString(WriteOpts);
+        File.WriteAllText(SourcePath, RawJson);
+    }
+
+    private static readonly JsonSerializerOptions WriteOpts = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     public static TileRenderCatalog Load(string tilesJsonPath, string tilesetsDir)
     {
@@ -80,6 +119,7 @@ internal sealed class TileRenderCatalog
             TileSize = dto.TileSize > 0 ? dto.TileSize : 64,
             Thickness = dto.Thickness,
             RawJson = raw,
+            SourcePath = tilesJsonPath,
         };
     }
 

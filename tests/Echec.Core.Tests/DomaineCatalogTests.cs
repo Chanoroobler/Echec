@@ -60,6 +60,42 @@ public class DomaineCatalogTests
         var boss = defs.Single(d => d.Role == CommandeRole.Boss);
         Assert.Equal(Domaine.Tour, boss.Movement);
         Assert.Equal(2, boss.BaseClass.AttackRange);
+        Assert.Equal(0, boss.Phase);   // "phase" absente → 0 (toutes phases)
+    }
+
+    [Fact]
+    public void CommandesFromJson_ReadsBossPhase()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Boss", "domaine": "Dame", "name": "Boss2", "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 2 }
+          ]
+        }
+        """;
+
+        var boss = DomaineCatalog.CommandesFromJson(json).Single();
+        Assert.Equal(2, boss.Phase);
+    }
+
+    [Fact]
+    public void BossFor_PicksPhaseBoss_ThenAllPhases_ThenFirst()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Boss", "domaine": "Dame", "name": "BossAny", "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 0 },
+            { "role": "Boss", "domaine": "Dame", "name": "Boss2",   "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 2 }
+          ]
+        }
+        """;
+        var defs = DomaineCatalog.CommandesFromJson(json);
+
+        Assert.Equal("Boss2", Commandes.BossFor(defs, 2).Name);    // boss réservé à la phase 2
+        Assert.Equal("BossAny", Commandes.BossFor(defs, 1).Name);  // pas de boss phase 1 → repli « toutes phases »
+        Assert.Equal("BossAny", Commandes.BossFor(defs, 3).Name);  // idem phase 3
     }
 
     [Fact]

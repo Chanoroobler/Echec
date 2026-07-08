@@ -25,8 +25,21 @@ public static class Commandes
     /// <summary>Premier commandant défini (le choix par le joueur viendra plus tard).</summary>
     public static CommandeDef Commander => _all.First(c => c.Role == CommandeRole.Commander);
 
-    /// <summary>Premier boss défini.</summary>
+    /// <summary>Premier boss défini (repli « n'importe quel boss » ; cf. <see cref="BossFor"/>).</summary>
     public static CommandeDef Boss => _all.First(c => c.Role == CommandeRole.Boss);
+
+    /// <summary>
+    /// Boss du combat de la <paramref name="phase"/> demandée : d'abord un boss RÉSERVÉ à cette phase
+    /// (<see cref="CommandeDef.Phase"/> == phase), sinon un boss « toutes phases » (Phase == 0), sinon le
+    /// premier boss défini. Configuré dans units.json (champ <c>phase</c>).
+    /// </summary>
+    public static CommandeDef BossFor(int phase) => BossFor(_all, phase);
+
+    /// <summary>Variante pure (sur une liste fournie) — sert au repli statique et aux tests.</summary>
+    public static CommandeDef BossFor(IReadOnlyList<CommandeDef> defs, int phase) =>
+        defs.FirstOrDefault(c => c.Role == CommandeRole.Boss && c.Phase == phase)
+        ?? defs.FirstOrDefault(c => c.Role == CommandeRole.Boss && c.Phase == 0)
+        ?? defs.First(c => c.Role == CommandeRole.Boss);
 
     // Repli codé (doit rester aligné avec Assets/Config/units.json).
     private static IReadOnlyList<CommandeDef> Defaults() => new[]
@@ -34,6 +47,6 @@ public static class Commandes
         new CommandeDef(CommandeRole.Commander, Domaine.Dame,
             new UnitClass("Commandant", "commandant", tier: 1, maxHp: 26, damage: 6, moveRange: 2, attackRange: 1)),
         new CommandeDef(CommandeRole.Boss, Domaine.Dame,
-            new UnitClass("Boss", "boss", tier: 1, maxHp: 30, damage: 8, moveRange: 1, attackRange: 1)),
+            new UnitClass("Boss", "boss", tier: 1, maxHp: 30, damage: 8, moveRange: 1, attackRange: 1), phase: 0),
     };
 }

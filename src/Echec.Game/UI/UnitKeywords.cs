@@ -7,8 +7,9 @@ namespace Echec.Game.UI;
 /// Textes des mots-clés affichés sur les cartes d'unité : un libellé court + une description.
 /// Les chaînes vivent dans <c>Assets/Config/strings.csv</c> (clés <c>kw.*.label</c> / <c>kw.*.desc</c>)
 /// et sont résolues à la volée selon la langue active, donc un changement de langue se reflète
-/// immédiatement. IMPORTANT : la police pixel (<see cref="Echec.Engine.UI.Text.PixelFont"/>) n'a NI
-/// accents NI apostrophe/virgule — les valeurs CSV sont écrites sans diacritiques ni ponctuation.
+/// immédiatement. IMPORTANT : la police pixel (<see cref="Echec.Engine.UI.Text.PixelFont"/>) n'a PAS
+/// d'accents ni de virgule (mais gère l'apostrophe) — les valeurs CSV sont écrites sans diacritiques ni
+/// virgule ; l'apostrophe d'élision (L'ALLIE, D'UNE ATTAQUE) est en revanche autorisée et affichée.
 /// Les mécaniques de tous les traits sont implémentées dans <see cref="Echec.Core.Battle.Match"/>.
 /// </summary>
 public static class UnitKeywords

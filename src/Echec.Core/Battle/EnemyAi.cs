@@ -19,9 +19,11 @@ public enum AiKind
     Defensif,
 
     /// <summary>
-    /// Assaillant offensif (mission « protéger les paysans ») : AGRESSIF — attaque un joueur à portée, se
-    /// JETTE sur un joueur atteignable (s'engage même au risque de mourir), et sinon fonce vers le paysan le
-    /// plus proche pour lui SAUTER DESSUS (se pose sur la case = capture). L'engagement passe avant le paysan.
+    /// Assaillant offensif (mission « protéger les paysans ») : AGRESSIF. CAPTURER un paysan à portée (se
+    /// poser sur sa case) passe AVANT tout — c'est l'objectif de la mission. À défaut de capture immédiate,
+    /// il attaque un joueur à portée, se JETTE sur un joueur atteignable (s'engage même au risque de mourir),
+    /// et sinon fonce vers le paysan le plus proche. L'engagement ne prime que sur l'AVANCÉE (paysan lointain),
+    /// jamais sur une capture réalisable ce tour-ci.
     /// </summary>
     Offensif,
 }
@@ -33,11 +35,13 @@ public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
 /// IA du camp ennemi (un tour = UNE action pour tout le camp). Chaque unité agit selon son
 /// <see cref="Unit.AiKind"/> ; on agrège les coups candidats de toutes les unités puis on choisit UN
 /// coup par priorité :
+///   0. CAPTURER un paysan — un OFFENSIF se pose sur une case paysan atteignable ce tour-ci : c'est
+///      l'objectif de la mission « protéger », donc ça passe AVANT même une attaque ;
 ///   1. ATTAQUER une cible à portée (mortelle d'abord, sinon quelconque) — TOUS les comportements ;
 ///   2. SE METTRE À PORTÉE du joueur — un pion NORMAL (sans mourir) et un OFFENSIF (agressif : même au
 ///      risque de mourir) ; un DÉFENSIF seulement s'il est alerté (un joueur à ≤ <see cref="AlertRadius"/> cases) ;
-///   3. AVANCER vers sa CIBLE — un NORMAL vers le joueur, un OFFENSIF vers le paysan le plus proche (il peut
-///      s'y poser = le capturer) ; départage aléatoire entre unités ;
+///   3. AVANCER vers sa CIBLE — un NORMAL vers le joueur, un OFFENSIF vers le paysan le plus proche (quand il
+///      n'est pas encore à portée de s'y poser) ; départage aléatoire entre unités ;
 ///   4. GARDER — un pion DÉFENSIF se repositionne vers/autour de la case gardée (paysan) la plus proche
 ///      sans s'y poser : il produit TOUJOURS un coup s'il peut bouger (déjà au contact → il tourne autour) ;
 ///   5. repli anti-blocage : n'importe quel coup légal (tous comportements).
@@ -85,6 +89,7 @@ public static class EnemyAi
         // de fuir et de faire courir le joueur après elle jusqu'à la fin de la partie.
         var suicidal = enemies.Count <= 1;
 
+        var capture = new List<AiAction>();             // 0. offensif : se poser sur un paysan (objectif de mission)
         AiAction? bestKill = null, bestAttack = null;   // 1. attaques (mortelle prioritaire)
         var engage = new List<AiAction>();              // 2. mise à portée (normal / défensif alerté)
         var advanceByUnit = new List<AiAction>();       // 3. avancée vers la cible (normal → joueur, offensif → paysan)
@@ -131,6 +136,11 @@ public static class EnemyAi
             {
                 anyLegalMove.Add(new AiAction(from, to, IsAttack: false));   // repli : garantit que l'ennemi bouge
 
+                // CAPTURE : un offensif qui peut se POSER sur un paysan ce tour-ci le fait en priorité absolue
+                // (l'objectif de la mission « protéger » côté ennemi). Passe avant l'attaque et l'engagement.
+                if (offensif && paysanCells.Contains(to))
+                    capture.Add(new AiAction(from, to, IsAttack: false));
+
                 // L'offensif PREND DES RISQUES : il s'engage même vers une case où il pourrait se faire tuer
                 // (comme la dernière unité « suicidaire »). Le normal, lui, évite les cases mortelles.
                 if (canEngage
@@ -166,6 +176,7 @@ public static class EnemyAi
                 guardByUnit.Add(grd);
         }
 
+        if (capture.Count > 0) return capture[rng.Next(capture.Count)];
         if (bestKill is { } kill) return kill;
         if (bestAttack is { } attack) return attack;
         if (engage.Count > 0) return engage[rng.Next(engage.Count)];

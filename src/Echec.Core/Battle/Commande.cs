@@ -16,11 +16,12 @@ public enum CommandeRole
 /// </summary>
 public sealed class CommandeDef
 {
-    public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass)
+    public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass, int phase = 0)
     {
         Role = role;
         Movement = movement;
         BaseClass = baseClass;
+        Phase = phase;
     }
 
     public CommandeRole Role { get; }
@@ -29,6 +30,12 @@ public sealed class CommandeDef
     public Domaine Movement { get; }
 
     public UnitClass BaseClass { get; }
+
+    /// <summary>
+    /// BOSS uniquement : phase de campagne (1..3) à laquelle ce boss est réservé, ou <c>0</c> = « toutes
+    /// phases » (repli). Cf. <see cref="Commandes.BossFor"/>. Sans objet pour un commandant.
+    /// </summary>
+    public int Phase { get; }
 
     public string Name => BaseClass.Name;
 }

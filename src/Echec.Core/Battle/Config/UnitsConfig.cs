@@ -25,6 +25,13 @@ public sealed class CommandeConfig
     public int Damage { get; set; }
     public int MoveRange { get; set; }
     public int AttackRange { get; set; }
+
+    /// <summary>
+    /// BOSS uniquement : phase de campagne (1..3) à laquelle ce boss est réservé, ou <c>0</c>/absent =
+    /// « toutes phases » (repli). Le combat de boss d'une phase choisit d'abord le boss de CETTE phase,
+    /// sinon un boss « toutes phases », sinon le premier boss défini. Ignoré pour un Commander.
+    /// </summary>
+    public int Phase { get; set; }
 }
 
 /// <summary>Un domaine et sa classe de base (le motif de déplacement reste en code).</summary>

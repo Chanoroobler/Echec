@@ -23,8 +23,9 @@ public enum RunPhase
 /// draft de recrutement. Boucle : Placement → Battle → Recruitment → Placement …
 ///
 /// Une run = <see cref="PhaseCount"/> phases de <see cref="MissionsPerPhase"/> missions, jouées
-/// selon le rythme fixe <see cref="PhaseLayout"/> (Escarmouche ×2, Speciale, Escarmouche ×2, Boss),
-/// soit <see cref="TotalCombats"/> combats et 3 boss. Seul le boss FINAL (phase 3) gagne la run ;
+/// selon le rythme par phase <see cref="PhaseLayouts"/> (phases 2-3 : Escarmouche ×2, Speciale,
+/// Escarmouche ×2, Boss ; phase 1 : spéciale décalée au slot 4), soit <see cref="TotalCombats"/>
+/// combats et 3 boss. Seul le boss FINAL (phase 3) gagne la run ;
 /// les boss des phases 1-2 enchaînent vers le recrutement. <see cref="CombatNumber"/> (1..18) est le
 /// seul curseur : <see cref="PhaseIndex"/> et <see cref="MissionInPhase"/> en dérivent.
 ///
@@ -49,14 +50,30 @@ public sealed class Run
     public const int ReserveLimit = 8;
 
     /// <summary>
-    /// Rythme fixe d'une phase (6 slots) : deux escarmouches, une mission spéciale, deux escarmouches,
-    /// un boss. La spéciale est déjà TYPÉE <see cref="CombatType.Speciale"/> mais générée comme une
-    /// escarmouche tant qu'elle n'a pas de contenu propre.
+    /// Rythme STANDARD d'une phase (6 slots) : deux escarmouches, une mission spéciale, deux escarmouches,
+    /// un boss. Utilisé par les phases 2-3. La spéciale est déjà TYPÉE <see cref="CombatType.Speciale"/>
+    /// mais générée comme une escarmouche tant qu'elle n'a pas de contenu propre.
     /// </summary>
-    private static readonly CombatType[] PhaseLayout =
+    private static readonly CombatType[] StandardPhaseLayout =
     {
         CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
         CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Boss,
+    };
+
+    /// <summary>
+    /// Rythme PROPRE À CHAQUE PHASE, indexé <c>[PhaseIndex-1]</c>. La PHASE 1 décale la mission spéciale
+    /// au slot 4 (trois escarmouches d'échauffement d'abord) ; les phases 2-3 gardent le
+    /// <see cref="StandardPhaseLayout"/> (spéciale au slot 3).
+    /// </summary>
+    private static readonly CombatType[][] PhaseLayouts =
+    {
+        new[] // Phase 1 : spéciale décalée au slot 4.
+        {
+            CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Escarmouche,
+            CombatType.Speciale, CombatType.Escarmouche, CombatType.Boss,
+        },
+        StandardPhaseLayout,
+        StandardPhaseLayout,
     };
 
     // ORDRE D'INTRODUCTION des types ennemis : un nouveau type est débloqué à chaque combat —
@@ -77,12 +94,12 @@ public sealed class Run
     /// </summary>
     private static readonly int[][][] WaveTiers =
     {
-        new[] // Phase 1 — apprentissage (T1, le T2 arrive à l'escarmouche 4)
+        new[] // Phase 1 — apprentissage (T1, le T2 arrive au combat 4). Effectifs liés au SLOT (difficulté croissante).
         {
             new[] { 1, 1 },                              // m1 Escarmouche : 2× T1 (démarrage doux)
             new[] { 1, 1, 1 },                           // m2 Escarmouche : 3× T1
-            new[] { 1, 1, 1, 1 },                        // m3 Speciale    : 4× T1 (temporaire — en attendant la vraie mission spéciale)
-            new[] { 1, 1, 1, 1, 1, 2 },                  // m4 Escarmouche : 5× T1 + 1× T2
+            new[] { 1, 1, 1, 1 },                        // m3 Escarmouche : 4× T1
+            new[] { 1, 1, 1, 1, 1, 2 },                  // m4 Speciale    : gabarit T1/T2 (effectif = spawns de la map)
             new[] { 1, 1, 1, 1, 1, 2, 2 },               // m5 Escarmouche : 5× T1 + 2× T2
             new[] { 1, 1, 1, 1, 1, 1, 1, 2, 2 },         // m6 Boss        : + 7× T1 + 2× T2
         },
@@ -167,8 +184,8 @@ public sealed class Run
     /// <summary>Rang de la mission dans sa phase (1..<see cref="MissionsPerPhase"/>).</summary>
     public int MissionInPhase => (CombatNumber - 1) % MissionsPerPhase + 1;
 
-    /// <summary>Nature de la mission courante selon le rythme fixe <see cref="PhaseLayout"/>.</summary>
-    public CombatType CurrentMission => PhaseLayout[MissionInPhase - 1];
+    /// <summary>Nature de la mission courante selon le rythme de la phase (<see cref="PhaseLayouts"/>).</summary>
+    public CombatType CurrentMission => PhaseLayouts[PhaseIndex - 1][MissionInPhase - 1];
 
     /// <summary>Vrai si la mission courante est un combat de boss (dernière de chaque phase).</summary>
     public bool IsBossCombat => CurrentMission == CombatType.Boss;
@@ -177,8 +194,10 @@ public sealed class Run
     public bool IsFinalBoss => IsBossCombat && PhaseIndex == PhaseCount;
 
     /// <summary>Nature de la mission au rang <paramref name="missionInPhase"/> (1..<see cref="MissionsPerPhase"/>)
-    /// du rythme fixe <see cref="PhaseLayout"/> — identique dans les 3 phases (sert à la frise UI).</summary>
-    public static CombatType MissionKindAt(int missionInPhase) => PhaseLayout[missionInPhase - 1];
+    /// dans la phase <paramref name="phaseIndex"/> (1..<see cref="PhaseCount"/>) — cf. <see cref="PhaseLayouts"/>
+    /// (le rythme diffère en phase 1). Sert à la frise UI.</summary>
+    public static CombatType MissionKindAt(int phaseIndex, int missionInPhase) =>
+        PhaseLayouts[phaseIndex - 1][missionInPhase - 1];
 
     /// <summary>
     /// Effectif ennemi TOTAL d'une mission (phase 1..3, rang 1..6) = escortes de la table + le boss
@@ -186,7 +205,7 @@ public sealed class Run
     /// </summary>
     public static int EnemyCount(int phaseIndex, int missionInPhase) =>
         WaveTiers[phaseIndex - 1][missionInPhase - 1].Length
-        + (MissionKindAt(missionInPhase) == CombatType.Boss ? 1 : 0);
+        + (MissionKindAt(phaseIndex, missionInPhase) == CombatType.Boss ? 1 : 0);
 
     public UnitSpec Commander => _roster.First(u => u.Essential);
 
@@ -374,10 +393,10 @@ public sealed class Run
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
 
-        // Mission boss : le boss est placé EN TÊTE (la scène le pose en premier). TODO : un boss distinct
-        // par phase — on réutilise Commandes.Boss pour les 3 phases pour l'instant, seules les escortes varient.
+        // Mission boss : le boss de la PHASE courante est placé EN TÊTE (la scène le pose en premier).
+        // Le boss par phase est configuré dans units.json (champ « phase », cf. Commandes.BossFor).
         if (IsBossCombat)
-            wave.Insert(0, ToSpec(Commandes.Boss));
+            wave.Insert(0, ToSpec(Commandes.BossFor(PhaseIndex)));
 
         return wave;
     }
@@ -388,7 +407,30 @@ public sealed class Run
     /// (<see cref="WaveTiers"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), mais
     /// l'effectif est piloté par la map. Déterministe (<see cref="CombatRng"/>) : reprise = même vague.
     /// </summary>
-    public List<UnitSpec> BuildSpecialEnemyWave(int count, Func<string, bool>? isSeen = null)
+    public List<UnitSpec> BuildSpecialEnemyWave(int count, Func<string, bool>? isSeen = null) =>
+        BuildScaledWave(count, isSeen);
+
+    /// <summary>
+    /// Vague d'un combat BOSS sur MAP DESSINÉE : le pion <see cref="Commandes.Boss"/> EN TÊTE (la scène le
+    /// pose sur une case B) + EXACTEMENT <paramref name="escortCount"/> escortes calées sur les autres cases
+    /// de spawn de la map, pour que CHAQUE case dessinée soit occupée. Tiers selon le gabarit de la mission.
+    /// Déterministe (reprise = même vague). Hors map dessinée, c'est <see cref="BuildEnemyWave"/> (effectif
+    /// FIXE de la table) qui s'applique — le boss y est déjà inséré en tête.
+    /// </summary>
+    public List<UnitSpec> BuildBossEnemyWave(int escortCount, Func<string, bool>? isSeen = null)
+    {
+        var wave = BuildScaledWave(escortCount, isSeen);
+        wave.Insert(0, ToSpec(Commandes.BossFor(PhaseIndex)));   // boss de la phase, en tête (la scène le pose sur une case B)
+        return wave;
+    }
+
+    /// <summary>
+    /// Vague de <paramref name="count"/> ennemis dont les TIERS suivent le gabarit de la mission courante
+    /// (<see cref="WaveTiers"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), l'effectif
+    /// étant piloté par l'appelant (nb de cases de spawn de la map). Déterministe (<see cref="CombatRng"/>).
+    /// Sert aux vagues « pilotées par la map » (mission spéciale et escortes de boss dessiné).
+    /// </summary>
+    private List<UnitSpec> BuildScaledWave(int count, Func<string, bool>? isSeen)
     {
         var rng = CombatRng(1);
         var wave = new List<UnitSpec>();

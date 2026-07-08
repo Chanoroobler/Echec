@@ -7,6 +7,11 @@
       "file": "tiles_herb.png",
       "cellW": 64,
       "cellH": 80
+    },
+    "murs": {
+      "file": "TilesMurs.png",
+      "cellW": 64,
+      "cellH": 80
     }
   },
   "tiles": [
@@ -158,6 +163,439 @@
       "sheet": "herb",
       "col": 2,
       "row": 3
+    },
+    {
+      "_comment": "--- Tileset 'murs' (TilesMurs.png) : 1 tuile par case, key unique. blocksMove/blocksFire a ajuster par tuile. ---",
+      "id": "murs_00",
+      "key": "a",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "murs_10",
+      "key": "b",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "murs_20",
+      "key": "c",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "murs_30",
+      "key": "d",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "murs_40",
+      "key": "f",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "murs_50",
+      "key": "g",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "murs_60",
+      "key": "i",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "murs_01",
+      "key": "j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "murs_11",
+      "key": "k",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "murs_21",
+      "key": "l",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "murs_31",
+      "key": "m",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "murs_41",
+      "key": "n",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "murs_51",
+      "key": "o",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "murs_61",
+      "key": "q",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 1
+    },
+    {
+      "id": "murs_02",
+      "key": "r",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "murs_12",
+      "key": "s",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "murs_22",
+      "key": "t",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "murs_32",
+      "key": "u",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "murs_42",
+      "key": "v",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "murs_52",
+      "key": "w",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 2
+    },
+    {
+      "id": "murs_62",
+      "key": "x",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 2
+    },
+    {
+      "id": "murs_03",
+      "key": "y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "murs_13",
+      "key": "z",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "murs_23",
+      "key": "A",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "murs_33",
+      "key": "B",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "murs_43",
+      "key": "C",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "murs_53",
+      "key": "D",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 3
+    },
+    {
+      "id": "murs_63",
+      "key": "E",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 3
+    },
+    {
+      "id": "murs_04",
+      "key": "F",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 0,
+      "row": 4
+    },
+    {
+      "id": "murs_14",
+      "key": "G",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 4
+    },
+    {
+      "id": "murs_24",
+      "key": "H",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 4
+    },
+    {
+      "id": "murs_34",
+      "key": "I",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 4
+    },
+    {
+      "id": "murs_44",
+      "key": "J",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 4
+    },
+    {
+      "id": "murs_54",
+      "key": "K",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 4
+    },
+    {
+      "id": "murs_64",
+      "key": "L",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 6,
+      "row": 4
+    },
+    {
+      "id": "murs_05",
+      "key": "M",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 5
+    },
+    {
+      "id": "murs_15",
+      "key": "N",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 5
+    },
+    {
+      "id": "murs_25",
+      "key": "O",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 2,
+      "row": 5
+    },
+    {
+      "id": "murs_35",
+      "key": "P",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 5
+    },
+    {
+      "id": "murs_45",
+      "key": "Q",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 5
+    },
+    {
+      "id": "murs_55",
+      "key": "R",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 5
+    },
+    {
+      "id": "murs_65",
+      "key": "S",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 5
+    },
+    {
+      "id": "murs_06",
+      "key": "T",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 6
+    },
+    {
+      "id": "murs_16",
+      "key": "U",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 1,
+      "row": 6
+    },
+    {
+      "id": "murs_26",
+      "key": "V",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 2,
+      "row": 6
+    },
+    {
+      "id": "murs_36",
+      "key": "W",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 6
+    },
+    {
+      "id": "murs_46",
+      "key": "X",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 6
+    },
+    {
+      "id": "damier_c",
+      "key": "Y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 6
     }
   ]
 }

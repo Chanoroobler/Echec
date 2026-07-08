@@ -31,10 +31,16 @@ public class RunTests
     }
 
     [Fact]
-    public void PhaseLayout_RepeatsFixedRhythmAcrossThreePhases()
+    public void PhaseLayout_Phase1MovesSpecialToSlot4_Phases2And3Standard()
     {
-        // Rythme fixe d'une phase, répété 3 fois : Escarmouche ×2, Speciale, Escarmouche ×2, Boss.
-        var slot = new[]
+        // Phase 1 : la spéciale est décalée au slot 4 (Escarmouche ×3, Speciale, Escarmouche, Boss).
+        var phase1 = new[]
+        {
+            CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Escarmouche,
+            CombatType.Speciale, CombatType.Escarmouche, CombatType.Boss,
+        };
+        // Phases 2-3 : rythme standard (Escarmouche ×2, Speciale, Escarmouche ×2, Boss).
+        var standard = new[]
         {
             CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
             CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Boss,
@@ -43,9 +49,14 @@ public class RunTests
         for (var combat = 1; combat <= Run.TotalCombats; combat++)
         {
             var run = RunAt(combat);
-            Assert.Equal((combat - 1) / 6 + 1, run.PhaseIndex);
-            Assert.Equal((combat - 1) % 6 + 1, run.MissionInPhase);
-            Assert.Equal(slot[(combat - 1) % 6], run.CurrentMission);
+            var phase = (combat - 1) / 6 + 1;
+            var mission = (combat - 1) % 6 + 1;
+            Assert.Equal(phase, run.PhaseIndex);
+            Assert.Equal(mission, run.MissionInPhase);
+
+            var expected = (phase == 1 ? phase1 : standard)[mission - 1];
+            Assert.Equal(expected, run.CurrentMission);
+            Assert.Equal(expected, Run.MissionKindAt(phase, mission));   // statique == instance
         }
     }
 
@@ -66,11 +77,11 @@ public class RunTests
     // ─── Composition des vagues (effectif + tiers) — source de vérité de la difficulté ───────────
 
     [Theory]
-    // Phase 1 : apprentissage (T1, le T2 arrive à l'escarmouche 4). Démarrage adouci : 2 puis 3 pions.
+    // Phase 1 : apprentissage (T1, le T2 arrive au combat 4). Démarrage adouci : 2 puis 3 pions.
     [InlineData(1, 2, 0, 0, 0)]
     [InlineData(2, 3, 0, 0, 0)]
-    [InlineData(3, 4, 0, 0, 0)]   // spéciale phase 1 : 4 ennemis (temporaire)
-    [InlineData(4, 5, 1, 0, 0)]
+    [InlineData(3, 4, 0, 0, 0)]   // escarmouche phase 1 slot 3 : 4× T1
+    [InlineData(4, 5, 1, 0, 0)]   // spéciale phase 1 slot 4 : effectif liste = 6 (l'effectif réel vient de la map)
     [InlineData(5, 5, 2, 0, 0)]
     [InlineData(6, 7, 2, 0, 1)]  // boss + 7T1 + 2T2
     // Phase 2 : montée en puissance (T2 dominant).
@@ -101,8 +112,8 @@ public class RunTests
     }
 
     [Theory]
-    [InlineData(3, 5)]    // phase 1 mission 3 (spéciale) : 5 spawns
-    [InlineData(3, 12)]   // effectif > gabarit de la table : le gabarit de tiers est cyclé
+    [InlineData(4, 5)]    // phase 1 mission 4 (spéciale) : 5 spawns
+    [InlineData(4, 12)]   // effectif > gabarit de la table : le gabarit de tiers est cyclé
     [InlineData(9, 6)]    // phase 2 mission 3 : 6 spawns
     public void BuildSpecialEnemyWave_HasExactlyRequestedCount_NoBoss(int combat, int count)
     {
@@ -124,6 +135,27 @@ public class RunTests
     {
         var a = RunAt(3, seed: 7).BuildSpecialEnemyWave(6);
         var b = RunAt(3, seed: 7).BuildSpecialEnemyWave(6);
+        Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
+    }
+
+    [Theory]
+    [InlineData(6, 4)]     // phase 1 boss : 4 escortes
+    [InlineData(12, 9)]    // phase 2 boss : 9 escortes
+    [InlineData(18, 0)]    // boss SEUL (map sans case d'escorte)
+    public void BuildBossEnemyWave_BossInFront_ExactEscortCount(int combat, int escorts)
+    {
+        var wave = RunAt(combat).BuildBossEnemyWave(escorts);
+
+        Assert.Equal(escorts + 1, wave.Count);              // boss + escortes
+        Assert.True(wave[0].Essential);                     // boss EN TÊTE (posé sur une case B)
+        Assert.Single(wave, u => u.Essential);              // un seul essentiel : le boss
+    }
+
+    [Fact]
+    public void BuildBossEnemyWave_IsDeterministic()
+    {
+        var a = RunAt(6, seed: 7).BuildBossEnemyWave(4);
+        var b = RunAt(6, seed: 7).BuildBossEnemyWave(4);
         Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
     }
 
