@@ -7,8 +7,9 @@ Exemple : pour `{ "id": "vigueur", ... }` sans champ `icon`, dépose `vigueur.pn
 
 ## Repli automatique
 
-Tant que le PNG n'existe pas, le jeu dessine un **placeholder** (aplat coloré selon le type —
-bleu = stat, or = trait — avec l'initiale du nom). Tu peux donc ajouter les icônes progressivement.
+Tant que le PNG n'existe pas, le jeu dessine un **placeholder** (aplat coloré selon la saveur —
+or si l'équipement octroie au moins un trait, bleu sinon — avec l'initiale du nom). Tu peux donc
+ajouter les icônes progressivement.
 
 ## Rendu
 

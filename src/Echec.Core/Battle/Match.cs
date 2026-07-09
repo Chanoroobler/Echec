@@ -152,14 +152,21 @@ public sealed class Match
             return;
         }
 
-        var phases = unit.HasTrait(Trait.Franchissement);   // se déplace au travers des unités (alliées/ennemies)
+        // Franchissement : traverse aussi bien les UNITÉS que les OBSTACLES de terrain (eau/montagne/mur)
+        // qui jalonnent le chemin — sans jamais pouvoir s'y arrêter (il se pose sur une case libre franchissable).
+        var phases = unit.HasTrait(Trait.Franchissement);
         foreach (var dir in vectors)
         {
             for (var step = 1; step <= unit.MoveRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || (BlocksMovement(to) && !flies))
-                    break; // hors plateau, ou obstacle (eau/montagne) sauf si l'unité vole
+                if (!InBounds(to))
+                    break; // hors plateau
+                if (BlocksMovement(to) && !flies)
+                {
+                    if (phases) continue;   // Franchissement : traverse l'obstacle (eau/montagne/mur) sans s'y poser
+                    break;                  // obstacle infranchissable (sauf l'unité qui vole)
+                }
                 if (_units[to.Column, to.Row] != null)
                 {
                     if (phases) continue;   // Franchissement : on enjambe l'unité (sans pouvoir s'y poser)
@@ -203,7 +210,7 @@ public sealed class Match
             return;
         }
 
-        var piercesAllies = unit.Class.PiercesAllies;
+        var piercesAllies = unit.HasTrait(Trait.TraverseAllie);   // via HasTrait : classe (PiercesAllies) OU équipement
         var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
         foreach (var dir in vectors)
         {
@@ -274,7 +281,7 @@ public sealed class Match
             return;
         }
 
-        var piercesAllies = unit.Class.PiercesAllies;
+        var piercesAllies = unit.HasTrait(Trait.TraverseAllie);   // via HasTrait : classe (PiercesAllies) OU équipement
         var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
         foreach (var dir in vectors)
         {
@@ -335,6 +342,10 @@ public sealed class Match
         if (unit.HasTrait(Trait.Transpercement))
             PierceBehind(from, target, unit);
 
+        // Orage / Tempête : la foudre frappe TOUS les autres ennemis (hors cible directe) pour un dégât fixe.
+        if (StormDamageFor(unit) is > 0 and var storm)
+            StormStrike(unit, target, storm);
+
         MoveKind kind;
         if (!victim.IsAlive)
         {
@@ -369,6 +380,14 @@ public sealed class Match
     private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
     private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
     private const double EsquiveChance = 0.25;   // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
+    private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
+    private const int TempeteDamage = 6;         // dégât fixe de la tempête (trait « Tempête »)
+
+    /// <summary>Dégât fixe de foudre infligé par <paramref name="unit"/> à l'attaque (Tempête &gt; Orage &gt; 0 si aucun).</summary>
+    public static int StormDamageFor(Unit unit) =>
+        unit.HasTrait(Trait.Tempete) ? TempeteDamage
+        : unit.HasTrait(Trait.Orage) ? OrageDamage
+        : 0;
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -460,6 +479,27 @@ public sealed class Match
                 continue;
             ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c));
             RemoveDeadAt(c);
+        }
+    }
+
+    /// <summary>
+    /// « Orage » / « Tempête » : à l'attaque, la foudre frappe TOUS les ennemis du porteur SAUF la cible
+    /// directe (<paramref name="target"/>), chacun pour un dégât FIXE (<paramref name="amount"/>, ni réduit
+    /// par Rempart/couvert ni majoré par les traits offensifs — mais Esquive/Bouclier divin s'appliquent via
+    /// <see cref="ApplyDamage"/>). Les cibles sont figées avant application (la grille change en cours).
+    /// </summary>
+    private void StormStrike(Unit attacker, Cell target, int amount)
+    {
+        var victims = new List<Cell>();
+        foreach (var (cell, unit) in Units())
+            if (unit.Faction != attacker.Faction && cell != target)
+                victims.Add(cell);
+        foreach (var cell in victims)
+        {
+            if (UnitAt(cell) is not { } u)
+                continue;
+            ApplyDamage(cell, u, amount);
+            RemoveDeadAt(cell);
         }
     }
 

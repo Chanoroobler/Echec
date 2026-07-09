@@ -68,11 +68,15 @@ public sealed class MeleeStrikeFx
     public bool Killed { get; private set; }
     public bool Advanced { get; private set; }
 
+    /// <summary>Vrai si la victime a ESQUIVÉ l'attaque : elle fait un bond de côté (pas de flash ni de recul).</summary>
+    public bool Dodged { get; private set; }
+
     /// <summary>Graine de bruit propre à cette mort (chaque dissolution diffère).</summary>
     public Vector2 Seed => _seed;
 
     public void Begin(Cell from, Cell to, Cell attackerCell, Texture2D? attackerSprite,
-        Texture2D? victimSprite, bool killed, bool advanced, AttackStyle style = AttackStyle.Lunge)
+        Texture2D? victimSprite, bool killed, bool advanced, AttackStyle style = AttackStyle.Lunge,
+        bool dodged = false)
     {
         From = from;
         To = to;
@@ -81,6 +85,7 @@ public sealed class MeleeStrikeFx
         VictimSprite = victimSprite;
         Killed = killed;
         Advanced = advanced;
+        Dodged = dodged;
         _style = style;
         _approachDur = style switch
         {
@@ -122,10 +127,31 @@ public sealed class MeleeStrikeFx
     {
         get
         {
+            if (Dodged)   // l'esquive ne subit pas de recul : elle bondit de côté (cf. DodgeAmount)
+                return 0f;
             var t = _elapsed - _approachDur;
             if (t < 0 || t > KnockbackDur)
                 return 0f;
             return 1f - EaseInOut((float)(t / KnockbackDur));
+        }
+    }
+
+    private const double DodgeDur = 0.30;   // durée du bond de côté de l'esquive
+
+    /// <summary>
+    /// Amplitude [0,1] du BOND DE CÔTÉ d'une esquive : 0 avant l'impact, monte vite puis revient (aller-retour
+    /// en sinus). La scène en fait un décalage PERPENDICULAIRE à l'attaque. 0 si l'attaque n'a pas été esquivée.
+    /// </summary>
+    public float DodgeAmount
+    {
+        get
+        {
+            if (!Dodged)
+                return 0f;
+            var t = _elapsed - _approachDur;
+            if (t < 0 || t > DodgeDur)
+                return 0f;
+            return (float)Math.Sin(t / DodgeDur * Math.PI);   // 0 → 1 (à mi-course) → 0
         }
     }
 
@@ -138,7 +164,7 @@ public sealed class MeleeStrikeFx
     {
         get
         {
-            if (Killed)
+            if (Killed || Dodged)   // pas de flash « touché » sur une esquive : rien ne l'atteint
                 return 0f;
             var k = (_elapsed - _approachDur) / BlinkDur;
             if (k < 0 || k > 1)

@@ -571,10 +571,10 @@ internal sealed class MainForm : Form
         {
             _objectiveBox.SelectedItem = "LibererPaysans";   // seul objectif dispo pour l'instant
         }
-        if (special)
-        {
-            if (_doc is not null) _doc.TurnLimit = (int)_turnsNum.Value;   // reflète le contrôle
-        }
+        // NB : on ne recopie PAS ici _turnsNum → _doc.TurnLimit. Cette méthode est appelée au changement
+        // de type, y compris pendant l'OUVERTURE (avant que _turnsNum ait été chargé depuis la map) : le
+        // faire écraserait la limite chargée par la valeur périmée du contrôle (retour à 15). Le doc est
+        // synchronisé par _turnsNum.ValueChanged (édition) et par Save (écriture).
         if (!special && !boss)
             _phaseBox.SelectedIndex = 0;   // Escarmouche : la phase ne s'applique pas → « Toutes »
     }

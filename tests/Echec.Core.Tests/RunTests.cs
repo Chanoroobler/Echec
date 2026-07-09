@@ -1,6 +1,7 @@
 using System.Linq;
 using Echec.Core.Battle;
 using Echec.Core.Campaign;
+using Echec.Core.Equip;
 using Echec.Core.Map;
 using Xunit;
 
@@ -157,6 +158,63 @@ public class RunTests
         var a = RunAt(6, seed: 7).BuildBossEnemyWave(4);
         var b = RunAt(6, seed: 7).BuildBossEnemyWave(4);
         Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
+    }
+
+    // ─── Rareté de coffre (chances par phase + pitié) ────────────────────────────────────────────
+    [Theory]
+    // Phase 1 : légendaire 2 %, rare 15 % (combat 1).
+    [InlineData(1, 1.0, EquipmentRarity.Legendary)]
+    [InlineData(1, 2.0, EquipmentRarity.Rare)]     // pile au-dessus du seuil légendaire → rare
+    [InlineData(1, 16.9, EquipmentRarity.Rare)]
+    [InlineData(1, 17.0, EquipmentRarity.Common)]  // 2 + 15 → commun
+    // Phase 3 : légendaire 10 %, rare 40 % (combat 13).
+    [InlineData(13, 9.9, EquipmentRarity.Legendary)]
+    [InlineData(13, 10.0, EquipmentRarity.Rare)]
+    [InlineData(13, 49.9, EquipmentRarity.Rare)]
+    [InlineData(13, 50.0, EquipmentRarity.Common)]
+    public void ResolveChestRarity_ThresholdsByPhase(int combat, double roll, EquipmentRarity expected)
+    {
+        Assert.Equal(expected, RunAt(combat).ResolveChestRarity(roll));
+    }
+
+    [Fact]
+    public void ChestPity_BuildsOnMiss_ResetsOnDrop_Independently()
+    {
+        var run = RunAt(1);   // phase 1 : légendaire 2 %, rare 15 %
+
+        // Coffre commun : les deux pitiés montent (légendaire +1, rare +2).
+        Assert.Equal(EquipmentRarity.Common, run.ResolveChestRarity(99.0));
+        Assert.Equal(1, run.LegendaryPity);
+        Assert.Equal(2, run.RarePity);
+
+        // Deuxième coffre commun : elles continuent de monter.
+        Assert.Equal(EquipmentRarity.Common, run.ResolveChestRarity(99.0));
+        Assert.Equal(2, run.LegendaryPity);
+        Assert.Equal(4, run.RarePity);
+
+        // Coffre RARE (fenêtre élargie : légendaire 2+2=4, rare 15+4=19 → roll 10) : rare remis à zéro,
+        // légendaire continue (+1).
+        Assert.Equal(EquipmentRarity.Rare, run.ResolveChestRarity(10.0));
+        Assert.Equal(0, run.RarePity);
+        Assert.Equal(3, run.LegendaryPity);
+
+        // Coffre LÉGENDAIRE (fenêtre légendaire 2+3=5 → roll 1) : légendaire remis à zéro, rare monte (+2).
+        Assert.Equal(EquipmentRarity.Legendary, run.ResolveChestRarity(1.0));
+        Assert.Equal(0, run.LegendaryPity);
+        Assert.Equal(2, run.RarePity);
+    }
+
+    [Fact]
+    public void ChestPity_SurvivesSaveRoundTrip()
+    {
+        var run = RunAt(5);
+        run.ResolveChestRarity(99.0);   // commun → legPity 1, rarePity 2
+        run.ResolveChestRarity(99.0);   // → legPity 2, rarePity 4
+
+        var restored = RunSave.From(run).ToRun();
+
+        Assert.Equal(2, restored.LegendaryPity);
+        Assert.Equal(4, restored.RarePity);
     }
 
     [Fact]

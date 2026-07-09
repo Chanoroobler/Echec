@@ -153,17 +153,24 @@ public sealed class GameplayScene : Scene
     private Texture2D? _chestAnim;          // spritesheet d'ouverture (256×64 = 4 frames de 64×64)
 
     // Révélation MODALE à l'ouverture d'un coffre (fige le combat), calquée sur la recrue. Machine à phases :
-    // Opening (anim du coffre) → Item (l'objet flotte au-dessus + description, attend le clic) → Fly (l'objet
-    // vole vers l'inventaire ; ajouté à l'arrivée) → Settle (court répit) → fin. L'item n'entre dans
-    // l'inventaire qu'à la fin du vol (comme la recrue).
-    private enum ChestPhase { None, Opening, Item, Fly, Settle }
+    // Opening (anim du coffre) → Rolling (« machine à sous » : l'objet monte en défilant vite pendant ~3 s puis
+    // se fige sur le gagné) → Item (l'objet + nom/rareté, attend le clic) → Fly (vole vers l'inventaire ; ajouté
+    // à l'arrivée) → Settle (court répit) → fin. L'item n'entre dans l'inventaire qu'à la fin du vol.
+    private enum ChestPhase { None, Opening, Rolling, Item, Fly, Settle }
     private ChestPhase _chestPhase = ChestPhase.None;
-    private Equipment? _chestReveal;        // objet en cours de révélation (pas encore en inventaire)
+    private Equipment? _chestReveal;        // objet GAGNÉ (révélé à la fin, pas encore en inventaire)
+    private Equipment? _chestRollItem;      // objet AFFICHÉ pendant le défilement « machine à sous » (change vite)
+    private double _chestRollSwapTimer;     // temps depuis le dernier changement d'objet affiché
+    private readonly System.Random _chestRollRng = new();
     private double _chestPhaseTimer;        // temps écoulé dans la phase courante
     private Vector2 _chestFlyFrom;          // position de départ du vol (centre de l'objet révélé)
     private bool ChestRevealActive => _chestPhase != ChestPhase.None;
     private const int ChestFrames = 4;
     private const double ChestOpenDuration = 0.6;
+    private const double ChestRollDuration = 3.0;    // défilement rapide d'objets avant de se figer (« machine à sous »)
+    private const double ChestRollSwapMin = 0.04;    // intervalle entre deux objets AU DÉBUT (rapide)
+    private const double ChestRollSwapMax = 0.30;    // … à la FIN (ralenti progressivement)
+    private const double ChestRollLockTime = 0.25;   // dernier laps figé sur l'objet gagné avant de le révéler
     private const double ChestFlyDuration = 0.5;
     private const double ChestSettleDuration = 0.6;
 
@@ -203,6 +210,12 @@ public sealed class GameplayScene : Scene
     // Chiffres de dégâts flottants (jaillis à l'impact, puis éclatent) + dégâts du coup en attente.
     private readonly DamagePopups _damagePopups = new();
     private int _pendingDamage;
+    private bool _pendingDodge;   // l'attaque en cours a été ESQUIVÉE : feedback dédié à l'impact (popup + son)
+    // Orage / Tempête : éclairs sur tous les pions à l'attaque d'un porteur. Cases et chiffres figés
+    // AVANT l'attaque (le domaine applique la foudre instantanément), déclenchés à l'impact.
+    private readonly StormFx _storm = new();
+    private List<Cell>? _pendingStormBolts;                    // pions à foudroyer (visuel)
+    private List<(Cell Cell, int Damage)>? _pendingStormHits;  // ennemis touchés + dégâts (chiffres)
     // Tutoriel « combat zéro » : non-null pendant le combat scénarisé de début de campagne.
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
@@ -303,6 +316,7 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
     private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
     private readonly List<Cell> _threatCells = new();
+    private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
     // Aperçu au SURVOL d'un pion joueur (rien de sélectionné) : buffers distincts de la sélection.
     private readonly List<Cell> _hoverMoves = new();
     private readonly List<Cell> _hoverAttackTargets = new();
@@ -813,6 +827,8 @@ public sealed class GameplayScene : Scene
         _chestConsumed.Clear();
         _chestPrev.Clear();
         _chestReveal = null;
+        _chestRollItem = null;
+        _chestRollSwapTimer = 0;
         _chestPhase = ChestPhase.None;
         _chestPhaseTimer = 0;
         _equipDissolves.Clear();
@@ -839,6 +855,9 @@ public sealed class GameplayScene : Scene
         _dragSpec = null;
         _dragFrom = null;
         _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
+        _storm.Clear();
+        _pendingStormBolts = null;
+        _pendingStormHits = null;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -903,6 +922,9 @@ public sealed class GameplayScene : Scene
         _dragSpec = null;
         _dragFrom = null;
         _damagePopups.Clear();
+        _storm.Clear();
+        _pendingStormBolts = null;
+        _pendingStormHits = null;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1097,7 +1119,9 @@ public sealed class GameplayScene : Scene
     private void OpenChest(Cell c)
     {
         _chestConsumed.Add(c);
-        var item = Equipments.Roll(EquipmentRarity.Common, new System.Random());
+        // Butin : rareté tirée selon la phase + la « pitié » (bonus cumulé tant qu'on ne drop pas), puis un
+        // équipement de cette rareté. Met à jour l'état de pitié de la run (sauvegardé au prochain placement).
+        var item = _run.RollChestEquipment(new System.Random());
         if (item == null)
             return;
         _chestReveal = item;
@@ -1115,10 +1139,15 @@ public sealed class GameplayScene : Scene
             case ChestPhase.Opening:
                 if (_chestPhaseTimer >= ChestOpenDuration)
                 {
-                    _chestPhase = ChestPhase.Item;
+                    _chestPhase = ChestPhase.Rolling;      // le défilement « machine à sous » démarre
                     _chestPhaseTimer = 0;
-                    Context.Sounds.Play("reward");   // jingle positif à l'apparition de l'objet
+                    _chestRollSwapTimer = 0;
+                    _chestRollItem = RandomRollItem();
                 }
+                break;
+
+            case ChestPhase.Rolling:   // l'objet monte en défilant vite (décélère) puis se fige sur le gagné
+                UpdateChestRoll(dt);
                 break;
 
             case ChestPhase.Item:   // l'objet flotte au-dessus du coffre + description ; on attend le clic
@@ -1145,10 +1174,51 @@ public sealed class GameplayScene : Scene
                 if (_chestPhaseTimer >= ChestSettleDuration)
                 {
                     _chestReveal = null;
+                    _chestRollItem = null;
                     _chestPhase = ChestPhase.None;
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Défilement « machine à sous » : l'objet affiché change de plus en plus lentement (intervalle qui passe
+    /// de <see cref="ChestRollSwapMin"/> à <see cref="ChestRollSwapMax"/>), puis se FIGE sur l'objet gagné
+    /// (<see cref="_chestReveal"/>) durant le dernier <see cref="ChestRollLockTime"/> avant de le révéler.
+    /// </summary>
+    private void UpdateChestRoll(float dt)
+    {
+        var remaining = ChestRollDuration - _chestPhaseTimer;
+        if (remaining <= ChestRollLockTime)
+            _chestRollItem = _chestReveal;   // verrouillé sur le gagné : il « atterrit » avant la révélation
+
+        if (_chestPhaseTimer >= ChestRollDuration)
+        {
+            _chestRollItem = _chestReveal;
+            _chestPhase = ChestPhase.Item;
+            _chestPhaseTimer = 0;
+            Context.Sounds.Play("reward");   // jingle positif à l'instant où l'objet se fige
+            return;
+        }
+
+        // Intervalle de changement croissant (décélération) selon l'avancement du défilement.
+        if (_chestRollItem == _chestReveal && remaining <= ChestRollLockTime)
+            return;   // déjà figé : on ne change plus
+        var progress = _chestPhaseTimer / ChestRollDuration;
+        var interval = ChestRollSwapMin + (ChestRollSwapMax - ChestRollSwapMin) * (progress * progress);
+        _chestRollSwapTimer += dt;
+        if (_chestRollSwapTimer >= interval)
+        {
+            _chestRollSwapTimer = 0;
+            _chestRollItem = RandomRollItem();
+        }
+    }
+
+    /// <summary>Objet aléatoire du catalogue pour le défilement (repli sur l'objet gagné si le catalogue est vide).</summary>
+    private Equipment RandomRollItem()
+    {
+        var all = Equipments.All;
+        return all.Count > 0 ? all[_chestRollRng.Next(all.Count)] : _chestReveal!;
     }
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
@@ -2527,6 +2597,14 @@ public sealed class GameplayScene : Scene
             _fx.Update(dt);
             if (_fx.HasImpacted && !_impactHandled)
                 OnImpact();
+            _storm.Update(dt);   // les éclairs avancent en parallèle de la fin de l'anim d'attaque
+            return;
+        }
+
+        // Éclairs d'orage : peuvent se prolonger après l'anim d'attaque ; on gèle jusqu'à leur extinction.
+        if (_storm.Active)
+        {
+            _storm.Update(dt);
             return;
         }
 
@@ -3764,18 +3842,53 @@ public sealed class GameplayScene : Scene
         var victim = _match.UnitAt(target);
         // Dégâts EFFECTIFS à afficher (traits inclus : Rempart, Rage…), bornés aux PV de la cible.
         _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
+        var victimHpBefore = victim?.Hp ?? 0;       // pour détecter l'esquive (PV inchangés malgré des dégâts attendus)
         if (attacker != null)
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
         var victimSprite = victim != null ? UnitSprite(victim) : null;
 
+        // Orage / Tempête : on fige AVANT l'attaque les ENNEMIS foudroyés (éclair visuel + PV pour les chiffres),
+        // car TryAttack applique la foudre instantanément. Ni alliés ni porteur ni cible directe (celle-ci prend
+        // l'attaque normale) : les éclairs ne tombent QUE sur les ennemis réellement frappés par l'orage.
+        List<Cell>? stormBolts = null;
+        List<(Cell Cell, Unit Unit, int Hp)>? stormBefore = null;
+        if (attacker != null && Match.StormDamageFor(attacker) > 0)
+        {
+            stormBolts = new List<Cell>();
+            stormBefore = new List<(Cell, Unit, int)>();
+            foreach (var (cell, u) in _match.Units())
+            {
+                if (u.Faction == attacker.Faction || cell == target)
+                    continue;                             // pas d'éclair sur les alliés/le porteur ni la cible directe
+                stormBolts.Add(cell);                     // ennemi foudroyé : éclair visuel
+                stormBefore.Add((cell, u, u.Hp));         // + candidat aux dégâts (bilan à l'impact)
+            }
+        }
+
         var kind = _match.TryAttack(from, target);
         if (kind == MoveKind.Invalid)
             return kind;
 
+        // Bilan de la foudre : dégâts RÉELLEMENT infligés à chaque ennemi (esquive/bouclier inclus).
+        _pendingStormBolts = null;
+        _pendingStormHits = null;
+        if (stormBolts != null)
+        {
+            _pendingStormBolts = stormBolts;
+            _pendingStormHits = new List<(Cell, int)>();
+            foreach (var (cell, u, hp) in stormBefore!)
+                if (hp - u.Hp is > 0 and var dmg)
+                    _pendingStormHits.Add((cell, dmg));
+        }
+
         RecordIfEnemyKilled(victim);
 
         var killed = kind == MoveKind.Killed;
+        // Esquive : la victime a le trait, des dégâts étaient attendus mais ses PV n'ont pas bougé → coup esquivé.
+        // (Le trait évite de confondre avec un autre « 0 dégât » comme un Bouclier divin sur une cible à 1 PV.)
+        _pendingDodge = !killed && victim is { IsAlive: true } && _pendingDamage > 0
+            && victim.Hp == victimHpBefore && victim.HasTrait(Trait.Esquive);
         if (_tutorial is { Step: TutorialStep.Attack } && killed && victim is { Faction: Faction.Enemy })
             _tutorial.Advance();            // mort de l'ENNEMI → Attack → Commander (pas sur la contre-attaque)
         var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
@@ -3789,7 +3902,7 @@ public sealed class GameplayScene : Scene
             AttackStyle.Shoot => "unit_shoot",
             _                 => "unit_attack",
         });
-        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style);
+        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style, dodged: _pendingDodge);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         return kind;
@@ -3978,6 +4091,7 @@ public sealed class GameplayScene : Scene
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
+                DrawAllyThreatIcons(sb, board);          // « ! » au-dessus des alliés à portée d'un ennemi
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
                 sb.End();
@@ -3988,6 +4102,8 @@ public sealed class GameplayScene : Scene
                 DrawEquipDissolves(sb, board);   // dissolution de l'équipement perdu (après celle du pion)
 
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
+                if (_storm.Active)
+                    DrawStormFx(sb, board);        // éclairs d'orage sur les ennemis foudroyés (sous les chiffres)
                 _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
 
                 if (_battleIntroTimer > 0)
@@ -4285,6 +4401,93 @@ public sealed class GameplayScene : Scene
         foreach (var threat in _threatCells)               // quadrillage de la portée de l'ennemi survolé
             DrawZoneBorder(sb, layout, threat, Palette.Purple5 * 0.6f, 1);
         DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);
+    }
+
+    /// <summary>
+    /// Petit « ! » d'alerte au-dessus de chaque pion ALLIÉ (joueur) qui se trouve à portée d'attaque d'au
+    /// moins un ennemi (case dans la menace d'un ennemi, cf. <see cref="Match.ThreatenedCells(Cell)"/>).
+    /// Recalcule l'ensemble menacé une fois par frame (petits plateaux : négligeable).
+    /// </summary>
+    private void DrawAllyThreatIcons(SpriteBatch sb, GridLayout layout)
+    {
+        _enemyThreatSet.Clear();
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy)
+                continue;
+            _match.ThreatenedCells(cell, _threatCells);
+            foreach (var t in _threatCells)
+                _enemyThreatSet.Add(t);
+        }
+        if (_enemyThreatSet.Count == 0)
+            return;
+
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Player || !_enemyThreatSet.Contains(cell))
+                continue;
+            if (_combatDragFrom == cell)                    // pion en cours de glisser : pas d'icône
+                continue;
+            if (_fx.Active && _fx.Attacker == cell)         // attaquant animé : géré par la passe FX
+                continue;
+            DrawThreatIcon(sb, layout, cell);
+        }
+    }
+
+    // Décalage vertical de l'icône de menace (fraction de case) : POSITIF = plus haut, NÉGATIF = plus bas
+    // (vers la tête). La TAILLE, elle, suit la résolution du PNG à échelle ENTIÈRE (comme les pions).
+    private const float ThreatIconGap = -0.08f;
+
+    /// <summary>
+    /// Icône de menace flottant au-dessus de la tête du pion : le PNG personnalisé <c>Assets/UI/menace.png</c>
+    /// (32×32, fond transparent) s'il existe, sinon un petit « ! » rouge dessiné (cerné de noir pour rester
+    /// lisible sur tout terrain). Position remontée au-dessus du sommet du sprite.
+    /// </summary>
+    private void DrawThreatIcon(SpriteBatch sb, GridLayout layout, Cell cell)
+    {
+        var size = layout.TileSize;
+        var animLift = UnitLift(cell, size);
+        var spriteLift = (int)(size * SpriteLiftFraction);
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        var cx = (int)top.X + size / 2;                          // centré sur la case
+        var headTop = (int)top.Y - spriteLift - animLift;       // sommet du sprite du pion
+        var bottom = headTop - (int)(size * ThreatIconGap);     // bas de l'icône : au-dessus de la tête
+
+        if (ThreatIcon() is { } icon)
+        {
+            // Échelle ENTIÈRE (facteur = zoom des pions) : le PNG est dessiné à taille × zoom, jamais
+            // fractionné → pixel-art net. La taille à l'écran suit donc la résolution du PNG (32×32 → demi-case).
+            var zoom = System.Math.Max(1, size / GridLayout.DefaultTileSize);
+            int w = icon.Width * zoom, h = icon.Height * zoom;
+            sb.Draw(icon, new Rectangle(cx - w / 2, bottom - h, w, h), Color.White);
+            return;
+        }
+
+        // Repli tant que le PNG n'existe pas : petit « ! » dessiné.
+        var px = System.Math.Max(2, size / 24);
+        var dot = new Rectangle(cx - px, bottom - px * 2, px * 2, px * 2);              // point du bas
+        var stem = new Rectangle(cx - px, bottom - px * 7, px * 2, px * 4);             // barre verticale
+        void Badge(Rectangle r)
+        {
+            DrawRect(sb, new Rectangle(r.X - px / 2 - 1, r.Y - px / 2 - 1, r.Width + px + 2, r.Height + px + 2), Palette.Black1);
+            DrawRect(sb, r, Palette.Purple5);
+        }
+        Badge(stem);
+        Badge(dot);
+    }
+
+    private Texture2D? _threatIcon;
+    private bool _threatIconLoaded;
+
+    /// <summary>PNG d'icône de menace (chargé une seule fois ; null s'il n'existe pas → repli « ! » dessiné).</summary>
+    private Texture2D? ThreatIcon()
+    {
+        if (!_threatIconLoaded)
+        {
+            _threatIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/menace.png"));
+            _threatIconLoaded = true;
+        }
+        return _threatIcon;
     }
 
     /// <summary>Quadrillage (lignes) sur TOUT le plateau : lignes verticales + horizontales aux frontières de cases.</summary>
@@ -4712,23 +4915,101 @@ public sealed class GameplayScene : Scene
         DrawRect(sb, new Rectangle(cx - cr, cy - cr, cr * 2, cr * 2), core);
     }
 
+    /// <summary>Éclairs d'ORAGE/TEMPÊTE : un éclair pixel-art s'abat sur chaque pion foudroyé, légèrement
+    /// désynchronisés, puis s'éteignent. Rendu au-dessus du plateau, sous les chiffres de dégâts.</summary>
+    private void DrawStormFx(SpriteBatch sb, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        var t = _storm.Progress;
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        foreach (var cell in _storm.Cells)
+        {
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            DrawLightningBolt(sb, top, size, t, seed: cell.Column * 7 + cell.Row * 13);
+        }
+        sb.End();
+    }
+
+    /// <summary>
+    /// Un éclair : zigzag vertical (halo jaune + cœur blanc) qui frappe le pion du haut de la case, plus un
+    /// flash sur la case. Forme figée par <paramref name="seed"/> ; alpha piloté par l'avancement local
+    /// (léger décalage par case → tous ne frappent pas exactement en même temps).
+    /// </summary>
+    private void DrawLightningBolt(SpriteBatch sb, Vector2 cellTop, int size, float t, int seed)
+    {
+        var local = MathHelper.Clamp((t - (seed % 5) * 0.03f) / 0.55f, 0f, 1f);
+        var alpha = 1f - local;                         // vif à la frappe, s'éteint
+        if (alpha <= 0.03f)
+            return;
+
+        var cx = cellTop.X + size / 2f;
+        var top = cellTop.Y - size * 0.9f;              // part au-dessus de la case
+        var bottom = cellTop.Y + size * 0.3f;           // jusqu'au buste du pion
+        var block = System.Math.Max(2, size / 12);
+
+        var rng = new System.Random(seed);
+        const int segments = 5;
+        var prev = new Vector2(cx, top);
+        for (var s = 1; s <= segments; s++)
+        {
+            var y = MathHelper.Lerp(top, bottom, s / (float)segments);
+            var jitter = (float)(rng.NextDouble() * 2 - 1) * size * 0.18f;
+            var next = new Vector2(cx + (s == segments ? 0f : jitter), y);   // pointe recentrée sur le pion
+            DrawBoltSegment(sb, prev, next, block, Palette.White * alpha, Palette.Yellow2 * alpha);
+            prev = next;
+        }
+
+        // Flash de la case au moment de la frappe (halo doux qui s'éteint avec l'éclair).
+        DrawRect(sb, new Rectangle((int)cellTop.X, (int)cellTop.Y, size, size), Palette.Yellow2 * (alpha * 0.45f));
+    }
+
+    /// <summary>Segment d'éclair : blocs pixel-art le long de [a,b] — un halo large derrière, un cœur clair devant.</summary>
+    private void DrawBoltSegment(SpriteBatch sb, Vector2 a, Vector2 b, int block, Color core, Color halo)
+    {
+        var steps = System.Math.Max(1, (int)(Vector2.Distance(a, b) / block));
+        for (var i = 0; i <= steps; i++)
+        {
+            var p = Vector2.Lerp(a, b, i / (float)steps);
+            DrawRect(sb, new Rectangle((int)p.X - block, (int)p.Y - block / 2, block * 2, block), halo);
+        }
+        for (var i = 0; i <= steps; i++)
+        {
+            var p = Vector2.Lerp(a, b, i / (float)steps);
+            DrawRect(sb, new Rectangle((int)p.X - block / 2, (int)p.Y - block / 2, block, block), core);
+        }
+    }
+
     /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
     private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To;
 
-    /// <summary>Décalage de recul (px entiers) de la victime au contact : à l'opposé de l'attaquant.</summary>
+    /// <summary>
+    /// Décalage (px entiers) de la victime pendant l'anim : recul à l'opposé de l'attaquant au contact, OU —
+    /// en cas d'ESQUIVE — un BOND DE CÔTÉ (perpendiculaire à l'attaque, aller-retour) au lieu d'être touchée.
+    /// </summary>
     private Point VictimKnockback(int size)
     {
         if (!_fx.Active)
-            return Point.Zero;
-        var amt = _fx.KnockbackAmount;
-        if (amt <= 0f)
             return Point.Zero;
 
         var dir = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
         if (dir.LengthSquared() > 0f)
             dir.Normalize();
-        var mag = size * 0.16f * amt;
-        return new Point((int)MathF.Round(dir.X * mag), (int)MathF.Round(dir.Y * mag));
+
+        if (_fx.Dodged)
+        {
+            var d = _fx.DodgeAmount;
+            if (d <= 0f)
+                return Point.Zero;
+            var perp = new Vector2(-dir.Y, dir.X);           // perpendiculaire : côté vers lequel on s'écarte
+            var mag = size * 0.38f * d;                      // amplitude du bond (plus ample que le recul)
+            return new Point((int)MathF.Round(perp.X * mag), (int)MathF.Round(perp.Y * mag));
+        }
+
+        var amt = _fx.KnockbackAmount;
+        if (amt <= 0f)
+            return Point.Zero;
+        var kmag = size * 0.16f * amt;
+        return new Point((int)MathF.Round(dir.X * kmag), (int)MathF.Round(dir.Y * kmag));
     }
 
     /// <summary>Au contact (une fois par attaque) : fait jaillir le chiffre de dégâts, qui éclatera
@@ -4737,7 +5018,28 @@ public sealed class GameplayScene : Scene
     private void OnImpact()
     {
         _impactHandled = true;
-        _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+        if (_pendingDodge)
+        {
+            // Esquive : pas de chiffre de dégâts — un « ESQUIVE ! » bleu jaillit et un « whoosh » accompagne le bond.
+            _damagePopups.SpawnText(_fx.To, Loc.T("fx.dodge"), Palette.Cyan1);
+            Context.Sounds.Play("dodge");
+        }
+        else
+        {
+            _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+        }
+
+        // Orage / Tempête : au contact, les éclairs s'abattent sur les ennemis foudroyés et leurs chiffres
+        // de dégâts jaillissent.
+        if (_pendingStormBolts != null)
+        {
+            _storm.Begin(_pendingStormBolts);
+            Context.Sounds.Play("storm");   // décharge de foudre, UNE fois pour toute la salve d'éclairs
+            foreach (var (cell, dmg) in _pendingStormHits!)
+                _damagePopups.Spawn(cell, dmg);
+            _pendingStormBolts = null;
+            _pendingStormHits = null;
+        }
     }
 
     // ── Panneau latéral ───────────────────────────────────────────────────────────
@@ -4998,7 +5300,8 @@ public sealed class GameplayScene : Scene
             var rect = FusionCardRect(i, count);
             var revealed = Context.Saves.IsUnitDiscovered(options[i].Asset);
             DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
-            DrawKeywordPopupsBelow(sb, options[i], rect);
+            if (revealed)
+                DrawKeywordPopupsBelow(sb, options[i], rect);   // détail des traits : masqué tant que non découvert
         }
 
         // Surbrillance de la carte focus.
@@ -5453,6 +5756,20 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Rectangle de l'objet PENDANT le défilement : il monte du haut du coffre jusqu'à sa place finale
+    /// (<see cref="ChestItemRect"/>) selon l'avancement, avec une décélération (ease-out) pour se poser en douceur.
+    /// </summary>
+    private Rectangle ChestRollItemRect(Rectangle chestRect)
+    {
+        var target = ChestItemRect(chestRect);
+        var startY = chestRect.Y + 12;   // émerge du haut du coffre
+        var p = (float)System.Math.Clamp(_chestPhaseTimer / ChestRollDuration, 0, 1);
+        var eased = 1f - (1f - p) * (1f - p) * (1f - p);   // ease-out cubique : monte vite puis ralentit
+        var y = (int)MathHelper.Lerp(startY, target.Y, eased);
+        return new Rectangle(target.X, y, target.Width, target.Height);
+    }
+
+    /// <summary>
     /// Révélation MODALE d'un coffre : voile + inventaire d'équipement ouvert à droite + coffre ANIMÉ au
     /// centre. Phase Item : l'objet flotte au-dessus avec sa description, on clique pour qu'il vole vers
     /// l'inventaire. Combat figé pendant toute la séquence (cf. <see cref="UpdateChestReveal"/>).
@@ -5470,13 +5787,20 @@ public sealed class GameplayScene : Scene
         DrawEquipmentRevealPanel(sb);   // inventaire d'équipement (on voit où l'objet va atterrir)
         DrawChestFrame(sb, chestRect);
 
-        if (_chestPhase == ChestPhase.Item)
+        if (_chestPhase == ChestPhase.Rolling && _chestRollItem is { } rolling)
+        {
+            // L'objet MONTE (du coffre vers sa place) en défilant vite ; pas de nom/rareté tant qu'il n'est pas figé.
+            DrawEquipSpriteAt(sb, rolling, ChestRollItemRect(chestRect));
+        }
+        else if (_chestPhase == ChestPhase.Item)
         {
             var itemRect = ChestItemRect(chestRect);
             DrawEquipSpriteAt(sb, item, itemRect);                   // l'objet flotte au-dessus du coffre
             DrawEquipTooltipAbove(sb, item, itemRect);              // cadre tooltip (nom + description) au-dessus du sprite
-            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),  // invite au clic sous le coffre
-                new Rectangle(0, chestRect.Bottom + 16, availW, 12), 1, Palette.Cyan1);
+            Context.Font.DrawCentered(sb, RarityLabel(item.Rarity),  // rareté du butin (couleur dédiée) sous le coffre
+                new Rectangle(0, chestRect.Bottom + 4, availW, 10), 1, RarityColor(item.Rarity));
+            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),  // invite au clic
+                new Rectangle(0, chestRect.Bottom + 18, availW, 12), 1, Palette.Cyan1);
         }
         sb.End();
 
@@ -5509,7 +5833,7 @@ public sealed class GameplayScene : Scene
             else
             {
                 sb.Begin(samplerState: SamplerState.PointClamp);
-                var col = (d.Equip.Kind == EquipmentKind.Trait ? Palette.Yellow1 : Palette.Cyan1) * (1f - progress);
+                var col = (d.Equip.GrantsAnyTrait ? Palette.Yellow1 : Palette.Cyan1) * (1f - progress);
                 DrawRect(sb, rect, col);
                 sb.End();
             }
@@ -5571,7 +5895,7 @@ public sealed class GameplayScene : Scene
             sb.Draw(sprite, dest, Color.White);
             return;
         }
-        var col = equip.Kind == EquipmentKind.Trait ? Palette.Yellow1 : Palette.Cyan1;
+        var col = equip.GrantsAnyTrait ? Palette.Yellow1 : Palette.Cyan1;
         DrawRect(sb, dest, col);
         DrawRectBorder(sb, dest, Palette.Black1, 1);
     }
@@ -5635,7 +5959,7 @@ public sealed class GameplayScene : Scene
             sb.Draw(sprite, box, Color.White);
             return;
         }
-        var col = equip.Kind == EquipmentKind.Trait ? Palette.Yellow1 : Palette.Cyan1;
+        var col = equip.GrantsAnyTrait ? Palette.Yellow1 : Palette.Cyan1;
         DrawRect(sb, box, col);
         DrawRectBorder(sb, box, Palette.Black1, 1);
         var initial = string.IsNullOrEmpty(equip.Name) ? "?" : equip.Name[..1].ToUpperInvariant();
@@ -5732,14 +6056,42 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Nom affiché d'un équipement (localisable par id : « equip.&lt;id&gt; », repli sur le nom du catalogue).</summary>
-    private static string EquipName(Equipment equip) => Loc.TOr("equip." + equip.Id, equip.Name);
+    /// <summary>
+    /// Nom LOCALISÉ d'un équipement : clé exacte <c>equip.&lt;id&gt;</c> si présente, sinon clé de BASE
+    /// (rareté ôtée, ex. <c>casqueRare</c> → <c>equip.casque</c>) pour que les variantes de rareté partagent
+    /// la même traduction, sinon le nom brut du json (repli). Voir strings.csv (<c>equip.*</c>).
+    /// </summary>
+    private static string EquipName(Equipment equip) =>
+        Loc.TOr("equip." + equip.Id, null!) ?? Loc.TOr("equip." + EquipBaseId(equip.Id), equip.Name);
 
-    /// <summary>Description d'un équipement : effet du trait (mot-clé) pour un trait, sinon « +N &lt;stat&gt; ».</summary>
-    private static string EquipDescription(Equipment equip)
+    /// <summary>Id d'équipement sans son suffixe de rareté (« Rare » / « Legendaire ») : clé de nom partagée.</summary>
+    private static string EquipBaseId(string id)
     {
-        if (equip.Kind == EquipmentKind.Trait && equip.Trait is { } t)
-            return UnitKeywords.For(t).Description;
-        var label = equip.Stat switch
+        if (id.EndsWith("Legendaire", System.StringComparison.Ordinal)) return id[..^"Legendaire".Length];
+        if (id.EndsWith("Rare", System.StringComparison.Ordinal)) return id[..^"Rare".Length];
+        return id;
+    }
+
+    /// <summary>Couleur associée à une rareté (commun = blanc, rare = bleu, légendaire = or).</summary>
+    private static Color RarityColor(EquipmentRarity rarity) => rarity switch
+    {
+        EquipmentRarity.Legendary => Palette.Yellow2,
+        EquipmentRarity.Rare => Palette.Cyan1,
+        _ => Palette.White,
+    };
+
+    /// <summary>Libellé localisé d'une rareté (« COMMUN » / « RARE » / « LÉGENDAIRE »).</summary>
+    private static string RarityLabel(EquipmentRarity rarity) => Loc.T(rarity switch
+    {
+        EquipmentRarity.Legendary => "equip.rarity.legendary",
+        EquipmentRarity.Rare => "equip.rarity.rare",
+        _ => "equip.rarity.common",
+    });
+
+    /// <summary>Texte d'un effet de STAT : « +N &lt;stat&gt; ».</summary>
+    private static string StatEffectText(EquipEffect effect)
+    {
+        var label = effect.Stat switch
         {
             EquipStat.Hp => Loc.T("stat.hp"),
             EquipStat.Damage => Loc.T("stat.power"),
@@ -5747,7 +6099,55 @@ public sealed class GameplayScene : Scene
             EquipStat.AttackRange => Loc.T("stat.range"),
             _ => "",
         };
-        return Loc.T("equip.stat_bonus", equip.Amount, label);
+        return Loc.T("equip.stat_bonus", effect.Amount, label);
+    }
+
+    /// <summary>
+    /// Met un texte (souvent ALL-CAPS venu de strings.csv) en « casse de phrase » : tout en minuscules, puis
+    /// une MAJUSCULE en tête de texte et après chaque ponctuation forte (<c>.</c> <c>!</c> <c>?</c>). Rendu
+    /// via <c>Draw(preserveCase: true)</c>. Chiffres/apostrophes/espaces ne coupent pas la phrase.
+    /// </summary>
+    private static string SentenceCase(string text)
+    {
+        var chars = text.ToLowerInvariant().ToCharArray();
+        var startOfSentence = true;
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var c = chars[i];
+            if (char.IsLetter(c))
+            {
+                if (startOfSentence) { chars[i] = char.ToUpperInvariant(c); startOfSentence = false; }
+            }
+            else if (c is '.' or '!' or '?')
+                startOfSentence = true;   // la prochaine lettre ouvrira une nouvelle phrase
+        }
+        return new string(chars);
+    }
+
+    /// <summary>
+    /// Lignes de la description d'un équipement (texte + couleur), dans l'ordre des effets. Effet de STAT =
+    /// une ligne « +N stat » crème (repliée si besoin). Effet de TRAIT = son NOM en BLEU puis, À LA LIGNE, sa
+    /// description crème (repliée). Sert à la fois au calcul de hauteur et au rendu (pour rester synchronisés).
+    /// </summary>
+    private List<(string Text, Color Color)> EquipEffectLines(Equipment equip, int innerWidth)
+    {
+        var lines = new List<(string, Color)>();
+        foreach (var e in equip.Effects)
+        {
+            if (e.Trait is { } t)
+            {
+                var kw = UnitKeywords.For(t);
+                lines.Add((kw.Label, Palette.Cyan1));               // nom du trait, en bleu (MAJUSCULES)
+                foreach (var line in WrapText(SentenceCase(kw.Description), innerWidth, 1))
+                    lines.Add((line, Palette.White));               // description en casse de phrase
+            }
+            else
+            {
+                foreach (var line in WrapText(SentenceCase(StatEffectText(e)), innerWidth, 1))
+                    lines.Add((line, Palette.White));               // bonus de stat en casse de phrase
+            }
+        }
+        return lines;
     }
 
     /// <summary>
@@ -5813,7 +6213,7 @@ public sealed class GameplayScene : Scene
     {
         int inner = EquipTooltipWidth - 2 * EquipTooltipPad;
         int h = EquipTooltipPad + EquipTooltipTitleH
-              + WrapText(EquipDescription(equip), inner, 1).Count * EquipTooltipLineH;
+              + EquipEffectLines(equip, inner).Count * EquipTooltipLineH;
         if (EquipRestriction(equip) is { } r)
             h += EquipTooltipGap + WrapText(r, inner, 1).Count * EquipTooltipLineH;
         return h + EquipTooltipPad;
@@ -5828,9 +6228,9 @@ public sealed class GameplayScene : Scene
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
 
         var ly = box.Y + pad + EquipTooltipTitleH;
-        foreach (var line in WrapText(EquipDescription(equip), inner, 1))
+        foreach (var (text, color) in EquipEffectLines(equip, inner))
         {
-            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
+            Context.Font.Draw(sb, text, new Vector2(box.X + pad, ly), 1, color, preserveCase: true);
             ly += lineH;
         }
         if (EquipRestriction(equip) is { } r)
@@ -5998,12 +6398,13 @@ public sealed class GameplayScene : Scene
         var dmgBonus = equip?.BonusFor(EquipStat.Damage) ?? 0;
         var moveBonus = equip?.BonusFor(EquipStat.MoveRange) ?? 0;
         var rangeBonus = equip?.BonusFor(EquipStat.AttackRange) ?? 0;
+        const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
 
         Context.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
-        // Titre : nom de l'unité (localisé).
-        Context.Font.DrawCentered(sb, UnitName(c).ToUpperInvariant(),
+        // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte.
+        Context.Font.DrawCentered(sb, revealed ? UnitName(c).ToUpperInvariant() : unknown,
             new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
         y += 22;
 
@@ -6031,8 +6432,7 @@ public sealed class GameplayScene : Scene
 
         // Barre de PV (une rangée, carrés ajustés à la largeur) + texte « pv/max » (+ bonus d'équipement).
         // Évolution NON DÉCOUVERTE (méta) : on masque tout l'effectif — barre neutre + « ??? » au lieu des PV,
-        // et « ??? » à la place de chaque caractéristique (en plus de la silhouette du sprite).
-        const string unknown = "???";
+        // et « ??? » à la place de chaque caractéristique (en plus de la silhouette du sprite et du nom).
         var barRect = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
         if (revealed)
         {
@@ -6054,7 +6454,14 @@ public sealed class GameplayScene : Scene
         y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), revealed ? $"{c.MoveRange + moveBonus}" : unknown, Palette.Cyan2, revealed ? moveBonus : 0);
         DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
 
-        // Liste des mots-clés en bas de carte (séparés par « | »), détaillés dans les popups.
+        // Liste des mots-clés (traits) en bas de carte (séparés par « | »), détaillés dans les popups.
+        // MASQUÉS « ??? » tant que l'unité n'est pas découverte : on ne révèle ni le nombre ni la nature des traits.
+        if (!revealed)
+        {
+            Context.Font.DrawCentered(sb, unknown,
+                new Rectangle(rect.X, rect.Bottom - CardPad - 9, rect.Width, 8), 1, Palette.Yellow2);
+            return;
+        }
         var keywords = KeywordsFor(c, equip);
         if (keywords.Count > 0)
         {
@@ -6063,7 +6470,7 @@ public sealed class GameplayScene : Scene
             var ty = rect.Bottom - CardPad - lines.Count * 9;
             foreach (var line in lines)
             {
-                Context.Font.DrawCentered(sb, line, new Rectangle(rect.X, ty, rect.Width, 8), 1, Palette.Yellow2);
+                Context.Font.DrawCentered(sb, line, new Rectangle(rect.X, ty, rect.Width, 8), 1, Palette.Cyan1);
                 ty += 9;
             }
         }
@@ -6207,9 +6614,11 @@ public sealed class GameplayScene : Scene
             list.Add(UnitKeywords.PiercesAllies);
         if (c.MinAttackRange > 1)
             list.Add(UnitKeywords.DeadZone);
-        // Trait octroyé par un équipement : affiché comme un trait natif (sauf doublon avec la classe).
-        if (equip is { Kind: EquipmentKind.Trait, Trait: { } et } && !c.Traits.Contains(et))
-            list.Add(UnitKeywords.For(et));
+        // Traits octroyés par un équipement : affichés comme des traits natifs (sauf doublon avec la classe).
+        if (equip is { } eq)
+            foreach (var et in eq.Traits)
+                if (!c.Traits.Contains(et))
+                    list.Add(UnitKeywords.For(et));
         return list;
     }
 
@@ -6232,16 +6641,16 @@ public sealed class GameplayScene : Scene
         var y = origin.Y;
         foreach (var kw in keywords)
         {
-            var lines = WrapText(kw.Description, width - 2 * pad, 1);
+            var lines = WrapText(SentenceCase(kw.Description), width - 2 * pad, 1);
             var h = pad + 10 + lines.Count * lineH + pad;     // titre + lignes
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
-            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
+            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + pad, box.Y + pad), 1, Palette.Cyan1);
             var ly = box.Y + pad + 11;
             foreach (var line in lines)
             {
-                Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
+                Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White, preserveCase: true);
                 ly += lineH;
             }
             y += h + gap;

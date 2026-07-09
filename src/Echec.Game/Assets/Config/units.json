@@ -46,9 +46,9 @@
             ]
           },
           {
-            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 4,
+            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 4, "traits": ["Orage"],
             "evolutions": [
-              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4 },
+              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4, "traits": ["Tempête"] },
               { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
             ]
           }
@@ -90,7 +90,7 @@
             ]
           },
           {
-            "name": "Javelinier", "asset": "Javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
+            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
               { "name": "Javelinier d'élite", "asset": "javelinier_elite", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
               { "name": "Voltigeur",          "asset": "voltigeur",        "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }

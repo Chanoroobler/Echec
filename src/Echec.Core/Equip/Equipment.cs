@@ -1,33 +1,67 @@
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Echec.Core.Equip;
 
-/// <summary>Rareté d'un équipement : pool de coffre dont il provient (commun = coffre sans clé, rare = coffre à clé).</summary>
-public enum EquipmentRarity { Common, Rare }
+/// <summary>
+/// Rareté d'un équipement, du plus commun au plus rare (l'ordre compte : repli d'une rareté vers la
+/// précédente si son pool est vide). Tirée à l'ouverture d'un coffre selon la phase + la « pitié »
+/// (cf. <see cref="Campaign.Run.ResolveChestRarity"/>).
+/// </summary>
+public enum EquipmentRarity { Common, Rare, Legendary }
 
-/// <summary>Nature d'un équipement : bonus de STAT, ou octroi d'un TRAIT de combat.</summary>
-public enum EquipmentKind { Stat, Trait }
-
-/// <summary>Stat augmentée par un équipement de type <see cref="EquipmentKind.Stat"/>.</summary>
+/// <summary>Stat augmentée par un effet d'équipement de type STAT.</summary>
 public enum EquipStat { Hp, Damage, MoveRange, AttackRange }
+
+/// <summary>
+/// UN effet d'équipement : soit un bonus plat de STAT (<see cref="Stat"/> + <see cref="Amount"/>), soit
+/// l'octroi d'un TRAIT de combat (<see cref="Trait"/>). Un <see cref="Equipment"/> en porte un ou plusieurs
+/// (ex. « +1 portée » + trait « Balistique », ou « +5 Vie » + « +3 Puissance »).
+/// </summary>
+public sealed class EquipEffect
+{
+    private EquipEffect(EquipStat stat, int amount, string? trait)
+    {
+        Stat = stat;
+        Amount = amount;
+        Trait = trait;
+    }
+
+    /// <summary>Vrai si cet effet octroie un trait ; faux s'il augmente une stat.</summary>
+    public bool IsTrait => Trait is not null;
+
+    /// <summary>Stat visée (si <see cref="IsTrait"/> est faux).</summary>
+    public EquipStat Stat { get; }
+
+    /// <summary>Bonus plat appliqué à <see cref="Stat"/> (0 pour un effet de trait).</summary>
+    public int Amount { get; }
+
+    /// <summary>Nom canonique du trait octroyé (si <see cref="IsTrait"/>), sinon null.</summary>
+    public string? Trait { get; }
+
+    /// <summary>Crée un effet de STAT (bonus plat sur une stat).</summary>
+    public static EquipEffect OfStat(EquipStat stat, int amount) => new(stat, amount, null);
+
+    /// <summary>Crée un effet de TRAIT (octroie un trait de combat, cf. <c>Battle.Trait</c>).</summary>
+    public static EquipEffect OfTrait(string trait) => new(default, 0, trait);
+}
 
 /// <summary>
 /// Équipement posable sur un pion (jamais le commandant) pendant la phase Équipement. UN SEUL par pion.
 /// Donnée immuable et PARTAGÉE (flyweight, comme une <c>UnitClass</c>) : plusieurs pions ou emplacements
-/// d'inventaire peuvent référencer la même instance. Deux familles : STAT (bonus plat sur une stat) et
-/// TRAIT (ajoute un trait de combat, appliqué par le moteur via <c>Unit.HasTrait</c>). Résolu par
-/// <see cref="Id"/> pour la sauvegarde et les tirages de coffre.
+/// d'inventaire peuvent référencer la même instance. Porte UN OU PLUSIEURS <see cref="EquipEffect"/>
+/// (bonus de stat et/ou octroi de trait), tous appliqués au pion : les bonus de stat s'additionnent
+/// (<see cref="BonusFor"/>), les traits s'ajoutent (<see cref="GrantsTrait"/>, appliqué par le moteur via
+/// <c>Unit.HasTrait</c>). Résolu par <see cref="Id"/> pour la sauvegarde et les tirages de coffre.
 /// </summary>
 public sealed class Equipment
 {
-    private Equipment(string id, string name, EquipmentRarity rarity, EquipmentKind kind,
-        EquipStat stat, int amount, string? trait, string? icon)
+    private Equipment(string id, string name, EquipmentRarity rarity, IReadOnlyList<EquipEffect> effects, string? icon)
     {
         Id = id;
         Name = name;
         Rarity = rarity;
-        Kind = kind;
-        Stat = stat;
-        Amount = amount;
-        Trait = trait;
+        Effects = effects;
         Icon = string.IsNullOrWhiteSpace(icon) ? id : icon!;
     }
 
@@ -35,33 +69,41 @@ public sealed class Equipment
     public string Id { get; }
     public string Name { get; }
     public EquipmentRarity Rarity { get; }
-    public EquipmentKind Kind { get; }
 
     /// <summary>Nom de l'icône (PNG 32×32 dans <c>Assets/Equipment/&lt;icon&gt;.png</c>). Par défaut = <see cref="Id"/>.</summary>
     public string Icon { get; }
 
-    /// <summary>Stat visée (pertinent si <see cref="Kind"/> == <see cref="EquipmentKind.Stat"/>).</summary>
-    public EquipStat Stat { get; }
+    /// <summary>Effets appliqués au pion (au moins un : bonus de stat et/ou octroi de trait).</summary>
+    public IReadOnlyList<EquipEffect> Effects { get; }
 
-    /// <summary>Bonus plat appliqué à <see cref="Stat"/> (0 pour un équipement de trait).</summary>
-    public int Amount { get; }
+    /// <summary>Bonus TOTAL apporté à <paramref name="stat"/> (somme des effets de stat qui la visent ; 0 sinon).</summary>
+    public int BonusFor(EquipStat stat) =>
+        Effects.Where(e => !e.IsTrait && e.Stat == stat).Sum(e => e.Amount);
 
-    /// <summary>Nom canonique du trait octroyé (pertinent si <see cref="Kind"/> == Trait), sinon null.</summary>
-    public string? Trait { get; }
+    /// <summary>Vrai si l'un des effets octroie le trait <paramref name="trait"/>.</summary>
+    public bool GrantsTrait(string trait) => Effects.Any(e => e.Trait == trait);
 
-    /// <summary>Crée un équipement de STAT (bonus plat sur une stat).</summary>
+    /// <summary>Traits octroyés par cet équipement (0, 1 ou plusieurs).</summary>
+    public IEnumerable<string> Traits => Effects.Where(e => e.IsTrait).Select(e => e.Trait!);
+
+    /// <summary>Effets de STAT portés (pour l'affichage : « +N stat »).</summary>
+    public IEnumerable<EquipEffect> StatBonuses => Effects.Where(e => !e.IsTrait);
+
+    /// <summary>Vrai si l'équipement octroie au moins un trait (sert à la « couleur » d'affichage).</summary>
+    public bool GrantsAnyTrait => Effects.Any(e => e.IsTrait);
+
+    /// <summary>Crée un équipement à UN effet de STAT (bonus plat sur une stat).</summary>
     public static Equipment OfStat(string id, string name, EquipStat stat, int amount,
         EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null) =>
-        new(id, name, rarity, EquipmentKind.Stat, stat, amount, null, icon);
+        new(id, name, rarity, new[] { EquipEffect.OfStat(stat, amount) }, icon);
 
-    /// <summary>Crée un équipement de TRAIT (octroie un trait de combat, cf. <c>Battle.Trait</c>).</summary>
+    /// <summary>Crée un équipement à UN effet de TRAIT (octroie un trait de combat, cf. <c>Battle.Trait</c>).</summary>
     public static Equipment OfTrait(string id, string name, string trait,
         EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null) =>
-        new(id, name, rarity, EquipmentKind.Trait, default, 0, trait, icon);
+        new(id, name, rarity, new[] { EquipEffect.OfTrait(trait) }, icon);
 
-    /// <summary>Bonus apporté à <paramref name="stat"/> (0 si ce n'est pas un équipement de cette stat).</summary>
-    public int BonusFor(EquipStat stat) => Kind == EquipmentKind.Stat && Stat == stat ? Amount : 0;
-
-    /// <summary>Vrai si cet équipement octroie le trait <paramref name="trait"/>.</summary>
-    public bool GrantsTrait(string trait) => Kind == EquipmentKind.Trait && Trait == trait;
+    /// <summary>Crée un équipement à PLUSIEURS effets (mélange libre de stats et de traits).</summary>
+    public static Equipment Of(string id, string name, EquipmentRarity rarity,
+        IReadOnlyList<EquipEffect> effects, string? icon = null) =>
+        new(id, name, rarity, effects, icon);
 }

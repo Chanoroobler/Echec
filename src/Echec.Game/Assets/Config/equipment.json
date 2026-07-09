@@ -1,18 +1,281 @@
 {
   // Catalogue d'ÉQUIPEMENTS posables sur un pion (jamais le commandant) pendant la phase Équipement.
-  // Un seul équipement par pion. Deux familles :
-  //   "kind": "Stat"  -> bonus plat sur une stat. "stat" = Hp | Damage | MoveRange | AttackRange, "amount" = +N.
-  //   "kind": "Trait" -> octroie un trait de combat. "trait" = nom canonique (voir Trait.cs : Rempart,
-  //                      Riposte, Rage, Soin, Dégâts de zone, Transpercement, Interception, …).
-  // "rarity": "Common" (coffre sans clé) ou "Rare" (coffre à clé, à venir). "id" = clé stable (sauvegarde).
+  // Un seul équipement par pion. Un équipement porte UN OU PLUSIEURS effets :
+  //   • bonus de STAT : { "stat": "Hp" | "Damage" | "MoveRange" | "AttackRange", "amount": +N }
+  //   • octroi de TRAIT : { "trait": "<nom canonique>" } (voir Trait.cs : Rempart, Riposte, Rage, Soin,
+  //                        Dégâts de zone, Transpercement, Interception, Balistique, …).
+  // Deux façons de les déclarer :
+  //   A) effet UNIQUE : champs "stat"+"amount" OU "trait" au premier niveau (forme historique).
+  //   B) effets MULTIPLES : tableau "effects" (chaque élément = un bonus de stat OU un trait). Ex. un
+  //      trait + une stat, ou deux stats.
+  // "rarity": "Common" | "Rare" | "Legendary" — probabilité de tirage à l'ouverture d'un coffre (par phase +
+  //           bonus de « pitié », cf. Run.ResolveChestRarity). "id" = clé stable (sauvegarde).
   // "icon" (optionnel) = nom du PNG d'icône 32×32 dans Assets/Equipment/<icon>.png ; absent => défaut = "id".
   //                      Placeholder coloré dessiné tant que le PNG n'existe pas.
   // NB : équipements de test ; à compléter au fil des besoins.
   "equipments": [
-    { "id": "casque",   "name": "Casque de vigueur", "rarity": "Common", "kind": "Stat",  "stat": "Hp",          "amount": 5 },
-    { "id": "bouclier", "name": "Écu de rempart",    "rarity": "Common", "kind": "Trait", "trait": "Rempart" },
-    { "id": "arc",      "name": "Arc",               "rarity": "Rare", "kind": "Stat",  "stat": "AttackRange", "amount": 1 },
-    { "id": "botte",    "name": "Bottes",            "rarity": "Rare", "kind": "Stat",  "stat": "MoveRange",   "amount": 1 },
-    { "id": "epee",     "name": "Épée",              "rarity": "Common", "kind": "Stat",  "stat": "Damage",      "amount": 3 }
+    {
+      "id": "casque",
+      "name": "Casque de vigueur",
+      "rarity": "Common",
+      "stat": "Hp",
+      "amount": 5
+    },
+    {
+      "id": "casqueRare",
+      "name": "Casque de vigueur",
+      "rarity": "Rare",
+      "stat": "Hp",
+      "amount": 8
+    },
+    {
+      "id": "casqueLegendaire",
+      "name": "Casque de vigueur",
+      "rarity": "Legendary",
+      "stat": "Hp",
+      "amount": 12
+    },
+    {
+      "id": "bouclier",
+      "name": "Écu de rempart",
+      "rarity": "Common",
+      "trait": "Rempart"
+    },
+    {
+      "id": "bouclierRare",
+      "name": "Écu de rempart",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Hp",
+          "amount": 4
+        },
+        {
+          "trait": "Rempart"
+        }
+      ]
+    },
+    {
+      "id": "bouclierLegendaire",
+      "name": "Écu de rempart",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Hp",
+          "amount": 8
+        },
+        {
+          "trait": "Rempart"
+        }
+      ]
+    },
+    {
+      "id": "lance",
+      "name": "Lance",
+      "rarity": "Common",
+      "trait": "Traverse allié"
+    },
+    {
+      "id": "lanceRare",
+      "name": "Lance",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 2
+        },
+        {
+          "trait": "Traverse allié"
+        }
+      ]
+    },
+    {
+      "id": "lanceLegendaire",
+      "name": "Lance",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 5
+        },
+        {
+          "trait": "Traverse allié"
+        }
+      ]
+    },
+    {
+      "id": "soinRare",
+      "name": "Soin",
+      "rarity": "Rare",
+      "trait": "Soin"
+    },
+    {
+      "id": "soinLegendaire",
+      "name": "Soin",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 5
+        },
+        {
+          "trait": "Soin"
+        }
+      ]
+    },
+    {
+      "id": "arcLegendaire",
+      "name": "Arc",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 5
+        },
+        {
+          "stat": "AttackRange",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "botteRare",
+      "name": "Botte",
+      "rarity": "Rare",
+      "stat": "MoveRange",
+      "amount": 1
+    },
+    {
+      "id": "botteLegendaire",
+      "name": "Botte",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Hp",
+          "amount": 8
+        },
+        {
+          "stat": "MoveRange",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "epee",
+      "name": "Épée",
+      "rarity": "Common",
+      "stat": "Damage",
+      "amount": 3
+    },
+    {
+      "id": "epeeRare",
+      "name": "Épée",
+      "rarity": "Rare",
+      "stat": "Damage",
+      "amount": 5
+    },
+    {
+      "id": "epeeLegendaire",
+      "name": "Épée",
+      "rarity": "Legendary",
+      "stat": "Damage",
+      "amount": 8
+    },
+    {
+      "id": "franchissement",
+      "name": "Pièce de cavalerie",
+      "rarity": "Common",
+      "trait": "Franchissement"
+    },
+    {
+      "id": "franchissementRare",
+      "name": "Pièce de cavalerie",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Hp",
+          "amount": 4
+        },
+        {
+          "trait": "Franchissement"
+        }
+      ]
+    },
+    {
+      "id": "franchissementLegendaire",
+      "name": "Pièce de cavalerie",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "HP",
+          "amount": 8
+        },
+        {
+          "trait": "Franchissement"
+        }
+      ]
+    },
+    {
+      "id": "orageRare",
+      "name": "Orage",
+      "rarity": "Rare",
+      "trait": "Orage"
+    },
+    {
+      "id": "orageLegendaire",
+      "name": "Orage",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 5
+        },
+        {
+          "trait": "Orage"
+        }
+      ]
+    },
+    {
+      "id": "esquive",
+      "name": "Ceinture du karatéka",
+      "rarity": "Common",
+      "trait": "Esquive"
+    },
+    {
+      "id": "esquiveRare",
+      "name": "Ceinture du karatéka",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 2
+        },
+        {
+          "stat": "Hp",
+          "amount": 3
+        },
+        {
+          "trait": "Esquive"
+        }
+      ]
+    },
+    {
+      "id": "esquiveLegendaire",
+      "name": "Ceinture du karatéka",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 4
+        },
+        {
+          "stat": "Hp",
+          "amount": 6
+        },
+        {
+          "trait": "Esquive"
+        }
+      ]
+    }
   ]
 }

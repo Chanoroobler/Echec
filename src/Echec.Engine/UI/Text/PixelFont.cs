@@ -8,9 +8,10 @@ namespace Echec.Engine.UI.Text;
 /// Police bitmap procédurale 5×7, encodée directement en code (pas de pipeline de
 /// contenu). Chaque glyphe est dessiné pixel par pixel depuis la texture 1×1, ce qui
 /// le rend strictement pixel-perfect à l'échelle entière de l'UI et cohérent avec la
-/// DA pixel art. Caractères gérés : A–Z, 0–9 et quelques symboles ; les minuscules
-/// sont automatiquement converties en majuscules, les caractères inconnus (espace…)
-/// avancent simplement le curseur.
+/// DA pixel art. Caractères gérés : A–Z, a–z, 0–9 et quelques symboles ; par DÉFAUT le
+/// texte est passé en MAJUSCULES (comportement historique), sauf appel avec
+/// <c>preserveCase</c> qui rend alors les minuscules avec leurs glyphes dédiés. Les
+/// caractères inconnus (espace…) avancent simplement le curseur.
 /// (Portée depuis CosyFarmer.)
 /// </summary>
 public sealed class PixelFont
@@ -33,17 +34,43 @@ public sealed class PixelFont
     public int Measure(string text, int scale = 1)
         => text.Length == 0 ? 0 : (text.Length * (GlyphW + Spacing) - Spacing) * scale;
 
-    public void Draw(SpriteBatch sb, string text, Vector2 pos, int scale, Color color)
+    public void Draw(SpriteBatch sb, string text, Vector2 pos, int scale, Color color, bool preserveCase = false)
     {
         int cx = (int)pos.X;
         int cy = (int)pos.Y;
         foreach (char ch in text)
         {
-            char c = char.ToUpperInvariant(ch);
-            if (_glyphs.TryGetValue(c, out byte[]? rows))
-                DrawGlyph(sb, rows, cx, cy, scale, color);
+            if (TryResolveGlyph(ch, preserveCase, out var rows))
+                DrawGlyph(sb, rows!, cx, cy, scale, color);
             cx += (GlyphW + Spacing) * scale;
         }
+    }
+
+    /// <summary>
+    /// Résout le glyphe d'un caractère : casse demandée (par défaut MAJUSCULE), puis repli MAJUSCULE, puis
+    /// repli SANS ACCENT (é→e, ç→c, É→E…). Les accents ne sont donc rendus qu'en MINUSCULES — le glyphe fait
+    /// 7 px, sans place au-dessus d'une capitale — et partout ailleurs on retombe proprement sur la lettre nue.
+    /// </summary>
+    private bool TryResolveGlyph(char ch, bool preserveCase, out byte[]? rows)
+    {
+        var c = preserveCase ? ch : char.ToUpperInvariant(ch);
+        if (_glyphs.TryGetValue(c, out rows))
+            return true;
+        var upper = char.ToUpperInvariant(c);
+        if (upper != c && _glyphs.TryGetValue(upper, out rows))
+            return true;
+        var bare = StripAccent(c);
+        if (bare != c && (_glyphs.TryGetValue(bare, out rows) || _glyphs.TryGetValue(char.ToUpperInvariant(bare), out rows)))
+            return true;
+        rows = null;
+        return false;
+    }
+
+    /// <summary>Lettre de base d'un caractère accentué (é→e, ç→c…) via décomposition Unicode ; sinon le caractère tel quel.</summary>
+    private static char StripAccent(char c)
+    {
+        var d = c.ToString().Normalize(System.Text.NormalizationForm.FormD);
+        return char.IsLetter(d[0]) ? d[0] : c;
     }
 
     public void DrawCentered(SpriteBatch sb, string text, Rectangle area, int scale, Color color)
@@ -120,6 +147,51 @@ public sealed class PixelFont
         ['8'] = G(".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."),
         ['9'] = G(".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."),
 
+        // ── Minuscules (a–z) : hauteur d'x sur 5 rangées, hampes en haut, pas de jambages sous la ligne
+        //    de base (le glyphe ne fait que 7 px) — rendues seulement via Draw(preserveCase: true). ──────
+        ['a'] = G(".....", ".....", ".###.", "....#", ".####", "#...#", ".####"),
+        ['b'] = G("#....", "#....", "#....", "####.", "#...#", "#...#", "####."),
+        ['c'] = G(".....", ".....", ".###.", "#...#", "#....", "#...#", ".###."),
+        ['d'] = G("....#", "....#", "....#", ".####", "#...#", "#...#", ".####"),
+        ['e'] = G(".....", ".....", ".###.", "#...#", "#####", "#....", ".###."),
+        ['f'] = G("..##.", ".#...", ".#...", "####.", ".#...", ".#...", ".#..."),
+        ['g'] = G(".....", ".....", ".####", "#...#", ".####", "....#", ".###."),
+        ['h'] = G("#....", "#....", "#....", "####.", "#...#", "#...#", "#...#"),
+        ['i'] = G(".....", "..#..", ".....", "..#..", "..#..", "..#..", "..#.."),
+        ['j'] = G(".....", "..#..", ".....", "..#..", "..#..", "..#..", "###.."),
+        ['k'] = G("#....", "#....", "#..#.", "#.#..", "##...", "#.#..", "#..#."),
+        ['l'] = G(".#...", ".#...", ".#...", ".#...", ".#...", ".#...", ".##.."),
+        ['m'] = G(".....", ".....", "##.##", "#.#.#", "#.#.#", "#.#.#", "#.#.#"),
+        ['n'] = G(".....", ".....", "####.", "#...#", "#...#", "#...#", "#...#"),
+        ['o'] = G(".....", ".....", ".###.", "#...#", "#...#", "#...#", ".###."),
+        ['p'] = G(".....", ".....", "####.", "#...#", "####.", "#....", "#...."),
+        ['q'] = G(".....", ".....", ".####", "#...#", ".####", "....#", "....#"),
+        ['r'] = G(".....", ".....", "#.##.", "##...", "#....", "#....", "#...."),
+        ['s'] = G(".....", ".....", ".####", "#....", ".###.", "....#", "####."),
+        ['t'] = G(".#...", ".#...", "####.", ".#...", ".#...", ".#..#", "..##."),
+        ['u'] = G(".....", ".....", "#...#", "#...#", "#...#", "#...#", ".####"),
+        ['v'] = G(".....", ".....", "#...#", "#...#", "#...#", ".#.#.", "..#.."),
+        ['w'] = G(".....", ".....", "#...#", "#...#", "#.#.#", "#.#.#", ".#.#."),
+        ['x'] = G(".....", ".....", "#...#", ".#.#.", "..#..", ".#.#.", "#...#"),
+        ['y'] = G(".....", ".....", "#...#", "#...#", ".####", "....#", ".###."),
+        ['z'] = G(".....", ".....", "#####", "...#.", "..#..", ".#...", "#####"),
+
+        // ── Minuscules accentuées (français) : accent aigu / grave / circonflexe / tréma dans les 2 rangées
+        //    du haut (a,e,i,o,u n'ont pas de hampe). Uniquement en minuscule — cf. TryResolveGlyph. ─────────
+        ['é'] = G("...#.", "..#..", ".###.", "#...#", "#####", "#....", ".###."),
+        ['è'] = G(".#...", "..#..", ".###.", "#...#", "#####", "#....", ".###."),
+        ['ê'] = G("..#..", ".#.#.", ".###.", "#...#", "#####", "#....", ".###."),
+        ['ë'] = G(".#.#.", ".....", ".###.", "#...#", "#####", "#....", ".###."),
+        ['à'] = G(".#...", "..#..", ".###.", "....#", ".####", "#...#", ".####"),
+        ['â'] = G("..#..", ".#.#.", ".###.", "....#", ".####", "#...#", ".####"),
+        ['ç'] = G(".....", ".....", ".###.", "#....", "#....", ".###.", "..#.."),
+        ['î'] = G("..#..", ".#.#.", ".....", "..#..", "..#..", "..#..", "..#.."),
+        ['ï'] = G(".....", ".#.#.", ".....", "..#..", "..#..", "..#..", "..#.."),
+        ['ô'] = G("..#..", ".#.#.", ".###.", "#...#", "#...#", "#...#", ".###."),
+        ['ù'] = G(".#...", "..#..", "#...#", "#...#", "#...#", "#...#", ".####"),
+        ['û'] = G("..#..", ".#.#.", "#...#", "#...#", "#...#", "#...#", ".####"),
+        ['ü'] = G(".#.#.", ".....", "#...#", "#...#", "#...#", "#...#", ".####"),
+
         ['%'] = G("##..#", "##.#.", "..#..", ".#...", "#.#..", "#..##", "...##"),
         [':'] = G(".....", "..#..", "..#..", ".....", "..#..", "..#..", "....."),
         ['.'] = G(".....", ".....", ".....", ".....", ".....", "..#..", "..#.."),
@@ -133,5 +205,6 @@ public sealed class PixelFont
         [')'] = G(".#...", "..#..", "...#.", "...#.", "...#.", "..#..", ".#..."),
         ['\''] = G("..#..", "..#..", ".#...", ".....", ".....", ".....", "....."),
         ['?'] = G(".###.", "#...#", "...#.", "..#..", "..#..", ".....", "..#.."),
+        ['!'] = G("..#..", "..#..", "..#..", "..#..", "..#..", ".....", "..#.."),
     };
 }

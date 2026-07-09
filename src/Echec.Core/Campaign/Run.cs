@@ -147,6 +147,20 @@ public sealed class Run
     /// </summary>
     public bool FirstRun { get; private set; }
 
+    /// <summary>
+    /// « Pitié » LÉGENDAIRE : bonus cumulé (en %) à la chance de tirer un légendaire au prochain coffre.
+    /// +<see cref="LegendaryPityStep"/> par coffre qui n'en donne pas, REMIS À ZÉRO au drop d'un légendaire.
+    /// Persisté dans la sauvegarde (survit d'un combat à l'autre). Cf. <see cref="ResolveChestRarity"/>.
+    /// </summary>
+    public int LegendaryPity { get; private set; }
+
+    /// <summary>
+    /// « Pitié » RARE : bonus cumulé (en %) à la chance de tirer un rare au prochain coffre.
+    /// +<see cref="RarePityStep"/> par coffre qui n'en donne pas, REMIS À ZÉRO au drop d'un rare.
+    /// Persisté dans la sauvegarde. Cf. <see cref="ResolveChestRarity"/>.
+    /// </summary>
+    public int RarePity { get; private set; }
+
     public Run(int? seed = null, bool firstRun = false)
     {
         Seed = seed ?? new Random().Next();
@@ -219,6 +233,8 @@ public sealed class Run
         _draft.Clear();
         _equipment.Clear();
         CombatNumber = 1;
+        LegendaryPity = 0;
+        RarePity = 0;
         Phase = RunPhase.Placement;
     }
 
@@ -228,7 +244,7 @@ public sealed class Run
     /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
     /// </summary>
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
-        IReadOnlyList<Equipment>? inventory = null)
+        IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0)
     {
         var run = new Run(seed, firstRun);
         run._roster.Clear();
@@ -237,6 +253,8 @@ public sealed class Run
         if (inventory != null)
             run._equipment.AddRange(inventory);
         run.CombatNumber = combatNumber;
+        run.LegendaryPity = System.Math.Max(0, legendaryPity);
+        run.RarePity = System.Math.Max(0, rarePity);
         run.Phase = RunPhase.Placement;
         run._draft.Clear();
         return run;
@@ -261,6 +279,51 @@ public sealed class Run
         var pool = IntroOrder.Where(d => isSeen(Domaines.Of(d).BaseClass.Asset)).ToList();
         var domaine = pool.Count > 0 ? pool[rng.Next(pool.Count)] : Domaine.Dame;
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+    }
+
+    // Chances de rareté à l'ouverture d'un coffre, par PHASE (index 0..2 = phase 1..3), en %. Le reste = commun.
+    private static readonly int[] LegendaryChanceByPhase = { 2, 5, 10 };
+    private static readonly int[] RareChanceByPhase = { 15, 25, 40 };
+    /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de légendaire (cf. <see cref="LegendaryPity"/>).</summary>
+    private const int LegendaryPityStep = 1;
+    /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de rare (cf. <see cref="RarePity"/>).</summary>
+    private const int RarePityStep = 2;
+
+    /// <summary>
+    /// Butin d'un coffre : tire une RARETÉ (phase + pitié, cf. <see cref="ResolveChestRarity"/>) puis un
+    /// équipement de cette rareté. Si son pool est vide, on retombe sur la rareté juste en dessous (légendaire
+    /// → rare → commun). Null seulement si AUCUN équipement n'est défini. Met à jour la pitié.
+    /// </summary>
+    public Equipment? RollChestEquipment(Random rng)
+    {
+        var rarity = ResolveChestRarity(rng.NextDouble() * 100.0);
+        for (var r = (int)rarity; r >= 0; r--)
+            if (Equipments.Roll((EquipmentRarity)r, rng) is { } item)
+                return item;
+        return null;
+    }
+
+    /// <summary>
+    /// Détermine la rareté d'un coffre à partir d'un tirage <paramref name="roll"/> dans [0,100) et MET À JOUR
+    /// la pitié : chances = <c>base de la phase + pitié</c> (légendaire d'abord, puis rare, sinon commun).
+    /// Un coffre sans légendaire ajoute <see cref="LegendaryPityStep"/> à <see cref="LegendaryPity"/> (remis à
+    /// zéro sur un légendaire) ; un coffre sans rare ajoute <see cref="RarePityStep"/> à <see cref="RarePity"/>
+    /// (remis à zéro sur un rare). Les deux compteurs sont INDÉPENDANTS. Exposé pour le tirage ET les tests.
+    /// </summary>
+    public EquipmentRarity ResolveChestRarity(double roll)
+    {
+        var p = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
+        var legendaryChance = LegendaryChanceByPhase[p] + LegendaryPity;
+        var rareChance = RareChanceByPhase[p] + RarePity;
+
+        var rarity =
+            roll < legendaryChance ? EquipmentRarity.Legendary
+            : roll < legendaryChance + rareChance ? EquipmentRarity.Rare
+            : EquipmentRarity.Common;
+
+        LegendaryPity = rarity == EquipmentRarity.Legendary ? 0 : LegendaryPity + LegendaryPityStep;
+        RarePity = rarity == EquipmentRarity.Rare ? 0 : RarePity + RarePityStep;
+        return rarity;
     }
 
     /// <summary>
@@ -317,7 +380,8 @@ public sealed class Run
     {
         if (spec.Essential)
             return false;
-        if (equipment.Kind == EquipmentKind.Trait && equipment.Trait is { } t && ClassHasTrait(spec.UnitClass, t))
+        // Pas de doublon de trait : si l'un des traits octroyés est DÉJÀ natif de la classe, on refuse.
+        if (equipment.Traits.Any(t => ClassHasTrait(spec.UnitClass, t)))
             return false;
 
         // Le domaine Cavalier (monté) refuse deux familles d'objets :

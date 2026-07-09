@@ -1,5 +1,6 @@
 using System.Linq;
 using Echec.Core.Battle;
+using Echec.Core.Equip;
 using Echec.Core.Map;
 using Xunit;
 
@@ -167,6 +168,26 @@ public class TraitsTests
         Assert.DoesNotContain(new Cell(0, 2), blocked.LegalMoves(new Cell(0, 0)));   // sans trait : bloqué
     }
 
+    [Fact]
+    public void Franchissement_MovesThroughTerrainObstacles_ButNotOntoThem()
+    {
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(0, 1)] = new Tile(BuiltInTiles.Water);      // obstacle sur le chemin
+        field[new Cell(0, 2)] = new Tile(BuiltInTiles.Mountain);   // second obstacle enchaîné
+
+        var m = new Match(8, 8, field);
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Franchissement }, moveRange: 3));
+        var moves = m.LegalMoves(new Cell(0, 0));
+
+        Assert.DoesNotContain(new Cell(0, 1), moves);   // ne s'arrête pas dans l'eau
+        Assert.DoesNotContain(new Cell(0, 2), moves);   // ni sur la montagne
+        Assert.Contains(new Cell(0, 3), moves);         // mais traverse les deux et se pose au-delà
+
+        var normal = new Match(8, 8, field);            // sans le trait : l'eau borne le déplacement
+        normal.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, moveRange: 3));
+        Assert.DoesNotContain(new Cell(0, 3), normal.LegalMoves(new Cell(0, 0)));
+    }
+
     // ── Réactions : Interception / Riposte ────────────────────────────────────────
 
     [Fact]
@@ -230,6 +251,30 @@ public class TraitsTests
         var normal = Make(Faction.Player, 20, 5, None, pierces: false);
         Assert.True(pierces.HasTrait(Trait.TraverseAllie));
         Assert.False(normal.HasTrait(Trait.TraverseAllie));
+    }
+
+    [Fact]
+    public void TraverseAllie_GrantedByEquipment_PiercesAllyToHitEnemyBehind()
+    {
+        // Pion SANS traverse natif : le tir est bloqué par l'allié… sauf s'il porte un équipement qui octroie
+        // « Traverse allié » (le moteur lit le trait via HasTrait, donc l'équipement l'active).
+        var cls = new UnitClass("T", "t", tier: 1, maxHp: 20, damage: 5, moveRange: 1, attackRange: 3);
+        var lance = Equipment.OfTrait("lance", "Lance", Trait.TraverseAllie);
+
+        var equipped = Board();
+        equipped.Place(new Cell(0, 0), new Unit(Domaine.Tour, Faction.Player, cls, lance));
+        equipped.Place(new Cell(0, 1), Make(Faction.Player, 20, 5, None));   // allié sur la ligne de tir
+        equipped.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));    // ennemi DERRIÈRE l'allié
+        var targets = equipped.AttackTargets(new Cell(0, 0));
+        Assert.Contains(new Cell(0, 2), targets);       // traverse l'allié grâce à l'équipement
+        Assert.DoesNotContain(new Cell(0, 1), targets); // l'allié n'est jamais une cible
+
+        // Contrôle : le MÊME pion sans équipement ne traverse pas (l'allié borne la ligne).
+        var bare = Board();
+        bare.Place(new Cell(0, 0), new Unit(Domaine.Tour, Faction.Player, cls));
+        bare.Place(new Cell(0, 1), Make(Faction.Player, 20, 5, None));
+        bare.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        Assert.DoesNotContain(new Cell(0, 2), bare.AttackTargets(new Cell(0, 0)));
     }
 
     // ── Zone morte : contact interdit en ligne droite (portée min 2) ───────────────
@@ -346,6 +391,53 @@ public class TraitsTests
         m.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 10
         Assert.Equal(10, drainer.Hp);                     // 5 + (10 / 2)
+    }
+
+    // ── Orage / Tempête : foudre AoE à l'attaque ──────────────────────────────────
+
+    [Fact]
+    public void Orage_StrikesAllOtherEnemies_NotTheDirectTargetNorAllies()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Orage }));  // attaquant
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible directe (dégâts normaux seuls)
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // autre ennemi → foudroyé
+        m.Place(new Cell(6, 6), Make(Faction.Enemy, 20, 5, None));   // autre ennemi → foudroyé
+        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, None));  // allié → jamais foudroyé
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 10 (pas de +3 orage sur elle)
+        Assert.Equal(17, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 3
+        Assert.Equal(17, m.UnitAt(new Cell(6, 6))!.Hp);   // 20 - 3
+        Assert.Equal(20, m.UnitAt(new Cell(1, 0))!.Hp);   // allié intact
+    }
+
+    [Fact]
+    public void Tempete_StrikesOtherEnemiesForSix()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Tempete }));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible directe
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // foudroyé
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 20 - 10
+        Assert.Equal(14, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 6 (tempête)
+    }
+
+    [Fact]
+    public void Orage_CanKillOtherEnemies()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Orage }));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible directe (survit)
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 2, 5, None));    // 2 PV → foudroyé à mort
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.Null(m.UnitAt(new Cell(5, 5)));            // retiré du plateau
     }
 
     /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>

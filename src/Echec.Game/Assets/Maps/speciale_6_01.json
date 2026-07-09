@@ -2,7 +2,7 @@
   "name": "speciale_6_01",
   "type": "Speciale",
   "objective": "LibererPaysans",
-  "turnLimit": 15,
+  "turnLimit": 40,
   "width": 8,
   "height": 10,
   "tiles": [
@@ -13,8 +13,8 @@
     "KKQklPKK",
     "xxxh2xxx",
     "he578hph",
-    "hSh9E7hh",
-    "444408hh",
+    "hSh9yhhh",
+    "44440644",
     "hhhhh8hh"
   ],
   "spawns": [

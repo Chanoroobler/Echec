@@ -51,6 +51,15 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private Rectangle _virtualDest;
     private int _virtualScale = 1;
 
+    // ── Overlay de diagnostic FPS / temps de frame (bascule F3) ───────────────────────────────────
+    // Mesure le temps RÉEL entre frames au chronomètre : sous IsFixedTimeStep (défaut MonoGame),
+    // gameTime.ElapsedGameTime est FIGÉ à la cible (16,6 ms) et ne reflète pas la cadence réelle.
+    private bool _showFps;
+    private readonly System.Diagnostics.Stopwatch _frameClock = System.Diagnostics.Stopwatch.StartNew();
+    private double _fpsWindowMs;      // temps accumulé dans la fenêtre de mesure courante
+    private int _fpsWindowFrames;     // frames comptées dans la fenêtre
+    private string _fpsText = "-- FPS";
+
     public EchecGame()
     {
         _graphics = new GraphicsDeviceManager(this);
@@ -157,6 +166,8 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     {
         UpdateInactiveThrottle();
         _input.Update(gameTime);
+        if (_input.WasKeyPressed(Keys.F3))
+            _showFps = !_showFps;   // bascule l'overlay de diagnostic FPS / ms
         _scenes.Update(gameTime);
         _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
         base.Update(gameTime);
@@ -179,6 +190,8 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void Draw(GameTime gameTime)
     {
+        UpdateFrameStats();   // mesure la cadence réelle (chronomètre) même sous fixed timestep
+
         // 1. Les scènes dessinent dans la cible virtuelle (résolution logique fixe).
         GraphicsDevice.SetRenderTarget(_virtualTarget);
         GraphicsDevice.Clear(Color.Black);
@@ -202,9 +215,32 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);
         DrawCursor(_spriteBatch);
+        if (_showFps)
+        {
+            _context.Font.Draw(_spriteBatch, _fpsText, new Vector2(7, 7), 2, Color.Black);   // ombre lisible
+            _context.Font.Draw(_spriteBatch, _fpsText, new Vector2(6, 6), 2, Color.Lime);
+        }
         _spriteBatch.End();
 
         base.Draw(gameTime);
+    }
+
+    /// <summary>
+    /// Met à jour le compteur de cadence : accumule le temps RÉEL entre frames (chronomètre) et rafraîchit
+    /// le texte ~4×/s. Indépendant de <see cref="GameTime"/> (figé sous IsFixedTimeStep).
+    /// </summary>
+    private void UpdateFrameStats()
+    {
+        _fpsWindowMs += _frameClock.Elapsed.TotalMilliseconds;
+        _frameClock.Restart();
+        _fpsWindowFrames++;
+        if (_fpsWindowMs >= 250)
+        {
+            var avg = _fpsWindowMs / _fpsWindowFrames;
+            _fpsText = $"{(avg > 0 ? 1000.0 / avg : 0):0} FPS   {avg:0.0} ms";
+            _fpsWindowMs = 0;
+            _fpsWindowFrames = 0;
+        }
     }
 
     /// <summary>

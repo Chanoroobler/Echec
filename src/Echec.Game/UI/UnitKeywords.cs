@@ -20,6 +20,7 @@ public static class UnitKeywords
     private static readonly Dictionary<string, string> KeyByTrait = new()
     {
         ["Rempart"] = "kw.rempart",
+        ["Traverse allié"] = "kw.pierce_allies",   // porté par la CLASSE via PiercesAllies, mais octroyable par un équipement (Lance)
         ["Soin"] = "kw.soin",
         ["Dégâts de zone"] = "kw.zone",
         ["Franchissement"] = "kw.franchissement",
@@ -38,6 +39,8 @@ public static class UnitKeywords
         ["Formation"] = "kw.formation",
         ["Esquive"] = "kw.esquive",
         ["Embrochage"] = "kw.embrochage",
+        ["Orage"] = "kw.orage",
+        ["Tempête"] = "kw.tempete",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="Echec.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

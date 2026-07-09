@@ -17,6 +17,8 @@ internal sealed class DamagePopup
     public string Text = "";
     public float Life;
     public float MaxLife;
+    public Color Color = Palette.Yellow2;   // jaune vif par défaut (chiffres de dégâts)
+    public bool Burst = true;               // éclate en feu d'artifice à l'extinction (faux pour un texte d'état)
 }
 
 /// <summary>
@@ -52,6 +54,23 @@ internal sealed class DamagePopups
         });
     }
 
+    /// <summary>Fait jaillir un TEXTE libre (ex. « ESQUIVE ! ») d'une couleur donnée, sans explosion finale.</summary>
+    public void SpawnText(Cell cell, string text, Color color)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+        _active.Add(new DamagePopup
+        {
+            Column = cell.Column,
+            Row = cell.Row,
+            Text = text,
+            Color = color,
+            Burst = false,
+            MaxLife = LifeDur,
+            Life = LifeDur,
+        });
+    }
+
     /// <summary>
     /// Avance les chiffres et, quand l'un s'éteint, le fait ÉCLATER en feu d'artifice là où il
     /// flottait (gerbe radiale via <paramref name="sparks"/>). <paramref name="layout"/> sert à
@@ -67,7 +86,8 @@ internal sealed class DamagePopups
             if (p.Life > 0f)
                 continue;
 
-            sparks.EmitFirework(DeathOrigin(layout, p), count: 22, pixel);
+            if (p.Burst)
+                sparks.EmitFirework(DeathOrigin(layout, p), count: 22, pixel);
             _active.RemoveAt(i);
         }
     }
@@ -111,7 +131,7 @@ internal sealed class DamagePopups
             var pos = new Vector2((int)MathF.Round(x), (int)MathF.Round(y));
 
             font.Draw(sb, p.Text, pos + new Vector2(scale, scale), scale, Palette.Black1 * alpha);  // ombre
-            font.Draw(sb, p.Text, pos, scale, Palette.Yellow2 * alpha);                             // chiffre jaune vif
+            font.Draw(sb, p.Text, pos, scale, p.Color * alpha);                                     // texte (couleur du popup)
         }
         sb.End();
     }

@@ -31,18 +31,22 @@ public static class EquipmentCatalog
 
         var rarity = Enum.TryParse<EquipmentRarity>(e.Rarity, ignoreCase: true, out var r)
             ? r : EquipmentRarity.Common;
-        if (!Enum.TryParse<EquipmentKind>(e.Kind, ignoreCase: true, out var kind))
-            throw new InvalidOperationException($"Type d'équipement inconnu pour '{e.Id}' : '{e.Kind}'.");
 
-        if (kind == EquipmentKind.Trait)
-        {
-            if (string.IsNullOrWhiteSpace(e.Trait))
-                throw new InvalidOperationException($"Équipement de trait '{e.Id}' sans champ 'trait'.");
-            return Equipment.OfTrait(e.Id, e.Name, e.Trait!, rarity, e.Icon);
-        }
+        // Effets : tableau "effects" (un ou plusieurs) si présent, sinon la forme héritée à effet unique.
+        var effects = e.Effects is { Count: > 0 }
+            ? e.Effects.Select(ef => ToEffect(ef.Stat, ef.Amount, ef.Trait, e.Id)).ToList()
+            : new List<EquipEffect> { ToEffect(e.Stat, e.Amount, e.Trait, e.Id) };
 
-        if (!Enum.TryParse<EquipStat>(e.Stat, ignoreCase: true, out var stat))
-            throw new InvalidOperationException($"Stat inconnue pour l'équipement '{e.Id}' : '{e.Stat}'.");
-        return Equipment.OfStat(e.Id, e.Name, stat, e.Amount, rarity, e.Icon);
+        return Equipment.Of(e.Id, e.Name, rarity, effects, e.Icon);
+    }
+
+    /// <summary>Un effet : TRAIT si <paramref name="trait"/> est renseigné, sinon bonus de la <paramref name="stat"/>.</summary>
+    private static EquipEffect ToEffect(string? stat, int amount, string? trait, string id)
+    {
+        if (!string.IsNullOrWhiteSpace(trait))
+            return EquipEffect.OfTrait(trait!);
+        if (!Enum.TryParse<EquipStat>(stat, ignoreCase: true, out var s))
+            throw new InvalidOperationException($"Effet d'équipement invalide pour '{id}' : ni 'trait' ni 'stat' valide ('{stat}').");
+        return EquipEffect.OfStat(s, amount);
     }
 }

@@ -43,13 +43,21 @@ public sealed class RunSave
     /// <summary>Équipements possédés mais NON équipés (ids du catalogue). Ceux équipés vivent sur leur unité.</summary>
     public List<string> Inventory { get; set; } = new();
 
+    /// <summary>« Pitié » légendaire/rare accumulée (bonus de chance au prochain coffre). Absent (vieux save) → 0.</summary>
+    public int LegendaryPity { get; set; }
+    public int RarePity { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
     /// <summary>Capture l'état persistant d'une run en cours.</summary>
     public static RunSave From(Run run)
     {
-        var save = new RunSave { CombatNumber = run.CombatNumber, Seed = run.Seed, FirstRun = run.FirstRun };
+        var save = new RunSave
+        {
+            CombatNumber = run.CombatNumber, Seed = run.Seed, FirstRun = run.FirstRun,
+            LegendaryPity = run.LegendaryPity, RarePity = run.RarePity,
+        };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
         foreach (var equipment in run.EquipmentInventory)
@@ -66,7 +74,7 @@ public sealed class RunSave
             .Where(e => e != null)
             .Select(e => e!)
             .ToList();
-        return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory);
+        return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity);
     }
 }
 

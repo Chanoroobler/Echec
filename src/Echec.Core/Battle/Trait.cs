@@ -3,8 +3,9 @@ namespace Echec.Core.Battle;
 /// <summary>
 /// Noms canoniques des TRAITS (particularités de classe), tels qu'écrits dans <c>units.json</c> et
 /// <see cref="UnitClass.Traits"/>. Centralisés ici pour éviter les chaînes magiques côté moteur.
-/// « Traverse allié » est un cas à part : il est porté par <see cref="UnitClass.PiercesAllies"/>
-/// (et non par la liste de traits), mais on garde sa constante pour <see cref="Unit.HasTrait"/>.
+/// « Traverse allié » est un cas à part côté CLASSE : il y est porté par <see cref="UnitClass.PiercesAllies"/>
+/// (et non par la liste de traits). Le moteur le lit toutefois via <see cref="Unit.HasTrait"/>, donc — comme
+/// tous les autres traits — il peut aussi être octroyé par un <see cref="Equip.Equipment"/>.
 ///
 /// Les MÉCANIQUES vivent dans <see cref="Match"/> (résolution d'attaque / déplacement). Tous les traits
 /// sont implémentés au niveau du moteur ; il suffit d'ajouter le trait à une classe pour qu'il agisse.
@@ -31,12 +32,14 @@ public static class Trait
     public const string Formation = "Formation";             // +FormationBonus de puissance par allié adjacent
     public const string Esquive = "Esquive";                 // EsquiveChance de chance d'annuler une attaque subie
     public const string Embrochage = "Embrochage";           // l'attaque touche aussi les ennemis adjacents à la cible
+    public const string Orage = "Orage";                     // à l'attaque : foudroie tous les AUTRES ennemis (dégât fixe)
+    public const string Tempete = "Tempête";                 // idem Orage, dégât fixe plus élevé
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, DegatsDeZone, Franchissement, Transpercement, Interception,
         AuraDeRempart, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
-        DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage,
+        DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete,
     };
 }

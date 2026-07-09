@@ -60,6 +60,40 @@ public class EquipmentTests
         Assert.True(spec.Spawn(Faction.Player).HasTrait(Trait.Rempart));
     }
 
+    [Fact]
+    public void MultiEffectEquipment_AppliesStatAndTrait_Together()
+    {
+        var baseHp = Domaines.Dame.BaseClass.MaxHp;
+        var spec = Soldat();   // sans Rempart natif
+        spec.Equipment = Equipment.Of("cuirasse", "Cuirasse", EquipmentRarity.Rare, new[]
+        {
+            EquipEffect.OfStat(EquipStat.Hp, 6),
+            EquipEffect.OfTrait(Trait.Rempart),
+        });
+
+        var unit = spec.Spawn(Faction.Player);
+
+        Assert.Equal(baseHp + 6, unit.MaxHp);          // le bonus de stat s'applique
+        Assert.True(unit.HasTrait(Trait.Rempart));     // ET le trait s'applique
+    }
+
+    [Fact]
+    public void MultiEffectEquipment_TwoStats_BothApply()
+    {
+        var b = Domaines.Dame.BaseClass;
+        var spec = Soldat();
+        spec.Equipment = Equipment.Of("brassards", "Brassards", EquipmentRarity.Common, new[]
+        {
+            EquipEffect.OfStat(EquipStat.Hp, 4),
+            EquipEffect.OfStat(EquipStat.Damage, 2),
+        });
+
+        var unit = spec.Spawn(Faction.Player);
+
+        Assert.Equal(b.MaxHp + 4, unit.MaxHp);
+        Assert.Equal(b.Damage + 2, unit.Damage);
+    }
+
     // ─── Catalogue / registre ────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -76,14 +110,60 @@ public class EquipmentTests
 
         Assert.Equal(2, list.Count);
         var vigueur = list[0];
-        Assert.Equal(EquipmentKind.Stat, vigueur.Kind);
+        Assert.False(vigueur.GrantsAnyTrait);
         Assert.Equal(5, vigueur.BonusFor(EquipStat.Hp));
         Assert.Equal(EquipmentRarity.Common, vigueur.Rarity);
 
         var lame = list[1];
-        Assert.Equal(EquipmentKind.Trait, lame.Kind);
+        Assert.True(lame.GrantsAnyTrait);
         Assert.True(lame.GrantsTrait(Trait.Riposte));
         Assert.Equal(EquipmentRarity.Rare, lame.Rarity);
+    }
+
+    [Fact]
+    public void Catalog_FromJson_ParsesMultiEffect_StatPlusTrait_AndTwoStats()
+    {
+        const string json = """
+        { "equipments": [
+            { "id": "cuirasse", "name": "Cuirasse", "rarity": "Rare", "effects": [
+                { "stat": "Hp", "amount": 6 },
+                { "trait": "Rempart" }
+            ] },
+            { "id": "brassards", "name": "Brassards", "effects": [
+                { "stat": "Hp", "amount": 4 },
+                { "stat": "Damage", "amount": 2 }
+            ] }
+        ] }
+        """;
+
+        var list = EquipmentCatalog.FromJson(json);
+
+        var cuirasse = list[0];
+        Assert.Equal(6, cuirasse.BonusFor(EquipStat.Hp));      // effet de stat
+        Assert.True(cuirasse.GrantsTrait(Trait.Rempart));      // + effet de trait
+        Assert.True(cuirasse.GrantsAnyTrait);
+
+        var brassards = list[1];
+        Assert.Equal(4, brassards.BonusFor(EquipStat.Hp));     // deux stats cumulées
+        Assert.Equal(2, brassards.BonusFor(EquipStat.Damage));
+        Assert.False(brassards.GrantsAnyTrait);
+    }
+
+    [Fact]
+    public void Catalog_FromJson_ParsesLegendaryRarity()
+    {
+        const string json = """
+        { "equipments": [
+            { "id": "couronne", "name": "Couronne", "rarity": "Legendary", "effects": [
+                { "stat": "Hp", "amount": 8 }, { "trait": "Rempart" }
+            ] }
+        ] }
+        """;
+
+        var item = EquipmentCatalog.FromJson(json).Single();
+        Assert.Equal(EquipmentRarity.Legendary, item.Rarity);
+        Assert.Equal(8, item.BonusFor(EquipStat.Hp));
+        Assert.True(item.GrantsTrait(Trait.Rempart));
     }
 
     [Fact]
