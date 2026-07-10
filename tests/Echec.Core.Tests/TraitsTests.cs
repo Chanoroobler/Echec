@@ -440,6 +440,58 @@ public class TraitsTests
         Assert.Null(m.UnitAt(new Cell(5, 5)));            // retiré du plateau
     }
 
+    // ── Attaque libre : cible tout ennemi dans le carré de portée (hors contact) ───
+
+    [Fact]
+    public void AttaqueLibre_TargetsAnyEnemyInSquareZone_ExceptDirectMelee()
+    {
+        var m = Board();
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte }, attackRange: 3));
+        m.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));   // dc=2, dr=1 : case « cavalier » (hors lignes)
+        m.Place(new Cell(4, 4), Make(Faction.Enemy, 20, 5, None));   // diagonale adjacente : PAS zone morte (classique)
+        m.Place(new Cell(3, 4), Make(Faction.Enemy, 20, 5, None));   // orthogonal adjacent = corps-à-corps DIRECT → exclu
+        m.Place(new Cell(3, 7), Make(Faction.Enemy, 20, 5, None));   // Chebyshev 4 → hors portée
+
+        var targets = m.AttackTargets(new Cell(3, 3));
+        Assert.Contains(new Cell(5, 4), targets);        // atteint une case impossible pour une Dame
+        Assert.Contains(new Cell(4, 4), targets);        // diagonale au contact : autorisée (zone morte classique)
+        Assert.DoesNotContain(new Cell(3, 4), targets);  // corps-à-corps direct (case droite) exclu
+        Assert.DoesNotContain(new Cell(3, 7), targets);  // hors portée
+
+        // Contraste : une Dame (sans Attaque libre) ne peut PAS viser la case « cavalier ».
+        var dame = Board();
+        dame.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.ZoneMorte }, domaine: Domaine.Dame, attackRange: 3));
+        dame.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));
+        Assert.DoesNotContain(new Cell(5, 4), dame.AttackTargets(new Cell(3, 3)));
+    }
+
+    [Fact]
+    public void AttaqueLibre_RespectsLineOfFire_BlockedByUnitOrMountain()
+    {
+        // Unité interposée : l'ennemi DERRIÈRE un premier ennemi n'est pas visé.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte }, attackRange: 3));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // à portée, ligne dégagée
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, None));   // masqué par l'unité en (0,2)
+        var targets = m.AttackTargets(new Cell(0, 0));
+        Assert.Contains(new Cell(0, 2), targets);
+        Assert.DoesNotContain(new Cell(0, 3), targets);
+
+        // Montagne interposée : coupe la ligne… sauf pour un tir balistique.
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(0, 1)] = new Tile(BuiltInTiles.Mountain);
+
+        var blocked = new Match(8, 8, field);
+        blocked.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte }, attackRange: 3));
+        blocked.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        Assert.DoesNotContain(new Cell(0, 2), blocked.AttackTargets(new Cell(0, 0)));   // montagne coupe
+
+        var ballistic = new Match(8, 8, field);
+        ballistic.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte, Trait.Balistique }, attackRange: 3));
+        ballistic.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        Assert.Contains(new Cell(0, 2), ballistic.AttackTargets(new Cell(0, 0)));       // balistique ignore la montagne
+    }
+
     /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>
     private sealed class FixedRng : System.Random
     {

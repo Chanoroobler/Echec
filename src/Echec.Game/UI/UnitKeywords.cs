@@ -41,6 +41,7 @@ public static class UnitKeywords
         ["Embrochage"] = "kw.embrochage",
         ["Orage"] = "kw.orage",
         ["Tempête"] = "kw.tempete",
+        ["Attaque libre"] = "kw.attaque_libre",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="Echec.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

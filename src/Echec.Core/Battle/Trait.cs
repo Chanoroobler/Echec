@@ -34,12 +34,13 @@ public static class Trait
     public const string Embrochage = "Embrochage";           // l'attaque touche aussi les ennemis adjacents à la cible
     public const string Orage = "Orage";                     // à l'attaque : foudroie tous les AUTRES ennemis (dégât fixe)
     public const string Tempete = "Tempête";                 // idem Orage, dégât fixe plus élevé
+    public const string AttaqueLibre = "Attaque libre";      // vise TOUT ennemi dans le carré de portée (pas de ligne)
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, DegatsDeZone, Franchissement, Transpercement, Interception,
         AuraDeRempart, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
-        DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete,
+        DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete, AttaqueLibre,
     };
 }

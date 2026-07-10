@@ -217,6 +217,8 @@ kw.orage.label,ORAGE,STORM
 kw.orage.desc,À L'ATTAQUE FOUDROIE TOUS LES AUTRES ENNEMIS DE 3,ON ATTACK STRIKES ALL OTHER ENEMIES FOR 3
 kw.tempete.label,TEMPETE,TEMPEST
 kw.tempete.desc,À L'ATTAQUE FOUDROIE TOUS LES AUTRES ENNEMIS DE 6,ON ATTACK STRIKES ALL OTHER ENEMIES FOR 6
+kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM
+kw.attaque_libre.desc,TIRE SUR N'IMPORTE QUEL ENNEMI DANS SA ZONE DE PORTÉE (PAS SEULEMENT EN LIGNE),SHOOTS ANY ENEMY WITHIN ITS RANGE ZONE (NOT ONLY IN LINE)
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE !
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────

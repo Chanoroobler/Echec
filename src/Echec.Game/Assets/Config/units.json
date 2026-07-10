@@ -17,14 +17,14 @@
         "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
         "evolutions": [
           {
-            "name": "Archer", "asset": "archer", "hp": 12, "damage": 12, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
+            "name": "Archer", "asset": "archer", "hp": 12, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
             "evolutions": [
-              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 14, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte"] }
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 15, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte"] }
             ]
           },
           {
-            "name": "Spadassin", "asset": "spadassin", "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 1,
+            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1,
             "evolutions": [
               { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"] },
               { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
@@ -68,10 +68,10 @@
             ]
           },
           {
-            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Franchissement"],
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Franchissement", "Attaque libre"],
             "evolutions": [
-              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol"] },
-              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol", "Balistique"] }
+              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol", "Attaque libre"] },
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol", "Attaque libre", "Balistique"] }
             ]
           }
         ]

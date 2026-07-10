@@ -6272,9 +6272,13 @@ public sealed class GameplayScene : Scene
             DrawUnitCard(sb, own, rightCard.Value);
         }
 
-        // Carte de l'ennemi survolé (à gauche).
+        // Carte de l'ennemi survolé (à gauche). Si NOTRE pion sélectionné le vise (case à portée d'attaque),
+        // on prévisualise les dégâts : les PV menacés clignotent sur sa barre.
         if (hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } enemy)
-            DrawUnitCard(sb, enemy, LeftCardRect(board));
+        {
+            var preview = _selected is { } sel && _attackTargets.Contains(he) ? _match.PreviewDamage(sel, he) : 0;
+            DrawUnitCard(sb, enemy, LeftCardRect(board), preview);
+        }
 
         // Tooltip d'environnement (buisson) de la case survolée.
         DrawEnvironmentTooltip(sb, layout, hovered, ownCell, rightCard);
@@ -6375,10 +6379,11 @@ public sealed class GameplayScene : Scene
     /// Carte d'une unité du plateau, dans son ÉTAT COURANT (PV actuels). Les popups de mots-clés
     /// descendent SOUS la carte (à droite de l'écran ils seraient coupés par le bord).
     /// </summary>
-    private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect)
+    private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect, int hpPreviewDamage = 0)
     {
         var c = unit.Class;
-        DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment);
+        DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
+            hpPreviewDamage: hpPreviewDamage);
         DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment);
     }
 
@@ -6391,7 +6396,7 @@ public sealed class GameplayScene : Scene
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
-        Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null)
+        Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0)
     {
         // Bonus de l'éventuel équipement de STAT, affichés en « +N » à côté de la stat concernée.
         var hpBonus = equip?.BonusFor(EquipStat.Hp) ?? 0;
@@ -6436,7 +6441,7 @@ public sealed class GameplayScene : Scene
         var barRect = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
         if (revealed)
         {
-            DrawHpBar(sb, barRect, hp, maxHp);
+            DrawHpBar(sb, barRect, hp, maxHp, hpPreviewDamage);
             y = barRect.Bottom + 2;
             DrawHpText(sb, rect.X, y, rect.Width, hp, maxHp, hpBonus);
         }
@@ -6526,10 +6531,18 @@ public sealed class GameplayScene : Scene
     /// Barre de PV : la barre occupe TOUTE la zone (taille fixe, hauteur indépendante du nombre de PV)
     /// et se découpe en un segment par point de vie. PV restants = rouge, PV manquants = rouge foncé.
     /// </summary>
-    private void DrawHpBar(SpriteBatch sb, Rectangle area, int hp, int maxHp)
+    /// <summary>
+    /// Barre de PV en carrés (1 carré = 1 PV). <paramref name="previewDamage"/> &gt; 0 : les
+    /// <paramref name="previewDamage"/> derniers PV pleins CLIGNOTENT (prévisualisation des dégâts d'une
+    /// attaque visée) entre plein et vide.
+    /// </summary>
+    private void DrawHpBar(SpriteBatch sb, Rectangle area, int hp, int maxHp, int previewDamage = 0)
     {
         if (maxHp <= 0)
             return;
+
+        var doomedFrom = System.Math.Max(0, hp - previewDamage);          // 1er PV menacé (borne basse)
+        var blink = 0.5f + 0.5f * MathF.Sin(_time * 12f);                 // clignotement des PV menacés
 
         const int gap = 1;
         // Bornes PARTAGÉES entre segments voisins : on arrondit une seule fois chaque frontière, puis
@@ -6539,7 +6552,15 @@ public sealed class GameplayScene : Scene
             var left = area.X + (int)System.Math.Round((double)i * area.Width / maxHp);
             var right = area.X + (int)System.Math.Round((double)(i + 1) * area.Width / maxHp);
             var w = System.Math.Max(1, right - left - (i < maxHp - 1 ? gap : 0));
-            DrawRect(sb, new Rectangle(left, area.Y, w, area.Height), i < hp ? Palette.Purple5 : Palette.Purple2);
+
+            Color col;
+            if (i >= hp)
+                col = Palette.Purple2;                                    // PV manquant
+            else if (previewDamage > 0 && i >= doomedFrom)
+                col = Color.Lerp(Palette.Purple2, Palette.Purple5, blink);// PV menacé : clignote plein↔vide
+            else
+                col = Palette.Purple5;                                    // PV plein
+            DrawRect(sb, new Rectangle(left, area.Y, w, area.Height), col);
         }
     }
 
