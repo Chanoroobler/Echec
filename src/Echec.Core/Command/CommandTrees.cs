@@ -54,11 +54,11 @@ public static class CommandTrees
         new CommandTree(DefaultTreeId, new[]
         {
             // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────
-            Node("cmd_rempart",    0, 1, CommandEffect.CommanderTrait(Trait.Rempart)),
+            Node("cmd_Esquive",    0, 1, CommandEffect.CommanderTrait(Trait.Esquive)),
             Node("cmd_puissance",  0, 2, CommandEffect.CommanderStat(EquipStat.Damage, 1, CommandScale.PerDistinctPair)),
             Node("cmd_vie",        0, 2, CommandEffect.CommanderStat(EquipStat.Hp, 2, CommandScale.PerDistinctPair)),
             Node("cmd_mouvement",  0, 3, CommandEffect.CommanderStat(EquipStat.MoveRange, 1)),
-            Node("cmd_duelliste",  0, 3, CommandEffect.CommanderTrait(Trait.Duelliste)),
+            Node("cmd_Orage",      0, 3, CommandEffect.CommanderTrait(Trait.Orage)),
             Node("cmd_portee",     0, 4, CommandEffect.CommanderStat(EquipStat.AttackRange, 1)),
 
             // ── Branche 1 : les TROUPES (tout le roster hors commandant) ────────────────────────
@@ -78,7 +78,7 @@ public static class CommandTrees
         }),
     };
 
-    /// <summary>Nœud du repli codé : l'icône porte l'id du nœud (les deux se recoupent dans le JSON).</summary>
+    /// <summary>Nœud du repli codé : l'icône porte l'id du nœud (même règle que le catalogue JSON).</summary>
     private static CommandNode Node(string id, int branch, int level, params CommandEffect[] effects) =>
         new(id, branch, level, id, effects);
 }

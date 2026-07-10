@@ -29,11 +29,11 @@
       "id": "commandant",
       "nodes": [
         // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────────
-        { "id": "cmd_rempart",   "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Rempart" } ] },
+        { "id": "cmd_Esquive",   "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Esquive" } ] },
         { "id": "cmd_puissance", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" } ] },
         { "id": "cmd_vie",       "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perDistinctPair" } ] },
         { "id": "cmd_mouvement", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "moveRange",   "amount": 1 } ] },
-        { "id": "cmd_duelliste", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Duelliste" } ] },
+        { "id": "cmd_Orage", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Orage" } ] },
         { "id": "cmd_portee",    "branch": 0, "level": 4, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
 
         // ── Branche 1 : les TROUPES (tout le roster hors commandant) ────────────────────────────
