@@ -1,0 +1,56 @@
+{
+  // Arbres de commandement. UN arbre par commandant : le commandant le référence dans units.json
+  // (champ "tree"). Le joueur dépense des points de commandement (2 par mission réussie + le bonus
+  // propre au commandant, ex. "fusionPoints") pendant la phase de PLACEMENT. Tout est propre à la RUN :
+  // les nœuds achetés sont sauvegardés avec elle et repartent à zéro à la campagne suivante.
+  //
+  // Un nœud = une position (branch, level) + une icône + des effets. Deux règles, et deux seulement :
+  //   • COÛT   : 2 × level  →  2, 4, 6, 8 points (niveaux 1 à 4).
+  //   • PRÉREQUIS : posséder AU MOINS UN nœud du niveau précédent DANS LA MÊME BRANCHE.
+  //     Les branches (colonnes) sont donc étanches ; les nœuds de niveau 1 sont toujours achetables.
+  //
+  // "icon"    : PNG 32×32 dans Assets/CommandTree/<icon>.png (absent → l'id du nœud).
+  //             Aucun texte dans le nœud : le libellé et la description viennent de strings.csv
+  //             (clés "tree.<id>" et "tree.<id>.desc") et ne s'affichent qu'en infobulle.
+  // "effects" : un ou plusieurs, de type
+  //   { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" }
+  //   { "kind": "commanderTrait", "trait": "Rempart" }        ← trait de Battle.Trait
+  //   { "kind": "unitStat",  "stat": "hp", "amount": 2 }      ← toutes les unités HORS commandant
+  //   { "kind": "unitTrait", "trait": "Riposte" }
+  //   { "kind": "reserveSlots", "amount": 2 }                 ← agrandit la réserve
+  //   { "kind": "deploySlots",  "amount": 1 }                 ← agrandit le déploiement
+  //   { "kind": "fusionRecruit", "amount": 1 }                ← chaque fusion recrute en plus un tier 1 vu
+  //
+  // "stat"  : hp | damage | moveRange | attackRange
+  // "scale" : flat (défaut) | perDistinctPair  → bonus × (classes distinctes du roster hors commandant ÷ 2),
+  //           figé au moment du placement. Récompense la variété de l'armée.
+  "trees": [
+    {
+      "id": "commandant",
+      "nodes": [
+        // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────────
+        { "id": "cmd_rempart",   "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Rempart" } ] },
+        { "id": "cmd_puissance", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" } ] },
+        { "id": "cmd_vie",       "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perDistinctPair" } ] },
+        { "id": "cmd_mouvement", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "moveRange",   "amount": 1 } ] },
+        { "id": "cmd_duelliste", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Duelliste" } ] },
+        { "id": "cmd_portee",    "branch": 0, "level": 4, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
+
+        // ── Branche 1 : les TROUPES (tout le roster hors commandant) ────────────────────────────
+        { "id": "troupe_vie",       "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 2 } ] },
+        { "id": "troupe_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" } ] },
+        { "id": "troupe_vie_paire", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "hp",     "amount": 1, "scale": "perDistinctPair" } ] },
+        { "id": "troupe_fusion",    "branch": 1, "level": 3, "effects": [ { "kind": "fusionRecruit", "amount": 1 } ] },
+        { "id": "troupe_mouvement", "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1 } ] },
+
+        // ── Branche 2 : la LOGISTIQUE (déploiement + réserve) ───────────────────────────────────
+        { "id": "logi_deploiement_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "logi_reserve_1",     "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "logi_deploiement_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "logi_reserve_2",     "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "logi_deploiement_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "logi_reserve_3",     "branch": 2, "level": 4, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] }
+      ]
+    }
+  ]
+}

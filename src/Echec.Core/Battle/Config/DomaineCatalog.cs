@@ -40,7 +40,8 @@ public static class DomaineCatalog
             throw new InvalidOperationException($"Phase de boss invalide pour '{c.Name}' : {c.Phase}. Attendu 0 (toutes) ou 1..3.");
 
         return new CommandeDef(role, domaine,
-            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange), c.Phase);
+            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange), c.Phase,
+            c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

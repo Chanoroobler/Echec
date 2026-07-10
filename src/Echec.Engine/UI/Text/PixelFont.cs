@@ -73,11 +73,14 @@ public sealed class PixelFont
         return char.IsLetter(d[0]) ? d[0] : c;
     }
 
-    public void DrawCentered(SpriteBatch sb, string text, Rectangle area, int scale, Color color)
+    /// <summary><paramref name="preserveCase"/> : garde les minuscules du texte (sinon tout est mis en capitales).</summary>
+    public void DrawCentered(SpriteBatch sb, string text, Rectangle area, int scale, Color color,
+        bool preserveCase = false)
     {
         int w = Measure(text, scale);
         int h = GlyphH * scale;
-        Draw(sb, text, new Vector2(area.X + (area.Width - w) / 2, area.Y + (area.Height - h) / 2), scale, color);
+        Draw(sb, text, new Vector2(area.X + (area.Width - w) / 2, area.Y + (area.Height - h) / 2), scale, color,
+            preserveCase);
     }
 
     private void DrawGlyph(SpriteBatch sb, byte[] rows, int x, int y, int scale, Color color)

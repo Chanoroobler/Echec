@@ -1,3 +1,4 @@
+using Echec.Core.Command;
 using Echec.Core.Equip;
 
 namespace Echec.Core.Battle;
@@ -6,17 +7,22 @@ namespace Echec.Core.Battle;
 /// Unité jouable. Deux axes : le <see cref="Domaine"/> (qui fournit le style de
 /// déplacement) et la <see cref="Class"/> (asset + stats : PV, dégâts, portée).
 /// Le level-up n'est pas encore défini : l'unité reste sur la classe qu'on lui donne.
-/// Un éventuel <see cref="Equipment"/> ajoute un bonus de stat OU un trait (cf. <see cref="HasTrait"/>).
+///
+/// Trois sources de stats et de traits, cumulatives : la <see cref="Class"/>, un éventuel
+/// <see cref="Equipment"/> (collé au pion) et les <see cref="Buffs"/> de l'arbre de commandement
+/// (bonus d'armée du joueur, figés au placement — les ennemis n'en ont jamais).
 /// </summary>
 public sealed class Unit
 {
-    public Unit(Domaine domaine, Faction faction, UnitClass unitClass, Equipment? equipment = null)
+    public Unit(Domaine domaine, Faction faction, UnitClass unitClass, Equipment? equipment = null,
+        CommandBuffs? buffs = null)
     {
         Domaine = domaine;
         Faction = faction;
         Class = unitClass;
         Equipment = equipment;
-        Hp = MaxHp;   // PV pleins, bonus d'équipement inclus
+        Buffs = buffs ?? CommandBuffs.None;
+        Hp = MaxHp;   // PV pleins, bonus d'équipement et d'arbre inclus
     }
 
     public Domaine Domaine { get; }
@@ -32,6 +38,12 @@ public sealed class Unit
 
     /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant.</summary>
     public Equipment? Equipment { get; }
+
+    /// <summary>
+    /// Bonus de l'arbre de commandement applicables à CETTE unité (ceux du commandant, ou ceux des troupes).
+    /// <see cref="CommandBuffs.None"/> pour tout ennemi. Calculés au placement par <see cref="Campaign.Run"/>.
+    /// </summary>
+    public CommandBuffs Buffs { get; }
 
     public int Hp { get; private set; }
 
@@ -49,10 +61,14 @@ public sealed class Unit
     public AiKind AiKind { get; set; } = AiKind.Normal;
 
     public MovementKind MovementKind => Movement.Kind(Domaine);
-    public int MaxHp => Class.MaxHp + EquipBonus(EquipStat.Hp);
-    public int Damage => Class.Damage + EquipBonus(EquipStat.Damage);
-    public int MoveRange => Class.MoveRange + EquipBonus(EquipStat.MoveRange);
-    public int AttackRange => Class.AttackRange + EquipBonus(EquipStat.AttackRange);
+    public int MaxHp => Stat(EquipStat.Hp, Class.MaxHp);
+    public int Damage => Stat(EquipStat.Damage, Class.Damage);
+    public int MoveRange => Stat(EquipStat.MoveRange, Class.MoveRange);
+    public int AttackRange => Stat(EquipStat.AttackRange, Class.AttackRange);
+
+    /// <summary>Stat effective : valeur de la classe + bonus d'équipement + bonus d'arbre. Jamais négative.</summary>
+    private int Stat(EquipStat stat, int fromClass) =>
+        System.Math.Max(0, fromClass + EquipBonus(stat) + Buffs.BonusFor(stat));
 
     /// <summary>
     /// Portée d'attaque MINIMALE effective : le trait « Zone morte » interdit de frapper au contact
@@ -73,13 +89,15 @@ public sealed class Unit
     public void Heal(int amount) => Hp = System.Math.Min(MaxHp, Hp + amount);
 
     /// <summary>
-    /// Vrai si l'unité porte ce <paramref name="trait"/> (cf. <see cref="Trait"/>) — par sa classe OU par
-    /// son <see cref="Equipment"/>. « Traverse allié » est porté par <see cref="UnitClass.PiercesAllies"/>
-    /// et non par la liste de traits.
+    /// Vrai si l'unité porte ce <paramref name="trait"/> (cf. <see cref="Trait"/>) — par sa classe, par son
+    /// <see cref="Equipment"/> OU par les <see cref="Buffs"/> de l'arbre de commandement. « Traverse allié »
+    /// est porté par <see cref="UnitClass.PiercesAllies"/> et non par la liste de traits.
     /// </summary>
     public bool HasTrait(string trait)
     {
         if (Equipment is { } e && e.GrantsTrait(trait))
+            return true;
+        if (Buffs.GrantsTrait(trait))
             return true;
         if (trait == Battle.Trait.TraverseAllie)
             return Class.PiercesAllies;

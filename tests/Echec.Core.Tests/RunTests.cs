@@ -448,9 +448,9 @@ public class RunTests
         Assert.Equal(2, run.ReserveCount);
         Assert.False(run.IsReserveFull);
 
-        while (run.ReserveCount < Run.ReserveLimit)
+        while (run.ReserveCount < run.ReserveLimit)
             run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
-        Assert.Equal(Run.ReserveLimit, run.ReserveCount);
+        Assert.Equal(run.ReserveLimit, run.ReserveCount);
         Assert.True(run.IsReserveFull);
     }
 

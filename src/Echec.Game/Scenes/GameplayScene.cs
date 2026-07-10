@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
 using Echec.Core.Campaign;
+using Echec.Core.Command;
 using Echec.Core.Equip;
 using Echec.Core.Map;
 using Echec.Engine;
@@ -32,8 +33,9 @@ public sealed class GameplayScene : Scene
     // fixe à sa taille, sinon 8×8 (terrain aléatoire). Réglées par combat dans BeginPlacement/BeginTutorial.
     private int Columns = 8;
     private int Rows = 8;
-    // Plafond d'unités joueur déployées sur le plateau, COMMANDANT COMPRIS (commandant + 4 recrues max).
-    private const int MaxDeployed = 5;
+    // Plafond d'unités joueur déployées sur le plateau, COMMANDANT COMPRIS. Propre au COMMANDANT (base 5 =
+    // commandant + 4 recrues), agrandi par les nœuds « déploiement » de son arbre de commandement.
+    private int MaxDeployed => _run.DeployLimit;
     private const double AiDelaySeconds = 0.45;
     private const double TutorialEnemyDelay = 2.6;   // tuto : laisse lire la pop avant que l'IA bouge/contre-attaque
 
@@ -115,7 +117,7 @@ public sealed class GameplayScene : Scene
     private float _reserveFullFlash;      // > 0 = feedback « plus de place » (récup/recrutement bloqué) en cours
     private UnitSpec? _reserveDrag;        // pion de réserve en cours de DRAG (fusion souris) ; null = aucun
 
-    // Édition de la réserve sur les écrans draft/récompense (plafond Run.ReserveLimit) : un pion sélectionné
+    // Édition de la réserve sur les écrans draft/récompense (plafond de réserve) : un pion sélectionné
     // peut être SUPPRIMÉ ou FUSIONNÉ (3 identiques → évolution choisie) pour faire de la place.
     private UnitSpec? _reserveSel;      // pion de la réserve sélectionné (null = aucun)
     private bool _reserveFuseChoice;    // vrai = on affiche le choix d'évolution pour fusionner le pion sélectionné
@@ -199,6 +201,22 @@ public sealed class GameplayScene : Scene
     private PauseMenu _pauseMenu = null!;
     private PauseMenuRenderer _pauseRenderer = null!;
     private DomaineTreeRenderer _treeRenderer = null!;
+
+    /// <summary>Écran modal de l'arbre de commandement, ouvert depuis le panneau de placement.</summary>
+    private CommandTreeView _commandTree = null!;
+
+    /// <summary>Vrai quand l'arbre de commandement est ouvert : le placement est gelé derrière lui.</summary>
+    private bool CommandTreeOpen => _commandTree.IsOpen;
+
+    /// <summary>
+    /// Zone LIBRE où centrer la modale de l'arbre : sous la frise des missions, à gauche du panneau
+    /// d'inventaire — c'est-à-dire exactement au-dessus du plateau, et non du canvas entier.
+    /// </summary>
+    private Rectangle CommandTreeArea()
+    {
+        var top = TimelineTopY + TimelineNodeSize + 16;   // sous les nœuds de la frise
+        return new Rectangle(0, top, AvailableWidth(), VirtualViewport.Height - top);
+    }
 
     // Effets de combat shader (dissolution / flash) + animation d'attaque en cours.
     private CombatFxRenderer _combatFx = null!;
@@ -303,11 +321,18 @@ public sealed class GameplayScene : Scene
     private bool _evoSparked;             // gerbe au flash (une seule fois)
     private bool EvoPlaying => _evoPhase != EvoPhase.None;
 
-    // Curseur de plateau (manette) : case visée. En placement, _gpInventory bascule le focus dans
-    // l'inventaire (sélection d'une unité à déployer) et _invFocus en est l'index.
+    // Curseur de plateau (manette) : case visée. En placement, le focus manette traverse TROIS zones —
+    // le plateau (curseur), l'inventaire (_gpInventory + _invFocus) et les boutons du panneau
+    // (_gpButtons + _btnFocus : 0 = COMMANDEMENT, 1 = COMBATTRE/SUIVANT). RB fait le tour, Bas/Haut
+    // enchaîne inventaire → boutons. Les deux drapeaux sont exclusifs (cf. UpdatePlacementGamepad).
     private Cell _cursor = new(4, 7);   // valeur par défaut (réinitialisée par combat dans BeginPlacement)
     private bool _gpInventory;
     private int _invFocus;
+    private bool _gpButtons;
+    private int _btnFocus;
+
+    /// <summary>Nombre de boutons focusables du panneau de placement (aucun en tutoriel : lancement scénarisé).</summary>
+    private const int PlacementButtonCount = 2;
 
     private Cell? _selected;
     // Buffers RÉUTILISÉS (remplis par les variantes sans-alloc du Match) : évitent une allocation
@@ -407,6 +432,7 @@ public sealed class GameplayScene : Scene
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         _treeRenderer = new DomaineTreeRenderer(Context.Pixel, Context.Font, Context.Style);
+        _commandTree = new CommandTreeView(Context);
         _combatFx = LoadCombatFx();
 
         StartRun();
@@ -422,6 +448,7 @@ public sealed class GameplayScene : Scene
         _sheets.Clear();
         _waterNoise.Dispose();
         _water.Dispose();
+        _commandTree.Unload();
         foreach (var sprite in _unitSprites.Values)
             sprite?.Dispose();
         _unitSprites.Clear();
@@ -867,6 +894,7 @@ public sealed class GameplayScene : Scene
         var commanderCell = CommanderStart();
         _cursor = commanderCell;       // curseur manette sur la case de départ du commandant
         _gpInventory = false;
+        _gpButtons = false;
 
         var commander = _run.Commander;
         PlacePlayer(commander, commanderCell);
@@ -932,6 +960,7 @@ public sealed class GameplayScene : Scene
         _recruitChoice = null;
         _recruitHold = 0;
         _gpInventory = false;
+        _gpButtons = false;
         _battleIntroTimer = 0;
 
         // Commandant déjà posé (montre l'unité essentielle), 1 SOLDAT à déployer dans l'inventaire.
@@ -1223,7 +1252,7 @@ public sealed class GameplayScene : Scene
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
     {
-        var unit = spec.Spawn(Faction.Player);
+        var unit = spec.Spawn(Faction.Player, _run.BuffsFor(spec));
         _match.Place(cell, unit);
         _playerSpec[unit] = spec;
         TriggerLanding(cell);
@@ -1261,7 +1290,7 @@ public sealed class GameplayScene : Scene
             return;
         _match.Remove(cell);
         _playerSpec.Remove(unit);
-        var fresh = spec.Spawn(Faction.Player);
+        var fresh = spec.Spawn(Faction.Player, _run.BuffsFor(spec));
         _match.Place(cell, fresh);
         _playerSpec[fresh] = spec;
     }
@@ -1423,6 +1452,14 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // Échap pendant l'arbre de commandement : le referme plutôt que d'ouvrir le menu pause.
+        if (CommandTreeOpen && !_pauseMenu.IsOpen && Context.Input.WasKeyPressed(Keys.Escape))
+        {
+            _commandTree.Close();
+            RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
+            return;
+        }
+
         // Ouverture/fermeture : Échap (clavier) ou Start (manette). En manette, B referme aussi.
         if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasMenuPressed
             || (_pauseMenu.IsOpen && Context.Input.WasCancelPressed))
@@ -1478,6 +1515,15 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlacement(GameTime gameTime)
     {
+        // Arbre de commandement ouvert : modale par-dessus le placement, qui reste gelé derrière.
+        if (CommandTreeOpen)
+        {
+            _commandTree.Update(_run, CommandTreeArea(), (float)gameTime.ElapsedGameTime.TotalSeconds);
+            if (!CommandTreeOpen)
+                RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
+            return;
+        }
+
         // Sous-phase Équipement (après placement+fusion) : on pose/retire les équipements sur les pions.
         if (_equipPhase)
         {
@@ -1544,6 +1590,13 @@ public sealed class GameplayScene : Scene
         if (_tutorial == null && Context.Input.WasLeftClicked && FightButtonRect().Contains(mouse))
         {
             TryStartBattle();
+            return;
+        }
+
+        // Bouton COMMANDEMENT (souris) : ouvre l'arbre. Même précaution que COMBATTRE vis-à-vis du drag.
+        if (_tutorial == null && Context.Input.WasLeftClicked && CommandTreeButtonRect().Contains(mouse))
+        {
+            _commandTree.Open();
             return;
         }
 
@@ -1630,13 +1683,15 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Placement à la manette : curseur de case (croix), A saisir/poser, B annuler, RB inventaire,
-    /// Y lancer le combat. La saisie/dépose réutilise exactement la logique du glisser souris.
+    /// Placement à la manette : curseur de case (croix), A saisir/poser, B annuler, RB inventaire puis
+    /// boutons du panneau, Y lancer le combat. La saisie/dépose réutilise exactement la logique du
+    /// glisser souris.
     /// </summary>
     private void UpdatePlacementGamepad()
     {
-        if (Context.Input.WasQuaternaryPressed) { TryStartBattle(); return; }   // Y = COMBATTRE
+        if (Context.Input.WasQuaternaryPressed) { TryStartBattle(); return; }   // Y = COMBATTRE (raccourci global)
 
+        if (_gpButtons) { UpdateButtonsFocus(); return; }
         if (_gpInventory) { UpdateInventoryFocus(); return; }
 
         // B sans rien porter (et hors portage) : annule une pile de fusion en cours (réserve ou plateau).
@@ -1646,15 +1701,18 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // DROITE au bord droit du plateau : le focus continue naturellement dans le panneau (réserve,
+        // sinon boutons) au lieu de buter contre la dernière colonne. Pas quand on porte une pièce :
+        // le curseur doit rester sur le plateau pour la poser.
+        if (Context.Input.Nav(NavDir.Right) && _dragSpec == null && !_carryPile
+            && _cursor.Column == Columns - 1 && EnterPanelFocus())
+            return;
+
         MoveCursor();
 
-        // RB : terrain → inventaire (choisir une unité à déployer, si on n'en porte pas).
-        if (Context.Input.WasRightShoulderPressed && _dragSpec == null && _pending.Count > 0)
-        {
-            _gpInventory = true;
-            _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+        // RB : terrain → panneau (même entrée que la sortie par la droite).
+        if (Context.Input.WasRightShoulderPressed && _dragSpec == null && EnterPanelFocus())
             return;
-        }
 
         if (Context.Input.WasConfirmPressed)
         {
@@ -1680,10 +1738,20 @@ public sealed class GameplayScene : Scene
         if (n == 0) { _gpInventory = false; return; }
         _invFocus = System.Math.Clamp(_invFocus, 0, n - 1);
 
-        if (Context.Input.Nav(NavDir.Left) && _invFocus % InvCols > 0) _invFocus--;
+        if (Context.Input.Nav(NavDir.Left))
+        {
+            // Gauche : colonne précédente, ou — depuis la PREMIÈRE colonne — retour sur le plateau.
+            if (_invFocus % InvCols > 0) _invFocus--;
+            else { _gpInventory = false; return; }
+        }
         if (Context.Input.Nav(NavDir.Right) && _invFocus % InvCols < InvCols - 1 && _invFocus + 1 < n) _invFocus++;
         if (Context.Input.Nav(NavDir.Up) && _invFocus - InvCols >= 0) _invFocus -= InvCols;
-        if (Context.Input.Nav(NavDir.Down) && _invFocus + InvCols < n) _invFocus += InvCols;
+        if (Context.Input.Nav(NavDir.Down))
+        {
+            // Bas : rangée suivante, ou — depuis la DERNIÈRE rangée — descente vers les boutons du panneau.
+            if (_invFocus + InvCols < n) _invFocus += InvCols;
+            else if (EnterButtonsFocus()) { _gpInventory = false; return; }
+        }
 
         // X : fusionner le portrait focus s'il a FusionSize exemplaires en réserve (raccourci manette).
         if (Context.Input.WasTertiaryPressed && CanFuseFromReserve(_pending[_invFocus]))
@@ -1700,10 +1768,82 @@ public sealed class GameplayScene : Scene
             _gpInventory = false;
             Context.Sounds.Play("unit_pick");
         }
+        else if (Context.Input.WasRightShoulderPressed)
+        {
+            if (EnterButtonsFocus())
+                _gpInventory = false;   // RB : inventaire → boutons du panneau
+        }
         else if (Context.Input.WasCancelPressed || Context.Input.WasLeftShoulderPressed)
         {
             _gpInventory = false;   // LB (ou B) : inventaire → terrain
         }
+    }
+
+    /// <summary>
+    /// Plateau → panneau de placement (manette) : la réserve si elle a des pions, sinon directement les
+    /// boutons — sans quoi ils seraient inatteignables quand tout est déployé. Faux si le panneau n'a
+    /// rien à focus (tutoriel avec réserve vide) : le curseur reste alors sur le plateau.
+    /// </summary>
+    private bool EnterPanelFocus()
+    {
+        if (_pending.Count > 0)
+        {
+            _gpInventory = true;
+            _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+            return true;
+        }
+        return EnterButtonsFocus();
+    }
+
+    /// <summary>
+    /// Entre dans la zone des boutons du panneau (COMMANDEMENT / COMBATTRE). Faux — et rien ne change —
+    /// en tutoriel, où ces boutons ne sont pas dessinés (le combat s'y lance de façon scénarisée).
+    /// </summary>
+    private bool EnterButtonsFocus()
+    {
+        if (_tutorial != null)
+            return false;
+        _gpButtons = true;
+        _btnFocus = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Focus sur les boutons du panneau (manette) : Haut/Bas les parcourt, Gauche revient au plateau,
+    /// A valide, B/LB/RB revient au terrain. Depuis le bouton du HAUT, Haut remonte dans l'inventaire.
+    /// </summary>
+    private void UpdateButtonsFocus()
+    {
+        if (Context.Input.Nav(NavDir.Left)) { _gpButtons = false; return; }   // sortie par la gauche : plateau
+
+        if (Context.Input.Nav(NavDir.Down))
+            _btnFocus = System.Math.Min(_btnFocus + 1, PlacementButtonCount - 1);
+        if (Context.Input.Nav(NavDir.Up))
+        {
+            if (_btnFocus > 0)
+            {
+                _btnFocus--;
+            }
+            else if (_pending.Count > 0)
+            {
+                _gpButtons = false;   // remonte dans l'inventaire, sur son dernier portrait
+                _gpInventory = true;
+                _invFocus = _pending.Count - 1;
+                return;
+            }
+        }
+
+        if (Context.Input.WasConfirmPressed)
+        {
+            _gpButtons = false;
+            if (_btnFocus == 0) _commandTree.Open();
+            else TryStartBattle();
+            return;
+        }
+
+        if (Context.Input.WasCancelPressed || Context.Input.WasLeftShoulderPressed
+            || Context.Input.WasRightShoulderPressed)
+            _gpButtons = false;   // retour au plateau
     }
 
     /// <summary>Saisit l'unité joueur sous le curseur (retirée du plateau en attendant la pose).</summary>
@@ -1880,6 +2020,7 @@ public sealed class GameplayScene : Scene
         _dragEquipFrom = null;
         _equipFocus = 0;
         _gpInventory = false;
+        _gpButtons = false;
         ClearSelection();
         Context.Sounds.Play("unit_place");
     }
@@ -2362,6 +2503,11 @@ public sealed class GameplayScene : Scene
             source = PanelCardRect(_pending.Count - 1);
         }
 
+        // Nœud « fusion » de l'arbre : chaque fusion offre EN PLUS des tier 1 déjà découverts. La fusion
+        // consomme 3 pions pour 1, la réserve a donc toujours la place — on garde quand même le garde-fou.
+        foreach (var bonus in GrantFusionRecruits())
+            _pending.Add(bonus);
+
         // Version LONGUE (grand moment) uniquement la 1re fois qu'on obtient l'unité ; sinon version courte.
         var firstTime = !Context.Saves.IsUnitDiscovered(fused.UnitClass.Asset);
         Context.Saves.DiscoverUnit(fused.UnitClass.Asset);   // méta-progression : désormais connue
@@ -2437,6 +2583,11 @@ public sealed class GameplayScene : Scene
         _evoPhase = EvoPhase.None;
         _evoBase = null;
         _evoResult = null;
+        // La fusion a changé la composition du roster : les bonus « par paire de classes distinctes » de
+        // l'arbre bougent, donc les pions déjà posés doivent reprendre leurs stats (le combat, lui, les
+        // recalcule de toute façon au lancement).
+        if (_run.Phase == RunPhase.Placement)
+            RespawnPlayerUnitsFromSpecs();
     }
 
     /// <summary>Choix d'évolution (souris/clavier/manette) ; B/Échap/clic droit ou bouton Annuler ferment.</summary>
@@ -3048,7 +3199,7 @@ public sealed class GameplayScene : Scene
         var list = new List<UnitSpec>();
         // Borné au plafond de réserve : on ne peut de toute façon pas en garder plus (évite un écran de
         // récompense incollectable si la map a beaucoup de paysans).
-        var n = System.Math.Min(PaysansProtected, Run.ReserveLimit);
+        var n = System.Math.Min(PaysansProtected, _run.ReserveLimit);
         for (var k = 0; k < n; k++)
             list.Add(_run.RollSeenTier1(rng, Context.Saves.IsUnitDiscovered));
         return list;
@@ -3515,7 +3666,7 @@ public sealed class GameplayScene : Scene
         DrawFusionStack(sb);   // pile « N/3 » + bouton X (comme au placement)
 
         var panel = PanelRect();
-        var counter = Loc.T("reserve.count", _run.ReserveCount, Run.ReserveLimit);
+        var counter = Loc.T("reserve.count", _run.ReserveCount, _run.ReserveLimit);
         Context.Font.Draw(sb, counter,
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, _run.IsReserveFull ? Palette.Purple5 : Palette.Cyan1);
@@ -3576,7 +3727,7 @@ public sealed class GameplayScene : Scene
             || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter);
         if (!collect)
             return;
-        if (RewardCheckedCount() <= Run.ReserveLimit - _run.ReserveCount)
+        if (RewardCheckedCount() <= _run.ReserveLimit - _run.ReserveCount)
         {
             _protectRewardFlight = RecruitFlightDuration;   // les cochés s'envolent vers la réserve
             Context.Sounds.Play("recruit");
@@ -3608,7 +3759,7 @@ public sealed class GameplayScene : Scene
     }
 
     // ── Édition de la réserve (écrans draft / récompense) ───────────────────────────────────────────
-    // Le plafond Run.ReserveLimit borne la réserve (roster hors commandant). Quand elle est pleine, on ne
+    // Le plafond de réserve (Run.ReserveLimit) borne la réserve (roster hors commandant). Quand elle est pleine, on ne
     // peut plus recruter/récupérer tant qu'on n'a pas fusionné (3 identiques → évolution) ou supprimé un pion.
 
     /// <summary>
@@ -3798,10 +3949,29 @@ public sealed class GameplayScene : Scene
     private void FuseReserve(UnitSpec rep, UnitClass evolution, List<UnitSpec> pool)
     {
         var group = pool.Where(u => !u.Essential && Run.SameClass(u, rep)).Take(Run.FusionSize).ToList();
-        _run.Fuse(group, evolution);
+        if (_run.Fuse(group, evolution) != null)
+            GrantFusionRecruits();   // nœud « fusion » de l'arbre : recrues offertes en plus
         Context.Sounds.Play("recruit");
         _reserveSel = null;
         _reserveFuseChoice = false;
+    }
+
+    /// <summary>
+    /// Applique le bonus du nœud « fusion » de l'arbre de commandement : ajoute au roster
+    /// <see cref="Run.FusionRecruits"/> unités tier 1 tirées parmi celles DÉJÀ DÉCOUVERTES
+    /// (méta-progression). Renvoie les gabarits ajoutés pour que l'appelant les affiche s'il le faut.
+    /// Le plafond de réserve reste respecté (une fusion la libère de deux places, donc il ne mord jamais).
+    /// </summary>
+    private List<UnitSpec> GrantFusionRecruits()
+    {
+        var added = new List<UnitSpec>();
+        for (var i = 0; i < _run.FusionRecruits && !_run.IsReserveFull; i++)
+        {
+            var bonus = _run.RollSeenTier1(new System.Random(), Context.Saves.IsUnitDiscovered);
+            _run.AddUnit(bonus);
+            added.Add(bonus);
+        }
+        return added;
     }
 
     /// <summary>Déplace un focus en GRILLE (largeur <paramref name="cols"/>) selon la Nav manette, borné à [0,count).</summary>
@@ -3963,6 +4133,12 @@ public sealed class GameplayScene : Scene
         if (input.IsKeyDown(Keys.Up) || input.IsKeyDown(Keys.Z)) dir.Y += 1;
         if (input.IsKeyDown(Keys.Down) || input.IsKeyDown(Keys.S)) dir.Y -= 1;
 
+        // Pan manette : stick DROIT, en analogique (le stick gauche pilote déjà le curseur de case).
+        // Mêmes signes que le clavier : pousser à droite fait reculer l'origine, pousser en haut l'avance.
+        var stick = input.RightStick;
+        dir.X -= stick.X;
+        dir.Y += stick.Y;
+
         if (dir != Vector2.Zero)
         {
             var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -4073,6 +4249,8 @@ public sealed class GameplayScene : Scene
                     DrawSpecialBriefing(sb, viewport);   // rappel de l'objectif sous la frise (placement)
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
+                if (CommandTreeOpen)
+                    _commandTree.Draw(sb, viewport, CommandTreeArea(), _run);   // modale par-dessus le placement
                 if (FusionOpen)
                     DrawFusionPopup(sb, viewport);   // modale par-dessus le placement
                 if (EvoPlaying)
@@ -4248,8 +4426,8 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive)
-            return Palette.Black1 * 0.62f; // popup fusion / morph évo long / révélation recrue / coffre : = DrawDim
+        if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive)
+            return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -5061,6 +5239,13 @@ public sealed class GameplayScene : Scene
         return new Rectangle(panel.X + PanelPad, panel.Bottom - margin - h, panel.Width - 2 * PanelPad, h);
     }
 
+    /// <summary>Bouton d'ouverture de l'arbre de commandement, juste au-dessus de COMBATTRE (placement seulement).</summary>
+    private Rectangle CommandTreeButtonRect()
+    {
+        var f = FightButtonRect();
+        return new Rectangle(f.X, f.Y - f.Height - 8, f.Width, f.Height);
+    }
+
     /// <summary>Case 64×64 (cliquable) du portrait d'inventaire numéro <paramref name="index"/>, en grille.</summary>
     private Rectangle PanelCardRect(int index)
     {
@@ -5139,7 +5324,10 @@ public sealed class GameplayScene : Scene
         var hintY = PanelListTop + rows * (InvCellH + InvGapY) + 12;
         if (Context.Input.UsingGamepad)
         {
-            var line1 = _gpInventory ? Loc.T("placement.hint_gp_terrain") : Loc.T("placement.hint_gp_inventory");
+            // L'indice décrit la zone de focus COURANTE (plateau / inventaire / boutons du panneau).
+            var line1 = _gpButtons ? Loc.T("placement.hint_gp_btn")
+                : _gpInventory ? Loc.T("placement.hint_gp_terrain")
+                : Loc.T("placement.hint_gp_inventory");
             Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
             Context.Font.Draw(sb, Loc.T("placement.hint_gp_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
             if (anyFusable)
@@ -5156,18 +5344,42 @@ public sealed class GameplayScene : Scene
                 Context.Font.Draw(sb, Loc.T("placement.hint_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
         }
 
-        // Bouton COMBATTRE en bas du panneau (souris), en plus de la touche Entrée. Pas en tuto (lancement scénarisé).
+        // Boutons du bas (souris + focus manette). Pas en tuto : le combat s'y lance de façon scénarisée.
         if (_tutorial == null)
         {
-            var btn = FightButtonRect();
-            var hover = !Context.Input.UsingGamepad && btn.Contains(Context.Input.MousePosition);
-            var down = hover && Context.Input.IsLeftDown;
-            var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover, down));
-            var area = btn; area.Offset(0, dy);
             // Si le joueur a des équipements, le bouton mène d'abord à la sous-phase Équipement (« Suivant »).
-            var label = _run.HasEquipment ? Loc.T("equip.next") : Loc.T("placement.fight");
-            Context.Font.DrawCentered(sb, label, area, 1, Palette.White);
+            var fightLabel = _run.HasEquipment ? Loc.T("equip.next") : Loc.T("placement.fight");
+            var affordable = _run.CommandPoints >= CommandTree.CostOf(1);
+
+            DrawPanelButton(sb, CommandTreeButtonRect(), Loc.T("tree.button", _run.CommandPoints),
+                affordable ? Palette.Yellow2 : Palette.White, focusIndex: 0, pointIcon: true);
+            DrawPanelButton(sb, FightButtonRect(), fightLabel, Palette.White, focusIndex: 1);
         }
+    }
+
+    /// <summary>
+    /// Un bouton du bas du panneau de placement. Survol à la souris (enfoncement), cadre or quand il porte
+    /// le focus MANETTE (<see cref="_gpButtons"/> + <see cref="_btnFocus"/>) — jamais les deux à la fois,
+    /// l'indice affiché suivant déjà le périphérique courant. <paramref name="pointIcon"/> accole le jeton
+    /// de points de commandement au libellé (bouton COMMANDEMENT).
+    /// </summary>
+    private void DrawPanelButton(SpriteBatch sb, Rectangle btn, string label, Color color, int focusIndex,
+        bool pointIcon = false)
+    {
+        var gamepad = Context.Input.UsingGamepad;
+        var focused = gamepad && _gpButtons && _btnFocus == focusIndex;
+        var hover = !gamepad && btn.Contains(Context.Input.MousePosition);
+        var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover || focused, hover && Context.Input.IsLeftDown));
+
+        var area = btn; area.Offset(0, dy);
+        if (focused)
+            DrawRectBorder(sb, Inflate(area, 2), Palette.Yellow2, 2);
+
+        var textColor = focused ? Palette.Yellow2 : color;
+        if (pointIcon)
+            _commandTree.DrawPointTotal(sb, Context.Font, label, area, textColor);
+        else
+            Context.Font.DrawCentered(sb, label, area, 1, textColor);
     }
 
     /// <summary>
@@ -5553,13 +5765,10 @@ public sealed class GameplayScene : Scene
         if (Context.Input.UsingGamepad)
         {
             if (_gpInventory && _pending.Count > 0)
-            {
-                var spec = _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)];
-                DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine,
-                    spec.UnitClass.MaxHp, spec.UnitClass.MaxHp, spec.Equipment);
-            }
-            else if (!_gpInventory && _match.UnitAt(_cursor) is { } cu)
-                DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment);
+                DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
+            else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
+                DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment, cu.Buffs,
+                    TreeNodesFor(cu));
             return;
         }
 
@@ -5568,26 +5777,39 @@ public sealed class GameplayScene : Scene
         // Priorité : portrait survolé dans l'inventaire (PV pleins, unité neuve).
         if (PanelCardAt(mouse) is { } i)
         {
-            var spec = _pending[i];
-            DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine,
-                spec.UnitClass.MaxHp, spec.UnitClass.MaxHp, spec.Equipment);
+            DrawSpecPreviewCard(sb, _pending[i]);
             return;
         }
 
         // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé).
         if (CellUnderMouse() is { } cell && _match.UnitAt(cell) is { } unit)
-            DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment);
+            DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment, unit.Buffs,
+                TreeNodesFor(unit));
     }
 
     /// <summary>Carte d'aperçu placée juste à GAUCHE du panneau d'inventaire (espace libre), équipement inclus.</summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
-        Equipment? equip = null)
+        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null)
     {
         var vp = VirtualViewport;
         var x = PanelRect().X - CombatCardGap - CombatCardW;
         var rect = new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
-        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip);
-        DrawKeywordPopupsBelow(sb, c, rect, equip);
+        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip, buffs: buffs, treeNodes: treeNodes);
+        DrawKeywordPopupsBelow(sb, c, rect, equip, buffs);
+    }
+
+    /// <summary>
+    /// Carte d'aperçu d'un gabarit de la RÉSERVE (pion non posé) : PV pleins, équipement ET bonus de
+    /// l'arbre de commandement inclus — la réserve doit annoncer les mêmes chiffres que le plateau.
+    /// </summary>
+    private void DrawSpecPreviewCard(SpriteBatch sb, UnitSpec spec)
+    {
+        var buffs = _run.BuffsFor(spec);
+        var maxHp = spec.UnitClass.MaxHp
+                    + (spec.Equipment?.BonusFor(EquipStat.Hp) ?? 0)
+                    + buffs.BonusFor(EquipStat.Hp);
+        DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipment, buffs,
+            _run.ActiveNodesFor(spec.Essential));
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
@@ -6246,7 +6468,10 @@ public sealed class GameplayScene : Scene
 
     // ── Cartes de combat (remplacent l'ancien panneau de droite) ──────────────────
     // Réutilisent le gabarit des cartes de recrutement ; le contenu sera retravaillé plus tard.
-    private const int CombatCardW = 200;
+    // Largeur calée sur la colonne d'améliorations d'arbre : marge gauche = CardPad + 2 cadres de 34
+    // + leur écart, puis 10 px avant le sprite 64 centré. L'icône d'équipement, à droite du sprite,
+    // vient alors buter exactement sur la marge droite.
+    private const int CombatCardW = 248;
     private const int CombatCardH = 330;
     private const int CombatCardGap = 24;
 
@@ -6383,8 +6608,8 @@ public sealed class GameplayScene : Scene
     {
         var c = unit.Class;
         DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
-            hpPreviewDamage: hpPreviewDamage);
-        DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment);
+            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit));
+        DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs);
     }
 
     // ── Mise en forme commune des cartes (combat + recrutement) ──────────────────
@@ -6396,13 +6621,16 @@ public sealed class GameplayScene : Scene
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
-        Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0)
+        Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
+        CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null)
     {
-        // Bonus de l'éventuel équipement de STAT, affichés en « +N » à côté de la stat concernée.
-        var hpBonus = equip?.BonusFor(EquipStat.Hp) ?? 0;
-        var dmgBonus = equip?.BonusFor(EquipStat.Damage) ?? 0;
-        var moveBonus = equip?.BonusFor(EquipStat.MoveRange) ?? 0;
-        var rangeBonus = equip?.BonusFor(EquipStat.AttackRange) ?? 0;
+        // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
+        // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
+        var b = buffs ?? CommandBuffs.None;
+        var hpBonus = (equip?.BonusFor(EquipStat.Hp) ?? 0) + b.BonusFor(EquipStat.Hp);
+        var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
+        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
+        var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
 
         Context.Style.DrawPanel(sb, rect);
@@ -6420,18 +6648,32 @@ public sealed class GameplayScene : Scene
         else
             DrawHiddenChip(sb, c, faction, sprite);
 
-        // Icône de l'équipement porté, à droite du sprite du pion (cadre 36, icône 32×32 centrée).
+        // Les deux MARGES latérales du sprite, hautes de la bande « sprite + icône de domaine ». Tout ce
+        // qui s'y pose est centré sur les deux axes : la mosaïque d'améliorations à gauche, l'icône
+        // d'équipement à droite. Les deux blocs se répondent donc, quel que soit le nombre d'icônes.
+        var bandH = 64 + 6 + DomaineIconSize;
+        var left = new Rectangle(rect.X + CardPad, sprite.Y, sprite.X - SpriteMargin - (rect.X + CardPad), bandH);
+        var right = new Rectangle(sprite.Right + SpriteMargin, sprite.Y,
+            rect.Right - CardPad - (sprite.Right + SpriteMargin), bandH);
+
+        // Icône de l'équipement porté : même cadre que les améliorations d'arbre, mais CERCLÉ D'OR.
         if (equip != null)
         {
-            var eRect = new Rectangle(sprite.Right + 8, sprite.Y + (64 - 36) / 2, 36, 36);
+            var eRect = new Rectangle(
+                right.X + (right.Width - TreeIconBox) / 2,
+                right.Y + (right.Height - TreeIconBox) / 2, TreeIconBox, TreeIconBox);
             DrawRect(sb, eRect, Palette.Black1);
             DrawRectBorder(sb, eRect, Palette.Yellow1, 1);
             DrawEquipIcon(sb, equip, eRect);
         }
+
+        // Améliorations d'arbre ACTIVES sur ce pion, en mosaïque à GAUCHE du sprite (pendant de l'équipement).
+        if (revealed && treeNodes is { Count: > 0 })
+            DrawActiveTreeNodes(sb, treeNodes, left);
         y = sprite.Bottom + 6;
 
         // Icône de domaine (39×39), centrée sous le pion.
-        var dom = new Rectangle(rect.X + (rect.Width - 39) / 2, y, 39, 39);
+        var dom = new Rectangle(rect.X + (rect.Width - DomaineIconSize) / 2, y, DomaineIconSize, DomaineIconSize);
         DrawDomaineIcon(sb, domaine, dom);
         y = dom.Bottom + 10;
 
@@ -6467,7 +6709,7 @@ public sealed class GameplayScene : Scene
                 new Rectangle(rect.X, rect.Bottom - CardPad - 9, rect.Width, 8), 1, Palette.Yellow2);
             return;
         }
-        var keywords = KeywordsFor(c, equip);
+        var keywords = KeywordsFor(c, equip, b);
         if (keywords.Count > 0)
         {
             var joined = string.Join(" | ", keywords.Select(k => k.Label));
@@ -6480,6 +6722,74 @@ public sealed class GameplayScene : Scene
             }
         }
     }
+
+    // Grille d'améliorations d'arbre, à gauche du sprite : cadres 34 (icône 32×32 native centrée),
+    // 2 colonnes × 3 rangées. Six emplacements = le maximum de nœuds pouvant agir sur un même pion
+    // (branche complète du commandant). La grille tient exactement entre la marge gauche et le sprite,
+    // et sa hauteur s'arrête au-dessus de la barre de PV.
+    private const int TreeIconBox = 34;
+    private const int TreeIconGap = 4;
+    private const int TreeIconPitch = TreeIconBox + TreeIconGap - 2;   // 36 : rangées presque jointives
+    private const int TreeIconCols = 2;
+    private const int TreeIconRows = 3;
+    private const int TreeIconSlots = TreeIconCols * TreeIconRows;
+
+    /// <summary>Côté de l'icône de domaine, sous le sprite (elle ferme la bande de référence des cartes).</summary>
+    private const int DomaineIconSize = 39;
+
+    /// <summary>Respiration entre le sprite du pion et les blocs d'icônes qui l'encadrent.</summary>
+    private const int SpriteMargin = 8;
+
+    /// <summary>
+    /// Améliorations de l'arbre ACTIVES sur ce pion, en mosaïque dans <paramref name="area"/> (la marge à
+    /// gauche du sprite, pendant de l'icône d'équipement à droite). La mosaïque s'ADAPTE au nombre d'icônes :
+    /// elle est centrée dans l'aire sur les deux axes, et chaque rangée est centrée à son tour — une icône
+    /// seule tombe donc au milieu, deux se posent côte à côte, une rangée incomplète reste centrée.
+    /// Au-delà de <see cref="TreeIconSlots"/> (arbre futur plus large), le dernier cadre devient un « +N ».
+    /// </summary>
+    private void DrawActiveTreeNodes(SpriteBatch sb, IReadOnlyList<CommandNode> nodes, Rectangle area)
+    {
+        var overflow = nodes.Count > TreeIconSlots;
+        var shown = overflow ? TreeIconSlots - 1 : nodes.Count;
+        var slots = overflow ? TreeIconSlots : nodes.Count;
+
+        var rows = (slots + TreeIconCols - 1) / TreeIconCols;
+        var top = area.Y + (area.Height - ((rows - 1) * TreeIconPitch + TreeIconBox)) / 2;
+
+        for (var i = 0; i < shown; i++)
+            _commandTree.DrawNodeIcon(sb, nodes[i], TreeIconSlot(sb, area, top, i, slots), Color.White);
+
+        if (overflow)
+            Context.Font.DrawCentered(sb, $"+{nodes.Count - shown}",
+                TreeIconSlot(sb, area, top, shown, slots), 1, Palette.Cyan1);
+    }
+
+    /// <summary>
+    /// Cadre du <paramref name="index"/>-ième emplacement d'une mosaïque de <paramref name="slots"/> cadres
+    /// (fond sombre + liseré cyan), dessiné puis renvoyé. La rangée est centrée horizontalement dans
+    /// <paramref name="area"/> selon le nombre de cadres qu'elle porte réellement.
+    /// </summary>
+    private Rectangle TreeIconSlot(SpriteBatch sb, Rectangle area, int top, int index, int slots)
+    {
+        var row = index / TreeIconCols;
+        var inRow = System.Math.Min(TreeIconCols, slots - row * TreeIconCols);   // dernière rangée : parfois 1 seul
+        var rowW = inRow * TreeIconBox + (inRow - 1) * TreeIconGap;
+
+        var r = new Rectangle(
+            area.X + (area.Width - rowW) / 2 + index % TreeIconCols * (TreeIconBox + TreeIconGap),
+            top + row * TreeIconPitch,
+            TreeIconBox, TreeIconBox);
+        DrawRect(sb, r, Palette.Black1);
+        DrawRectBorder(sb, r, Palette.Cyan1, 1);   // cyan = arbre (l'équipement, lui, est cerclé d'or)
+        return r;
+    }
+
+    /// <summary>
+    /// Améliorations d'arbre à montrer sur la carte d'une <see cref="Unit"/> : celles qui agissent sur elle
+    /// (commandant ou troupe). Null pour un ennemi — l'arbre ne le concerne jamais.
+    /// </summary>
+    private IReadOnlyList<CommandNode>? TreeNodesFor(Unit unit) =>
+        unit.Faction == Faction.Player ? _run.ActiveNodesFor(unit.IsEssential) : null;
 
     /// <summary>
     /// Une ligne de caractéristique : icône 32×32 à gauche, libellé, valeur alignée à droite. Si
@@ -6622,11 +6932,14 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Mots-clés d'une classe : ses traits + « Traverse allié » si elle perce ses alliés. Un éventuel
-    /// <paramref name="equip"/> de TRAIT ajoute son trait (comme un trait natif), sauf s'il fait doublon.
+    /// <paramref name="equip"/> de TRAIT et les <paramref name="buffs"/> de l'arbre de commandement
+    /// ajoutent leurs traits (comme des traits natifs), sauf doublon.
     /// </summary>
-    private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, Equipment? equip = null)
+    private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, Equipment? equip = null,
+        CommandBuffs? buffs = null)
     {
         var list = new List<UnitKeywords.Keyword>();
+        var seen = new HashSet<string>(c.Traits);
         foreach (var t in c.Traits)
             list.Add(UnitKeywords.For(t));
         // « Traverse allié » est redondant avec « Franchissement » (le cavalier franchit déjà tout) :
@@ -6635,26 +6948,31 @@ public sealed class GameplayScene : Scene
             list.Add(UnitKeywords.PiercesAllies);
         if (c.MinAttackRange > 1)
             list.Add(UnitKeywords.DeadZone);
-        // Traits octroyés par un équipement : affichés comme des traits natifs (sauf doublon avec la classe).
+        // Traits octroyés par un équipement puis par l'arbre : affichés comme des traits natifs.
         if (equip is { } eq)
             foreach (var et in eq.Traits)
-                if (!c.Traits.Contains(et))
+                if (seen.Add(et))
                     list.Add(UnitKeywords.For(et));
+        foreach (var bt in (buffs ?? CommandBuffs.None).Traits)
+            if (seen.Add(bt))
+                list.Add(UnitKeywords.For(bt));
         return list;
     }
 
     /// <summary>Popups permanents empilés SOUS la carte (évite la coupe au bord droit de l'écran).</summary>
-    private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null)
-        => DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip);
+    private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null,
+        CommandBuffs? buffs = null)
+        => DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs);
 
     /// <summary>
     /// Empile verticalement un popup par mot-clé depuis <paramref name="origin"/> : un panneau avec le
     /// libellé (jaune) et la description en lignes repliées. Rien si l'unité n'a aucun mot-clé.
     /// Inclut le trait d'un éventuel équipement (cf. <see cref="KeywordsFor"/>).
     /// </summary>
-    private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null)
+    private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null,
+        CommandBuffs? buffs = null)
     {
-        var keywords = KeywordsFor(c, equip);
+        var keywords = KeywordsFor(c, equip, buffs);
         if (keywords.Count == 0)
             return;
 
@@ -6922,7 +7240,7 @@ public sealed class GameplayScene : Scene
     {
         var availW = viewport.Width - RightPanelWidth;
         var flying = _protectRewardFlight > 0f;
-        var canCollect = RewardCheckedCount() <= Run.ReserveLimit - _run.ReserveCount;
+        var canCollect = RewardCheckedCount() <= _run.ReserveLimit - _run.ReserveCount;
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         var title = Loc.T("reward.title");
@@ -7042,7 +7360,7 @@ public sealed class GameplayScene : Scene
         var full = _run.IsReserveFull;
         var gp = Context.Input.UsingGamepad;
 
-        var counter = Loc.T("reserve.count", _run.ReserveCount, Run.ReserveLimit);
+        var counter = Loc.T("reserve.count", _run.ReserveCount, _run.ReserveLimit);
         Context.Font.Draw(sb, counter,
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, full ? Palette.Purple5 : Palette.Cyan1);
@@ -7557,10 +7875,13 @@ public sealed class GameplayScene : Scene
         // (~1,5 case) dans les 4 directions au lieu de verrouiller au centre, pour pouvoir regarder un
         // peu autour. Quand le plateau déborde, c'est `margin` (overscroll des bords) qui s'applique.
         var slack = tile * 1.5f;
+        // Débattement SUPPLÉMENTAIRE vers le haut : la caméra peut descendre le plateau d'une case de
+        // plus, pour dégager la rangée du fond de la frise des missions et voir ce qu'il y a au-dessus.
+        var topSlack = tile;
         float centerX = (centerWidth - pxW) / 2f;
         float centerY = (viewport.Height - pxH) / 2f;
         float ox = ClampAxis(centerX, _camera.X, pxW, centerWidth, margin, slack, out float cx);
-        float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, slack, out float cy);
+        float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, slack, out float cy, topSlack);
         _camera = new Vector2(cx, cy);          // ré-écrit le pan borné (pas de dérive hors limites)
 
         // Origine arrondie au pixel entier → pas de scintillement pendant le pan (pixel-perfect).
@@ -7573,13 +7894,16 @@ public sealed class GameplayScene : Scene
     /// Borne l'origine d'un axe : verrouillée au centre si le plateau (<paramref name="board"/>) rentre
     /// dans la zone (<paramref name="area"/>), sinon contrainte pour couvrir la zone bord à bord. Renvoie
     /// l'origine et, via <paramref name="clampedPan"/>, le pan effectivement appliqué.
+    /// <paramref name="extraHi"/> élargit la borne HAUTE seule (origine plus grande = plateau poussé vers
+    /// le bas) : sur l'axe Y, c'est le débattement supplémentaire pour regarder AU-DESSUS du plateau.
     /// </summary>
-    private static float ClampAxis(float center, float pan, float board, float area, float margin, float slack, out float clampedPan)
+    private static float ClampAxis(float center, float pan, float board, float area, float margin, float slack,
+        out float clampedPan, float extraHi = 0f)
     {
         float lo, hi;
         if (board <= area) { lo = center - slack; hi = center + slack; }   // tient : petit jeu autour du centre
         else { lo = area - board - margin; hi = margin; }   // déborde : overscroll des deux bords
-        float origin = MathHelper.Clamp(center + pan, lo, hi);
+        float origin = MathHelper.Clamp(center + pan, lo, hi + extraHi);
         clampedPan = origin - center;
         return origin;
     }

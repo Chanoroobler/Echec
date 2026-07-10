@@ -45,7 +45,8 @@ public static class Commandes
     private static IReadOnlyList<CommandeDef> Defaults() => new[]
     {
         new CommandeDef(CommandeRole.Commander, Domaine.Dame,
-            new UnitClass("Commandant", "commandant", tier: 1, maxHp: 26, damage: 6, moveRange: 2, attackRange: 1)),
+            new UnitClass("Commandant", "commandant", tier: 1, maxHp: 26, damage: 6, moveRange: 2, attackRange: 1),
+            deployments: 5, reserveSize: 8, treeId: "commandant", fusionPoints: 4),
         new CommandeDef(CommandeRole.Boss, Domaine.Dame,
             new UnitClass("Boss", "boss", tier: 1, maxHp: 30, damage: 8, moveRange: 1, attackRange: 1), phase: 0),
     };

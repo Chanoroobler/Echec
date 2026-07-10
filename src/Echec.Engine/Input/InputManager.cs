@@ -25,6 +25,9 @@ public sealed class InputManager
     private const float NavInitialDelay = 0.35f;
     private const float NavRepeat = 0.12f;
     private const float StickThreshold = 0.5f;
+
+    /// <summary>Zone morte du stick droit (caméra) : sous ce module, le stick est considéré au repos.</summary>
+    private const float StickDeadZone = 0.2f;
     private readonly bool[] _navWasDown = new bool[4];
     private readonly float[] _navTimer = new float[4];
     private readonly bool[] _nav = new bool[4];
@@ -103,6 +106,19 @@ public sealed class InputManager
     /// <summary>Navigation directionnelle (front + répétition auto) : croix directionnelle ou stick gauche.</summary>
     public bool Nav(NavDir dir) => _nav[(int)dir];
 
+    /// <summary>
+    /// Stick DROIT en ANALOGIQUE, zone morte appliquée (<see cref="Vector2.Zero"/> au repos) : <c>Y &gt; 0</c>
+    /// = poussé vers le haut. Pilote le déplacement libre de la caméra, en pendant du pan clavier.
+    /// </summary>
+    public Vector2 RightStick
+    {
+        get
+        {
+            var s = _currentPad.ThumbSticks.Right;
+            return s.LengthSquared() < StickDeadZone * StickDeadZone ? Vector2.Zero : s;
+        }
+    }
+
     /// <summary>Bouton de validation : A de la manette.</summary>
     public bool WasConfirmPressed => PadEdge(Buttons.A);
 
@@ -180,7 +196,7 @@ public sealed class InputManager
             b.Start == ButtonState.Pressed || b.Back == ButtonState.Pressed ||
             b.LeftShoulder == ButtonState.Pressed || b.RightShoulder == ButtonState.Pressed;
         var anyDir = _navWasDown[0] || _navWasDown[1] || _navWasDown[2] || _navWasDown[3];
-        return anyButton || anyDir;
+        return anyButton || anyDir || RightStick != Vector2.Zero;   // bouger la caméra = activité manette
     }
 
     private bool MouseActivity() =>

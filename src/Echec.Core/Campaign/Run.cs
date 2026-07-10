@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
+using Echec.Core.Command;
 using Echec.Core.Equip;
 using Echec.Core.Map;
 
@@ -45,9 +46,8 @@ public sealed class Run
 
     public const int DraftSize = 3;
 
-    /// <summary>Nombre MAXIMAL de pions dans la réserve (roster HORS commandant). Au-delà, il faut fusionner
-    /// ou supprimer pour recruter/récupérer de nouveaux pions.</summary>
-    public const int ReserveLimit = 8;
+    /// <summary>Points de commandement gagnés à chaque mission réussie (cf. <see cref="CommandPoints"/>).</summary>
+    public const int PointsPerMission = 2;
 
     /// <summary>
     /// Rythme STANDARD d'une phase (6 slots) : deux escarmouches, une mission spéciale, deux escarmouches,
@@ -132,6 +132,9 @@ public sealed class Run
     /// </summary>
     private readonly List<Equipment> _equipment = new();
 
+    /// <summary>Nœuds de l'arbre de commandement ACHETÉS pendant cette run (ids, cf. <see cref="CommandNode.Id"/>).</summary>
+    private readonly HashSet<string> _unlocked = new();
+
     /// <summary>
     /// Graine de la run, SAUVEGARDÉE. La vague ennemie et le terrain de chaque combat en dérivent de
     /// façon déterministe (cf. <see cref="CombatRng"/>) : « Continuer » régénère donc EXACTEMENT le
@@ -176,6 +179,98 @@ public sealed class Run
 
     /// <summary>Vrai si la réserve est pleine (<see cref="ReserveLimit"/> pions non-commandant).</summary>
     public bool IsReserveFull => ReserveCount >= ReserveLimit;
+
+    // ─── ARBRE DE COMMANDEMENT ────────────────────────────────────────────────────────────────────
+    // Le joueur gagne PointsPerMission points à chaque mission réussie, plus le bonus PROPRE à son
+    // commandant (CommandeDef.FusionPoints à chaque fusion, pour le commandant de départ). Il les dépense
+    // pendant le PLACEMENT dans l'arbre de son commandant (CommandTrees.For) : les nœuds achetés modifient
+    // ses plafonds (ReserveLimit / DeployLimit), ses bonus d'unité (BuffsFor) et la fusion (FusionRecruits).
+    // Tout est PROPRE À LA RUN : sauvegardé avec elle, remis à zéro à la campagne suivante.
+
+    /// <summary>Définition du commandant du joueur : ses plafonds de base, son arbre, sa source de points.</summary>
+    public CommandeDef CommanderDef { get; private set; } = Commandes.Commander;
+
+    /// <summary>Arbre de commandement du commandant courant.</summary>
+    public CommandTree Tree => CommandTrees.For(CommanderDef);
+
+    /// <summary>Points de commandement disponibles (non dépensés).</summary>
+    public int CommandPoints { get; private set; }
+
+    /// <summary>Ids des nœuds achetés (l'ordre n'a pas de sens).</summary>
+    public IReadOnlyCollection<string> UnlockedNodes => _unlocked;
+
+    public bool IsUnlocked(string nodeId) => _unlocked.Contains(nodeId);
+
+    /// <summary>Effets cumulés de tous les nœuds achetés.</summary>
+    public IEnumerable<CommandEffect> ActiveEffects => Tree.EffectsOf(_unlocked);
+
+    /// <summary>
+    /// Nœuds achetés dont AU MOINS UN effet agit sur la cible demandée (<paramref name="commander"/> vrai =
+    /// le commandant, faux = les troupes). Les nœuds de logistique (réserve, déploiement, bonus de fusion)
+    /// n'y figurent jamais : ils ne touchent aucune unité. Sert à afficher sur la carte d'un pion les
+    /// améliorations qui le concernent réellement.
+    /// </summary>
+    public IReadOnlyList<CommandNode> ActiveNodesFor(bool commander) =>
+        Tree.Nodes
+            .Where(n => _unlocked.Contains(n.Id)
+                        && n.Effects.Any(e => commander ? e.TargetsCommander : e.TargetsUnits))
+            .ToList();
+
+    /// <summary>
+    /// Nombre de PAIRES DE CLASSES DISTINCTES du roster hors commandant (classes distinctes ÷ 2, arrondi
+    /// vers le bas) : c'est le multiplicateur des bonus « par paire » (<see cref="CommandScale.PerDistinctPair"/>).
+    /// Compte la réserve ET les pions déployés — le roster est le même objet dans les deux cas.
+    /// </summary>
+    public int DistinctPairs =>
+        _roster.Where(u => !u.Essential).Select(u => u.UnitClass).Distinct().Count() / 2;
+
+    /// <summary>
+    /// Vrai si <paramref name="node"/> est achetable MAINTENANT : en placement, pas déjà pris, prérequis
+    /// satisfait (un nœud du niveau inférieur dans la même branche) et assez de points.
+    /// </summary>
+    public bool CanUnlock(CommandNode node) =>
+        Phase == RunPhase.Placement
+        && !IsUnlocked(node.Id)
+        && Tree.ById(node.Id) != null
+        && Tree.PrerequisiteMet(node, _unlocked)
+        && CommandPoints >= node.Cost;
+
+    /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
+    public bool Unlock(CommandNode node)
+    {
+        if (!CanUnlock(node))
+            return false;
+        CommandPoints -= node.Cost;
+        _unlocked.Add(node.Id);
+        return true;
+    }
+
+    /// <summary>Total d'un effet de méta sur les nœuds achetés (slots de réserve/déploiement, recrues de fusion).</summary>
+    private int TotalOf(CommandEffectKind kind) =>
+        ActiveEffects.Where(e => e.Kind == kind).Sum(e => e.Amount);
+
+    /// <summary>
+    /// Nombre MAXIMAL de pions dans la réserve (roster HORS commandant) : base du commandant + nœuds
+    /// « réserve ». Au-delà, il faut fusionner ou supprimer pour recruter/récupérer de nouveaux pions.
+    /// </summary>
+    public int ReserveLimit => CommanderDef.ReserveSize + TotalOf(CommandEffectKind.ReserveSlots);
+
+    /// <summary>
+    /// Nombre MAXIMAL de pions posables sur le plateau au placement, COMMANDANT COMPRIS : base du
+    /// commandant + nœuds « déploiement ». Borné par ailleurs par les cases de déploiement de la map.
+    /// </summary>
+    public int DeployLimit => CommanderDef.Deployments + TotalOf(CommandEffectKind.DeploySlots);
+
+    /// <summary>Unités tier 1 offertes EN PLUS à chaque fusion (nœud « fusion »). 0 = aucun bonus.</summary>
+    public int FusionRecruits => TotalOf(CommandEffectKind.FusionRecruit);
+
+    /// <summary>
+    /// Bonus d'arbre applicables à <paramref name="spec"/> : ceux du commandant s'il est essentiel, ceux
+    /// des troupes sinon. À passer à <see cref="UnitSpec.Spawn"/> — les bonus « par paire » sont figés au
+    /// roster du moment, donc recalculés à chaque phase de placement.
+    /// </summary>
+    public CommandBuffs BuffsFor(UnitSpec spec) =>
+        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs);
 
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
@@ -223,15 +318,18 @@ public sealed class Run
 
     public UnitSpec Commander => _roster.First(u => u.Essential);
 
-    /// <summary>(Re)démarre une campagne : commandant + 2 soldats, combat 1.</summary>
+    /// <summary>(Re)démarre une campagne : commandant + 2 soldats, combat 1, arbre de commandement vierge.</summary>
     public void Reset()
     {
+        CommanderDef = Commandes.Commander;
         _roster.Clear();
-        _roster.Add(ToSpec(Commandes.Commander));
+        _roster.Add(ToSpec(CommanderDef));
         _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
         _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
         _draft.Clear();
         _equipment.Clear();
+        _unlocked.Clear();
+        CommandPoints = 0;
         CombatNumber = 1;
         LegendaryPity = 0;
         RarePity = 0;
@@ -244,20 +342,40 @@ public sealed class Run
     /// sauvegarde n'a lieu qu'en placement, donc aucun état de combat / de recrutement à restaurer).
     /// </summary>
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
-        IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0)
+        IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
+        int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null)
     {
         var run = new Run(seed, firstRun);
         run._roster.Clear();
         run._roster.AddRange(roster);
+        run.CommanderDef = ResolveCommander(roster);
         run._equipment.Clear();
         if (inventory != null)
             run._equipment.AddRange(inventory);
+        run._unlocked.Clear();
+        // Nœuds inconnus de l'arbre courant (JSON modifié depuis la sauvegarde) : ignorés silencieusement.
+        foreach (var id in unlockedNodes ?? Array.Empty<string>())
+            if (run.Tree.ById(id) != null)
+                run._unlocked.Add(id);
+        run.CommandPoints = Math.Max(0, commandPoints);
         run.CombatNumber = combatNumber;
         run.LegendaryPity = System.Math.Max(0, legendaryPity);
         run.RarePity = System.Math.Max(0, rarePity);
         run.Phase = RunPhase.Placement;
         run._draft.Clear();
         return run;
+    }
+
+    /// <summary>
+    /// Retrouve la définition du commandant sauvegardé par l'asset de sa classe (repli : le commandant de
+    /// départ). Le roster ne conserve que des <see cref="UnitSpec"/> ; les plafonds et l'arbre vivent, eux,
+    /// sur la <see cref="CommandeDef"/>.
+    /// </summary>
+    private static CommandeDef ResolveCommander(IReadOnlyList<UnitSpec> roster)
+    {
+        var asset = roster.FirstOrDefault(u => u.Essential)?.UnitClass.Asset;
+        return Commandes.All.FirstOrDefault(c => c.Role == CommandeRole.Commander && c.BaseClass.Asset == asset)
+               ?? Commandes.Commander;
     }
 
     /// <summary>
@@ -599,6 +717,7 @@ public sealed class Run
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+        CommandPoints += PointsPerMission;   // toute mission réussie, boss et spéciale comprises
 
         if (IsFinalBoss)   // seul le boss final gagne la run ; les boss des phases 1-2 enchaînent
         {
@@ -647,6 +766,7 @@ public sealed class Run
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+        CommandPoints += PointsPerMission;
         _draft.Clear();
         Phase = RunPhase.Recruitment;
     }
@@ -741,6 +861,10 @@ public sealed class Run
 
         var fused = new UnitSpec(first.Domaine, evolution);   // l'unité évoluée sort nue
         _roster.Add(fused);
+        // Source de points PROPRE au commandant de départ : chaque fusion en rapporte (0 pour un commandant
+        // dont la source de gain sera autre). Le bonus « recrue de fusion » (FusionRecruits), lui, est
+        // appliqué par l'appelant : c'est lui qui sait quelles unités sont déjà découvertes.
+        CommandPoints += CommanderDef.FusionPoints;
         return fused;
     }
 

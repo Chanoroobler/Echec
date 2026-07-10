@@ -47,6 +47,15 @@ public sealed class RunSave
     public int LegendaryPity { get; set; }
     public int RarePity { get; set; }
 
+    /// <summary>Points de commandement non dépensés. Absent (vieux save) → 0.</summary>
+    public int CommandPoints { get; set; }
+
+    /// <summary>
+    /// Nœuds de l'arbre de commandement achetés (ids). Un id absent de l'arbre courant (JSON modifié depuis
+    /// la sauvegarde) est ignoré au chargement — sans rembourser ses points.
+    /// </summary>
+    public List<string> CommandNodes { get; set; } = new();
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -57,6 +66,7 @@ public sealed class RunSave
         {
             CombatNumber = run.CombatNumber, Seed = run.Seed, FirstRun = run.FirstRun,
             LegendaryPity = run.LegendaryPity, RarePity = run.RarePity,
+            CommandPoints = run.CommandPoints, CommandNodes = run.UnlockedNodes.ToList(),
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -74,7 +84,8 @@ public sealed class RunSave
             .Where(e => e != null)
             .Select(e => e!)
             .ToList();
-        return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity);
+        return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
+            CommandPoints, CommandNodes);
     }
 }
 

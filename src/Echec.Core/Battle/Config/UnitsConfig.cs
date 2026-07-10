@@ -32,6 +32,18 @@ public sealed class CommandeConfig
     /// sinon un boss « toutes phases », sinon le premier boss défini. Ignoré pour un Commander.
     /// </summary>
     public int Phase { get; set; }
+
+    /// <summary>COMMANDANT : pions posables au placement, commandant compris. Absent → 5.</summary>
+    public int? Deployments { get; set; }
+
+    /// <summary>COMMANDANT : taille de base de la réserve (hors commandant). Absent → 8.</summary>
+    public int? ReserveSize { get; set; }
+
+    /// <summary>COMMANDANT : id de son arbre dans commander_trees.json. Absent → « commandant ».</summary>
+    public string? Tree { get; set; }
+
+    /// <summary>COMMANDANT : points de commandement gagnés à chaque fusion (sa source de gain propre). Absent → 0.</summary>
+    public int? FusionPoints { get; set; }
 }
 
 /// <summary>Un domaine et sa classe de base (le motif de déplacement reste en code).</summary>

@@ -11,6 +11,8 @@ using Echec.Engine.UI;
 using Echec.Engine.UI.Text;
 using Echec.Core.Battle;
 using Echec.Core.Battle.Config;
+using Echec.Core.Command;
+using Echec.Core.Command.Config;
 using Echec.Core.Equip;
 using Echec.Game.Scenes;
 using Microsoft.Xna.Framework;
@@ -78,6 +80,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     {
         LoadUnitConfig();
         LoadEquipmentConfig();
+        LoadCommandTreeConfig();
         // Textes localisés (Assets/Config/strings.csv) chargés avant tout rendu d'UI.
         Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
@@ -118,6 +121,22 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         catch (System.Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"equipment.json ignoré (invalide) : {ex.Message}");
+        }
+    }
+
+    /// <summary>Charge les arbres de commandement depuis Assets/Config/commander_trees.json (repli sur les défauts).</summary>
+    private static void LoadCommandTreeConfig()
+    {
+        var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/commander_trees.json");
+        if (!System.IO.File.Exists(path))
+            return;
+        try
+        {
+            CommandTrees.Load(CommandTreeCatalog.FromJson(System.IO.File.ReadAllText(path)));
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"commander_trees.json ignoré (invalide) : {ex.Message}");
         }
     }
 

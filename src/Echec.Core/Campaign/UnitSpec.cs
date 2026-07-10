@@ -1,4 +1,5 @@
 using Echec.Core.Battle;
+using Echec.Core.Command;
 using Echec.Core.Equip;
 
 namespace Echec.Core.Campaign;
@@ -29,7 +30,11 @@ public sealed class UnitSpec
 
     public string Name => UnitClass.Name;
 
-    /// <summary>Instancie une unité neuve (PV au maximum) pour ce camp, équipement inclus.</summary>
-    public Unit Spawn(Faction faction) =>
-        new(Domaine, faction, UnitClass, Equipment) { IsEssential = Essential };
+    /// <summary>
+    /// Instancie une unité neuve (PV au maximum) pour ce camp, équipement inclus. <paramref name="buffs"/> =
+    /// bonus de l'arbre de commandement à appliquer (cf. <see cref="Run.BuffsFor"/>) ; null / omis pour un
+    /// ennemi ou un spawn hors campagne.
+    /// </summary>
+    public Unit Spawn(Faction faction, CommandBuffs? buffs = null) =>
+        new(Domaine, faction, UnitClass, Equipment, buffs) { IsEssential = Essential };
 }

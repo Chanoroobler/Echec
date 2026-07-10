@@ -56,6 +56,7 @@ placement.deployed,DEPLOYES {0}/{1},DEPLOYED {0}/{1}
 placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED
 placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD
 placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY
+placement.hint_gp_btn,A VALIDER  B PLATEAU,A CONFIRM  B BOARD
 placement.hint_gp_fight,Y : COMBATTRE,Y : FIGHT
 placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE
 placement.hint_fight,ENTREE : COMBATTRE,ENTER : FIGHT
@@ -246,3 +247,56 @@ tuto.card_continue_gp,A POUR LA SUITE,A FOR NEXT
 tuto.skip,PASSER LE TUTO,SKIP TUTORIAL
 tuto.victory_title,BRAVO ! TU CONNAIS LES BASES DU COMBAT.,WELL DONE ! YOU KNOW THE COMBAT BASICS.
 tuto.continue,CLIC POUR COMMENCER A JOUER,CLICK TO START PLAYING
+
+# ── Arbre de commandement (placement) ───────────────────────────────────────
+tree.button,COMMANDEMENT : {0},COMMAND : {0}
+tree.title,COMMANDEMENT,COMMAND
+tree.points,POINTS DISPONIBLES : {0},AVAILABLE POINTS : {0}
+# Sources de points : la mission (commune) puis celle propre au commandant (cle tree.<idArbre>.income).
+# Ecrites en minuscules : elles sont rendues telles quelles (preserveCase) pour se detacher des libelles.
+tree.income_mission,+{0} points à chaque mission réussie,+{0} points for each mission won
+tree.commandant.income,+{0} points à chaque fusion,+{0} points for each fusion
+tree.close,FERMER,CLOSE
+tree.hint,CLIC : ACHETER   ECHAP : FERMER,CLICK : BUY   ESC : CLOSE
+tree.hint_gp,A : ACHETER   B : FERMER,A : BUY   B : CLOSE
+# Libellés de branche (clé = tree.<idArbre>.branch<N>)
+tree.commandant.branch0,COMMANDANT,COMMANDER
+tree.commandant.branch1,TROUPES,TROOPS
+tree.commandant.branch2,LOGISTIQUE,LOGISTICS
+# Noeuds : branche COMMANDANT
+tree.cmd_rempart,REMPART,BULWARK
+tree.cmd_rempart.desc,LE COMMANDANT REDUIT DE 4 LES DEGATS SUBIS A PORTEE 2 OU PLUS.,THE COMMANDER TAKES 4 LESS DAMAGE FROM ATTACKS AT RANGE 2 OR MORE.
+tree.cmd_puissance,PUISSANCE DU MENEUR,LEADER POWER
+tree.cmd_puissance.desc,+1 PUISSANCE AU COMMANDANT PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 POWER TO THE COMMANDER FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.cmd_vie,VIGUEUR DU MENEUR,LEADER VIGOR
+tree.cmd_vie.desc,+2 PV AU COMMANDANT PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+2 HP TO THE COMMANDER FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.cmd_mouvement,FOULEE DU MENEUR,LEADER STRIDE
+tree.cmd_mouvement.desc,+1 DEPLACEMENT AU COMMANDANT.,+1 MOVEMENT TO THE COMMANDER.
+tree.cmd_duelliste,DUELLISTE,DUELIST
+tree.cmd_duelliste.desc,LE COMMANDANT REDUIT DE 4 LES DEGATS SUBIS AU CORPS A CORPS.,THE COMMANDER TAKES 4 LESS DAMAGE FROM MELEE ATTACKS.
+tree.cmd_portee,ALLONGE DU MENEUR,LEADER REACH
+tree.cmd_portee.desc,+1 PORTEE AU COMMANDANT.,+1 ATTACK RANGE TO THE COMMANDER.
+# Noeuds : branche TROUPES
+tree.troupe_vie,ENDURANCE,ENDURANCE
+tree.troupe_vie.desc,+2 PV A TOUTES LES UNITES SAUF LE COMMANDANT.,+2 HP TO EVERY UNIT EXCEPT THE COMMANDER.
+tree.troupe_puissance,TACTIQUE COMBINEE,COMBINED TACTICS
+tree.troupe_puissance.desc,+1 PUISSANCE AUX UNITES PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 POWER TO EVERY UNIT FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.troupe_vie_paire,COHESION,COHESION
+tree.troupe_vie_paire.desc,+1 PV AUX UNITES PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 HP TO EVERY UNIT FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.troupe_fusion,LEVEE EN MASSE,MASS LEVY
+tree.troupe_fusion.desc,CHAQUE FUSION RECRUTE EN PLUS UNE UNITE DE BASE AU HASARD.,EACH FUSION ALSO RECRUITS ONE RANDOM BASIC UNIT.
+tree.troupe_mouvement,MARCHE FORCEE,FORCED MARCH
+tree.troupe_mouvement.desc,+1 DEPLACEMENT A TOUTES LES UNITES SAUF LE COMMANDANT.,+1 MOVEMENT TO EVERY UNIT EXCEPT THE COMMANDER.
+# Noeuds : branche LOGISTIQUE
+tree.logi_deploiement_1,AVANT-GARDE,VANGUARD
+tree.logi_deploiement_1.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_reserve_1,INTENDANCE,QUARTERMASTER
+tree.logi_reserve_1.desc,+2 PLACES EN RESERVE.,+2 RESERVE SLOTS.
+tree.logi_deploiement_2,RENFORTS,REINFORCEMENTS
+tree.logi_deploiement_2.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_reserve_2,CONVOI,SUPPLY TRAIN
+tree.logi_reserve_2.desc,+2 PLACES EN RESERVE.,+2 RESERVE SLOTS.
+tree.logi_deploiement_3,BATAILLE RANGEE,PITCHED BATTLE
+tree.logi_deploiement_3.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_reserve_3,GRANDE ARMEE,GRAND ARMY
+tree.logi_reserve_3.desc,+4 PLACES EN RESERVE.,+4 RESERVE SLOTS.

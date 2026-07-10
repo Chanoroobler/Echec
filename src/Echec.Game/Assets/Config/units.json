@@ -105,8 +105,13 @@
   // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   // Pour un Boss, "phase" (1..3) le réserve à cette phase de campagne ; 0 ou absent = toutes phases (repli).
   // Le combat de boss d'une phase prend le boss de CETTE phase, sinon un boss "toutes phases", sinon le 1er.
+  // Un COMMANDANT porte en plus ses plafonds d'armée (deployments = pions posables COMMANDANT COMPRIS,
+  // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
+  // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
+  // Ces quatre champs sont ignorés pour un boss.
   "commandes": [
-    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1 },
+    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1,
+      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2 },
     { "role": "Boss",      "domaine": "Dame", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase":1 }
     // Exemples de boss par phase (à définir — décommenter/adapter) :
     // { "role": "Boss", "domaine": "Dame", "name": "Boss Phase 1", "asset": "boss", "hp": 30, "damage":  9, "moveRange": 1, "attackRange": 1, "phase": 1 },
