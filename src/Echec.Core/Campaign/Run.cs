@@ -235,6 +235,12 @@ public sealed class Run
         && Tree.PrerequisiteMet(node, _unlocked)
         && CommandPoints >= node.Cost;
 
+    /// <summary>
+    /// Offre des points de commandement HORS mission : sert au tutoriel, qui prête au joueur de quoi
+    /// acheter son premier nœud. Un montant négatif est ignoré.
+    /// </summary>
+    public void GrantCommandPoints(int amount) => CommandPoints += Math.Max(0, amount);
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {

@@ -140,7 +140,8 @@ internal sealed class MainForm : Form
         bar.Controls.Add(_nameBox);
 
         bar.Controls.Add(Label("Type :"));
-        _typeBox.Items.AddRange(new object[] { "Escarmouche", "Speciale", "Boss" });
+        // « Tutoriel » : la map du combat zéro. Le jeu la charge par ce type et ne la tire JAMAIS en campagne.
+        _typeBox.Items.AddRange(new object[] { "Escarmouche", "Speciale", "Boss", "Tutoriel" });
         _typeBox.SelectedIndex = 0;
         _typeBox.SelectedIndexChanged += (_, _) =>
         {

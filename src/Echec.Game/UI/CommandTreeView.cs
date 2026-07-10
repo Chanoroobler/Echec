@@ -94,18 +94,27 @@ public sealed class CommandTreeView
     /// FERMER et la touche Échap (traitée par la scène) referment. Renvoie vrai si l'écran doit rester
     /// ouvert (faux = le joueur vient de le fermer par un bouton de cette vue).
     /// </summary>
-    public bool Update(Run run, Rectangle area, float dt)
+    /// <summary>
+    /// <paramref name="canClose"/> faux (tutoriel) : le bouton FERMER et B sont inertes tant que le joueur
+    /// n'a pas acheté son nœud — le guide referme l'arbre lui-même.
+    /// </summary>
+    public bool Update(Run run, Rectangle area, float dt, bool canClose = true)
     {
         _pulse += dt;
         Layout(run.Tree, area);
 
         if (_ctx.Input.UsingGamepad)
         {
-            if (_ctx.Input.WasCancelPressed) { Close(); return false; }
+            if (canClose && _ctx.Input.WasCancelPressed) { Close(); return false; }
             MoveFocus(run.Tree);
             if (_ctx.Input.WasConfirmPressed)
             {
-                if (_focusLevel == CloseFocusLevel) { Close(); return false; }
+                if (_focusLevel == CloseFocusLevel)
+                {
+                    if (!canClose) return true;
+                    Close();
+                    return false;
+                }
                 if (FocusedNode(run.Tree) is { } focused)
                     TryUnlock(run, focused);
             }
@@ -115,7 +124,12 @@ public sealed class CommandTreeView
         var mouse = _ctx.Input.MousePosition;
         if (_ctx.Input.WasLeftClicked)
         {
-            if (CloseButtonRect(area).Contains(mouse)) { Close(); return false; }
+            if (CloseButtonRect(area).Contains(mouse))
+            {
+                if (!canClose) return true;
+                Close();
+                return false;
+            }
             if (NodeAt(run.Tree, mouse) is { } clicked)
                 TryUnlock(run, clicked);
         }

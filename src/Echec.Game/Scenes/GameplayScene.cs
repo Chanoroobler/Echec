@@ -238,9 +238,7 @@ public sealed class GameplayScene : Scene
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
     private int _tutorialCardIndex;                        // donnée de carte en cours de revue (0..3)
-    private float _tutorialCardTimer;                      // temps restant avant passage auto à la donnée suivante
     private const int TutorialCardStats = 5;              // Déplacement (domaine), PV, Puissance, Mouvement, Portée
-    private const float TutorialCardSeconds = 6f;         // durée d'affichage auto par donnée
 
     // Recrutement : le panneau d'inventaire est VISIBLE pendant le choix (on voit son armée, hors
     // commandant). À la sélection, le pion de la carte choisie VOLE vers son emplacement d'inventaire,
@@ -331,8 +329,25 @@ public sealed class GameplayScene : Scene
     private bool _gpButtons;
     private int _btnFocus;
 
-    /// <summary>Nombre de boutons focusables du panneau de placement (aucun en tutoriel : lancement scénarisé).</summary>
-    private const int PlacementButtonCount = 2;
+    /// <summary>
+    /// Le bouton COMMANDEMENT n'apparaît en tutoriel qu'à sa propre leçon : c'est PAR LUI que le joueur
+    /// ouvre l'arbre, comme en vraie partie. Avant, il n'aurait rien à montrer (zéro point, arbre non
+    /// présenté) ; après, la modale le recouvre de toute façon.
+    /// </summary>
+    private bool ShowCommandTreeButton =>
+        _tutorial is null or { Step: TutorialStep.TreeOpen } or { Step: TutorialStep.TreeDo };
+
+    /// <summary>
+    /// Le bouton COMBATTRE est là dès les leçons de PLACEMENT du tuto — c'est par lui qu'on lance le combat,
+    /// comme dans une vraie partie. Il disparaît pendant la préparation guidée, où le guide pilote la suite.
+    /// </summary>
+    private bool ShowFightButton => _tutorial is null or { InPlacement: true };
+
+    /// <summary>Rang du bouton COMBATTRE dans la zone de focus manette (il suit COMMANDEMENT quand celui-ci est là).</summary>
+    private int FightButtonIndex => ShowCommandTreeButton ? 1 : 0;
+
+    /// <summary>Nombre de boutons focusables du panneau de placement (0 pendant la préparation guidée).</summary>
+    private int PlacementButtonCount => (ShowCommandTreeButton ? 1 : 0) + (ShowFightButton ? 1 : 0);
 
     private Cell? _selected;
     // Buffers RÉUTILISÉS (remplis par les variantes sans-alloc du Match) : évitent une allocation
@@ -936,11 +951,30 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void BeginTutorial()
     {
-        Columns = 8;
-        Rows = 8;
-        _map = null;                                            // tutoriel : board plat 8×8, jamais une map dessinée
+        // Map DESSINÉE du tuto (6×6 d'herbe, type Tutoriel → jamais tirée par la campagne). Absente ou
+        // illisible : repli sur un board plat de même taille, le tuto reste jouable.
+        _map = _maps.FirstOrDefault(m => m.Type == CombatType.Tutoriel);
+        if (_map is { } tutoMap)
+        {
+            Columns = tutoMap.Width;
+            Rows = tutoMap.Height;
+            _battlefield = Battlefield.FromMap(tutoMap);
+        }
+        else
+        {
+            Columns = Rows = 6;
+            _battlefield = Battlefield.CreateFlat(Columns, Rows);   // herbe partout, aucun obstacle
+        }
         _boardIntro = _boardIntroTotal = 0f;                    // pas d'animation d'assemblage en tutoriel
-        _battlefield = Battlefield.CreateFlat(Columns, Rows);   // herbe partout, aucun obstacle
+        _bushCells.Clear();
+        _recrueCells.Clear();
+        _chestCells.Clear();
+        _chestConsumed.Clear();
+        _chestPrev.Clear();
+        // Le seul objet de la map du tuto : le coffre de la leçon « équipement ».
+        if (_map is { } withObjects)
+            foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
+                _chestCells.Add(o.Cell);
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
         _playerSpec.Clear();
@@ -972,20 +1006,68 @@ public sealed class GameplayScene : Scene
         var enemyCell = new Cell(Columns / 2, 1);
         _match.Place(enemyCell, new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass).Spawn(Faction.Enemy));
 
-        _tutorial = new TutorialGuide { Commander = commanderCell, EnemySoldier = enemyCell };
+        _tutorial = new TutorialGuide
+        {
+            Commander = commanderCell,
+            EnemySoldier = enemyCell,
+            Chest = _chestCells.Count > 0 ? _chestCells[0] : null,
+        };
         _cursor = commanderCell;        // curseur manette sur la zone joueur
         MarkLayoutDirty();
         // Reste en phase PLACEMENT (pas de StartBattle, pas de sauvegarde) : le tuto guide le placement.
     }
 
-    /// <summary>Fin du tutoriel (victoire OU skip) : enchaîne sur le vrai combat 1 (CombatNumber inchangé).</summary>
+    /// <summary>
+    /// Fin du tutoriel (victoire OU skip) : enchaîne sur le vrai combat 1. La préparation guidée a PRÊTÉ au
+    /// joueur trois soldats, un équipement et des points de commandement ; <see cref="Run.Reset"/> rend la
+    /// run à son état de départ (commandant + 2 soldats, rien d'autre) pour que le tuto ne fuite pas dans
+    /// l'équilibrage. C'est aussi lui qui repasse la run en phase de placement.
+    /// </summary>
     private void EndTutorial()
     {
         _tutorial = null;
+        _commandTree.Close();
+        _equipPhase = false;
         ClearSelection();
-        _run.ReturnToPlacement();   // le tuto avait basculé la run en phase Battle → on revient au placement
+        _run.Reset();               // rend les prêts du tuto : roster, équipement, points de commandement
         BeginPlacement();           // 1re sauvegarde de la run a lieu ici (combat réel), jamais pendant le tuto
     }
+
+    /// <summary>
+    /// Bascule du combat guidé vers la PRÉPARATION guidée : on revient en phase de placement sur la même map,
+    /// le cadavre ennemi est retiré, et on PRÊTE au joueur un 3ᵉ soldat (pour atteindre les
+    /// <see cref="Run.FusionSize"/> exemplaires d'une fusion). L'équipement, lui, a été gagné pour de vrai au
+    /// coffre (<see cref="TutorialStep.Chest"/>), et les points de commandement viendront de la fusion
+    /// (cf. <see cref="Battle.CommandeDef.FusionPoints"/>). Tout est rendu par <see cref="EndTutorial"/>.
+    /// </summary>
+    private void BeginTutorialPreparation()
+    {
+        _run.ReturnToPlacement();
+        _battleIntroTimer = 0;
+        _equipPhase = false;
+        ClearSelection();
+
+        // Le plateau ne garde que le commandant : l'ennemi est mort, le soldat du combat a fait son office.
+        foreach (var (cell, unit) in _match.Units().Where(u => !u.Unit.IsEssential).ToList())
+        {
+            _match.Remove(cell);
+            _playerSpec.Remove(unit);
+        }
+
+        // Prêt du tuto : le roster (commandant + 2 soldats) passe à 3 soldats → une fusion est possible.
+        _run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+
+        _pending.Clear();
+        _pending.AddRange(ArmyMinusCommander());
+        _dragSpec = null;
+        _dragFrom = null;
+        _gpInventory = false;
+        _gpButtons = false;
+        MarkLayoutDirty();
+    }
+
+    /// <summary>Équipement prêté par le tuto : un bonus de STAT, posable sur n'importe quelle classe.</summary>
+    private const string TutorialEquipmentId = "epee";
 
     /// <summary>Fin du placement : lance le combat (la vague ennemie est déjà posée).</summary>
     private void BeginBattle()
@@ -1150,7 +1232,11 @@ public sealed class GameplayScene : Scene
         _chestConsumed.Add(c);
         // Butin : rareté tirée selon la phase + la « pitié » (bonus cumulé tant qu'on ne drop pas), puis un
         // équipement de cette rareté. Met à jour l'état de pitié de la run (sauvegardé au prochain placement).
-        var item = _run.RollChestEquipment(new System.Random());
+        // TUTORIEL : butin FIXE (une épée, bonus de stat posable sur n'importe quelle classe) — la leçon
+        // suivante doit pouvoir l'équiper, et la « pitié » de la vraie run n'a pas à bouger.
+        var item = _tutorial != null
+            ? Equipments.ById(TutorialEquipmentId)
+            : _run.RollChestEquipment(new System.Random());
         if (item == null)
             return;
         _chestReveal = item;
@@ -1452,8 +1538,9 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Échap pendant l'arbre de commandement : le referme plutôt que d'ouvrir le menu pause.
-        if (CommandTreeOpen && !_pauseMenu.IsOpen && Context.Input.WasKeyPressed(Keys.Escape))
+        // Échap pendant l'arbre de commandement : le referme plutôt que d'ouvrir le menu pause. En tuto,
+        // l'arbre reste ouvert tant que le nœud n'est pas acheté (le guide le referme lui-même).
+        if (CommandTreeOpen && _tutorial == null && !_pauseMenu.IsOpen && Context.Input.WasKeyPressed(Keys.Escape))
         {
             _commandTree.Close();
             RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
@@ -1515,10 +1602,20 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlacement(GameTime gameTime)
     {
+        // Tuto, PRÉPARATION guidée : ces étapes pilotent elles-mêmes les modales (sous-phase Équipement,
+        // arbre de commandement) et doivent donc être évaluées AVANT les retours anticipés ci-dessous.
+        if (_tutorial is { InPreparation: true })
+        {
+            if (TutorialSkipPressed()) { EndTutorial(); return; }
+            if (UpdateTutorialPreparation())
+                return;               // encart : placement gelé (le clic d'avancement est consommé)
+        }
+
         // Arbre de commandement ouvert : modale par-dessus le placement, qui reste gelé derrière.
         if (CommandTreeOpen)
         {
-            _commandTree.Update(_run, CommandTreeArea(), (float)gameTime.ElapsedGameTime.TotalSeconds);
+            _commandTree.Update(_run, CommandTreeArea(), (float)gameTime.ElapsedGameTime.TotalSeconds,
+                canClose: _tutorial == null);   // en tuto, on ne sort qu'après avoir acheté un nœud
             if (!CommandTreeOpen)
                 RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
             return;
@@ -1536,7 +1633,7 @@ public sealed class GameplayScene : Scene
         {
             if (TutorialSkipPressed()) { EndTutorial(); return; }
             var pre = _tutorial.Step;
-            UpdateTutorialPlacement((float)gameTime.ElapsedGameTime.TotalSeconds);
+            UpdateTutorialPlacement();
             if (pre is TutorialStep.Intro or TutorialStep.ReviewCard)
                 return;   // intro / revue : placement gelé (et le clic d'avancement est consommé)
         }
@@ -1586,15 +1683,16 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Bouton COMBATTRE (souris) : lance le combat comme Entrée. Testé avant le drag pour ne pas démarrer une prise.
-        if (_tutorial == null && Context.Input.WasLeftClicked && FightButtonRect().Contains(mouse))
+        // Bouton COMBATTRE (souris) : lance le combat comme Entrée. Testé avant le drag pour ne pas démarrer une
+        // prise. En tuto, TryStartBattle ne mord qu'à l'étape prévue — le bouton est inerte avant.
+        if (ShowFightButton && Context.Input.WasLeftClicked && FightButtonRect().Contains(mouse))
         {
             TryStartBattle();
             return;
         }
 
         // Bouton COMMANDEMENT (souris) : ouvre l'arbre. Même précaution que COMBATTRE vis-à-vis du drag.
-        if (_tutorial == null && Context.Input.WasLeftClicked && CommandTreeButtonRect().Contains(mouse))
+        if (ShowCommandTreeButton && Context.Input.WasLeftClicked && CommandTreeButtonRect().Contains(mouse))
         {
             _commandTree.Open();
             return;
@@ -1630,13 +1728,13 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Avancement des étapes de PLACEMENT du tuto (prise → pose → revue de carte → lancement).</summary>
-    private void UpdateTutorialPlacement(float dt)
+    private void UpdateTutorialPlacement()
     {
         var t = _tutorial!;
         switch (t.Step)
         {
             case TutorialStep.Intro:
-                if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+                if (Advanced())
                     t.Advance();                            // intro lue → PickSoldier
                 break;
             case TutorialStep.PickSoldier:
@@ -1647,25 +1745,188 @@ public sealed class GameplayScene : Scene
                 if (_dragSpec == null && _pending.Count == 0)
                 {
                     t.PlayerSoldier = FindTutorialSoldierCell();
-                    RepositionTutorialEnemy(t.PlayerSoldier);   // rapproche l'ennemi (peu de déplacement)
+                    PlaceTutorialChest(t.PlayerSoldier);        // coffre COLLÉ au soldat : un seul pas
+                    if (t.Chest is { } chest)
+                        PlaceTutorialEnemy(chest);              // ennemi à 4 cases du coffre (cf. le script)
+                    else
+                        RepositionTutorialEnemy(t.PlayerSoldier);
                     _tutorialCardIndex = 0;
-                    _tutorialCardTimer = TutorialCardSeconds;
                     t.Advance();                                // soldat posé → ReviewCard (revue DÈS la pose)
                 }
                 break;
             case TutorialStep.ReviewCard:
-                UpdateTutorialCardReview(dt);                   // défile les données ; à la fin → StartCombat
+                UpdateTutorialCardReview();                     // une donnée par clic ; à la fin → StartCombat
                 break;
         }
     }
 
+    /// <summary>
+    /// Avancement de la PRÉPARATION guidée (fusion → équipement → arbre). Renvoie vrai si le placement doit
+    /// rester GELÉ cette frame (encart en attente de validation). Chaque étape « faire » se termine sur la
+    /// preuve que le geste a réussi — une évolution au roster, l'équipement posé, un nœud acheté — et jamais
+    /// sur un simple clic, pour que le joueur apprenne vraiment le geste.
+    /// </summary>
+    private bool UpdateTutorialPreparation()
+    {
+        var t = _tutorial!;
+
+        // Encarts : un clic / A / Entrée passe à l'étape suivante, et gèle tout le reste en attendant.
+        if (t.IsBriefing)
+        {
+            if (!Advanced())
+                return true;
+            if (t.Step == TutorialStep.Done)
+            {
+                EndTutorial();
+                return true;
+            }
+            t.Advance();
+            OnTutorialPreparationStep();
+            return true;
+        }
+
+        switch (t.Step)
+        {
+            case TutorialStep.FusionDo:
+                // Réussite = une unité NON basique au roster (l'évolution issue de la fusion), l'animation finie.
+                if (!FusionOpen && !EvoPlaying
+                    && _run.Roster.Any(u => !u.Essential && u.UnitClass != Domaines.Dame.BaseClass))
+                    t.Advance();
+                break;
+
+            case TutorialStep.DeployFused:
+                // Réussite = la réserve est vide, donc l'unité évoluée est sur le plateau (prête à s'équiper).
+                if (_pending.Count == 0 && _dragSpec == null)
+                {
+                    t.Advance();                 // → EquipIntro
+                    return true;                 // l'encart s'affiche dès cette frame
+                }
+                break;
+
+            case TutorialStep.EquipDo:
+                // Réussite = l'épée est COLLÉE à un pion. (L'inventaire se vide aussi pendant le portage :
+                // on regarde donc le roster, et on attend que le glisser soit relâché.)
+                if (_dragEquip == null && _run.Roster.Any(u => u.Equipment != null))
+                {
+                    ExitEquipPhase();
+                    t.Advance();                 // → TreeIntro
+                    return true;
+                }
+                break;
+
+            case TutorialStep.TreeOpen:
+                // Réussite = le joueur a ouvert l'arbre LUI-MÊME, par le bouton COMMANDEMENT du panneau.
+                if (CommandTreeOpen)
+                    t.Advance();                     // → TreeDo
+                break;
+
+            case TutorialStep.TreeDo:
+                // Réussite = un nœud acheté. L'arbre ne peut pas être refermé avant (cf. canClose).
+                if (_run.UnlockedNodes.Count > 0)
+                {
+                    if (CommandTreeOpen)
+                        _commandTree.Close();
+                    RespawnPlayerUnitsFromSpecs();   // le nœud acheté change les stats du pion posé
+                    t.Advance();                     // → Done
+                    return true;
+                }
+                break;
+        }
+        return false;
+    }
+
+    /// <summary>Mise en place de l'étape de préparation qui vient de commencer (ouverture des modales prêtées).</summary>
+    private void OnTutorialPreparationStep()
+    {
+        switch (_tutorial!.Step)
+        {
+            case TutorialStep.EquipDo:
+                // L'épée vient du coffre. Filet de sécurité si la map du tuto n'en portait pas : sans objet
+                // à poser, l'étape ne pourrait jamais se terminer.
+                if (!_run.EquipmentInventory.Any() && Equipments.ById(TutorialEquipmentId) is { } spare)
+                    _run.AddEquipment(spare);
+                EnterEquipPhase();   // le tuto ouvre la sous-phase à la place du bouton SUIVANT
+                break;
+            case TutorialStep.TreeOpen:
+                // La fusion a normalement rapporté des points ; on complète si ce commandant n'en donne pas,
+                // pour que le bouton en affiche et que le premier nœud soit achetable.
+                _run.GrantCommandPoints(CommandTree.CostOf(1) - _run.CommandPoints);
+                break;
+        }
+    }
+
+    /// <summary>Vrai si le joueur valide l'encart courant (clic gauche, A manette, ou Entrée).</summary>
+    private bool Advanced() =>
+        Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter);
+
     /// <summary>Rapproche l'ennemi du tuto : 3 cases DEVANT le soldat posé (même colonne) → 1 pas chacun = corps à corps.</summary>
+    /// <summary>
+    /// Repose le coffre du tuto sur une case ADJACENTE au soldat qui vient d'être posé. La map en déclare
+    /// un (pour l'éditeur et le chargement), mais sa case n'a pas de sens ici : le joueur choisit librement
+    /// où déployer, et la leçon du coffre doit tenir en UN déplacement quoi qu'il choisisse. On préfère les
+    /// cases du BAS et des côtés — jamais celle vers l'ennemi, qui s'y placerait dessus.
+    /// </summary>
+    private void PlaceTutorialChest(Cell soldier)
+    {
+        if (_chestCells.Count == 0)
+            return;
+
+        Cell[] candidates =
+        {
+            new(soldier.Column - 1, soldier.Row),       // gauche
+            new(soldier.Column + 1, soldier.Row),       // droite
+            new(soldier.Column - 1, soldier.Row + 1),   // bas-gauche
+            new(soldier.Column + 1, soldier.Row + 1),   // bas-droite
+            new(soldier.Column, soldier.Row + 1),       // bas
+        };
+
+        _chestCells.Clear();
+        _chestConsumed.Clear();
+        _chestPrev.Clear();
+        foreach (var c in candidates)
+        {
+            if (!_match.InBounds(c) || _match.UnitAt(c) != null || _battlefield[c].BlocksMovement)
+                continue;
+            _chestCells.Add(c);
+            _tutorial!.Chest = c;
+            return;
+        }
+        _tutorial!.Chest = null;   // aucune case libre autour (impossible sur cette map) : leçon sautée
+    }
+
+    /// <summary>
+    /// Place l'ennemi à EXACTEMENT 4 cases du COFFRE, dans sa colonne. Tout le script du combat en découle,
+    /// et l'alternance stricte (un coup chacun) le rend déterministe :
+    /// <list type="number">
+    /// <item>le joueur va sur le coffre (seul pas offert) ; l'ennemi avance → distance 3 ;</item>
+    /// <item>le joueur avance → 2 ; l'ennemi avance → 1, ADJACENT mais c'est au joueur de jouer ;</item>
+    /// <item>le joueur FRAPPE LE PREMIER ; l'ennemi riposte (12 PV − 10 = 2 PV) ;</item>
+    /// <item>le joueur achève. Il survit à 2 PV, et l'ennemi n'a jamais frappé deux fois.</item>
+    /// </list>
+    /// Une distance PAIRE inverserait l'ordre : l'ennemi deviendrait adjacent à SON tour et cognerait le
+    /// premier, tuant le soldat au second échange.
+    /// </summary>
+    private void PlaceTutorialEnemy(Cell chest)
+    {
+        var t = _tutorial!;
+        if (_match.UnitAt(t.EnemySoldier) is not { } enemy)
+            return;
+        var target = new Cell(chest.Column, System.Math.Max(0, chest.Row - 4));
+        if (target == t.EnemySoldier || _match.UnitAt(target) != null)
+            return;
+        _match.Remove(t.EnemySoldier);
+        _match.Place(target, enemy);
+        t.EnemySoldier = target;
+    }
+
     private void RepositionTutorialEnemy(Cell soldier)
     {
         var t = _tutorial!;
         if (_match.UnitAt(t.EnemySoldier) is not { } enemy)
             return;
-        var target = new Cell(soldier.Column, System.Math.Max(1, soldier.Row - 3));
+        // EXACTEMENT 3 cases devant : le joueur avance (2), l'ennemi avance (1), puis le joueur FRAPPE LE
+        // PREMIER. À 2 cases, l'ennemi deviendrait adjacent à son propre tour et cognerait avant lui.
+        var target = new Cell(soldier.Column, System.Math.Max(0, soldier.Row - 3));
         if (target == t.EnemySoldier || _match.UnitAt(target) != null)
             return;
         _match.Remove(t.EnemySoldier);
@@ -1796,12 +2057,12 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Entre dans la zone des boutons du panneau (COMMANDEMENT / COMBATTRE). Faux — et rien ne change —
-    /// en tutoriel, où ces boutons ne sont pas dessinés (le combat s'y lance de façon scénarisée).
+    /// Entre dans la zone des boutons du panneau (COMMANDEMENT / COMBATTRE). Faux — et rien ne change — si
+    /// aucun n'est dessiné (préparation guidée du tuto).
     /// </summary>
     private bool EnterButtonsFocus()
     {
-        if (_tutorial != null)
+        if (PlacementButtonCount == 0)
             return false;
         _gpButtons = true;
         _btnFocus = 0;
@@ -1836,8 +2097,8 @@ public sealed class GameplayScene : Scene
         if (Context.Input.WasConfirmPressed)
         {
             _gpButtons = false;
-            if (_btnFocus == 0) _commandTree.Open();
-            else TryStartBattle();
+            if (_btnFocus == FightButtonIndex) TryStartBattle();
+            else _commandTree.Open();
             return;
         }
 
@@ -1849,7 +2110,11 @@ public sealed class GameplayScene : Scene
     /// <summary>Saisit l'unité joueur sous le curseur (retirée du plateau en attendant la pose).</summary>
     private void PickUpAt(Cell cell)
     {
-        if (_tutorial != null)   // tuto : pas de reprise de pion sur le plateau (commandant figé, soldat une fois posé)
+        // Tuto : pas de reprise de pion pendant les leçons de placement (commandant figé, soldat une fois
+        // posé). En PRÉPARATION en revanche il FAUT pouvoir reprendre un pion : un soldat lâché sur le
+        // plateau au lieu d'être fusionné laisserait sinon la réserve à deux exemplaires, et la fusion —
+        // qui en demande trois — deviendrait impossible.
+        if (_tutorial is { InPreparation: false })
             return;
         if (_match.UnitAt(cell) is { Faction: Faction.Player } unit
             && _playerSpec.TryGetValue(unit, out var spec))
@@ -1894,8 +2159,10 @@ public sealed class GameplayScene : Scene
         }
 
         // 2. Prise d'une unité déjà posée (on la retire du terrain en attendant le drop).
-        //    Bloqué en tuto : le commandant reste figé et le soldat ne se reprend pas une fois posé.
-        if (_tutorial == null
+        //    Bloqué pendant les leçons de PLACEMENT du tuto (commandant figé, soldat une fois posé), mais
+        //    autorisé en préparation : sans cela un pion lâché sur le plateau y resterait, et la fusion —
+        //    qui demande trois exemplaires en réserve — deviendrait impossible.
+        if (_tutorial is not { InPreparation: false }
             && CellUnderMouse() is { } cell
             && _match.UnitAt(cell) is { Faction: Faction.Player } unit
             && _playerSpec.TryGetValue(unit, out var spec))
@@ -2056,6 +2323,14 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // En tuto, la sortie de la sous-phase est pilotée par le guide (l'épée posée) : ni combat ni retour.
+        if (_tutorial != null)
+        {
+            if (Context.Input.WasLeftClicked)
+                BeginEquipDrag(mouse);
+            return;
+        }
+
         if (Context.Input.WasKeyPressed(Keys.Enter))   // Entrée = Combat
         {
             BeginBattle();
@@ -2073,8 +2348,12 @@ public sealed class GameplayScene : Scene
     /// <summary>Sous-phase Équipement à la manette : curseur sur un pion, A équipe/déséquipe, LB/RB change l'item, Y combat, B retour.</summary>
     private void UpdateEquipPhaseGamepad()
     {
-        if (Context.Input.WasQuaternaryPressed) { BeginBattle(); return; }   // Y = Combat
-        if (Context.Input.WasCancelPressed) { ExitEquipPhase(); return; }    // B = retour au placement
+        // En tuto, la sortie est pilotée par le guide (l'épée posée) : ni combat ni retour.
+        if (_tutorial == null)
+        {
+            if (Context.Input.WasQuaternaryPressed) { BeginBattle(); return; }   // Y = Combat
+            if (Context.Input.WasCancelPressed) { ExitEquipPhase(); return; }    // B = retour au placement
+        }
 
         MoveCursor();
 
@@ -2779,6 +3058,22 @@ public sealed class GameplayScene : Scene
         else
             UpdatePlayerTurn();
 
+        // Tuto : le coffre est ouvert et sa révélation terminée → on reprend le combat. Aucun replacement de
+        // l'ennemi : il a avancé pendant la leçon comme n'importe quel tour, et la distance retombe juste
+        // (cf. PlaceTutorialEnemy).
+        if (_tutorial is { Step: TutorialStep.Chest } chestStep
+            && (_chestConsumed.Count > 0 || chestStep.Chest is null) && !ChestRevealActive)
+            chestStep.Advance();                            // Chest → Move
+
+        // Filet ANTI-BLOCAGE : si plus aucun ennemi n'est sur le plateau alors que le script en attend un
+        // (mort hors script, cas qui ne devrait plus arriver), on saute droit à l'encart du commandant
+        // plutôt que d'attendre une condition qui ne viendra jamais.
+        if (_tutorial is { } guide && guide.Step is TutorialStep.Chest or TutorialStep.Move or TutorialStep.Attack
+            && !_fx.Active && !ChestRevealActive
+            && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy))
+            while (guide.Step != TutorialStep.Commander)
+                guide.Advance();
+
         // Tuto : dès que le soldat peut frapper l'ennemi, on passe à l'étape « attaque ».
         if (_tutorial is { Step: TutorialStep.Move }
             && _match.AttackTargets(_tutorial.PlayerSoldier).Contains(_tutorial.EnemySoldier))
@@ -2789,9 +3084,11 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Tour de l'ennemi en TUTORIEL : il avance d'une case vers le soldat (le coup légal qui réduit le
-    /// plus la distance), sans jamais attaquer. Déjà adjacent ou bloqué → il passe. Respecte `_aiTimer`
-    /// pour que le déplacement soit visible (alternance des tours).
+    /// Tour de l'ennemi en TUTORIEL. Il JOUE À CHAQUE TOUR — l'alternance doit rester visible : il avance
+    /// d'une case vers le soldat (le coup légal qui réduit le plus la distance), et ne frappe QUE s'il a
+    /// déjà été touché (la riposte scénarisée). Le script garantit qu'il n'est jamais adjacent et intact au
+    /// moment de son tour (cf. <see cref="PlaceTutorialEnemy"/>), donc il ne passe jamais son tour.
+    /// Respecte `_aiTimer` pour que le déplacement soit visible.
     /// </summary>
     private void TutorialEnemyTurn(GameTime gameTime)
     {
@@ -2802,10 +3099,16 @@ public sealed class GameplayScene : Scene
         var from = _tutorial!.EnemySoldier;
         var target = _tutorial.PlayerSoldier;
 
-        // Adjacent au soldat → l'ennemi CONTRE-ATTAQUE (anim via ResolveAttack) au lieu d'avancer.
+        // Adjacent au soldat → l'ennemi CONTRE-ATTAQUE (anim via ResolveAttack) au lieu d'avancer. Mais
+        // SEULEMENT s'il a DÉJÀ été frappé : le joueur porte toujours le premier coup, quelle que soit la
+        // route qu'il a prise. Sinon le soldat (12 PV) encaisserait deux coups de 10 et mourrait, et le
+        // tuto attendrait pour toujours une étape « attaque » que plus personne ne peut jouer.
         if (_match.AttackTargets(from).Contains(target))
         {
-            ResolveAttack(from, target);
+            if (_match.UnitAt(from) is { } enemy && enemy.Hp < enemy.MaxHp)
+                ResolveAttack(from, target);
+            else
+                _match.PassTurn();   // intact : il attend le premier coup du joueur
             return;
         }
 
@@ -2837,25 +3140,18 @@ public sealed class GameplayScene : Scene
         System.Math.Max(System.Math.Abs(a.Column - b.Column), System.Math.Abs(a.Row - b.Row));
 
     /// <summary>
-    /// Revue de la carte : passe en revue chaque donnée (PV → Puissance → Mouvement → Portée), une par
-    /// une, ~12s chacune ; ESPACE / ENTREE / A accélère le passage. Après la dernière → étape Move.
+    /// Revue de la carte : passe en revue chaque donnée (PV → Puissance → Mouvement → Portée), une par une.
+    /// Le joueur avance À SON RYTHME (clic / ESPACE / ENTREE / A) : aucune bulle ne défile toute seule.
+    /// Après la dernière → étape Move.
     /// </summary>
-    private void UpdateTutorialCardReview(float dt)
+    private void UpdateTutorialCardReview()
     {
-        _tutorialCardTimer -= dt;
-        var next = _tutorialCardTimer <= 0f
-            || Context.Input.WasLeftClicked            // clic = passer (clavier/souris)
-            || Context.Input.WasKeyPressed(Keys.Space)
-            || Context.Input.WasKeyPressed(Keys.Enter)
-            || Context.Input.WasConfirmPressed;        // A manette
-        if (!next)
+        if (!Advanced() && !Context.Input.WasKeyPressed(Keys.Space))
             return;
 
         _tutorialCardIndex++;
         if (_tutorialCardIndex >= TutorialCardStats)
             _tutorial!.Advance();                   // ReviewCard → StartCombat (on peut lancer le combat)
-        else
-            _tutorialCardTimer = TutorialCardSeconds;
     }
 
     /// <summary>
@@ -2874,21 +3170,24 @@ public sealed class GameplayScene : Scene
             return true;
         }
 
-        // Encart commandant puis récap : avancer / terminer au clic / A / Entrée (animation finie).
-        if ((t.Step == TutorialStep.Commander || t.Step == TutorialStep.Done) && !_fx.Active
-            && (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter)))
+        // Encart commandant : dernière étape du COMBAT. On bascule ensuite en préparation guidée (fusion,
+        // équipement, arbre), qui se joue en phase de placement sur la même map.
+        if (t.Step == TutorialStep.Commander && !_fx.Active && Advanced())
         {
-            if (t.Step == TutorialStep.Commander) t.Advance();   // → Done
-            else EndTutorial();
+            t.Advance();                  // → FusionIntro
+            BeginTutorialPreparation();
             return true;
         }
         return false;
     }
 
-    /// <summary>Vrai si le joueur demande à passer le tuto : clic sur le bouton, ou X (tertiaire) manette.</summary>
+    /// <summary>
+    /// Vrai si le joueur demande à passer le tuto : clic sur le bouton, ou BACK à la manette. (Pas X : la
+    /// préparation guidée enseigne justement « X = fusionner » dans la réserve.)
+    /// </summary>
     private bool TutorialSkipPressed() =>
         (TutorialSkipRect().Contains(Context.Input.MousePosition) && Context.Input.WasLeftClicked)
-        || Context.Input.WasTertiaryPressed;
+        || Context.Input.WasSelectPressed;
 
     /// <summary>Rectangle du bouton « Passer le tuto » (coin bas-GAUCHE, hors du panneau d'inventaire).</summary>
     private Rectangle TutorialSkipRect()
@@ -2915,6 +3214,31 @@ public sealed class GameplayScene : Scene
             var card = PanelCardRect(0);
             var box = new Rectangle(card.X - InvGapX / 2, card.Y, card.Width + InvGapX, card.Height + 12);
             DrawRectBorder(sb, Inflate(box, 3), pcol, 3);
+        }
+        else if (t.Step == TutorialStep.FusionDo && !FusionOpen && !EvoPlaying)
+        {
+            // Les trois soldats à empiler : chaque portrait de réserve est cerclé.
+            for (var i = 0; i < _pending.Count; i++)
+            {
+                var card = PanelCardRect(i);
+                DrawRectBorder(sb, Inflate(new Rectangle(card.X - InvGapX / 2, card.Y, card.Width + InvGapX, card.Height + 12), 3), pcol, 3);
+            }
+        }
+        else if (t.Step == TutorialStep.EquipDo && _dragEquip == null)
+        {
+            DrawRectBorder(sb, Inflate(EquipRowRect(0), 3), pcol, 3);
+        }
+        else if (t.Step == TutorialStep.StartCombat)
+        {
+            DrawRectBorder(sb, Inflate(FightButtonRect(), 3), pcol, 3);   // c'est LUI qui lance le combat
+        }
+        else if (t.Step == TutorialStep.TreeOpen)
+        {
+            DrawRectBorder(sb, Inflate(CommandTreeButtonRect(), 3), pcol, 3);   // c'est LUI qui ouvre l'arbre
+        }
+        else if (t.Step == TutorialStep.Chest && t.Chest is { } chestCell)
+        {
+            DrawZoneBorder(sb, board, chestCell, pcol, 3);
         }
         else if (!_fx.Active && t.Step is TutorialStep.Move or TutorialStep.Attack or TutorialStep.Commander)
         {
@@ -2956,6 +3280,10 @@ public sealed class GameplayScene : Scene
                 DrawPawnPopup(sb, board, t.PlayerSoldier, Loc.T(key), null);
                 break;
             }
+            case TutorialStep.Chest:
+                if (t.Chest is { } chestCell)
+                    DrawPawnPopup(sb, board, chestCell, Loc.T("tuto.chest"), null);
+                break;
             case TutorialStep.Move:
                 if (_match.CurrentTurn == Faction.Enemy)
                     DrawPawnPopup(sb, board, t.EnemySoldier, Loc.T("tuto.enemy_plays"), null);
@@ -2980,9 +3308,36 @@ public sealed class GameplayScene : Scene
                 if (!_fx.Active)   // on laisse l'attaque se terminer avant d'afficher la pop commandant
                     DrawPawnPopup(sb, board, t.Commander, Loc.T("tuto.commander"), Loc.T("tuto.continue"));
                 break;
+
+            // ── Préparation guidée ──────────────────────────────────────────────────────────────
+            case TutorialStep.FusionIntro:
+                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.fusion_title"), Loc.T("tuto.fusion_body"), Loc.T("tuto.intro_continue"));
+                break;
+            case TutorialStep.FusionDo:
+                if (!FusionOpen && !EvoPlaying && _pending.Count > 0)
+                    DrawAnchoredPopup(sb, PanelCardRect(0), Loc.T("tuto.fusion_do"), null);
+                break;
+            case TutorialStep.DeployFused:
+                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), Loc.T("tuto.deploy_fused"), null);
+                break;
+            case TutorialStep.EquipIntro:
+                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.equip_title"), Loc.T("tuto.equip_body"), Loc.T("tuto.intro_continue"));
+                break;
+            case TutorialStep.EquipDo:
+                DrawAnchoredPopup(sb, EquipRowRect(0), Loc.T("tuto.equip_do"), null);
+                break;
+            case TutorialStep.TreeIntro:
+                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.tree_title"), Loc.T("tuto.tree_body"), Loc.T("tuto.intro_continue"));
+                break;
+            case TutorialStep.TreeOpen:
+                DrawAnchoredPopup(sb, CommandTreeButtonRect(),
+                    Loc.T(Context.Input.UsingGamepad ? "tuto.tree_open_gp" : "tuto.tree_open"), null);
+                break;
+            case TutorialStep.TreeDo:
+                break;   // l'arbre est ouvert par-dessus : le rappel est dessiné après la modale
             case TutorialStep.Done:
                 if (!_fx.Active)
-                    DrawTutorialPanel(sb, viewport, Loc.T("tuto.continue"), null);   // juste « clic pour commencer à jouer »
+                    DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.victory_title"), Loc.T("tuto.recap_body"), Loc.T("tuto.continue"));
                 break;
         }
 
@@ -2990,7 +3345,7 @@ public sealed class GameplayScene : Scene
         var skip = TutorialSkipRect();
         var hover = skip.Contains(Context.Input.MousePosition);
         var off = Context.Style.DrawButton(sb, skip, UiStyle.StateOf(hover, hover && Context.Input.IsLeftDown));
-        var label = Loc.T("tuto.skip") + (Context.Input.UsingGamepad ? " (X)" : "");
+        var label = Loc.T("tuto.skip") + (Context.Input.UsingGamepad ? " (BACK)" : "");
         Context.Font.DrawCentered(sb, label,
             new Rectangle(skip.X, skip.Y + off, skip.Width, skip.Height), 1, Palette.White);
 
@@ -3031,12 +3386,12 @@ public sealed class GameplayScene : Scene
         var ty = bubble.Y + pad + 14;
         foreach (var line in lines)
         {
-            Context.Font.Draw(sb, line, new Vector2(bubble.X + pad, ty), 1, Palette.White);
+            Context.Font.Draw(sb, line, new Vector2(bubble.X + pad, ty), 1, Palette.White, preserveCase: true);
             ty += 12;
         }
         var contKey = Context.Input.UsingGamepad ? "tuto.card_continue_gp" : "tuto.card_continue";
         Context.Font.DrawCentered(sb, Loc.T(contKey),
-            new Rectangle(bubble.X, bubble.Bottom - 16, bubble.Width, 10), 1, Palette.Cyan1);
+            new Rectangle(bubble.X, bubble.Bottom - 16, bubble.Width, 10), 1, Palette.Cyan1, preserveCase: true);
     }
 
     /// <summary>
@@ -3062,38 +3417,61 @@ public sealed class GameplayScene : Scene
     {
         var size = board.TileSize;
         var top = board.CellToScreen(cell.Column, cell.Row);
-        DrawAnchoredPopup(sb, new Rectangle((int)top.X, (int)top.Y, size, size), text, footer);
+        // Au-dessus de la case : sur le plateau, une bulle posée sur le côté masque les pions voisins.
+        DrawAnchoredPopup(sb, new Rectangle((int)top.X, (int)top.Y, size, size), text, footer, preferAbove: true);
     }
 
     /// <summary>
-    /// Bulle d'aide ANCRÉE à un élément (rectangle écran) : à droite de l'élément, bascule à gauche si
-    /// elle déborde, clampée à l'écran. Texte replié + bas de page facultatif (invite à continuer).
+    /// Bulle d'aide ANCRÉE à un élément (rectangle écran), clampée à l'écran. Par défaut à DROITE de
+    /// l'élément (bascule à gauche si ça déborde) : c'est ce qu'il faut pour un élément du PANNEAU, où le
+    /// côté donne sur le plateau libre. <paramref name="preferAbove"/> (bulles ancrées à une CASE, cf.
+    /// <see cref="DrawPawnPopup"/>) la pose plutôt AU-DESSUS, centrée, puis dessous : sur le plateau, une
+    /// bulle latérale recouvre les pions voisins.
     /// </summary>
-    private void DrawAnchoredPopup(SpriteBatch sb, Rectangle anchor, string text, string? footer)
+    private void DrawAnchoredPopup(SpriteBatch sb, Rectangle anchor, string text, string? footer,
+        bool preferAbove = false)
     {
         var vp = VirtualViewport;
         const int pad = 12;
         const int bw = 340;
+        const int gap = 18;      // dégage le sprite du pion, dessiné au-dessus de sa case
+        const int margin = 20;   // marge minimale au bord de l'écran
         var lines = WrapText(text, bw - 2 * pad, 1);
         var bh = pad + lines.Count * 12 + (footer != null ? 14 : 0) + pad;
 
-        var bx = anchor.Right + 14;                  // à droite de l'élément
-        if (bx + bw > vp.Width - 20)
-            bx = anchor.X - 14 - bw;                 // déborde : bascule à gauche
-        bx = System.Math.Clamp(bx, 20, vp.Width - bw - 20);
-        var by = System.Math.Clamp(anchor.Y + anchor.Height / 2 - bh / 2, 20, vp.Height - bh - 20);
+        int bx, by;
+        if (preferAbove && anchor.Y - gap - bh >= margin)                            // au-dessus, centrée
+        {
+            bx = anchor.Center.X - bw / 2;
+            by = anchor.Y - gap - bh;
+        }
+        else if (preferAbove && anchor.Bottom + gap + bh <= vp.Height - margin)      // sinon dessous
+        {
+            bx = anchor.Center.X - bw / 2;
+            by = anchor.Bottom + gap;
+        }
+        else                                                                         // sinon sur le côté
+        {
+            bx = anchor.Right + 14;
+            if (bx + bw > vp.Width - margin)
+                bx = anchor.X - 14 - bw;
+            by = anchor.Y + anchor.Height / 2 - bh / 2;
+        }
+        bx = System.Math.Clamp(bx, margin, vp.Width - bw - margin);
+        by = System.Math.Clamp(by, margin, vp.Height - bh - margin);
 
         var bubble = new Rectangle(bx, by, bw, bh);
         Context.Style.DrawPanel(sb, bubble);
         var ty = bubble.Y + pad;
         foreach (var line in lines)
         {
-            Context.Font.Draw(sb, line, new Vector2(bubble.X + pad, ty), 1, Palette.Yellow2);
+            // Consignes du tuto : phrases en casse normale (preserveCase), pas en capitales comme l'UI.
+            Context.Font.Draw(sb, line, new Vector2(bubble.X + pad, ty), 1, Palette.Yellow2, preserveCase: true);
             ty += 12;
         }
         if (footer != null)
             Context.Font.DrawCentered(sb, footer,
-                new Rectangle(bubble.X, bubble.Bottom - 14, bubble.Width, 10), 1, Palette.Cyan1);
+                new Rectangle(bubble.X, bubble.Bottom - 14, bubble.Width, 10), 1, Palette.Cyan1, preserveCase: true);
     }
 
     /// <summary>Grand encart central : TITRE (échelle 3) + corps replié (échelle 2) + invite (bas).</summary>
@@ -3105,14 +3483,16 @@ public sealed class GameplayScene : Scene
         var box = new Rectangle((viewport.Width - pw) / 2, (viewport.Height - ph) / 2, pw, ph);
         Context.Style.DrawPanel(sb, box);
 
+        // Le TITRE reste en capitales (c'est un libellé d'UI) ; le corps et l'invite sont des phrases.
         Context.Font.DrawCentered(sb, title, new Rectangle(box.X, box.Y + 20, box.Width, 24), 3, Palette.Yellow2);
         var y = box.Y + 20 + 28 + 14;
         foreach (var line in lines)
         {
-            Context.Font.DrawCentered(sb, line, new Rectangle(box.X, y, box.Width, 16), 2, Palette.White);
+            Context.Font.DrawCentered(sb, line, new Rectangle(box.X, y, box.Width, 16), 2, Palette.White, preserveCase: true);
             y += 18;
         }
-        Context.Font.DrawCentered(sb, footer, new Rectangle(box.X, box.Bottom - 22, box.Width, 12), 1, Palette.Cyan1);
+        Context.Font.DrawCentered(sb, footer, new Rectangle(box.X, box.Bottom - 22, box.Width, 12), 1, Palette.Cyan1,
+            preserveCase: true);
     }
 
     /// <summary>Encart central : corps (texte replié, échelle 2) + bas de page facultatif (invite).</summary>
@@ -3127,11 +3507,29 @@ public sealed class GameplayScene : Scene
         var y = box.Y + 20;
         foreach (var line in lines)
         {
-            Context.Font.DrawCentered(sb, line, new Rectangle(box.X, y, box.Width, 16), 2, Palette.Yellow2);
+            Context.Font.DrawCentered(sb, line, new Rectangle(box.X, y, box.Width, 16), 2, Palette.Yellow2, preserveCase: true);
             y += 18;
         }
         if (footer != null)
-            Context.Font.DrawCentered(sb, footer, new Rectangle(box.X, box.Bottom - 22, box.Width, 12), 1, Palette.Cyan1);
+            Context.Font.DrawCentered(sb, footer, new Rectangle(box.X, box.Bottom - 22, box.Width, 12), 1, Palette.Cyan1,
+                preserveCase: true);
+    }
+
+    /// <summary>
+    /// Consigne du tuto pendant l'étape « acheter un nœud » : dessinée APRÈS la modale de l'arbre (sinon
+    /// le voile de celle-ci la recouvrirait), en bandeau bas, hors du panneau.
+    /// </summary>
+    private void DrawTutorialTreeHint(SpriteBatch sb, Viewport viewport)
+    {
+        // L'indice suit le périphérique courant (clic à la souris, A à la manette).
+        var text = Loc.T(Context.Input.UsingGamepad ? "tuto.tree_do_gp" : "tuto.tree_do");
+        var w = Context.Font.Measure(text, 1) + 40;
+        var box = new Rectangle((viewport.Width - w) / 2, viewport.Height - 52, w, 30);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Style.DrawPanel(sb, box);
+        Context.Font.DrawCentered(sb, text, box, 1, Palette.Yellow2, preserveCase: true);
+        sb.End();
     }
 
     private void CheckBattleEnd()
@@ -3304,6 +3702,7 @@ public sealed class GameplayScene : Scene
             _match.LegalMoves(cell, _legalMoves);
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach);
+            FilterTutorialActions();
             Context.Sounds.Play("unit_select");
         }
         else
@@ -3317,6 +3716,72 @@ public sealed class GameplayScene : Scene
     /// Appui gauche en combat : agit sur une cible déjà mise en évidence (clic-pour-déplacer
     /// conservé), sinon SAISIT une unité du joueur — qui devient « portée » à la souris.
     /// </summary>
+    /// <summary>
+    /// TUTORIEL : réduit les coups offerts (<see cref="_legalMoves"/> / <see cref="_attackTargets"/>) à UN
+    /// SEUL — celui que la leçon attend. Le joueur ne peut donc rien faire d'autre, ni se mettre dans un état
+    /// dont le guide ne sait pas sortir, et l'affichage ne lui montre jamais un coup qu'on refuserait ensuite.
+    /// Un filtre qui ne laisserait AUCUN coup est abandonné : mieux vaut un tuto bavard qu'un tuto figé.
+    /// </summary>
+    private void FilterTutorialActions()
+    {
+        if (_tutorial is not { } t)
+            return;
+
+        switch (t.Step)
+        {
+            case TutorialStep.Chest:
+                _attackTargets.Clear();
+                KeepOnlyMove(t.Chest);                       // le coffre, et rien d'autre
+                break;
+
+            case TutorialStep.Move:
+                _attackTargets.Clear();
+                KeepOnlyMove(BestStepToward(t.PlayerSoldier, t.EnemySoldier));
+                break;
+
+            case TutorialStep.Attack:
+                _legalMoves.Clear();                         // plus de déplacement : on frappe
+                _attackTargets.RemoveAll(c => c != t.EnemySoldier);
+                break;
+
+            default:
+                _attackTargets.Clear();   // hors des étapes de combat scénarisées, aucune attaque
+                break;
+        }
+    }
+
+    /// <summary>Ne garde que <paramref name="cell"/> parmi les déplacements légaux — sauf si elle n'y figure pas.</summary>
+    private void KeepOnlyMove(Cell? cell)
+    {
+        if (cell is { } c && _legalMoves.Contains(c))
+            _legalMoves.RemoveAll(m => m != c);
+    }
+
+    /// <summary>
+    /// LE pas à jouer vers l'ennemi : parmi les coups légaux, celui qui réduit le plus la distance, départagé
+    /// par l'alignement de colonne (marche droit devant) puis par la rangée — donc toujours le même, sans
+    /// dépendre de l'ordre du buffer. Null si aucun coup ne rapproche : le filtre laisse alors tout passer.
+    /// </summary>
+    private Cell? BestStepToward(Cell soldier, Cell enemy)
+    {
+        Cell? best = null;
+        var bestDist = Chebyshev(soldier, enemy);
+        var bestOffset = int.MaxValue;
+
+        foreach (var c in _legalMoves)
+        {
+            var dist = Chebyshev(c, enemy);
+            var offset = System.Math.Abs(c.Column - enemy.Column);
+            if (dist < bestDist || (best != null && dist == bestDist && offset < bestOffset))
+            {
+                best = c;
+                bestDist = dist;
+                bestOffset = offset;
+            }
+        }
+        return best;
+    }
+
     private void BeginCombatInteraction()
     {
         var hit = CellUnderMouse();
@@ -3354,6 +3819,7 @@ public sealed class GameplayScene : Scene
             _match.LegalMoves(cell, _legalMoves);       // remplit les buffers (pas d'allocation)
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
+            FilterTutorialActions();
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
         }
@@ -4250,7 +4716,11 @@ public sealed class GameplayScene : Scene
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (CommandTreeOpen)
+                {
                     _commandTree.Draw(sb, viewport, CommandTreeArea(), _run);   // modale par-dessus le placement
+                    if (_tutorial is { Step: TutorialStep.TreeDo })
+                        DrawTutorialTreeHint(sb, viewport);                     // consigne AU-DESSUS de la modale
+                }
                 if (FusionOpen)
                     DrawFusionPopup(sb, viewport);   // modale par-dessus le placement
                 if (EvoPlaying)
@@ -5344,16 +5814,22 @@ public sealed class GameplayScene : Scene
                 Context.Font.Draw(sb, Loc.T("placement.hint_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
         }
 
-        // Boutons du bas (souris + focus manette). Pas en tuto : le combat s'y lance de façon scénarisée.
-        if (_tutorial == null)
+        // Boutons du bas (souris + focus manette).
+        if (ShowCommandTreeButton)
+        {
+            var affordable = _run.CommandPoints >= CommandTree.CostOf(1);
+            DrawPanelButton(sb, CommandTreeButtonRect(), Loc.T("tree.button", _run.CommandPoints),
+                affordable ? Palette.Yellow2 : Palette.White, focusIndex: 0, pointIcon: true);
+        }
+        if (ShowFightButton)
         {
             // Si le joueur a des équipements, le bouton mène d'abord à la sous-phase Équipement (« Suivant »).
             var fightLabel = _run.HasEquipment ? Loc.T("equip.next") : Loc.T("placement.fight");
-            var affordable = _run.CommandPoints >= CommandTree.CostOf(1);
-
-            DrawPanelButton(sb, CommandTreeButtonRect(), Loc.T("tree.button", _run.CommandPoints),
-                affordable ? Palette.Yellow2 : Palette.White, focusIndex: 0, pointIcon: true);
-            DrawPanelButton(sb, FightButtonRect(), fightLabel, Palette.White, focusIndex: 1);
+            // En tuto, le bouton est là dès le début mais ne mord qu'à l'étape « lancer le combat » : on le
+            // grise avant, plutôt que de le cacher — le joueur voit d'emblée où se lance un combat.
+            var armed = _tutorial is null or { Step: TutorialStep.StartCombat };
+            DrawPanelButton(sb, FightButtonRect(), fightLabel, armed ? Palette.White : Palette.Grey,
+                focusIndex: FightButtonIndex, enabled: armed);
         }
     }
 
@@ -5361,14 +5837,15 @@ public sealed class GameplayScene : Scene
     /// Un bouton du bas du panneau de placement. Survol à la souris (enfoncement), cadre or quand il porte
     /// le focus MANETTE (<see cref="_gpButtons"/> + <see cref="_btnFocus"/>) — jamais les deux à la fois,
     /// l'indice affiché suivant déjà le périphérique courant. <paramref name="pointIcon"/> accole le jeton
-    /// de points de commandement au libellé (bouton COMMANDEMENT).
+    /// de points de commandement au libellé (bouton COMMANDEMENT). <paramref name="enabled"/> faux : le
+    /// bouton est dessiné au repos (ni survol ni focus), signe qu'il n'agira pas encore.
     /// </summary>
     private void DrawPanelButton(SpriteBatch sb, Rectangle btn, string label, Color color, int focusIndex,
-        bool pointIcon = false)
+        bool pointIcon = false, bool enabled = true)
     {
         var gamepad = Context.Input.UsingGamepad;
-        var focused = gamepad && _gpButtons && _btnFocus == focusIndex;
-        var hover = !gamepad && btn.Contains(Context.Input.MousePosition);
+        var focused = enabled && gamepad && _gpButtons && _btnFocus == focusIndex;
+        var hover = enabled && !gamepad && btn.Contains(Context.Input.MousePosition);
         var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover || focused, hover && Context.Input.IsLeftDown));
 
         var area = btn; area.Offset(0, dy);

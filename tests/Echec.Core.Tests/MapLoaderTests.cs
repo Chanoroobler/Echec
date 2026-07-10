@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Echec.Core.Map;
 using Xunit;
 
@@ -233,5 +234,59 @@ public class MapLoaderTests
         , "objects": [ ".Z", ".." ] }
         """;
         Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
+    // ─── Maps LIVRÉES ────────────────────────────────────────────────────────────────────────────
+    // Le jeu ignore SILENCIEUSEMENT une map mal formée (cf. GameplayScene.LoadMaps) : sans ces tests, une
+    // faute de frappe dans un fichier ne se verrait qu'en jouant la mission concernée.
+
+    /// <summary>Racine du dépôt, trouvée en remontant depuis le binaire de test.</summary>
+    private static string RepoRoot()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "Echec.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    private static string AssetPath(params string[] parts) =>
+        System.IO.Path.Combine(new[] { RepoRoot(), "src", "Echec.Game", "Assets" }.Concat(parts).ToArray());
+
+    private static TileCatalog ShippedCatalog() =>
+        TileCatalog.FromJson(System.IO.File.ReadAllText(AssetPath("Tiles", "tiles.json")));
+
+    private static List<MapData> ShippedMaps() =>
+        System.IO.Directory.GetFiles(AssetPath("Maps"), "*.json")
+            .Select(f => MapLoader.Parse(System.IO.File.ReadAllText(f), ShippedCatalog()))
+            .ToList();
+
+    [Fact]
+    public void ShippedMaps_AllParse_WithTheShippedTileCatalog()
+    {
+        var catalog = ShippedCatalog();
+        var files = System.IO.Directory.GetFiles(AssetPath("Maps"), "*.json");
+        Assert.NotEmpty(files);
+
+        foreach (var file in files)
+        {
+            var ex = Record.Exception(() => MapLoader.Parse(System.IO.File.ReadAllText(file), catalog));
+            Assert.True(ex is null, $"{System.IO.Path.GetFileName(file)} : {ex?.Message}");
+        }
+    }
+
+    [Fact]
+    public void ShippedMaps_ExactlyOneTutorialMap_SixBySixWithASingleChest()
+    {
+        // Le tuto charge SA map par ce type ; la campagne, elle, ne tire jamais dedans.
+        var tuto = Assert.Single(ShippedMaps(), m => m.Type == CombatType.Tutoriel);
+        Assert.Equal(6, tuto.Width);
+        Assert.Equal(6, tuto.Height);
+        Assert.NotEmpty(tuto.PlayerSpawns);
+
+        // Un seul objet : le coffre de la leçon « équipement ». Rien d'autre ne doit distraire. Sa CASE,
+        // elle, est sans importance : le tuto le repose contre le soldat une fois celui-ci déployé.
+        var chest = Assert.Single(tuto.Objects);
+        Assert.Equal(MapObjectKind.ChestCommon, chest.Kind);
     }
 }
