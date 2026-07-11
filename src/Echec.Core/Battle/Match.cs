@@ -71,41 +71,6 @@ public sealed class Match
     private bool BlocksLineOfFire(Cell cell) =>
         _terrain != null && _terrain[cell].BlocksLineOfFire;
 
-    /// <summary>
-    /// Vrai si la ligne de tir de <paramref name="from"/> à <paramref name="to"/> est DÉGAGÉE (tracé de
-    /// Bresenham) : aucune unité ni montagne (sauf <paramref name="ignoreMountains"/>) sur les cases
-    /// STRICTEMENT intermédiaires. Sert au trait « Attaque libre » (portée en zone, mais tir bloqué par
-    /// ce qui gêne). Les deux extrémités (tireur et cible) ne sont pas testées.
-    /// </summary>
-    private bool ClearLineOfFire(Cell from, Cell to, bool ignoreMountains)
-    {
-        int x = from.Column, y = from.Row;
-        int dx = System.Math.Abs(to.Column - x), dy = System.Math.Abs(to.Row - y);
-        int sx = x < to.Column ? 1 : -1, sy = y < to.Row ? 1 : -1;
-        int err = dx - dy;
-        while (true)
-        {
-            var e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; x += sx; }
-            if (e2 < dx) { err += dx; y += sy; }
-            if (x == to.Column && y == to.Row)
-                return true;   // cible atteinte : rien n'a coupé la ligne
-            var cell = new Cell(x, y);
-            if (!ignoreMountains && BlocksLineOfFire(cell))
-                return false;  // montagne (sauf tir balistique)
-            if (UnitAt(cell) != null)
-                return false;  // unité interposée (alliée ou ennemie)
-        }
-    }
-
-    /// <summary>
-    /// Vrai si l'offset (<paramref name="dc"/>,<paramref name="dr"/>) tombe dans la ZONE MORTE classique du
-    /// tir : uniquement les cases en LIGNE DROITE (face/côté) plus proches que <paramref name="minRange"/>
-    /// — le corps-à-corps DIRECT. La diagonale et les cases hors-ligne ne sont jamais en zone morte.
-    /// </summary>
-    private static bool InDeadZone(int dc, int dr, int minRange) =>
-        (dc == 0 || dr == 0) && System.Math.Max(System.Math.Abs(dc), System.Math.Abs(dr)) < minRange;
-
     /// <summary>Vrai si <paramref name="unit"/> (un JOUEUR) ne peut pas s'arrêter sur <paramref name="cell"/>
     /// — case paysan de la mission « protéger ». Les ennemis n'y sont jamais bloqués.</summary>
     private bool BlocksPlayerLanding(Cell cell, Unit unit) =>
@@ -230,27 +195,9 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Attaque libre : cible n'importe quel ENNEMI du carré [portée min, portée max] autour de soi, sans
-        // contrainte de DIRECTION — mais le tir doit avoir une LIGNE DE VUE dégagée (bloqué par une montagne
-        // ou une unité sur la trajectoire). La zone morte (portée min) exclut le contact.
-        if (unit.HasTrait(Trait.AttaqueLibre))
-        {
-            var freeBalistique = unit.HasTrait(Trait.Balistique);   // ignore la montagne sur la ligne (pas les unités)
-            for (var dr = -unit.AttackRange; dr <= unit.AttackRange; dr++)
-                for (var dc = -unit.AttackRange; dc <= unit.AttackRange; dc++)
-                {
-                    if (InDeadZone(dc, dr, unit.MinAttackRange))
-                        continue;   // zone morte classique : seul le corps-à-corps DIRECT (case droite proche) est exclu
-                    var to = new Cell(from.Column + dc, from.Row + dr);
-                    if (UnitAt(to) is { } target && target.Faction != unit.Faction
-                        && ClearLineOfFire(from, to, freeBalistique))
-                        result.Add(to);
-                }
-            return;
-        }
-
         // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
-        var attackDomaine = unit.AttackDomaine;
+        // « Attaque libre » : le pion tire COMME UNE DAME (8 directions en ligne), quel que soit son domaine.
+        var attackDomaine = unit.HasTrait(Trait.AttaqueLibre) ? Domaine.Dame : unit.AttackDomaine;
         var vectors = Movement.Vectors(attackDomaine);
 
         if (Movement.Kind(attackDomaine) == MovementKind.Jump)
@@ -320,25 +267,9 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Attaque libre : menace le carré [portée min, portée max] autour de soi, LIGNE DE VUE dégagée requise
-        // (une montagne ou une unité interposée coupe la menace au-delà d'elle).
-        if (unit.HasTrait(Trait.AttaqueLibre))
-        {
-            var freeBalistique = unit.HasTrait(Trait.Balistique);
-            for (var dr = -unit.AttackRange; dr <= unit.AttackRange; dr++)
-                for (var dc = -unit.AttackRange; dc <= unit.AttackRange; dc++)
-                {
-                    if (InDeadZone(dc, dr, unit.MinAttackRange))
-                        continue;   // zone morte classique : seul le corps-à-corps DIRECT (case droite proche) est exclu
-                    var to = new Cell(from.Column + dc, from.Row + dr);
-                    if (InBounds(to) && ClearLineOfFire(from, to, freeBalistique))
-                        result.Add(to);
-                }
-            return;
-        }
-
         // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
-        var attackDomaine = unit.AttackDomaine;
+        // « Attaque libre » : le pion menace COMME UNE DAME (8 directions en ligne), quel que soit son domaine.
+        var attackDomaine = unit.HasTrait(Trait.AttaqueLibre) ? Domaine.Dame : unit.AttackDomaine;
         var vectors = Movement.Vectors(attackDomaine);
 
         if (Movement.Kind(attackDomaine) == MovementKind.Jump)

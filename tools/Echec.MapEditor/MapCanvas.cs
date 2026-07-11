@@ -19,7 +19,18 @@ internal sealed class MapCanvas : Panel
     private TileRenderCatalog? _catalog;
 
     public EditLayer Layer { get; set; } = EditLayer.Terrain;
-    public char Brush { get; set; } = 'h';
+
+    /// <summary>Pinceau spécial « main » : aucun caractère de tuile — le clic n'écrit RIEN (mode inspection/déplacement).</summary>
+    public const char HandBrush = '\0';
+
+    private char _brush = 'h';
+    /// <summary>Caractère peint au clic. <see cref="HandBrush"/> = mode main (ne peint pas ; curseur en main).</summary>
+    public char Brush
+    {
+        get => _brush;
+        set { _brush = value; Cursor = value == HandBrush ? Cursors.Hand : Cursors.Cross; }
+    }
+
     public float Zoom { get; set; } = 1f;
 
     private Point _hover = new(-1, -1);
@@ -175,7 +186,7 @@ internal sealed class MapCanvas : Panel
 
     private void PaintCell(MouseEventArgs e)
     {
-        if (_doc is null) return;
+        if (_doc is null || Brush == HandBrush) return;   // mode main : le clic n'écrit rien
         var cell = CellAt(e.Location);
         if (cell.X < 0 || cell.X >= _doc.Width || cell.Y < 0 || cell.Y >= _doc.Height) return;
 

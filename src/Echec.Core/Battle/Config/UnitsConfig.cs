@@ -27,11 +27,19 @@ public sealed class CommandeConfig
     public int AttackRange { get; set; }
 
     /// <summary>
-    /// BOSS uniquement : phase de campagne (1..3) à laquelle ce boss est réservé, ou <c>0</c>/absent =
-    /// « toutes phases » (repli). Le combat de boss d'une phase choisit d'abord le boss de CETTE phase,
-    /// sinon un boss « toutes phases », sinon le premier boss défini. Ignoré pour un Commander.
+    /// BOSS, format HÉRITÉ (une seule variante) : phase de campagne (1..3) à laquelle ce boss est réservé,
+    /// ou <c>0</c>/absent. Sert uniquement quand <see cref="Phases"/> est absent (repli sans traits). Ignoré
+    /// pour un Commander et pour un boss qui déclare <see cref="Phases"/>.
     /// </summary>
     public int Phase { get; set; }
+
+    /// <summary>
+    /// BOSS : profils par phase — clé <c>"1"</c>..<c>"3"</c> → stats + traits propres à cette phase. C'est le
+    /// format recommandé : un même boss peut être plus fort (et gagner des traits) selon la phase où il tombe.
+    /// Un boss n'est éligible qu'aux phases qu'il déclare ici. Prioritaire sur les champs plats
+    /// (<see cref="Hp"/>/<see cref="Damage"/>/…). Ignoré pour un Commander.
+    /// </summary>
+    public Dictionary<string, BossPhaseConfig>? Phases { get; set; }
 
     /// <summary>COMMANDANT : pions posables au placement, commandant compris. Absent → 5.</summary>
     public int? Deployments { get; set; }
@@ -44,6 +52,31 @@ public sealed class CommandeConfig
 
     /// <summary>COMMANDANT : points de commandement gagnés à chaque fusion (sa source de gain propre). Absent → 0.</summary>
     public int? FusionPoints { get; set; }
+}
+
+/// <summary>
+/// Stats + traits d'UN boss pour UNE phase (mêmes champs qu'une classe, hors évolutions). Le nom, l'asset
+/// (sprite) et le domaine de déplacement restent portés par le <see cref="CommandeConfig"/> parent : seules
+/// les stats et les traits changent d'une phase à l'autre.
+/// </summary>
+public sealed class BossPhaseConfig
+{
+    public int Hp { get; set; }
+    public int Damage { get; set; }
+    public int MoveRange { get; set; }
+    public int AttackRange { get; set; }
+
+    /// <summary>Portée de tir MINIMALE (« X à Y » : X). Absent → 1 (peut frapper au contact).</summary>
+    public int? MinAttackRange { get; set; }
+
+    /// <summary>Tire à travers ses alliés sans les toucher (comme le Lancier). Absent/false = ligne bloquée.</summary>
+    public bool PiercesAllies { get; set; }
+
+    /// <summary>Traits de combat actifs sur ce boss à cette phase (cf. Trait). Absent → aucun.</summary>
+    public List<string>? Traits { get; set; }
+
+    /// <summary>Domaine du pattern d'ATTAQUE s'il diffère du déplacement. Absent → attaque = déplacement.</summary>
+    public string? AttackDomaine { get; set; }
 }
 
 /// <summary>Un domaine et sa classe de base (le motif de déplacement reste en code).</summary>

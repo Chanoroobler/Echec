@@ -1,17 +1,17 @@
 {
-  "name": "Boss1",
+  "name": "Boss_1_01",
   "type": "Boss",
   "phase": 1,
   "width": 8,
   "height": 8,
   "tiles": [
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
+    "hh8hhhhh",
+    "hh8hhhhh",
+    "<h9447h-",
+    ">ph-<8h,",
+    ">hh;?8h,",
+    "?hhhh97;",
+    "hhhhhh94",
     "hhhhhhhh"
   ],
   "spawns": [
@@ -27,9 +27,9 @@
   "objects": [
     "........",
     "........",
-    "........",
-    "........",
-    "........",
+    ".R......",
+    "..B..B..",
+    "......C.",
     "........",
     "........",
     "........"

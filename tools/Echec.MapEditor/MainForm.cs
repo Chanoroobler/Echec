@@ -222,6 +222,10 @@ internal sealed class MainForm : Form
         _palette.Controls.Clear();
         _selectedPaletteButton = null;
 
+        // Outil « main » (aucune tuile), commun à tous les calques : le clic n'écrit rien. Auto-sélectionné
+        // à l'ouverture d'une map pour ne pas peindre par erreur au premier clic (cf. Open).
+        _palette.Controls.Add(HandPaletteButton());
+
         switch (_canvas.Layer)
         {
             case EditLayer.Terrain:
@@ -281,6 +285,21 @@ internal sealed class MainForm : Form
     {
         var blocks = (tile.BlocksMove ? "bloque déplacement " : "") + (tile.BlocksFire ? "bloque tir" : "");
         return $"{tile.Id} ('{tile.Key}')\n{(blocks.Length == 0 ? "libre" : blocks.Trim())}";
+    }
+
+    /// <summary>Bouton de l'outil « main » : passe le canvas en mode non-peignant (<see cref="MapCanvas.HandBrush"/>).</summary>
+    private Button HandPaletteButton()
+    {
+        var btn = new Button
+        {
+            Size = new Size(96, 44), Margin = new Padding(4), Tag = MapCanvas.HandBrush, FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(70, 72, 80), ForeColor = Color.Gainsboro, Text = "✋ Main",
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
+        btn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
+        _tips.SetToolTip(btn, "Main : aucune tuile sélectionnée — le clic n'écrit rien (inspection).\nSélectionné après un chargement.");
+        btn.Click += (_, _) => { _canvas.Brush = MapCanvas.HandBrush; SelectPaletteButton(btn); FocusTile(null); };
+        return btn;
     }
 
     private void AddBrushButton(char ch, string label, Color color)
@@ -473,6 +492,8 @@ internal sealed class MainForm : Form
             SyncSpecialFields();
             SyncSizeFields();
             _canvas.SetContent(_doc, _catalog);
+            _canvas.Brush = MapCanvas.HandBrush;   // main : évite de peindre par erreur au 1er clic après chargement
+            RebuildPalette();                       // reflète la sélection « main » dans la palette
             _dirty = false;
             UpdateTitle();
             _status.Text = $"Ouvert : {dlg.FileName}";

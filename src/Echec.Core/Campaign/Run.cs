@@ -89,7 +89,7 @@ public sealed class Run
     /// <summary>
     /// Composition en TIERS des ESCORTES par (phase, mission), indexée <c>[PhaseIndex-1][MissionInPhase-1]</c>
     /// (18 entrées). SOURCE DE VÉRITÉ de l'effectif et de la force des vagues (cf. <see cref="BuildEnemyWave"/>).
-    /// Pour une mission Boss, le pion <see cref="Commandes.Boss"/> s'AJOUTE à cette liste (« Boss + N pions »).
+    /// Pour une mission Boss, le pion <see cref="BossDef"/> s'AJOUTE à cette liste (« Boss + N pions »).
     /// L'effectif monte de 3 à ~12, le tier glisse de T1 à T3 phase après phase.
     /// </summary>
     private static readonly int[][][] WaveTiers =
@@ -496,9 +496,10 @@ public sealed class Run
     /// <summary>
     /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : pion non essentiel
     /// (le commandant ne s'équipe jamais) et — pour un équipement de TRAIT — un pion dont la CLASSE ne
-    /// possède PAS déjà ce trait (pas de doublon de trait). Restrictions du domaine Cavalier (monté) :
-    /// objet de PORTÉE refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT refusé à
-    /// TOUS les cavaliers. Les autres équipements de stat passent toujours.
+    /// possède PAS déjà ce trait (pas de doublon de trait). Un objet « Attaque libre » (tir comme une Dame)
+    /// est refusé au domaine Dame (redondant). Restrictions du domaine Cavalier (monté) : objet de PORTÉE
+    /// refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT refusé à TOUS les cavaliers.
+    /// Les autres équipements de stat passent toujours.
     /// </summary>
     public bool CanEquip(UnitSpec spec, Equipment equipment)
     {
@@ -506,6 +507,10 @@ public sealed class Run
             return false;
         // Pas de doublon de trait : si l'un des traits octroyés est DÉJÀ natif de la classe, on refuse.
         if (equipment.Traits.Any(t => ClassHasTrait(spec.UnitClass, t)))
+            return false;
+
+        // « Attaque libre » fait tirer COMME UNE DAME : sans objet (et interdit) sur un pion déjà de domaine Dame.
+        if (spec.Domaine == Domaine.Dame && equipment.GrantsTrait(Trait.AttaqueLibre))
             return false;
 
         // Le domaine Cavalier (monté) refuse deux familles d'objets :
@@ -566,7 +571,7 @@ public sealed class Run
     /// chaque tier requis : on tire un domaine dans le pool débloqué (<see cref="UnlockedDomaines"/>),
     /// puis une <see cref="UnitClass"/> de CE tier (<see cref="ClassesAtTier"/>). Aux tiers 2-3, si
     /// <paramref name="isSeen"/> est fourni (méta-progression), on PRIVILÉGIE AU MAXIMUM les unités déjà
-    /// découvertes (cf. <see cref="PickEnemy"/>). Sur une mission boss, le pion <see cref="Commandes.Boss"/>
+    /// découvertes (cf. <see cref="PickEnemy"/>). Sur une mission boss, le pion <see cref="BossDef"/>
     /// est ajouté EN TÊTE. RNG déterministe (<see cref="CombatRng"/>) : « Continuer » rejoue la même vague
     /// tant que la découverte n'a pas changé (l'effectif et les tiers, eux, ne bougent jamais).
     /// </summary>
@@ -581,10 +586,10 @@ public sealed class Run
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
 
-        // Mission boss : le boss de la PHASE courante est placé EN TÊTE (la scène le pose en premier).
-        // Le boss par phase est configuré dans units.json (champ « phase », cf. Commandes.BossFor).
+        // Mission boss : le boss ASSIGNÉ à la phase courante est placé EN TÊTE (la scène le pose en premier).
+        // Cf. BossSpecFor / BossOfPhase (tirage déterministe de 3 boss distincts par run).
         if (IsBossCombat)
-            wave.Insert(0, ToSpec(Commandes.BossFor(PhaseIndex)));
+            wave.Insert(0, BossSpecFor(PhaseIndex));
 
         return wave;
     }
@@ -599,7 +604,7 @@ public sealed class Run
         BuildScaledWave(count, isSeen);
 
     /// <summary>
-    /// Vague d'un combat BOSS sur MAP DESSINÉE : le pion <see cref="Commandes.Boss"/> EN TÊTE (la scène le
+    /// Vague d'un combat BOSS sur MAP DESSINÉE : le pion <see cref="BossDef"/> EN TÊTE (la scène le
     /// pose sur une case B) + EXACTEMENT <paramref name="escortCount"/> escortes calées sur les autres cases
     /// de spawn de la map, pour que CHAQUE case dessinée soit occupée. Tiers selon le gabarit de la mission.
     /// Déterministe (reprise = même vague). Hors map dessinée, c'est <see cref="BuildEnemyWave"/> (effectif
@@ -608,7 +613,7 @@ public sealed class Run
     public List<UnitSpec> BuildBossEnemyWave(int escortCount, Func<string, bool>? isSeen = null)
     {
         var wave = BuildScaledWave(escortCount, isSeen);
-        wave.Insert(0, ToSpec(Commandes.BossFor(PhaseIndex)));   // boss de la phase, en tête (la scène le pose sur une case B)
+        wave.Insert(0, BossSpecFor(PhaseIndex));   // boss assigné à la phase, en tête (la scène le pose sur une case B)
         return wave;
     }
 
@@ -911,6 +916,23 @@ public sealed class Run
             var j = rng.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
+    }
+
+    // ─── BOSS ─────────────────────────────────────────────────────────────────────────────────────
+    // Chaque run tire 3 boss DISTINCTS (un par phase), déterministe via la graine (rejoué à l'identique
+    // après « Continuer »). Le boss d'une phase combat avec le PROFIL (stats + traits) de CETTE phase.
+    // Repli sur répétition si moins de boss éligibles que de phases. Cf. Bosses.AssignForRun.
+    private IReadOnlyList<BossDef>? _bossAssignment;
+    private IReadOnlyList<BossDef> BossAssignment => _bossAssignment ??= Bosses.AssignForRun(Seed, PhaseCount);
+
+    /// <summary>Boss (identité + profils par phase) assigné à la <paramref name="phase"/> (1..<see cref="PhaseCount"/>) de CETTE run.</summary>
+    public BossDef BossOfPhase(int phase) => BossAssignment[phase - 1];
+
+    /// <summary>Gabarit essentiel du boss d'une phase : son domaine de déplacement + le profil (stats/traits) de la phase.</summary>
+    private UnitSpec BossSpecFor(int phase)
+    {
+        var boss = BossOfPhase(phase);
+        return new UnitSpec(boss.Movement, boss.ProfileFor(phase), essential: true);
     }
 
     /// <summary>

@@ -1,19 +1,20 @@
 {
   "name": "special_prot_01",
   "type": "Speciale",
-  "objective": "ProtegerPaysans",
+  "objective": "LibererPaysans",
+  "phase": 1,
   "turnLimit": 25,
   "width": 8,
   "height": 8,
   "tiles": [
     "7hhhh644",
     "94u440hh",
-    "hh8hhhhh",
-    "hh8hhhhh",
-    "eeheehee",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh"
+    "hh8hhhhZ",
+    "ph8hhhp+",
+    "**~**~*%",
+    "h60hhv3h",
+    "40hhh8hh",
+    "hhhhh8hh"
   ],
   "spawns": [
     "O......O",

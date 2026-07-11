@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
 using Echec.Core.Battle.Config;
@@ -38,65 +39,89 @@ public class DomaineCatalogTests
     }
 
     [Fact]
-    public void CommandesFromJson_BuildsLeaders_WithRoleAndMovement()
+    public void CommandesFromJson_BuildsCommanders_FilteringOutBosses()
     {
         const string json = """
         {
           "domaines": [],
           "commandes": [
             { "role": "Commander", "domaine": "Dame", "name": "Generale", "asset": "generale", "hp": 30, "damage": 7, "moveRange": 2, "attackRange": 1 },
-            { "role": "Boss",      "domaine": "Tour", "name": "Colosse",  "asset": "colosse",  "hp": 40, "damage": 9, "moveRange": 1, "attackRange": 2 }
+            { "role": "Boss",      "domaine": "Tour", "name": "Colosse",  "asset": "colosse",  "phases": { "1": { "hp": 40, "damage": 9, "moveRange": 1, "attackRange": 2 } } }
           ]
         }
         """;
 
-        var defs = DomaineCatalog.CommandesFromJson(json);
-
-        var commander = defs.Single(d => d.Role == CommandeRole.Commander);
+        var commander = Assert.Single(DomaineCatalog.CommandesFromJson(json));   // le boss est filtré (cf. BossesFromJson)
+        Assert.Equal(CommandeRole.Commander, commander.Role);
         Assert.Equal("Generale", commander.Name);
         Assert.Equal(Domaine.Dame, commander.Movement); // emprunte le déplacement de la Dame
         Assert.Equal(30, commander.BaseClass.MaxHp);
-
-        var boss = defs.Single(d => d.Role == CommandeRole.Boss);
-        Assert.Equal(Domaine.Tour, boss.Movement);
-        Assert.Equal(2, boss.BaseClass.AttackRange);
-        Assert.Equal(0, boss.Phase);   // "phase" absente → 0 (toutes phases)
     }
 
     [Fact]
-    public void CommandesFromJson_ReadsBossPhase()
+    public void BossesFromJson_ReadsPerPhaseProfiles_WithTraits()
     {
         const string json = """
         {
           "domaines": [],
           "commandes": [
-            { "role": "Boss", "domaine": "Dame", "name": "Boss2", "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 2 }
+            { "role": "Boss", "name": "Necromancien", "asset": "necro", "domaine": "Dame",
+              "phases": {
+                "1": { "hp": 30, "damage": 9,  "moveRange": 1, "attackRange": 1 },
+                "3": { "hp": 60, "damage": 15, "moveRange": 1, "attackRange": 2, "traits": ["Rage", "Drain de vie"] }
+              }
+            }
           ]
         }
         """;
 
-        var boss = DomaineCatalog.CommandesFromJson(json).Single();
-        Assert.Equal(2, boss.Phase);
+        var boss = Assert.Single(DomaineCatalog.BossesFromJson(json));
+        Assert.Equal("Necromancien", boss.Name);
+        Assert.Equal(Domaine.Dame, boss.Movement);
+
+        Assert.True(boss.SupportsPhase(1));
+        Assert.False(boss.SupportsPhase(2));                        // phase non déclarée
+        Assert.Equal(30, boss.ProfileFor(1).MaxHp);
+        Assert.Equal(60, boss.ProfileFor(3).MaxHp);
+        Assert.Contains("Drain de vie", boss.ProfileFor(3).Traits);
+        Assert.Empty(boss.ProfileFor(1).Traits);
+        Assert.Same(boss.ProfileFor(1), boss.ProfileFor(2));        // phase 2 non déclarée → repli sur la plus proche ≤ 2 (phase 1)
     }
 
     [Fact]
-    public void BossFor_PicksPhaseBoss_ThenAllPhases_ThenFirst()
+    public void AssignForRun_IsDeterministic_AndPrefersDistinctBosses()
     {
-        const string json = """
-        {
-          "domaines": [],
-          "commandes": [
-            { "role": "Boss", "domaine": "Dame", "name": "BossAny", "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 0 },
-            { "role": "Boss", "domaine": "Dame", "name": "Boss2",   "asset": "boss", "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase": 2 }
-          ]
-        }
-        """;
-        var defs = DomaineCatalog.CommandesFromJson(json);
+        var pool = new[] { Boss("A"), Boss("B"), Boss("C") };
 
-        Assert.Equal("Boss2", Commandes.BossFor(defs, 2).Name);    // boss réservé à la phase 2
-        Assert.Equal("BossAny", Commandes.BossFor(defs, 1).Name);  // pas de boss phase 1 → repli « toutes phases »
-        Assert.Equal("BossAny", Commandes.BossFor(defs, 3).Name);  // idem phase 3
+        var a1 = Bosses.AssignForRun(pool, seed: 12345, phaseCount: 3);
+        var a2 = Bosses.AssignForRun(pool, seed: 12345, phaseCount: 3);
+
+        Assert.Equal(a1.Select(b => b.Name), a2.Select(b => b.Name));   // rejoué à l'identique
+        Assert.Equal(3, a1.Select(b => b.Name).Distinct().Count());     // 3 boss distincts (pool suffisant)
     }
+
+    [Fact]
+    public void AssignForRun_RepeatsWhenPoolTooSmall_AndUsesClosestProfile()
+    {
+        var only = new BossDef("Solo", "solo", Domaine.Dame, new Dictionary<int, UnitClass>
+        {
+            [1] = new("Solo", "solo", tier: 1, maxHp: 30, damage: 9,  moveRange: 1, attackRange: 1),
+            [3] = new("Solo", "solo", tier: 1, maxHp: 50, damage: 13, moveRange: 1, attackRange: 1),
+        });
+
+        var assign = Bosses.AssignForRun(new[] { only }, seed: 1, phaseCount: 3);
+
+        Assert.All(assign, b => Assert.Equal("Solo", b.Name));   // un seul boss → répété sur les 3 phases
+        Assert.Equal(50, assign[2].ProfileFor(3).MaxHp);         // phase 3 → profil 3
+        Assert.Equal(30, assign[1].ProfileFor(2).MaxHp);         // phase 2 non déclarée → repli profil 1
+    }
+
+    private static BossDef Boss(string name) => new(name, name, Domaine.Dame, new Dictionary<int, UnitClass>
+    {
+        [1] = new(name, name, tier: 1, maxHp: 30, damage: 9,  moveRange: 1, attackRange: 1),
+        [2] = new(name, name, tier: 1, maxHp: 40, damage: 11, moveRange: 1, attackRange: 1),
+        [3] = new(name, name, tier: 1, maxHp: 50, damage: 13, moveRange: 1, attackRange: 1),
+    });
 
     [Fact]
     public void Load_OverridesDefaults()

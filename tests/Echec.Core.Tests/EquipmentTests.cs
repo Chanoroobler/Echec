@@ -317,6 +317,30 @@ public class EquipmentTests
     }
 
     [Fact]
+    public void Equip_AttaqueLibre_ForbiddenOnDameDomaine_AllowedElsewhere()
+    {
+        Equipment Viseur() => Equipment.OfTrait("viseur", "Viseur", Trait.AttaqueLibre);
+
+        // Domaine DAME : tire déjà comme une Dame → « Attaque libre » refusé (redondant).
+        var run = RunWith(Soldat());   // Soldat = domaine Dame
+        var dame = run.Roster.First(u => !u.Essential);
+        var v1 = Viseur();
+        run.AddEquipment(v1);
+        Assert.False(run.CanEquip(dame, v1));
+        Assert.False(run.Equip(dame, v1));
+        Assert.Null(dame.Equipment);
+        Assert.Contains(v1, run.EquipmentInventory);   // pas consommé
+
+        // Hors domaine Dame (Tour) : accepté.
+        var run2 = RunWith(new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass));
+        var tour = run2.Roster.First(u => !u.Essential);
+        var v2 = Viseur();
+        run2.AddEquipment(v2);
+        Assert.True(run2.CanEquip(tour, v2));
+        Assert.True(run2.Equip(tour, v2));
+    }
+
+    [Fact]
     public void Equip_Commander_IsRejected()
     {
         var run = new Run(seed: 1);

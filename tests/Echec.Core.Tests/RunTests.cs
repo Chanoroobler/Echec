@@ -229,7 +229,9 @@ public class RunTests
             if (run.IsBossCombat)
             {
                 Assert.Equal(1, bosses);
-                Assert.Equal(Commandes.Boss.BaseClass, wave.Single(u => u.Essential).UnitClass);
+                // Le pion essentiel = le boss ASSIGNÉ à cette phase, avec le profil (stats/traits) de la phase.
+                Assert.Equal(run.BossOfPhase(run.PhaseIndex).ProfileFor(run.PhaseIndex),
+                    wave.Single(u => u.Essential).UnitClass);
             }
             else
             {
@@ -533,7 +535,8 @@ public class EssentialUnitTests
         match.Place(playerCell, Units.Soldat(Faction.Player));
 
         var bossCell = new Cell(4, 4);
-        var boss = new UnitSpec(Commandes.Boss.Movement, Commandes.Boss.BaseClass, essential: true)
+        var bossDef = Bosses.All[0];
+        var boss = new UnitSpec(bossDef.Movement, bossDef.ProfileFor(1), essential: true)
             .Spawn(Faction.Enemy);
         boss.TakeDamage(boss.Hp - 1); // à 1 PV
         match.Place(bossCell, boss);

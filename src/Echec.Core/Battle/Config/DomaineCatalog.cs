@@ -22,26 +22,62 @@ public static class DomaineCatalog
     public static IReadOnlyList<DomaineDef> FromJson(string json) =>
         Deserialize(json).Domaines.Select(ToDef).ToList();
 
-    /// <summary>Construit les unités COMMANDE (commandant/boss) depuis le même JSON.</summary>
+    /// <summary>Construit les COMMANDANTS (role = Commander) depuis le même JSON. Les boss ont leur propre
+    /// chargeur (<see cref="BossesFromJson"/>) car leur format diffère (profils par phase).</summary>
     public static IReadOnlyList<CommandeDef> CommandesFromJson(string json) =>
-        Deserialize(json).Commandes.Select(ToCommande).ToList();
+        Deserialize(json).Commandes.Where(c => RoleOf(c) == CommandeRole.Commander).Select(ToCommande).ToList();
+
+    /// <summary>Construit les BOSS (role = Boss) depuis le même JSON : identité + profils (stats/traits) par phase.</summary>
+    public static IReadOnlyList<BossDef> BossesFromJson(string json) =>
+        Deserialize(json).Commandes.Where(c => RoleOf(c) == CommandeRole.Boss).Select(ToBoss).ToList();
 
     private static UnitsConfig Deserialize(string json) =>
         JsonSerializer.Deserialize<UnitsConfig>(json, Options)
             ?? throw new InvalidOperationException("Configuration d'unités vide ou illisible.");
 
+    private static CommandeRole RoleOf(CommandeConfig c) =>
+        Enum.TryParse<CommandeRole>(c.Role, ignoreCase: true, out var role)
+            ? role
+            : throw new InvalidOperationException($"Role de commande inconnu dans units.json : '{c.Role}'.");
+
     private static CommandeDef ToCommande(CommandeConfig c)
     {
-        if (!Enum.TryParse<CommandeRole>(c.Role, ignoreCase: true, out var role))
-            throw new InvalidOperationException($"Role de commande inconnu dans units.json : '{c.Role}'.");
         if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
             throw new InvalidOperationException($"Domaine de mouvement inconnu pour la commande '{c.Name}' : '{c.Domaine}'.");
-        if (c.Phase is < 0 or > 3)
-            throw new InvalidOperationException($"Phase de boss invalide pour '{c.Name}' : {c.Phase}. Attendu 0 (toutes) ou 1..3.");
 
-        return new CommandeDef(role, domaine,
-            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange), c.Phase,
+        return new CommandeDef(CommandeRole.Commander, domaine,
+            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange),
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0);
+    }
+
+    private static BossDef ToBoss(CommandeConfig c)
+    {
+        if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
+            throw new InvalidOperationException($"Domaine de mouvement inconnu pour le boss '{c.Name}' : '{c.Domaine}'.");
+
+        var profiles = new Dictionary<int, UnitClass>();
+        if (c.Phases is { Count: > 0 })
+        {
+            foreach (var (key, p) in c.Phases)
+            {
+                if (!int.TryParse(key, out var phase) || phase is < 1 or > 3)
+                    throw new InvalidOperationException(
+                        $"Phase de boss invalide pour '{c.Name}' : \"{key}\". Attendu \"1\" à \"3\".");
+                if (!profiles.TryAdd(phase, new UnitClass(c.Name, c.Asset, tier: 1, p.Hp, p.Damage, p.MoveRange,
+                        p.AttackRange, p.PiercesAllies, p.MinAttackRange ?? 1, p.Traits, ParseAttackDomaine(p.AttackDomaine, c.Name))))
+                    throw new InvalidOperationException($"Phase de boss en double pour '{c.Name}' : {phase}.");
+            }
+        }
+        else
+        {
+            // Repli HÉRITÉ : entrée à stats plates + champ « phase » (une seule phase, sans trait).
+            if (c.Phase is < 0 or > 3)
+                throw new InvalidOperationException($"Phase de boss invalide pour '{c.Name}' : {c.Phase}. Attendu 0 ou 1..3.");
+            var phase = c.Phase is >= 1 and <= 3 ? c.Phase : 1;
+            profiles[phase] = new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange);
+        }
+
+        return new BossDef(c.Name, c.Asset, domaine, profiles);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)
@@ -58,14 +94,17 @@ public static class DomaineCatalog
             .Select(e => ToClass(e, tier + 1))
             .ToArray();
 
-        Domaine? attackDomaine = null;
-        if (!string.IsNullOrWhiteSpace(c.AttackDomaine))
-            attackDomaine = Enum.TryParse<Domaine>(c.AttackDomaine, ignoreCase: true, out var ad)
-                ? ad
-                : throw new InvalidOperationException(
-                    $"Domaine d'attaque inconnu pour la classe '{c.Name}' : '{c.AttackDomaine}'.");
-
         return new UnitClass(c.Name, c.Asset, tier, c.Hp, c.Damage, c.MoveRange, c.AttackRange,
-            c.PiercesAllies, c.MinAttackRange ?? 1, c.Traits, attackDomaine, evolutions);
+            c.PiercesAllies, c.MinAttackRange ?? 1, c.Traits, ParseAttackDomaine(c.AttackDomaine, c.Name), evolutions);
+    }
+
+    /// <summary>Parse un domaine d'attaque optionnel (« attackDomaine »). Null si absent ; lève si invalide.</summary>
+    private static Domaine? ParseAttackDomaine(string? value, string owner)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        return Enum.TryParse<Domaine>(value, ignoreCase: true, out var ad)
+            ? ad
+            : throw new InvalidOperationException($"Domaine d'attaque inconnu pour '{owner}' : '{value}'.");
     }
 }

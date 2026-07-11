@@ -440,29 +440,28 @@ public class TraitsTests
         Assert.Null(m.UnitAt(new Cell(5, 5)));            // retiré du plateau
     }
 
-    // ── Attaque libre : cible tout ennemi dans le carré de portée (hors contact) ───
+    // ── Attaque libre : tire COMME UNE DAME (8 directions en ligne), quel que soit le domaine ───
 
     [Fact]
-    public void AttaqueLibre_TargetsAnyEnemyInSquareZone_ExceptDirectMelee()
+    public void AttaqueLibre_MakesUnitAttackLikeAQueen_EvenOffItsDomaine()
     {
+        // Pion de domaine TOUR (par défaut) : normalement il ne tire QU'EN orthogonal.
         var m = Board();
-        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte }, attackRange: 3));
-        m.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));   // dc=2, dr=1 : case « cavalier » (hors lignes)
-        m.Place(new Cell(4, 4), Make(Faction.Enemy, 20, 5, None));   // diagonale adjacente : PAS zone morte (classique)
-        m.Place(new Cell(3, 4), Make(Faction.Enemy, 20, 5, None));   // orthogonal adjacent = corps-à-corps DIRECT → exclu
-        m.Place(new Cell(3, 7), Make(Faction.Enemy, 20, 5, None));   // Chebyshev 4 → hors portée
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre }, attackRange: 3));
+        m.Place(new Cell(3, 6), Make(Faction.Enemy, 20, 5, None));   // orthogonal (0,1)×3
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // DIAGONALE (1,1)×2 : hors d'un Tour, à portée d'une Dame
+        m.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));   // dc=2,dr=1 : case « cavalier », sur AUCUNE ligne
 
         var targets = m.AttackTargets(new Cell(3, 3));
-        Assert.Contains(new Cell(5, 4), targets);        // atteint une case impossible pour une Dame
-        Assert.Contains(new Cell(4, 4), targets);        // diagonale au contact : autorisée (zone morte classique)
-        Assert.DoesNotContain(new Cell(3, 4), targets);  // corps-à-corps direct (case droite) exclu
-        Assert.DoesNotContain(new Cell(3, 7), targets);  // hors portée
+        Assert.Contains(new Cell(3, 6), targets);        // orthogonal : ok
+        Assert.Contains(new Cell(5, 5), targets);        // diagonale : Attaque libre tire comme une Dame
+        Assert.DoesNotContain(new Cell(5, 4), targets);  // hors lignes : une Dame ne l'atteint pas (≠ ancien comportement « carré »)
 
-        // Contraste : une Dame (sans Attaque libre) ne peut PAS viser la case « cavalier ».
-        var dame = Board();
-        dame.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.ZoneMorte }, domaine: Domaine.Dame, attackRange: 3));
-        dame.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));
-        Assert.DoesNotContain(new Cell(5, 4), dame.AttackTargets(new Cell(3, 3)));
+        // Sans Attaque libre, le même pion (Tour) ne peut PAS viser la diagonale.
+        var tour = Board();
+        tour.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, None, attackRange: 3));
+        tour.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));
+        Assert.DoesNotContain(new Cell(5, 5), tour.AttackTargets(new Cell(3, 3)));
     }
 
     [Fact]

@@ -101,6 +101,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
             var json = System.IO.File.ReadAllText(path);
             Domaines.Load(DomaineCatalog.FromJson(json));
             Commandes.Load(DomaineCatalog.CommandesFromJson(json));
+            Bosses.Load(DomaineCatalog.BossesFromJson(json));
         }
         catch (System.Exception ex)
         {

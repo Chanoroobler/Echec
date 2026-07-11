@@ -6851,11 +6851,13 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Restriction d'emploi à afficher SOUS l'effet (ligne séparée, en rouge doux), ou null si aucune.
-    /// Reflète <see cref="Run.CanEquip"/> : portée interdite aux cavaliers de mêlée (sauf archer monté),
-    /// mouvement interdit à TOUS les cavaliers.
+    /// Reflète <see cref="Run.CanEquip"/> : « Attaque libre » interdit au domaine Dame ; portée interdite aux
+    /// cavaliers de mêlée (sauf archer monté), mouvement interdit à TOUS les cavaliers.
     /// </summary>
     private static string? EquipRestriction(Equipment equip)
     {
+        if (equip.GrantsTrait(Trait.AttaqueLibre))
+            return Loc.T("equip.no_dame");            // tir « comme une Dame » : sans objet sur une Dame
         if (equip.BonusFor(EquipStat.AttackRange) > 0)
             return Loc.T("equip.no_cavalier");        // … sauf l'archer monté
         if (equip.BonusFor(EquipStat.MoveRange) > 0)

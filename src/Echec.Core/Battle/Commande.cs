@@ -16,13 +16,12 @@ public enum CommandeRole
 /// </summary>
 public sealed class CommandeDef
 {
-    public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass, int phase = 0,
+    public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass,
         int deployments = 5, int reserveSize = 8, string treeId = "commandant", int fusionPoints = 0)
     {
         Role = role;
         Movement = movement;
         BaseClass = baseClass;
-        Phase = phase;
         Deployments = deployments;
         ReserveSize = reserveSize;
         TreeId = treeId;
@@ -35,12 +34,6 @@ public sealed class CommandeDef
     public Domaine Movement { get; }
 
     public UnitClass BaseClass { get; }
-
-    /// <summary>
-    /// BOSS uniquement : phase de campagne (1..3) à laquelle ce boss est réservé, ou <c>0</c> = « toutes
-    /// phases » (repli). Cf. <see cref="Commandes.BossFor"/>. Sans objet pour un commandant.
-    /// </summary>
-    public int Phase { get; }
 
     /// <summary>
     /// COMMANDANT : nombre de pions posables sur le plateau au placement, COMMANDANT COMPRIS. Base propre à

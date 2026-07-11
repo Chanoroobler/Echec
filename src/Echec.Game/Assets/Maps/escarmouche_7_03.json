@@ -1,33 +1,33 @@
 {
-  "name": "escarmouche_7_01",
+  "name": "escarmouche_7_03",
   "type": "Escarmouche",
   "width": 7,
   "height": 7,
   "tiles": [
-    "hhhhhhh",
-    "h64447h",
-    "h8-=<8h",
-    "h8,|>8h",
-    "h8;:?8h",
-    "h944u0h",
-    "hhhh8hh"
+    "hh8hhhh",
+    "hh8hhhh",
+    "hp8hh63",
+    "6u0hp8h",
+    "897h5z4",
+    "8h8hhhh",
+    "0h8hhhh"
   ],
   "spawns": [
     "EEEEEEE",
-    "..EEE..",
     ".......",
     ".......",
     ".......",
-    "PP.P.PP",
-    ".P.P.P."
+    ".......",
+    ".......",
+    "PPPPPPP"
   ],
   "objects": [
     ".......",
+    ".B...B.",
     ".......",
-    "C.....R",
-    "B.....B",
+    ".C....R",
     ".......",
-    ".......",
+    ".B...B.",
     "......."
   ]
 }

@@ -1,0 +1,36 @@
+{
+  "name": "Boss_1_02",
+  "type": "Boss",
+  "width": 8,
+  "height": 8,
+  "tiles": [
+    "qsososor",
+    "mjYjYjYi",
+    "cYjYjYjd",
+    "UkYjYjlX",
+    "RmjYjYiO",
+    "OkYjYjlO",
+    "RgbYjfaO",
+    "FJQklPWC"
+  ],
+  "spawns": [
+    "EEEEBEEE",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    ".PPPPPP.",
+    "...PP..."
+  ],
+  "objects": [
+    "........",
+    "........",
+    "C......C",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........"
+  ]
+}

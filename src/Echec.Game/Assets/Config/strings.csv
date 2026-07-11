@@ -79,6 +79,7 @@ equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
 equip.stat_bonus,+{0} {1},+{0} {1}
 equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR KNIGHTS (EXCEPT MOUNTED ARCHER)
 equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR KNIGHTS
+equip.no_dame,INTERDIT AU DOMAINE DAME,NOT FOR THE QUEEN DOMAIN
 equip.rarity.common,COMMUN,COMMON
 equip.rarity.rare,RARE,RARE
 equip.rarity.legendary,LEGENDAIRE,LEGENDARY
@@ -219,7 +220,7 @@ kw.orage.desc,À L'ATTAQUE FOUDROIE TOUS LES AUTRES ENNEMIS DE 3,ON ATTACK STRIK
 kw.tempete.label,TEMPETE,TEMPEST
 kw.tempete.desc,À L'ATTAQUE FOUDROIE TOUS LES AUTRES ENNEMIS DE 6,ON ATTACK STRIKES ALL OTHER ENEMIES FOR 6
 kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM
-kw.attaque_libre.desc,TIRE SUR N'IMPORTE QUEL ENNEMI DANS SA ZONE DE PORTÉE (PAS SEULEMENT EN LIGNE),SHOOTS ANY ENEMY WITHIN ITS RANGE ZONE (NOT ONLY IN LINE)
+kw.attaque_libre.desc,TIRE COMME UNE DAME (8 DIRECTIONS EN LIGNE) QUEL QUE SOIT SON DOMAINE,SHOOTS LIKE A QUEEN (8 DIRECTIONS IN LINE) WHATEVER ITS DOMAIN
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE !
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────

@@ -103,18 +103,76 @@
 
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
   // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
-  // Pour un Boss, "phase" (1..3) le réserve à cette phase de campagne ; 0 ou absent = toutes phases (repli).
-  // Le combat de boss d'une phase prend le boss de CETTE phase, sinon un boss "toutes phases", sinon le 1er.
+  //
+  // BOSS : un boss = une IDENTITE (name + asset/sprite + domaine de déplacement) et un PROFIL PAR PHASE dans
+  // "phases" ("1".."3" -> stats + traits). Un boss n'est eligible qu'aux phases qu'il declare. A chaque run,
+  // le jeu tire 3 boss DISTINCTS (un par phase, deterministe via la graine) et chacun combat avec le profil
+  // de SA phase. Il faut au moins 3 boss definis (avec leurs sprites) pour ne jamais repeter un boss ; avec
+  // moins, la repetition est autorisee. Champs d'un profil : hp, damage, moveRange, attackRange, et en option
+  // minAttackRange (X a Y), piercesAllies, attackDomaine, traits (liste, cf. traits de units.json).
+  //
   // Un COMMANDANT porte en plus ses plafonds d'armée (deployments = pions posables COMMANDANT COMPRIS,
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
   // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
-  // Ces quatre champs sont ignorés pour un boss.
   "commandes": [
     { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1,
       "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2 },
-    { "role": "Boss",      "domaine": "Dame", "name": "Boss",       "asset": "boss",       "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "phase":1 }
-    // Exemples de boss par phase (à définir — décommenter/adapter) :
-    // { "role": "Boss", "domaine": "Dame", "name": "Boss Phase 1", "asset": "boss", "hp": 30, "damage":  9, "moveRange": 1, "attackRange": 1, "phase": 1 },
-    // { "role": "Boss", "domaine": "Tour", "name": "Boss Phase 2", "asset": "boss", "hp": 40, "damage": 11, "moveRange": 1, "attackRange": 2, "phase": 2 }
+
+    {
+      "role": "Boss",
+      "name": "Commandant_brute",
+      "asset": "Commandant_brute",
+      "domaine": "Dame",
+      "phases": {
+        "1": {
+          "hp": 30,
+          "damage": 12,
+          "moveRange": 1,
+          "attackRange": 1
+        },
+        "2": {
+          "hp": 44,
+          "damage": 15,
+          "moveRange": 1,
+          "attackRange": 2,
+          "traits": [ "Rage" ]
+        },
+        "3": {
+          "hp": 60,
+          "damage": 18,
+          "moveRange": 1,
+          "attackRange": 2,
+          "traits": [ "Rage", "Transpercement"]
+        }
+      }
+    },
+    {
+      "role": "Boss",
+      "name": "Commandant_guerrier",
+      "asset": "Commandant_guerrier",
+      "domaine": "Dame",
+      "phases": {
+        "1": {
+          "hp": 35,
+          "damage": 10,
+          "moveRange": 1,
+          "attackRange": 1
+        },
+        "2": {
+          "hp": 50,
+          "damage": 12,
+          "moveRange": 1,
+          "attackRange": 2,
+          "traits": [ "Esquive" ]
+        },
+        "3": {
+          "hp": 65,
+          "damage": 15,
+          "moveRange": 1,
+          "attackRange": 2,
+          "traits": [ "Esquive", "Orage" ]
+        }
+      }
+    }
   ]
 }

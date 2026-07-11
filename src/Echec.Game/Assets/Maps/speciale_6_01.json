@@ -2,6 +2,7 @@
   "name": "speciale_6_01",
   "type": "Speciale",
   "objective": "LibererPaysans",
+  "phase": 1,
   "turnLimit": 40,
   "width": 8,
   "height": 10,

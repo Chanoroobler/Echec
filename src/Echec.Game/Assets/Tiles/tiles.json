@@ -12,6 +12,11 @@
       "file": "TilesMurs.png",
       "cellW": 64,
       "cellH": 80
+    },
+    "eaux": {
+      "file": "TilesEaux.png",
+      "cellW": 64,
+      "cellH": 80
     }
   },
   "tiles": [
@@ -596,6 +601,196 @@
       "sheet": "murs",
       "col": 5,
       "row": 6
+    },
+    {
+      "_comment": "--- Tileset 'eaux' (TilesEaux.png), grille 5x5 remplie sur 21 cases (l.0-3 completes + col0/l.4). Defaut = EAU : blocksMove=true, blocksFire=false (cf. tuile 'water'). Exceptions marchables : eau_10 (pont vertical) et eau_02 (ponton horizontal) = tout false. Rochers/blocs a passer en blocksFire=true a la main si voulu. ---",
+      "id": "eau_00",
+      "key": "Z",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "eau_10",
+      "key": "~",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "eau_20",
+      "key": "!",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "eau_30",
+      "key": "@",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "eau_40",
+      "key": "#",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "eau_01",
+      "key": "$",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "eau_11",
+      "key": "%",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "eau_21",
+      "key": "&",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "eau_31",
+      "key": "*",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "eau_41",
+      "key": "(",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "eau_02",
+      "key": ")",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "eau_12",
+      "key": "+",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "eau_22",
+      "key": "-",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "eau_32",
+      "key": "=",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "eau_42",
+      "key": "<",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "eau_03",
+      "key": ">",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "eau_13",
+      "key": "?",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "eau_23",
+      "key": ":",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "eau_33",
+      "key": ";",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "eau_43",
+      "key": ",",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "eau_04",
+      "key": "|",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 4
     }
   ]
 }
