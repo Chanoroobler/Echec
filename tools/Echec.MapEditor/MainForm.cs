@@ -18,6 +18,10 @@ internal sealed class MainForm : Form
     private readonly TileRenderCatalog? _catalog;
     private MapDocument _doc = null!;
     private bool _dirty;
+    // Vrai pendant qu'Open remplit les contrôles depuis la map chargée : neutralise les handlers de changement
+    // pour qu'ils ne s'écrasent PAS mutuellement (régler le type déclenchait SyncSpecialFields qui écrasait
+    // l'objectif/la phase AVANT qu'on les lise). NewMap, lui, s'appuie volontairement sur la cascade.
+    private bool _loading;
 
     private readonly MapCanvas _canvas = new() { Dock = DockStyle.Fill };
     private readonly FlowLayoutPanel _palette = new()
@@ -34,6 +38,7 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _heightNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly ToolStripStatusLabel _status = new("Prêt.");
     private Button? _selectedPaletteButton;
+    private Button? _selectedTierButton;
 
     // Inspecteur (colonne de droite) : édite blocksMove/blocksFire de la tuile de terrain focalisée.
     private readonly PictureBox _tilePreview = new();
@@ -136,7 +141,7 @@ internal sealed class MainForm : Form
 
         bar.Controls.Add(Sep());
         bar.Controls.Add(Label("Nom :"));
-        _nameBox.TextChanged += (_, _) => { if (_doc is not null) { _doc.Name = _nameBox.Text; MarkDirty(); } };
+        _nameBox.TextChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Name = _nameBox.Text; MarkDirty(); } };
         bar.Controls.Add(_nameBox);
 
         bar.Controls.Add(Label("Type :"));
@@ -145,6 +150,7 @@ internal sealed class MainForm : Form
         _typeBox.SelectedIndex = 0;
         _typeBox.SelectedIndexChanged += (_, _) =>
         {
+            if (_loading) return;
             if (_doc is not null) { _doc.Type = _typeBox.Text; MarkDirty(); }
             SyncSpecialFields();
         };
@@ -154,7 +160,7 @@ internal sealed class MainForm : Form
         bar.Controls.Add(Label("Objectif :"));
         _objectiveBox.Items.AddRange(new object[] { "Aucun", "LibererPaysans", "ProtegerPaysans" });
         _objectiveBox.SelectedIndex = 0;
-        _objectiveBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Objective = _objectiveBox.Text; MarkDirty(); } };
+        _objectiveBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Objective = _objectiveBox.Text; MarkDirty(); } };
         bar.Controls.Add(_objectiveBox);
 
         // Phase réservée (Speciale ET Boss) : l'index du combo EST la valeur (0=Toutes, 1..3). Le tirage des
@@ -162,12 +168,12 @@ internal sealed class MainForm : Form
         bar.Controls.Add(Label("Phase :"));
         _phaseBox.Items.AddRange(new object[] { "Toutes", "1", "2", "3" });
         _phaseBox.SelectedIndex = 0;
-        _phaseBox.SelectedIndexChanged += (_, _) => { if (_doc is not null) { _doc.Phase = _phaseBox.SelectedIndex; MarkDirty(); } };
+        _phaseBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Phase = _phaseBox.SelectedIndex; MarkDirty(); } };
         bar.Controls.Add(_phaseBox);
 
         // Limite de tours (rounds) de la mission spéciale — Speciale uniquement.
         bar.Controls.Add(Label("Tours :"));
-        _turnsNum.ValueChanged += (_, _) => { if (_doc is not null && _typeBox.Text == "Speciale") { _doc.TurnLimit = (int)_turnsNum.Value; MarkDirty(); } };
+        _turnsNum.ValueChanged += (_, _) => { if (_loading) return; if (_doc is not null && _typeBox.Text == "Speciale") { _doc.TurnLimit = (int)_turnsNum.Value; MarkDirty(); } };
         bar.Controls.Add(_turnsNum);
 
         bar.Controls.Add(Sep());
@@ -221,6 +227,7 @@ internal sealed class MainForm : Form
         foreach (Control c in _palette.Controls) c.Dispose();
         _palette.Controls.Clear();
         _selectedPaletteButton = null;
+        _selectedTierButton = null;
 
         // Outil « main » (aucune tuile), commun à tous les calques : le clic n'écrit rien. Auto-sélectionné
         // à l'ouverture d'une map pour ne pas peindre par erreur au premier clic (cf. Open).
@@ -240,6 +247,12 @@ internal sealed class MainForm : Form
                 AddBrushButton('O', "Ennemi offensif", Color.FromArgb(200, 40, 140));
                 AddBrushButton('B', "Boss", Color.FromArgb(170, 90, 220));
                 AddBrushButton('.', "Effacer", Color.DimGray);
+                // Tier posé avec les ennemis (E/D/O) — fixe la composition des vagues SPÉCIALE / BOSS
+                // (ignoré par les escarmouches, qui suivent campaign.json).
+                _palette.Controls.Add(Label("Tier ennemi :"));
+                AddTierButton('1', Color.FromArgb(90, 200, 120));
+                AddTierButton('2', Color.FromArgb(235, 205, 90));
+                AddTierButton('3', Color.FromArgb(230, 110, 90));
                 break;
             case EditLayer.Objects:
                 AddBrushButton('C', "Coffre", Color.FromArgb(230, 190, 60));
@@ -257,6 +270,14 @@ internal sealed class MainForm : Form
             if (c is Button b && b.Tag is char ch && ch == _canvas.Brush)
             {
                 SelectPaletteButton(b);
+                break;
+            }
+
+        // Sélectionne le tier courant (boutons T1/T2/T3 du calque Spawns).
+        foreach (Control c in _palette.Controls)
+            if (c is Button b && b.Tag is char ch && ch is '1' or '2' or '3' && ch == _canvas.Tier)
+            {
+                SelectTierButton(b);
                 break;
             }
 
@@ -320,6 +341,29 @@ internal sealed class MainForm : Form
         if (_selectedPaletteButton is not null)
             _selectedPaletteButton.FlatAppearance.BorderSize = 1;
         _selectedPaletteButton = btn;
+        btn.FlatAppearance.BorderColor = Color.Gold;
+        btn.FlatAppearance.BorderSize = 3;
+    }
+
+    /// <summary>Bouton de TIER (T1/T2/T3) : le tier posé avec les spawns ennemis (E/D/O). Sélection indépendante du pinceau.</summary>
+    private void AddTierButton(char tier, Color color)
+    {
+        var btn = new Button
+        {
+            Size = new Size(44, 44), Margin = new Padding(4), Tag = tier, FlatStyle = FlatStyle.Flat,
+            BackColor = color, ForeColor = Color.Black, Text = "T" + tier, TextAlign = ContentAlignment.MiddleCenter,
+        };
+        btn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
+        _tips.SetToolTip(btn, $"Tier {tier} : les ennemis (E/D/O) peints prennent ce tier.\nBoss/spéciale : fixe la composition de la vague (position tirée au hasard).");
+        btn.Click += (_, _) => { _canvas.Tier = tier; SelectTierButton(btn); };
+        _palette.Controls.Add(btn);
+    }
+
+    private void SelectTierButton(Button btn)
+    {
+        if (_selectedTierButton is not null)
+            _selectedTierButton.FlatAppearance.BorderSize = 1;
+        _selectedTierButton = btn;
         btn.FlatAppearance.BorderColor = Color.Gold;
         btn.FlatAppearance.BorderSize = 3;
     }
@@ -484,13 +528,21 @@ internal sealed class MainForm : Form
         try
         {
             _doc = MapDocument.Load(dlg.FileName);
-            _nameBox.Text = _doc.Name;
-            _typeBox.SelectedItem = _typeBox.Items.Contains(_doc.Type) ? _doc.Type : "Escarmouche";
-            _objectiveBox.SelectedItem = _objectiveBox.Items.Contains(_doc.Objective) ? _doc.Objective : "Aucun";
-            _phaseBox.SelectedIndex = Math.Clamp(_doc.Phase, 0, 3);
-            _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
-            SyncSpecialFields();
-            SyncSizeFields();
+            // On charge TOUS les champs sous _loading : les handlers sont neutralisés, donc régler le type
+            // n'écrase plus l'objectif/la phase avant qu'on les lise. On synchronise (grisé/actif) à la fin,
+            // une fois les vraies valeurs en place.
+            _loading = true;
+            try
+            {
+                _nameBox.Text = _doc.Name;
+                _typeBox.SelectedItem = _typeBox.Items.Contains(_doc.Type) ? _doc.Type : "Escarmouche";
+                _objectiveBox.SelectedItem = _objectiveBox.Items.Contains(_doc.Objective) ? _doc.Objective : "Aucun";
+                _phaseBox.SelectedIndex = Math.Clamp(_doc.Phase, 0, 3);
+                _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
+                SyncSpecialFields();
+                SyncSizeFields();
+            }
+            finally { _loading = false; }
             _canvas.SetContent(_doc, _catalog);
             _canvas.Brush = MapCanvas.HandBrush;   // main : évite de peindre par erreur au 1er clic après chargement
             RebuildPalette();                       // reflète la sélection « main » dans la palette

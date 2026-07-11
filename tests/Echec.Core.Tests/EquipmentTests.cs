@@ -193,6 +193,31 @@ public class EquipmentTests
         Assert.NotNull(Equipments.Roll(EquipmentRarity.Common, new Random(1)));
     }
 
+    [Fact]
+    public void RollChestEquipment_LessLikelyForItemsAlreadyOwnedTwice()
+    {
+        try
+        {
+            var dup = Equipment.OfStat("dup", "Doublon", EquipStat.Hp, 1);
+            var uniq = Equipment.OfStat("uniq", "Unique", EquipStat.Hp, 1);
+            Equipments.Load(new[] { dup, uniq });        // 2 items communs
+
+            var run = RunWith(Soldat());
+            run.AddEquipment(dup);                        // possédé 2× → doit devenir rare au coffre
+            run.AddEquipment(dup);
+
+            var rng = new Random(1234);
+            int dupHits = 0, uniqHits = 0;
+            for (var i = 0; i < 600; i++)
+                if (run.RollChestEquipment(rng)!.Id == "dup") dupHits++; else uniqHits++;
+
+            // Poids 0.25 (doublon) vs 1 (autre) → l'unique sort NETTEMENT plus souvent, mais le doublon reste possible.
+            Assert.True(uniqHits > dupHits * 2, $"uniq={uniqHits} dup={dupHits} : le doublon doit être bien plus rare");
+            Assert.True(dupHits > 0, "le doublon doit rester possible (jamais exclu)");
+        }
+        finally { Equipments.ResetToDefaults(); }
+    }
+
     // ─── Pose / retrait via Run ──────────────────────────────────────────────────────────────────
 
     [Fact]

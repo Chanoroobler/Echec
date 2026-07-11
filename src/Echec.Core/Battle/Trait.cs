@@ -32,9 +32,9 @@ public static class Trait
     public const string Formation = "Formation";             // +FormationBonus de puissance par allié adjacent
     public const string Esquive = "Esquive";                 // EsquiveChance de chance d'annuler une attaque subie
     public const string Embrochage = "Embrochage";           // l'attaque touche aussi les ennemis adjacents à la cible
-    public const string Orage = "Orage";                     // à l'attaque : foudroie tous les AUTRES ennemis (dégât fixe)
-    public const string Tempete = "Tempête";                 // idem Orage, dégât fixe plus élevé
-    public const string AttaqueLibre = "Attaque libre";      // tire COMME UNE DAME (8 directions en ligne), quel que soit le domaine
+    public const string Orage = "Orage";                     // à l'attaque : foudroie 3 ennemis AU HASARD (dégât fixe)
+    public const string Tempete = "Tempête";                 // idem Orage (3 ennemis au hasard), dégât fixe plus élevé
+    public const string AttaqueLibre = "Attaque libre";      // AJOUTE le tir comme une Dame (8 directions en ligne) EN PLUS de l'attaque native (le cavalier garde son saut)
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =

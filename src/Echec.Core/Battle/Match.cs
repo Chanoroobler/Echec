@@ -195,9 +195,22 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
-        // « Attaque libre » : le pion tire COMME UNE DAME (8 directions en ligne), quel que soit son domaine.
-        var attackDomaine = unit.HasTrait(Trait.AttaqueLibre) ? Domaine.Dame : unit.AttackDomaine;
+        // Pattern d'ATTAQUE natif de l'unité (peut différer du déplacement : cavalier monté = saut en L).
+        AppendAttackTargets(from, unit, unit.AttackDomaine, result);
+
+        // « Attaque libre » : AJOUTE le tir « comme une Dame » (8 directions en ligne) EN PLUS de l'attaque
+        // native — un cavalier monté garde son attaque au SAUT (L) et gagne le tir en lignes.
+        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
+            AppendAttackTargets(from, unit, Domaine.Dame, result);
+    }
+
+    /// <summary>
+    /// Ajoute à <paramref name="result"/> les ENNEMIS atteignables selon le pattern <paramref name="attackDomaine"/> :
+    /// SAUT = cases en L (cavalier) ; GLISSÉ = 1er ennemi rencontré par direction (zone morte, ligne de tir /
+    /// montagne, traverse-allié respectés). Sans doublon — permet d'UNIR plusieurs patterns (cf. « Attaque libre »).
+    /// </summary>
+    private void AppendAttackTargets(Cell from, Unit unit, Domaine attackDomaine, List<Cell> result)
+    {
         var vectors = Movement.Vectors(attackDomaine);
 
         if (Movement.Kind(attackDomaine) == MovementKind.Jump)
@@ -205,7 +218,7 @@ public sealed class Match
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (UnitAt(to) is { } target && target.Faction != unit.Faction)
+                if (UnitAt(to) is { } target && target.Faction != unit.Faction && !result.Contains(to))
                     result.Add(to);
             }
             return;
@@ -234,7 +247,7 @@ public sealed class Match
                 {
                     // Premier ennemi en vue : cible SI au-delà de la zone morte de cette direction.
                     // Dans tous les cas son corps borne la ligne (pas de tir au travers).
-                    if (step >= minStep)
+                    if (step >= minStep && !result.Contains(to))
                         result.Add(to);
                     break;
                 }
@@ -267,9 +280,16 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Le tir/menace suit le pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté).
-        // « Attaque libre » : le pion menace COMME UNE DAME (8 directions en ligne), quel que soit son domaine.
-        var attackDomaine = unit.HasTrait(Trait.AttaqueLibre) ? Domaine.Dame : unit.AttackDomaine;
+        // Pattern d'ATTAQUE natif (cavalier monté = saut en L), + « Attaque libre » = menace en lignes de Dame EN PLUS.
+        AppendThreatenedCells(from, unit, unit.AttackDomaine, result);
+        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
+            AppendThreatenedCells(from, unit, Domaine.Dame, result);
+    }
+
+    /// <summary>Ajoute à <paramref name="result"/> les cases MENACÉES selon le pattern <paramref name="attackDomaine"/>
+    /// (toutes les cases atteignables jusqu'à la 1re unité incluse). Sans doublon — union de patterns possible.</summary>
+    private void AppendThreatenedCells(Cell from, Unit unit, Domaine attackDomaine, List<Cell> result)
+    {
         var vectors = Movement.Vectors(attackDomaine);
 
         if (Movement.Kind(attackDomaine) == MovementKind.Jump)
@@ -277,7 +297,7 @@ public sealed class Match
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to))
+                if (InBounds(to) && !result.Contains(to))
                     result.Add(to);
             }
             return;
@@ -300,7 +320,7 @@ public sealed class Match
                 if (occupant != null && occupant.Faction == unit.Faction && piercesAllies)
                     continue; // lancier : traverse l'allié sans le menacer, la ligne continue
 
-                if (step >= minStep)
+                if (step >= minStep && !result.Contains(to))
                     result.Add(to); // hors zone morte (diagonale = dès 1) : case réellement menacée
                 if (occupant != null)
                     break; // un ennemi (ou un allié non traversé) borne la ligne de tir au-delà
@@ -344,7 +364,7 @@ public sealed class Match
         if (unit.HasTrait(Trait.Transpercement))
             PierceBehind(from, target, unit);
 
-        // Orage / Tempête : la foudre frappe TOUS les autres ennemis (hors cible directe) pour un dégât fixe.
+        // Orage / Tempête : la foudre frappe 3 ennemis AU HASARD (hors cible directe) pour un dégât fixe.
         if (StormDamageFor(unit) is > 0 and var storm)
             StormStrike(unit, target, storm);
 
@@ -484,11 +504,15 @@ public sealed class Match
         }
     }
 
+    /// <summary>Nombre MAX d'ennemis foudroyés par Orage/Tempête (tirés au hasard s'il y en a davantage).</summary>
+    private const int StormMaxTargets = 3;
+
     /// <summary>
-    /// « Orage » / « Tempête » : à l'attaque, la foudre frappe TOUS les ennemis du porteur SAUF la cible
-    /// directe (<paramref name="target"/>), chacun pour un dégât FIXE (<paramref name="amount"/>, ni réduit
-    /// par Rempart/couvert ni majoré par les traits offensifs — mais Esquive/Bouclier divin s'appliquent via
-    /// <see cref="ApplyDamage"/>). Les cibles sont figées avant application (la grille change en cours).
+    /// « Orage » / « Tempête » : à l'attaque, la foudre frappe jusqu'à <see cref="StormMaxTargets"/> ennemis du
+    /// porteur TIRÉS AU HASARD (parmi tous, SAUF la cible directe <paramref name="target"/>), chacun pour un
+    /// dégât FIXE (<paramref name="amount"/>, ni réduit par Rempart/couvert ni majoré par les traits offensifs —
+    /// mais Esquive/Bouclier divin s'appliquent via <see cref="ApplyDamage"/>). Tirage via <see cref="_rng"/>.
+    /// Les cibles sont figées avant application (la grille change en cours).
     /// </summary>
     private void StormStrike(Unit attacker, Cell target, int amount)
     {
@@ -496,12 +520,21 @@ public sealed class Match
         foreach (var (cell, unit) in Units())
             if (unit.Faction != attacker.Faction && cell != target)
                 victims.Add(cell);
-        foreach (var cell in victims)
+
+        // Ne foudroie que StormMaxTargets ennemis : mélange partiel (Fisher-Yates) pour en tirer autant au hasard.
+        var count = System.Math.Min(StormMaxTargets, victims.Count);
+        for (var i = 0; i < count; i++)
         {
-            if (UnitAt(cell) is not { } u)
+            var j = i + _rng.Next(victims.Count - i);
+            (victims[i], victims[j]) = (victims[j], victims[i]);
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            if (UnitAt(victims[i]) is not { } u)
                 continue;
-            ApplyDamage(cell, u, amount);
-            RemoveDeadAt(cell);
+            ApplyDamage(victims[i], u, amount);
+            RemoveDeadAt(victims[i]);
         }
     }
 

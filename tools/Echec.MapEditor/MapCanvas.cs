@@ -33,6 +33,11 @@ internal sealed class MapCanvas : Panel
 
     public float Zoom { get; set; } = 1f;
 
+    /// <summary>Tier courant (1..3) posé AVEC les spawns ENNEMIS (E/D/O) dans le calque tiers.</summary>
+    public char Tier { get; set; } = '1';
+
+    private static bool IsEnemySpawn(char c) => c is 'E' or 'D' or 'O';
+
     private Point _hover = new(-1, -1);
 
     public event EventHandler? MapChanged;
@@ -99,6 +104,8 @@ internal sealed class MapCanvas : Panel
 
                 if (Layer != EditLayer.Terrain || _doc.Spawns[r, c] != MapDocument.EmptySpawn)
                     DrawSpawn(g, x, y, surface, _doc.Spawns[r, c]);
+                if (_doc.Tiers[r, c] != MapDocument.EmptyTier)
+                    DrawTier(g, x, y, surface, _doc.Tiers[r, c], active: Layer == EditLayer.Spawns);
                 if (Layer != EditLayer.Terrain || _doc.Objects[r, c] != MapDocument.EmptyObject)
                     DrawObject(g, x, y, surface, _doc.Objects[r, c]);
             }
@@ -149,6 +156,24 @@ internal sealed class MapCanvas : Panel
         DrawCentered(g, ch.ToString(), bx, by, badge, badge, badge * 0.6f);
     }
 
+    /// <summary>Petit badge de TIER (1/2/3) en haut-gauche d'une case de spawn ennemi (vert/jaune/rouge).</summary>
+    private void DrawTier(Graphics g, float x, float y, float s, char ch, bool active)
+    {
+        var col = ch switch
+        {
+            '1' => Color.FromArgb(90, 200, 120),
+            '2' => Color.FromArgb(235, 205, 90),
+            '3' => Color.FromArgb(230, 110, 90),
+            _ => Color.Gray,
+        };
+        int alpha = active ? 235 : 90;
+        float badge = s * 0.4f;
+        float bx = x + 2, by = y + 2;
+        using var b = new SolidBrush(Color.FromArgb(alpha, col));
+        g.FillEllipse(b, bx, by, badge, badge);
+        DrawCentered(g, ch.ToString(), bx, by, badge, badge, badge * 0.62f);
+    }
+
     private static void DrawPlaceholder(Graphics g, float x, float y, float s, char key)
     {
         using var b = new SolidBrush(Color.FromArgb(60, 60, 70));
@@ -191,21 +216,25 @@ internal sealed class MapCanvas : Panel
         if (cell.X < 0 || cell.X >= _doc.Width || cell.Y < 0 || cell.Y >= _doc.Height) return;
 
         bool erase = e.Button == MouseButtons.Right;
-        char value = Layer switch
-        {
-            EditLayer.Spawns => erase ? MapDocument.EmptySpawn : Brush,
-            EditLayer.Objects => erase ? MapDocument.EmptyObject : Brush,
-            _ => Brush, // le terrain a toujours une tuile ; clic droit = pinceau aussi
-        };
 
-        var grid = Layer switch
+        // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier courant dans le calque tiers ;
+        // poser joueur/boss ou effacer efface le tier. Répercuté même si le spawn ne change pas, pour
+        // permettre de ne changer QUE le tier (re-cliquer un ennemi après avoir changé T1/T2/T3).
+        if (Layer == EditLayer.Spawns)
         {
-            EditLayer.Spawns => _doc.Spawns,
-            EditLayer.Objects => _doc.Objects,
-            _ => _doc.Tiles,
-        };
-        if (grid[cell.Y, cell.X] == value) return;
-        grid[cell.Y, cell.X] = value;
+            var spawn = erase ? MapDocument.EmptySpawn : Brush;
+            var tier = IsEnemySpawn(spawn) ? Tier : MapDocument.EmptyTier;
+            if (_doc.Spawns[cell.Y, cell.X] == spawn && _doc.Tiers[cell.Y, cell.X] == tier) return;
+            _doc.Spawns[cell.Y, cell.X] = spawn;
+            _doc.Tiers[cell.Y, cell.X] = tier;
+        }
+        else
+        {
+            var value = Layer == EditLayer.Objects ? (erase ? MapDocument.EmptyObject : Brush) : Brush;
+            var grid = Layer == EditLayer.Objects ? _doc.Objects : _doc.Tiles;
+            if (grid[cell.Y, cell.X] == value) return;
+            grid[cell.Y, cell.X] = value;
+        }
         Invalidate();
         MapChanged?.Invoke(this, EventArgs.Empty);
     }

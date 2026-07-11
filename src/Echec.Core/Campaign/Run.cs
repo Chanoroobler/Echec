@@ -86,42 +86,8 @@ public sealed class Run
     private static readonly Domaine[] IntroOrder =
         { Domaine.Dame, Domaine.Tour, Domaine.Cavalier, Domaine.Fou };
 
-    /// <summary>
-    /// Composition en TIERS des ESCORTES par (phase, mission), indexée <c>[PhaseIndex-1][MissionInPhase-1]</c>
-    /// (18 entrées). SOURCE DE VÉRITÉ de l'effectif et de la force des vagues (cf. <see cref="BuildEnemyWave"/>).
-    /// Pour une mission Boss, le pion <see cref="BossDef"/> s'AJOUTE à cette liste (« Boss + N pions »).
-    /// L'effectif monte de 3 à ~12, le tier glisse de T1 à T3 phase après phase.
-    /// </summary>
-    private static readonly int[][][] WaveTiers =
-    {
-        new[] // Phase 1 — apprentissage (T1, le T2 arrive au combat 4). Effectifs liés au SLOT (difficulté croissante).
-        {
-            new[] { 1, 1 },                              // m1 Escarmouche : 2× T1 (démarrage doux)
-            new[] { 1, 1, 1 },                           // m2 Escarmouche : 3× T1
-            new[] { 1, 1, 1, 1 },                        // m3 Escarmouche : 4× T1
-            new[] { 1, 1, 1, 1, 1, 2 },                  // m4 Speciale    : gabarit T1/T2 (effectif = spawns de la map)
-            new[] { 1, 1, 1, 1, 1, 2, 2 },               // m5 Escarmouche : 5× T1 + 2× T2
-            new[] { 1, 1, 1, 1, 1, 1, 1, 2, 2 },         // m6 Boss        : + 7× T1 + 2× T2
-        },
-        new[] // Phase 2 — montée en puissance (T2 dominant)
-        {
-            new[] { 1, 1, 1, 1, 2, 2, 2 },               // m1 : 4× T1 + 3× T2
-            new[] { 1, 1, 1, 1, 2, 2, 2, 2 },            // m2 : 4× T1 + 4× T2
-            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2 },         // m3 Speciale : 3× T1 + 6× T2
-            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2 },         // m4 : 3× T1 + 6× T2
-            new[] { 1, 1, 2, 2, 2, 2, 2, 2, 2, 2 },      // m5 : 2× T1 + 8× T2
-            new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2, 2 },      // m6 Boss : + 3× T1 + 7× T2
-        },
-        new[] // Phase 3 — fin de run (T2 → T3)
-        {
-            new[] { 2, 2, 2, 2, 2, 3, 3, 3 },            // m1 : 5× T2 + 3× T3
-            new[] { 2, 2, 2, 2, 2, 3, 3, 3, 3 },         // m2 : 5× T2 + 4× T3
-            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 },      // m3 Speciale : 4× T2 + 6× T3
-            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 },      // m4 : 4× T2 + 6× T3
-            new[] { 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 },   // m5 : 3× T2 + 8× T3
-            new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 },// m6 BossFinal : + 4× T2 + 8× T3
-        },
-    };
+    // Effectif + tiers + taille de map par (phase, mission) : externalisés dans Assets/Config/campaign.json
+    // (cf. CampaignPlan, réglage « facile » sans recompiler). L'ancienne table WaveTiers en est le repli codé.
 
     private readonly List<UnitSpec> _roster = new();
     private readonly List<UnitSpec> _draft = new();
@@ -319,7 +285,7 @@ public sealed class Run
     /// éventuel. Sert à l'UI (tooltip de la frise) ; cohérent avec <see cref="BuildEnemyWave"/>.
     /// </summary>
     public static int EnemyCount(int phaseIndex, int missionInPhase) =>
-        WaveTiers[phaseIndex - 1][missionInPhase - 1].Length
+        CampaignPlan.For(phaseIndex, missionInPhase).Tiers.Count
         + (MissionKindAt(phaseIndex, missionInPhase) == CombatType.Boss ? 1 : 0);
 
     public UnitSpec Commander => _roster.First(u => u.Essential);
@@ -413,19 +379,45 @@ public sealed class Run
     /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de rare (cf. <see cref="RarePity"/>).</summary>
     private const int RarePityStep = 2;
 
+    /// <summary>Nombre d'exemplaires d'un même équipement à partir duquel il devient RARE au coffre (anti-doublon).</summary>
+    private const int DuplicateThreshold = 2;
+
+    /// <summary>Poids de tirage au coffre d'un équipement déjà possédé <see cref="DuplicateThreshold"/> fois ou plus
+    /// (1 = normal). &lt; 1 → moins probable, sans jamais être impossible.</summary>
+    private const double DuplicateWeight = 0.25;
+
     /// <summary>
     /// Butin d'un coffre : tire une RARETÉ (phase + pitié, cf. <see cref="ResolveChestRarity"/>) puis un
-    /// équipement de cette rareté. Si son pool est vide, on retombe sur la rareté juste en dessous (légendaire
-    /// → rare → commun). Null seulement si AUCUN équipement n'est défini. Met à jour la pitié.
+    /// équipement de cette rareté. Un item DÉJÀ POSSÉDÉ en double (inventaire + posés sur les pions) est
+    /// nettement moins probable (anti-doublon, cf. <see cref="EquipmentDropWeight"/>) sans être exclu. Si le
+    /// pool d'une rareté est vide, on retombe sur celle juste en dessous (légendaire → rare → commun). Null
+    /// seulement si AUCUN équipement n'est défini. Met à jour la pitié.
     /// </summary>
     public Equipment? RollChestEquipment(Random rng)
     {
         var rarity = ResolveChestRarity(rng.NextDouble() * 100.0);
+        var owned = OwnedEquipmentCounts();
         for (var r = (int)rarity; r >= 0; r--)
-            if (Equipments.Roll((EquipmentRarity)r, rng) is { } item)
+            if (Equipments.Roll((EquipmentRarity)r, rng, e => EquipmentDropWeight(e, owned)) is { } item)
                 return item;
         return null;
     }
+
+    /// <summary>Nombre d'exemplaires de chaque équipement POSSÉDÉ (inventaire + posés sur les pions), par id.</summary>
+    private Dictionary<string, int> OwnedEquipmentCounts()
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var e in _equipment)
+            counts[e.Id] = counts.GetValueOrDefault(e.Id) + 1;
+        foreach (var u in _roster)
+            if (u.Equipment is { } e)
+                counts[e.Id] = counts.GetValueOrDefault(e.Id) + 1;
+        return counts;
+    }
+
+    /// <summary>Poids de tirage d'un équipement au coffre : réduit s'il est déjà possédé en double (anti-doublon).</summary>
+    private static double EquipmentDropWeight(Equipment e, IReadOnlyDictionary<string, int> owned) =>
+        owned.GetValueOrDefault(e.Id) >= DuplicateThreshold ? DuplicateWeight : 1.0;
 
     /// <summary>
     /// Détermine la rareté d'un coffre à partir d'un tirage <paramref name="roll"/> dans [0,100) et MET À JOUR
@@ -566,7 +558,7 @@ public sealed class Run
 
     /// <summary>
     /// Vague ennemie du combat courant (le placement est assuré par la scène). L'effectif et la
-    /// composition en TIERS viennent de la table maître <see cref="WaveTiers"/>, indexée par
+    /// composition en TIERS viennent de la table maître <see cref="CampaignPlan"/>, indexée par
     /// (<see cref="PhaseIndex"/>, <see cref="MissionInPhase"/>) — TOUJOURS exacts et déterministes. Pour
     /// chaque tier requis : on tire un domaine dans le pool débloqué (<see cref="UnlockedDomaines"/>),
     /// puis une <see cref="UnitClass"/> de CE tier (<see cref="ClassesAtTier"/>). Aux tiers 2-3, si
@@ -582,7 +574,7 @@ public sealed class Run
 
         var pool = UnlockedDomaines();
         var counts = new Dictionary<UnitClass, int>();   // pour éviter au max plus de 2 fois la même classe
-        foreach (var tier in WaveTiers[PhaseIndex - 1][MissionInPhase - 1])
+        foreach (var tier in CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers)
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
 
@@ -596,34 +588,37 @@ public sealed class Run
 
     /// <summary>
     /// Vague d'une MISSION SPÉCIALE : EXACTEMENT <paramref name="count"/> ennemis (= le nombre de spawns
-    /// dessinés sur la map), et non l'effectif fixe de la table. Les TIERS suivent le gabarit de la mission
-    /// (<see cref="WaveTiers"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), mais
-    /// l'effectif est piloté par la map. Déterministe (<see cref="CombatRng"/>) : reprise = même vague.
+    /// dessinés sur la map), et non l'effectif fixe de la table. Les TIERS viennent de <paramref name="fixedTiers"/>
+    /// s'il est fourni (composition FIXÉE dans l'éditeur, cf. <see cref="Map.MapData.EnemyTiers"/>), sinon du
+    /// gabarit de la mission (<see cref="CampaignPlan"/>). Déterministe (<see cref="CombatRng"/>) : reprise = même vague.
     /// </summary>
-    public List<UnitSpec> BuildSpecialEnemyWave(int count, Func<string, bool>? isSeen = null) =>
-        BuildScaledWave(count, isSeen);
+    public List<UnitSpec> BuildSpecialEnemyWave(int count, Func<string, bool>? isSeen = null,
+        IReadOnlyList<int>? fixedTiers = null) =>
+        BuildScaledWave(count, isSeen, fixedTiers);
 
     /// <summary>
     /// Vague d'un combat BOSS sur MAP DESSINÉE : le pion <see cref="BossDef"/> EN TÊTE (la scène le
     /// pose sur une case B) + EXACTEMENT <paramref name="escortCount"/> escortes calées sur les autres cases
-    /// de spawn de la map, pour que CHAQUE case dessinée soit occupée. Tiers selon le gabarit de la mission.
+    /// de spawn de la map, pour que CHAQUE case dessinée soit occupée. Tiers = <paramref name="fixedTiers"/> si
+    /// fourni (composition FIXÉE dans l'éditeur), sinon le gabarit de la mission (<see cref="CampaignPlan"/>).
     /// Déterministe (reprise = même vague). Hors map dessinée, c'est <see cref="BuildEnemyWave"/> (effectif
     /// FIXE de la table) qui s'applique — le boss y est déjà inséré en tête.
     /// </summary>
-    public List<UnitSpec> BuildBossEnemyWave(int escortCount, Func<string, bool>? isSeen = null)
+    public List<UnitSpec> BuildBossEnemyWave(int escortCount, Func<string, bool>? isSeen = null,
+        IReadOnlyList<int>? fixedTiers = null)
     {
-        var wave = BuildScaledWave(escortCount, isSeen);
+        var wave = BuildScaledWave(escortCount, isSeen, fixedTiers);
         wave.Insert(0, BossSpecFor(PhaseIndex));   // boss assigné à la phase, en tête (la scène le pose sur une case B)
         return wave;
     }
 
     /// <summary>
     /// Vague de <paramref name="count"/> ennemis dont les TIERS suivent le gabarit de la mission courante
-    /// (<see cref="WaveTiers"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), l'effectif
+    /// (<see cref="CampaignPlan"/>, cyclé si besoin) : la difficulté reste calée sur (phase, mission), l'effectif
     /// étant piloté par l'appelant (nb de cases de spawn de la map). Déterministe (<see cref="CombatRng"/>).
     /// Sert aux vagues « pilotées par la map » (mission spéciale et escortes de boss dessiné).
     /// </summary>
-    private List<UnitSpec> BuildScaledWave(int count, Func<string, bool>? isSeen)
+    private List<UnitSpec> BuildScaledWave(int count, Func<string, bool>? isSeen, IReadOnlyList<int>? fixedTiers = null)
     {
         var rng = CombatRng(1);
         var wave = new List<UnitSpec>();
@@ -632,9 +627,11 @@ public sealed class Run
 
         var pool = UnlockedDomaines();
         var counts = new Dictionary<UnitClass, int>();   // éviter au max plus de 2 fois la même classe
-        var template = WaveTiers[PhaseIndex - 1][MissionInPhase - 1];   // gabarit de tiers de la mission
+        // Tiers FIXÉS par la map (calque « tiers » de l'éditeur, boss/spéciale) s'ils existent, sinon le
+        // gabarit de la mission (campaign.json). Cyclés si l'effectif dépasse la liste fournie.
+        var tiers = fixedTiers is { Count: > 0 } ? fixedTiers : CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers;
         for (var k = 0; k < count; k++)
-            wave.Add(PickEnemy(rng, pool, template[k % template.Length], isSeen, counts));
+            wave.Add(PickEnemy(rng, pool, tiers[k % tiers.Count], isSeen, counts));
         Shuffle(wave, rng);
         return wave;
     }

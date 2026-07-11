@@ -53,6 +53,41 @@ public class MapLoaderTests
         Assert.Empty(map.BossSpawns);
     }
 
+    // Map boss 3x3 : E/D = ennemis (tiers), B = boss (sans tier). Grille `tiers` alignée aux spawns.
+    private const string MapWithTiers = """
+    {
+      "name": "t",
+      "type": "Boss",
+      "width": 3,
+      "height": 3,
+      "legend": { "c": "damier_clair" },
+      "tiles":  [ "ccc", "ccc", "ccc" ],
+      "spawns": [ "EBE", "..D", "PPP" ],
+      "tiers":  [ "3.2", "..1", "..." ]
+    }
+    """;
+
+    [Fact]
+    public void Parse_ReadsEnemyTiers_FromTiersGrid()
+    {
+        var map = MapLoader.Parse(MapWithTiers, Catalog());
+        // Tiers lus aux cases de spawn ENNEMI, dans l'ordre de lecture : (0,0)=3, (2,0)=2, (2,1)=1. Boss ignoré.
+        Assert.Equal(new[] { 3, 2, 1 }, map.EnemyTiers);
+    }
+
+    [Fact]
+    public void Parse_NoTiersGrid_EnemyTiersEmpty()
+    {
+        Assert.Empty(MapLoader.Parse(Map2x2, Catalog()).EnemyTiers);   // pas de calque tiers → repli campaign.json
+    }
+
+    [Fact]
+    public void Parse_InvalidTierChar_Throws()
+    {
+        var json = MapWithTiers.Replace("\"3.2\"", "\"5.2\"");   // 5 hors 1..3, sur une case ennemie
+        Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
     [Fact]
     public void Parse_UnknownLegendChar_Throws()
     {

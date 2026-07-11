@@ -255,6 +255,9 @@ public sealed class CommandTreeView
         sb.Begin(samplerState: SamplerState.PointClamp);
         Fill(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * 0.62f);
         _ctx.Style.DrawPanel(sb, panel);
+        // Fond du cadre de commandement ÉCLAIRCI : voile bleu-gris clair sur l'intérieur (inset de 3 pour
+        // garder le relief du biseau). Le contenu (titre, nœuds, liens) est dessiné PAR-DESSUS, donc lisible.
+        Fill(sb, Inflate(panel, -3), Palette.Navy1 * 0.55f);
 
         DrawHeader(sb, panel, run);
         DrawLinks(sb, tree, run);

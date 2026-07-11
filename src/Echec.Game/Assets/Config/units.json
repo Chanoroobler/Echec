@@ -68,10 +68,10 @@
             ]
           },
           {
-            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Franchissement", "Attaque libre"],
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
             "evolutions": [
-              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol", "Attaque libre"] },
-              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "attackDomaine": "Dame", "traits": ["Zone morte", "Vol", "Attaque libre", "Balistique"] }
+              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Vol", "Attaque libre", "Balistique"] }
             ]
           }
         ]
@@ -115,7 +115,7 @@
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
   // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
   "commandes": [
-    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 1,
+    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 10, "moveRange": 1, "attackRange": 1,
       "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2 },
 
     {

@@ -14,7 +14,7 @@ public sealed class MapData
         IReadOnlyList<Cell> playerSpawns, IReadOnlyList<Cell> enemySpawns, IReadOnlyList<Cell> bossSpawns,
         IReadOnlyList<MapObject>? objects = null, IReadOnlyList<Cell>? defensiveEnemySpawns = null,
         SpecialObjective objective = SpecialObjective.Aucun, int phase = 0, int turnLimit = 0,
-        IReadOnlyList<Cell>? offensiveEnemySpawns = null)
+        IReadOnlyList<Cell>? offensiveEnemySpawns = null, IReadOnlyList<int>? enemyTiers = null)
     {
         Name = name;
         Type = type;
@@ -30,6 +30,7 @@ public sealed class MapData
         Objective = objective;
         Phase = phase;
         TurnLimit = turnLimit;
+        EnemyTiers = enemyTiers ?? System.Array.Empty<int>();
     }
 
     public string Name { get; }
@@ -74,6 +75,15 @@ public sealed class MapData
 
     /// <summary>Cases d'apparition du/des boss (vide pour une escarmouche).</summary>
     public IReadOnlyList<Cell> BossSpawns { get; }
+
+    /// <summary>
+    /// Tiers (1..3) FIXÉS par la map pour les ennemis d'une mission SPÉCIALE ou BOSS (escortes), un par case
+    /// de spawn ennemi (E/D/O) qui en déclare un dans le calque <c>tiers</c>. Vide = aucun tier fixe → repli
+    /// sur le gabarit de la mission (<c>campaign.json</c>). COMPOSITION seulement : c'est le multiset des tiers
+    /// de la vague ; la POSITION de chaque tier reste tirée au hasard au placement (comme la classe). Ignoré
+    /// pour les escarmouches (effectif/tiers pilotés par campaign.json).
+    /// </summary>
+    public IReadOnlyList<int> EnemyTiers { get; }
 
     /// <summary>Objets posés sur le plateau (coffres, clés…), calque <c>objects</c> de la map. Vide si aucun.</summary>
     public IReadOnlyList<MapObject> Objects { get; }

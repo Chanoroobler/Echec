@@ -15,6 +15,7 @@ internal sealed class MapDocument
 {
     public const char EmptySpawn = '.';
     public const char EmptyObject = '.';
+    public const char EmptyTier = '.';
 
     public string Name { get; set; } = "nouvelle_map";
     public string Type { get; set; } = "Escarmouche";
@@ -35,6 +36,10 @@ internal sealed class MapDocument
     public char[,] Spawns { get; private set; }
     public char[,] Objects { get; private set; }
 
+    /// <summary>Tier (1..3) par case de spawn ENNEMI (E/D/O) ; <see cref="EmptyTier"/> ailleurs. Calque « tiers »
+    /// de la map — fixe la composition des vagues spéciale/boss (cf. Core MapData.EnemyTiers).</summary>
+    public char[,] Tiers { get; private set; }
+
     public string? FilePath { get; set; }
 
     private MapDocument(int width, int height)
@@ -44,6 +49,7 @@ internal sealed class MapDocument
         Tiles = new char[height, width];
         Spawns = new char[height, width];
         Objects = new char[height, width];
+        Tiers = new char[height, width];
     }
 
     public static MapDocument NewMap(int width, int height, char defaultTileKey)
@@ -55,6 +61,7 @@ internal sealed class MapDocument
                 doc.Tiles[r, c] = defaultTileKey;
                 doc.Spawns[r, c] = EmptySpawn;
                 doc.Objects[r, c] = EmptyObject;
+                doc.Tiers[r, c] = EmptyTier;
             }
         return doc;
     }
@@ -81,6 +88,7 @@ internal sealed class MapDocument
         Fill(doc.Tiles, dto.Tiles, dto.Width, dto.Height, ' ');
         Fill(doc.Spawns, dto.Spawns, dto.Width, dto.Height, EmptySpawn);
         Fill(doc.Objects, dto.Objects, dto.Width, dto.Height, EmptyObject);
+        Fill(doc.Tiers, dto.Tiers, dto.Width, dto.Height, EmptyTier);
         return doc;
     }
 
@@ -100,6 +108,7 @@ internal sealed class MapDocument
         var t = new char[newHeight, newWidth];
         var s = new char[newHeight, newWidth];
         var o = new char[newHeight, newWidth];
+        var ti = new char[newHeight, newWidth];
         for (var r = 0; r < newHeight; r++)
             for (var c = 0; c < newWidth; c++)
             {
@@ -107,8 +116,9 @@ internal sealed class MapDocument
                 t[r, c] = inside ? Tiles[r, c] : defaultTileKey;
                 s[r, c] = inside ? Spawns[r, c] : EmptySpawn;
                 o[r, c] = inside ? Objects[r, c] : EmptyObject;
+                ti[r, c] = inside ? Tiers[r, c] : EmptyTier;
             }
-        Tiles = t; Spawns = s; Objects = o;
+        Tiles = t; Spawns = s; Objects = o; Tiers = ti;
         Width = newWidth; Height = newHeight;
     }
 
@@ -126,6 +136,7 @@ internal sealed class MapDocument
             Height = Height,
             Tiles = ToRows(Tiles),
             Spawns = ToRows(Spawns),
+            Tiers = ToRows(Tiers),
             Objects = ToRows(Objects),
         };
         return JsonSerializer.Serialize(dto, WriteOpts);
@@ -169,6 +180,7 @@ internal sealed class MapDocument
         [JsonPropertyName("height")] public int Height { get; set; }
         [JsonPropertyName("tiles")] public List<string>? Tiles { get; set; }
         [JsonPropertyName("spawns")] public List<string>? Spawns { get; set; }
+        [JsonPropertyName("tiers")] public List<string>? Tiers { get; set; }
         [JsonPropertyName("objects")] public List<string>? Objects { get; set; }
     }
 }

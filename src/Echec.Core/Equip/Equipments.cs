@@ -40,11 +40,38 @@ public static class Equipments
     public static IReadOnlyList<Equipment> OfRarity(EquipmentRarity rarity) =>
         _all.Where(e => e.Rarity == rarity).ToList();
 
-    /// <summary>Tire un équipement au hasard dans le pool d'une rareté, ou null si le pool est vide.</summary>
-    public static Equipment? Roll(EquipmentRarity rarity, Random rng)
+    /// <summary>
+    /// Tire un équipement dans le pool d'une rareté (null si le pool est vide). <paramref name="weight"/>
+    /// optionnel pondère chaque candidat (poids relatif ≥ 0) — sert à réduire la chance d'un item déjà possédé
+    /// en double (cf. <see cref="Campaign.Run.RollChestEquipment"/>). Sans pondération (ou tous poids nuls),
+    /// tirage UNIFORME. Ne renvoie jamais null tant que le pool n'est pas vide.
+    /// </summary>
+    public static Equipment? Roll(EquipmentRarity rarity, Random rng, Func<Equipment, double>? weight = null)
     {
         var pool = OfRarity(rarity);
-        return pool.Count == 0 ? null : pool[rng.Next(pool.Count)];
+        if (pool.Count == 0)
+            return null;
+        if (weight is null)
+            return pool[rng.Next(pool.Count)];
+
+        var weights = new double[pool.Count];
+        var total = 0.0;
+        for (var i = 0; i < pool.Count; i++)
+        {
+            weights[i] = Math.Max(0, weight(pool[i]));
+            total += weights[i];
+        }
+        if (total <= 0)
+            return pool[rng.Next(pool.Count)];   // tous nuls → uniforme (jamais bloqué)
+
+        var pick = rng.NextDouble() * total;
+        for (var i = 0; i < pool.Count; i++)
+        {
+            pick -= weights[i];
+            if (pick < 0)
+                return pool[i];
+        }
+        return pool[^1];   // filet contre l'arrondi flottant
     }
 
     private static Dictionary<string, Equipment> Index(IReadOnlyList<Equipment> defs)

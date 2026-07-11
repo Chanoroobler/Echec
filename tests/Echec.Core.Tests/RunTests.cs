@@ -139,6 +139,32 @@ public class RunTests
         Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
     }
 
+    [Fact]
+    public void BuildSpecialEnemyWave_FixedTiers_SetExactComposition_OverridingTemplate()
+    {
+        // Tiers FIXÉS par la map (éditeur) : la vague a EXACTEMENT cette composition, quel que soit campaign.json.
+        var tiers = new[] { 3, 3, 2, 1 };
+        var wave = RunAt(15).BuildSpecialEnemyWave(tiers.Length, isSeen: null, fixedTiers: tiers);
+
+        Assert.Equal(4, wave.Count);
+        Assert.Equal(2, wave.Count(u => u.UnitClass.Tier == 3));
+        Assert.Equal(1, wave.Count(u => u.UnitClass.Tier == 2));
+        Assert.Equal(1, wave.Count(u => u.UnitClass.Tier == 1));   // un T1 fixé même en phase 3
+    }
+
+    [Fact]
+    public void BuildBossEnemyWave_FixedTiers_SetEscortComposition()
+    {
+        var tiers = new[] { 3, 2, 2 };
+        var wave = RunAt(18).BuildBossEnemyWave(tiers.Length, isSeen: null, fixedTiers: tiers);
+
+        Assert.True(wave[0].Essential);   // boss en tête (hors composition d'escortes)
+        var escorts = wave.Where(u => !u.Essential).ToList();
+        Assert.Equal(3, escorts.Count);
+        Assert.Equal(1, escorts.Count(u => u.UnitClass.Tier == 3));
+        Assert.Equal(2, escorts.Count(u => u.UnitClass.Tier == 2));
+    }
+
     [Theory]
     [InlineData(6, 4)]     // phase 1 boss : 4 escortes
     [InlineData(12, 9)]    // phase 2 boss : 9 escortes

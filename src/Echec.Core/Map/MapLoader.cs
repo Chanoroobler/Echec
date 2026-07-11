@@ -81,6 +81,23 @@ public static class MapLoader
             }
         }
 
+        // Calque `tiers` (optionnel) : un tier (1..3) sur chaque case de spawn ENNEMI (E/D/O), pour FIXER la
+        // composition d'une vague SPÉCIALE / BOSS (cf. MapData.EnemyTiers). Absent → tiers du gabarit campaign.json.
+        var enemyTiers = new List<int>();
+        if (dto.Tiers is not null)
+        {
+            RequireGrid(dto.Tiers, width, height, "tiers");
+            foreach (var cell in enemy)
+            {
+                var ch = dto.Tiers[cell.Row][cell.Column];
+                if (ch is '1' or '2' or '3')
+                    enemyTiers.Add(ch - '0');
+                else if (ch is not ('.' or ' '))
+                    throw new FormatException(
+                        $"Caractère de tier '{ch}' invalide en ({cell.Column},{cell.Row}). Attendu 1, 2, 3 ou '.'.");
+            }
+        }
+
         var objects = new List<MapObject>();
         if (dto.Objects is not null)
         {
@@ -108,7 +125,7 @@ public static class MapLoader
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive);
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)
@@ -174,6 +191,7 @@ public static class MapLoader
         public Dictionary<string, string>? Legend { get; set; }
         public List<string>? Tiles { get; set; }
         public List<string>? Spawns { get; set; }
+        public List<string>? Tiers { get; set; }
         public List<string>? Objects { get; set; }
     }
 }

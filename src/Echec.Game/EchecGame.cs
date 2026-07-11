@@ -81,6 +81,7 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         LoadUnitConfig();
         LoadEquipmentConfig();
         LoadCommandTreeConfig();
+        LoadCampaignConfig();
         // Textes localisés (Assets/Config/strings.csv) chargés avant tout rendu d'UI.
         Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
@@ -106,6 +107,23 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         catch (System.Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"units.json ignoré (invalide) : {ex.Message}");
+        }
+    }
+
+    /// <summary>Charge le plan de campagne (taille de map + effectif/tiers par mission) depuis Assets/Config/campaign.json (repli codé si absent/invalide).</summary>
+    private static void LoadCampaignConfig()
+    {
+        var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/campaign.json");
+        if (!System.IO.File.Exists(path))
+            return;
+        try
+        {
+            Echec.Core.Campaign.CampaignPlan.Load(
+                Echec.Core.Campaign.CampaignPlan.FromJson(System.IO.File.ReadAllText(path)));
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"campaign.json ignoré (invalide) : {ex.Message}");
         }
     }
 

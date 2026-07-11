@@ -355,12 +355,14 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _legalMoves = new();
     private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
     private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
+    private readonly List<Cell> _healTargets = new();     // trait « Soin » : alliés blessés à portée, ciblables pour soigner
     private readonly List<Cell> _threatCells = new();
     private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
     // Aperçu au SURVOL d'un pion joueur (rien de sélectionné) : buffers distincts de la sélection.
     private readonly List<Cell> _hoverMoves = new();
     private readonly List<Cell> _hoverAttackTargets = new();
     private readonly List<Cell> _hoverReach = new();
+    private readonly List<Cell> _hoverHealTargets = new();
     private double _aiTimer;
     private bool _showTrees;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
@@ -544,15 +546,12 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Taille (côté du plateau) d'une mission : 6×6 en phase 1, 7×7 en phase 2, 8×8 en phase 3 — SAUF les
-    /// escarmouches 4 et 5 de la PHASE 1 qui passent en 7×7 (montée en effectif + arrivée du T2).
+    /// Taille (côté du plateau) d'une mission (phase, mission), lue depuis le plan de campagne
+    /// (<see cref="CampaignPlan"/> → <c>Assets/Config/campaign.json</c>, champ <c>mapSize</c>).
+    /// Défauts : 6×6 en phase 1 (sauf missions 4-5 = 7×7), 7×7 en phase 2, 8×8 en phase 3.
     /// </summary>
-    private static int MapSizeFor(int phaseIndex, int missionInPhase)
-    {
-        if (phaseIndex == 1 && (missionInPhase == 4 || missionInPhase == 5))
-            return 7;
-        return phaseIndex switch { 1 => 6, 2 => 7, _ => 8 };
-    }
+    private static int MapSizeFor(int phaseIndex, int missionInPhase) =>
+        Echec.Core.Campaign.CampaignPlan.For(phaseIndex, missionInPhase).MapSize;
 
     /// <summary>
     /// Map à utiliser pour le combat courant. ESCARMOUCHE : une map d'escarmouche à la taille
@@ -923,10 +922,11 @@ public sealed class GameplayScene : Scene
         // l'effectif = EXACTEMENT le nombre de spawns dessinés sur la map (pas l'effectif fixe de la table).
         List<UnitSpec> wave;
         if (_specialMission && _map is { } spMap)
-            wave = _run.BuildSpecialEnemyWave(spMap.EnemySpawns.Count, Context.Saves.IsUnitDiscovered);
+            // Tiers FIXÉS par la map (calque « tiers » de l'éditeur) s'ils existent, sinon gabarit campaign.json.
+            wave = _run.BuildSpecialEnemyWave(spMap.EnemySpawns.Count, Context.Saves.IsUnitDiscovered, spMap.EnemyTiers);
         else if (_run.IsBossCombat && _map is { } bossMap)
             // Boss sur map dessinée : le boss + une escorte par case de spawn restante → toutes occupées.
-            wave = _run.BuildBossEnemyWave(BossEscortCount(bossMap), Context.Saves.IsUnitDiscovered);
+            wave = _run.BuildBossEnemyWave(BossEscortCount(bossMap), Context.Saves.IsUnitDiscovered, bossMap.EnemyTiers);
         else
             wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);   // T2/T3 : priorité aux unités déjà découvertes
         PlaceEnemies(wave);
@@ -3685,6 +3685,12 @@ public sealed class GameplayScene : Scene
             EndPlayerAction();
             return;
         }
+        if (_selected is { } selH && _healTargets.Contains(cell))   // trait « Soin » : cible un allié blessé
+        {
+            ResolveHeal(selH, cell);
+            EndPlayerAction();
+            return;
+        }
         if (_selected is { } sel2 && _legalMoves.Contains(cell))
         {
             _match.TryMove(sel2, cell);
@@ -3702,6 +3708,7 @@ public sealed class GameplayScene : Scene
             _match.LegalMoves(cell, _legalMoves);
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach);
+            _match.HealTargets(cell, _healTargets);
             FilterTutorialActions();
             Context.Sounds.Play("unit_select");
         }
@@ -3726,6 +3733,8 @@ public sealed class GameplayScene : Scene
     {
         if (_tutorial is not { } t)
             return;
+
+        _healTargets.Clear();   // le tuto n'a pas de soigneur : aucun soin proposé pendant les leçons
 
         switch (t.Step)
         {
@@ -3800,6 +3809,13 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        if (_selected is not null && _healTargets.Contains(cell))   // trait « Soin » : cible un allié blessé
+        {
+            ResolveHeal(_selected.Value, cell);
+            EndPlayerAction();
+            return;
+        }
+
         if (_selected is not null && _legalMoves.Contains(cell))
         {
             var from = _selected.Value;
@@ -3819,6 +3835,7 @@ public sealed class GameplayScene : Scene
             _match.LegalMoves(cell, _legalMoves);       // remplit les buffers (pas d'allocation)
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
+            _match.HealTargets(cell, _healTargets);     // trait « Soin » : alliés blessés ciblables
             FilterTutorialActions();
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
@@ -3848,6 +3865,11 @@ public sealed class GameplayScene : Scene
         if (_attackTargets.Contains(cell))
         {
             ResolveAttack(from, cell);
+            EndPlayerAction();
+        }
+        else if (_healTargets.Contains(cell))       // glissé sur un allié blessé : soin (trait « Soin »)
+        {
+            ResolveHeal(from, cell);
             EndPlayerAction();
         }
         else if (_legalMoves.Contains(cell))
@@ -4457,6 +4479,7 @@ public sealed class GameplayScene : Scene
         _legalMoves.Clear();
         _attackTargets.Clear();
         _attackReach.Clear();
+        _healTargets.Clear();
         _combatDragFrom = null;
     }
 
@@ -4465,6 +4488,23 @@ public sealed class GameplayScene : Scene
     {
         _landingCell = cell;
         _landingTimer = LandingDuration;
+    }
+
+    /// <summary>
+    /// Trait « Soin » : soigne l'allié ciblé (montant = puissance du soigneur) et passe le tour. Feedback :
+    /// son d'incantation + « +N » vert flottant sur le soigné. La cible est déjà bornée aux alliés blessés à
+    /// portée par <see cref="Match.HealTargets"/>/<see cref="Match.TryHeal"/>.
+    /// </summary>
+    private void ResolveHeal(Cell from, Cell target)
+    {
+        if (_match.UnitAt(from) is { } healer)
+            FaceToward(healer, from, target);
+        var before = _match.UnitAt(target)?.Hp ?? 0;
+        _match.TryHeal(from, target);
+        var healed = (_match.UnitAt(target)?.Hp ?? 0) - before;
+        Context.Sounds.Play("unit_cast");
+        if (healed > 0)
+            _damagePopups.SpawnText(target, "+" + healed, Palette.Green1);
     }
 
     /// <summary>
@@ -4484,38 +4524,35 @@ public sealed class GameplayScene : Scene
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
         var victimSprite = victim != null ? UnitSprite(victim) : null;
 
-        // Orage / Tempête : on fige AVANT l'attaque les ENNEMIS foudroyés (éclair visuel + PV pour les chiffres),
-        // car TryAttack applique la foudre instantanément. Ni alliés ni porteur ni cible directe (celle-ci prend
-        // l'attaque normale) : les éclairs ne tombent QUE sur les ennemis réellement frappés par l'orage.
-        List<Cell>? stormBolts = null;
+        // Orage / Tempête : on fige AVANT l'attaque les PV des ENNEMIS candidats (ni alliés, ni porteur, ni cible
+        // directe), car TryAttack applique la foudre instantanément — sur 3 ennemis TIRÉS AU HASARD. Après coup,
+        // éclair + chiffre UNIQUEMENT sur ceux qui ont réellement perdu des PV (donc exactement les 3 foudroyés).
         List<(Cell Cell, Unit Unit, int Hp)>? stormBefore = null;
         if (attacker != null && Match.StormDamageFor(attacker) > 0)
         {
-            stormBolts = new List<Cell>();
             stormBefore = new List<(Cell, Unit, int)>();
             foreach (var (cell, u) in _match.Units())
-            {
-                if (u.Faction == attacker.Faction || cell == target)
-                    continue;                             // pas d'éclair sur les alliés/le porteur ni la cible directe
-                stormBolts.Add(cell);                     // ennemi foudroyé : éclair visuel
-                stormBefore.Add((cell, u, u.Hp));         // + candidat aux dégâts (bilan à l'impact)
-            }
+                if (u.Faction != attacker.Faction && cell != target)
+                    stormBefore.Add((cell, u, u.Hp));     // candidat : on saura après l'attaque s'il a été foudroyé
         }
 
         var kind = _match.TryAttack(from, target);
         if (kind == MoveKind.Invalid)
             return kind;
 
-        // Bilan de la foudre : dégâts RÉELLEMENT infligés à chaque ennemi (esquive/bouclier inclus).
+        // Bilan de la foudre : éclair + dégâts UNIQUEMENT sur les ennemis réellement frappés (esquive/bouclier inclus).
         _pendingStormBolts = null;
         _pendingStormHits = null;
-        if (stormBolts != null)
+        if (stormBefore != null)
         {
-            _pendingStormBolts = stormBolts;
+            _pendingStormBolts = new List<Cell>();
             _pendingStormHits = new List<(Cell, int)>();
-            foreach (var (cell, u, hp) in stormBefore!)
+            foreach (var (cell, u, hp) in stormBefore)
                 if (hp - u.Hp is > 0 and var dmg)
+                {
+                    _pendingStormBolts.Add(cell);
                     _pendingStormHits.Add((cell, dmg));
+                }
         }
 
         RecordIfEnemyKilled(victim);
@@ -4529,7 +4566,7 @@ public sealed class GameplayScene : Scene
             _tutorial.Advance();            // mort de l'ENNEMI → Attack → Commander (pas sur la contre-attaque)
         var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
         var attackerCell = advanced ? target : from;
-        var style = attacker != null ? AttackStyleFor(attacker) : AttackStyle.Lunge;
+        var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
         // Son selon le style : incantation pour le mage, charge pour le cavalier, coup d'arme sinon.
         Context.Sounds.Play(style switch
         {
@@ -4544,15 +4581,30 @@ public sealed class GameplayScene : Scene
         return kind;
     }
 
-    /// <summary>Style d'animation d'attaque selon l'unité : archer (« Zone morte ») = tir — y compris le
-    /// cavalier MONTÉ archer ; cavalier de mêlée = charge sautée ; mage = projectile ; autres = fente.</summary>
-    private static AttackStyle AttackStyleFor(Unit unit) => unit switch
+    /// <summary>Style d'animation d'attaque selon l'unité ET la case ciblée : un cavalier (monté compris) qui
+    /// frappe une case en L SAUTE (charge) ; sinon archer (« Zone morte ») = tir, mage = projectile, autres =
+    /// fente. Ainsi l'archer monté SAUTE au corps-à-corps en L mais TIRE une flèche sur ses cibles en ligne.</summary>
+    private static AttackStyle AttackStyleFor(Unit unit, Cell from, Cell target)
     {
-        _ when unit.HasTrait(Trait.ZoneMorte) => AttackStyle.Shoot,     // archers, montés compris (tire, ne charge pas)
-        { Domaine: Domaine.Cavalier }         => AttackStyle.Leap,      // cavalier de mêlée : charge sautée
-        { Domaine: Domaine.Fou }              => AttackStyle.Cast,
-        _                                     => AttackStyle.Lunge,
-    };
+        // Cavalier (y compris archer monté) frappant une case en L : c'est un SAUT (charge), pas un tir.
+        if (unit.Domaine == Domaine.Cavalier && IsKnightOffset(from, target))
+            return AttackStyle.Leap;
+        return unit switch
+        {
+            _ when unit.HasTrait(Trait.ZoneMorte) => AttackStyle.Shoot,     // archers, montés compris : tir EN LIGNE
+            { Domaine: Domaine.Cavalier }         => AttackStyle.Leap,      // cavalier de mêlée : charge sautée
+            { Domaine: Domaine.Fou }              => AttackStyle.Cast,
+            _                                     => AttackStyle.Lunge,
+        };
+    }
+
+    /// <summary>Vrai si <paramref name="to"/> est à un saut de cavalier (en L) de <paramref name="from"/>.</summary>
+    private static bool IsKnightOffset(Cell from, Cell to)
+    {
+        var dc = System.Math.Abs(to.Column - from.Column);
+        var dr = System.Math.Abs(to.Row - from.Row);
+        return (dc == 1 && dr == 2) || (dc == 2 && dr == 1);
+    }
 
     /// <summary>
     /// Si <paramref name="victim"/> est un ennemi NON essentiel qui vient de mourir, enregistre son
@@ -4975,7 +5027,7 @@ public sealed class GameplayScene : Scene
         // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
         if (_selected is { } sel)
         {
-            DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets);
+            DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets);
             return;
         }
 
@@ -4986,14 +5038,15 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _hoverReach);
             _match.LegalMoves(cell, _hoverMoves);
             _match.AttackTargets(cell, _hoverAttackTargets);
-            DrawMoveAttackZones(sb, layout, cell, _hoverReach, _hoverMoves, _hoverAttackTargets);
+            _match.HealTargets(cell, _hoverHealTargets);
+            DrawMoveAttackZones(sb, layout, cell, _hoverReach, _hoverMoves, _hoverAttackTargets, _hoverHealTargets);
         }
     }
 
     /// <summary>Surbrillances déplacement/attaque d'une unité : cerclage + portée de tir + cases de
     /// déplacement + cibles réellement à portée. Partagé par la sélection et l'aperçu au survol.</summary>
     private void DrawMoveAttackZones(SpriteBatch sb, GridLayout layout, Cell origin,
-        List<Cell> reach, List<Cell> moves, List<Cell> targets)
+        List<Cell> reach, List<Cell> moves, List<Cell> targets, List<Cell>? heals = null)
     {
         DrawZoneBorder(sb, layout, origin, Palette.Yellow2, 3);
 
@@ -5006,6 +5059,10 @@ public sealed class GameplayScene : Scene
         foreach (var cell in targets)   // ennemi réellement ciblable = rouge fort
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
 
+        if (heals != null)
+            foreach (var cell in heals) // trait « Soin » : allié blessé ciblable = vert
+                DrawZone(sb, layout, cell, Palette.Green1 * 0.55f);
+
         // Quadrillage de la portée PAR-DESSUS les remplissages (contour par case) : déplacement/attaque.
         foreach (var cell in reach)
             DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.45f, 1);
@@ -5013,6 +5070,9 @@ public sealed class GameplayScene : Scene
             DrawZoneBorder(sb, layout, cell, Palette.Yellow2 * 0.7f, 1);
         foreach (var cell in targets)
             DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.9f, 1);
+        if (heals != null)
+            foreach (var cell in heals)
+                DrawZoneBorder(sb, layout, cell, Palette.Green1, 1);
     }
 
     /// <summary>
@@ -7456,11 +7516,27 @@ public sealed class GameplayScene : Scene
             return;
 
         const int pad = 8, lineH = 9, gap = 8;
-        var y = origin.Y;
+
+        // Pré-calcule chaque popup (lignes + hauteur) pour connaître la hauteur TOTALE de la pile...
+        var boxes = new List<(UnitKeywords.Keyword Kw, List<string> Lines, int H)>(keywords.Count);
+        var total = -gap;
         foreach (var kw in keywords)
         {
             var lines = WrapText(SentenceCase(kw.Description), width - 2 * pad, 1);
             var h = pad + 10 + lines.Count * lineH + pad;     // titre + lignes
+            boxes.Add((kw, lines, h));
+            total += h + gap;
+        }
+
+        // ...pour REMONTER la pile si elle dépasse le bas de l'écran (sinon les derniers popups sont coupés,
+        // ex. une évolution à 3 traits en phase de fusion). Décalage MINIMAL, borné en haut de l'écran.
+        const int screenMargin = 8;
+        var y = origin.Y;
+        if (y + total > VirtualViewport.Height - screenMargin)
+            y = System.Math.Max(screenMargin, VirtualViewport.Height - screenMargin - total);
+
+        foreach (var (kw, lines, h) in boxes)
+        {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 

@@ -3,14 +3,13 @@
   "type": "Tutoriel",
   "width": 6,
   "height": 6,
-  "_comment": "Map du TUTORIEL (« combat zero »). Le type Tutoriel la met hors des tirages de campagne : elle n'est chargee que par BeginTutorial. Que de l'herbe et UN coffre (lecon des equipements) — rien d'autre, pour ne pas distraire des lecons. ATTENTION : la CASE du coffre ci-dessous n'est qu'une declaration ; le tuto le repose a cote du soldat une fois celui-ci deploye (cf. GameplayScene.PlaceTutorialChest), pour qu'il soit toujours a un pas quelle que soit la case choisie. spawns[] : P=joueur, E=ennemi. objects[] : C=coffre commun.",
   "tiles": [
-    "hhhhhh",
-    "hhhhhh",
-    "hhhhhh",
-    "hhhhhh",
-    "hhhhhh",
-    "hhhhhh"
+    "jYjYjY",
+    "YjYjYj",
+    "jYjYjY",
+    "YjYjYj",
+    "jYjYjY",
+    "YjYjYj"
   ],
   "spawns": [
     "..EE..",
@@ -19,6 +18,14 @@
     "......",
     ".PPPP.",
     ".PPPP."
+  ],
+  "tiers": [
+    "......",
+    "......",
+    "......",
+    "......",
+    "......",
+    "......"
   ],
   "objects": [
     "......",

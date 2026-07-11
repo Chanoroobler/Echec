@@ -396,21 +396,38 @@ public class TraitsTests
     // ── Orage / Tempête : foudre AoE à l'attaque ──────────────────────────────────
 
     [Fact]
-    public void Orage_StrikesAllOtherEnemies_NotTheDirectTargetNorAllies()
+    public void Orage_StrikesOtherEnemies_NotTheDirectTargetNorAllies()
     {
         var m = Board();
         m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Orage }));  // attaquant
         m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible directe (dégâts normaux seuls)
-        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // autre ennemi → foudroyé
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // autre ennemi → foudroyé (≤ 3 au total)
         m.Place(new Cell(6, 6), Make(Faction.Enemy, 20, 5, None));   // autre ennemi → foudroyé
         m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, None));  // allié → jamais foudroyé
 
         m.TryAttack(new Cell(0, 0), new Cell(0, 2));
 
         Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 10 (pas de +3 orage sur elle)
-        Assert.Equal(17, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 3
+        Assert.Equal(17, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 3 (2 autres ennemis ≤ 3 → tous foudroyés)
         Assert.Equal(17, m.UnitAt(new Cell(6, 6))!.Hp);   // 20 - 3
         Assert.Equal(20, m.UnitAt(new Cell(1, 0))!.Hp);   // allié intact
+    }
+
+    [Fact]
+    public void Orage_StrikesAtMostThreeRandomEnemies()
+    {
+        var m = new Match(8, 8, rng: new System.Random(1));
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Orage }));  // attaquant
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));                     // cible directe
+        var others = new[] { new Cell(5, 5), new Cell(6, 6), new Cell(7, 7), new Cell(5, 7), new Cell(7, 5) };
+        foreach (var cell in others)
+            m.Place(cell, Make(Faction.Enemy, 20, 5, None));   // 5 AUTRES ennemis (tous à 20 PV)
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        // Seuls 3 des 5 sont foudroyés (−3 → 17), les 2 restants intacts (20). Quels 3 = tirage aléatoire.
+        Assert.Equal(3, others.Count(c => m.UnitAt(c)!.Hp == 17));
+        Assert.Equal(2, others.Count(c => m.UnitAt(c)!.Hp == 20));
     }
 
     [Fact]
@@ -462,6 +479,31 @@ public class TraitsTests
         tour.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, None, attackRange: 3));
         tour.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));
         Assert.DoesNotContain(new Cell(5, 5), tour.AttackTargets(new Cell(3, 3)));
+    }
+
+    [Fact]
+    public void AttaqueLibre_OnCavalier_AddsQueenLines_ToKnightJumps()
+    {
+        // Cavalier monté (archer) : attaque en L (saut) COMME UN CAVALIER, ET tire comme une Dame (Attaque libre).
+        var m = Board();
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre }, domaine: Domaine.Cavalier, attackRange: 2));
+        m.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));   // saut cavalier (dc=2, dr=1), hors des lignes
+        m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // diagonale de Dame (dc=2, dr=2), portée 2
+        m.Place(new Cell(3, 5), Make(Faction.Enemy, 20, 5, None));   // ligne droite de Dame (dc=0, dr=2)
+
+        var targets = m.AttackTargets(new Cell(3, 3));
+        Assert.Contains(new Cell(5, 4), targets);   // attaque au SAUT (cavalier)
+        Assert.Contains(new Cell(5, 5), targets);   // + tir en diagonale (dame)
+        Assert.Contains(new Cell(3, 5), targets);   // + tir en ligne droite (dame)
+
+        // Sans Attaque libre : le cavalier n'attaque QU'au saut (aucune ligne).
+        var plain = Board();
+        plain.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, None, domaine: Domaine.Cavalier, attackRange: 2));
+        plain.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));
+        plain.Place(new Cell(3, 5), Make(Faction.Enemy, 20, 5, None));
+        var t2 = plain.AttackTargets(new Cell(3, 3));
+        Assert.Contains(new Cell(5, 4), t2);          // saut cavalier : oui
+        Assert.DoesNotContain(new Cell(3, 5), t2);    // ligne droite : non (pas d'Attaque libre)
     }
 
     [Fact]
