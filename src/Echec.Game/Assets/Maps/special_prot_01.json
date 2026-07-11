@@ -1,7 +1,7 @@
 {
   "name": "special_prot_01",
   "type": "Speciale",
-  "objective": "LibererPaysans",
+  "objective": "ProtegerPaysans",
   "phase": 1,
   "turnLimit": 25,
   "width": 8,
