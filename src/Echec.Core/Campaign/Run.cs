@@ -38,6 +38,13 @@ public sealed class Run
     /// <summary>Nombre de phases d'une run.</summary>
     public const int PhaseCount = 3;
 
+    /// <summary>
+    /// ⚙️ PLAYTEST — la run se termine (VICTOIRE) au boss de CETTE phase. Mettre <c>= 2</c> pour s'arrêter au
+    /// boss de la phase 2 ; remettre <c>= PhaseCount</c> (3) pour la campagne COMPLÈTE. Toute la machinerie des
+    /// 3 phases (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée.
+    /// </summary>
+    public const int EndAtPhase = 2;
+
     /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
     public const int MissionsPerPhase = 6;
 
@@ -768,7 +775,7 @@ public sealed class Run
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
         CommandPoints += PointsPerMission;   // toute mission réussie, boss et spéciale comprises
 
-        if (IsFinalBoss)   // seul le boss final gagne la run ; les boss des phases 1-2 enchaînent
+        if (IsBossCombat && PhaseIndex >= EndAtPhase)   // boss de la phase de FIN → victoire (cf. EndAtPhase) ; les boss avant enchaînent
         {
             Phase = RunPhase.Victory;
             return;

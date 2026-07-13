@@ -367,7 +367,10 @@ public class RunTests
         run.StartBattle();
         run.CompleteCombat(Enumerable.Empty<UnitSpec>(), DefeatedWave(2));
 
-        Assert.Equal(RunPhase.Recruitment, run.Phase);   // pas de fin de run : on recrute et on enchaîne
+        // Un boss AVANT la phase de fin enchaîne vers le recrutement ; le boss de la phase de FIN
+        // (cf. Run.EndAtPhase) termine la run en victoire. Robuste au réglage de playtest.
+        var expected = run.PhaseIndex >= Run.EndAtPhase ? RunPhase.Victory : RunPhase.Recruitment;
+        Assert.Equal(expected, run.Phase);
     }
 
     [Fact]

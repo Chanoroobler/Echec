@@ -7696,7 +7696,7 @@ public sealed class GameplayScene : Scene
             CombatType.Speciale => Loc.T("mission.speciale"),
             _ => Loc.T("mission.escarmouche"),
         };
-        return Loc.T("combat.phase", _run.PhaseIndex, mission);
+        return Loc.T("combat.phase", _run.PhaseIndex, Run.EndAtPhase, mission);
     }
 
     /// <summary>
@@ -8304,8 +8304,8 @@ public sealed class GameplayScene : Scene
         Context.Style.FillDither(sb, bg);
         DrawRectBorder(sb, bg, Palette.Navy1, 2);
 
-        // Libellé « PHASE n/3 » centré au-dessus des nœuds.
-        Context.Font.DrawCentered(sb, Loc.T("hud.phase", _run.PhaseIndex, Run.PhaseCount),
+        // Libellé « PHASE n/N » centré au-dessus des nœuds (N = phase de fin, cf. Run.EndAtPhase).
+        Context.Font.DrawCentered(sb, Loc.T("hud.phase", _run.PhaseIndex, Run.EndAtPhase),
             new Rectangle(startX, TimelineTopY - 16, contentW, 12), 1, Palette.Yellow1);
 
         // Connecteurs (derrière les nœuds) : segment i→i+1 doré s'il est franchi, sombre sinon.
