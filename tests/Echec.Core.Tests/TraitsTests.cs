@@ -253,6 +253,21 @@ public class TraitsTests
     }
 
     [Fact]
+    public void Soin_CanTargetWoundedCommander()
+    {
+        // Un soigneur DOIT pouvoir viser le commandant (unité essentielle) blessé, comme n'importe quel allié.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Soin }));
+        var commander = new Unit(Domaine.Tour, Faction.Player,
+            new UnitClass("C", "c", tier: 1, maxHp: 30, damage: 12, moveRange: 1, attackRange: 1))
+            { IsEssential = true };
+        commander.TakeDamage(10);   // blessé (20/30)
+        m.Place(new Cell(0, 2), commander);
+
+        Assert.Contains(new Cell(0, 2), m.HealTargets(new Cell(0, 0)));
+    }
+
+    [Fact]
     public void Soin_IgnoresFullHealthAlly()
     {
         var m = Board();

@@ -28,11 +28,11 @@ game.title,ECHEC,ECHEC
 mainmenu.slot,SLOT {0},SLOT {0}
 mainmenu.slot_progress,COMBAT {0}/{1}   {2} UNITES,BATTLE {0}/{1}   {2} UNITS
 mainmenu.new_game,NOUVELLE PARTIE,NEW GAME
-mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0} ?
+mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0}?
 mainmenu.delete,EFFACER,DELETE
 mainmenu.cancel,ANNULER,CANCEL
 mainmenu.reset_meta,EFFACER LES DECOUVERTES,RESET DISCOVERIES
-mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES ?
+mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES?
 mainmenu.reset_meta_desc1,TOUTES LES UNITES DECOUVERTES SERONT OUBLIEES,ALL DISCOVERED UNITS WILL BE FORGOTTEN
 mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOLUTIONS BECOME SHADOWS AGAIN WHEN FUSING
 mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED)
@@ -58,15 +58,15 @@ placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED
 placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD
 placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY
 placement.hint_gp_btn,A VALIDER  B PLATEAU,A CONFIRM  B BOARD
-placement.hint_gp_fight,Y : COMBATTRE,Y : FIGHT
+placement.hint_gp_fight,Y : COMBATTRE,Y: FIGHT
 placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE
-placement.hint_fight,ENTREE : COMBATTRE,ENTER : FIGHT
+placement.hint_fight,ENTREE : COMBATTRE,ENTER: FIGHT
 placement.fight,COMBATTRE,FIGHT
 recrue.join,UNE UNITE VEUT REJOINDRE VOTRE ARMEE,A UNIT WANTS TO JOIN YOUR ARMY
 recrue.continue,CLIQUER POUR CONTINUER,CLICK TO CONTINUE
-placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN : FUSE
-placement.hint_gp_fuse,X : FUSIONNER,X : FUSE
-placement.hint_gp_unfuse,B : DEFUSIONNER,B : UNFUSE
+placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN: FUSE
+placement.hint_gp_fuse,X : FUSIONNER,X: FUSE
+placement.hint_gp_unfuse,B : DEFUSIONNER,B: UNFUSE
 # ── Equipement (sous-phase de placement + coffres) ──────────────────────────
 equip.title,EQUIPEMENT,EQUIPMENT
 equip.inventory,EQUIPEMENTS,EQUIPMENT
@@ -74,12 +74,12 @@ equip.empty,AUCUN EQUIPEMENT,NO EQUIPMENT
 equip.next,SUIVANT,NEXT
 equip.back,RETOUR,BACK
 equip.hint_drag,GLISSER SUR UN PION,DRAG ONTO A PAWN
-equip.hint_gp_equip,A : EQUIPER / RETIRER,A : EQUIP / REMOVE
-equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB : ITEM   Y : FIGHT
+equip.hint_gp_equip,A : EQUIPER / RETIRER,A: EQUIP / REMOVE
+equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB: ITEM   Y: FIGHT
 equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
 equip.stat_bonus,+{0} {1},+{0} {1}
-equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR KNIGHTS (EXCEPT MOUNTED ARCHER)
-equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR KNIGHTS
+equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR CAVALIERS (EXCEPT MOUNTED ARCHER)
+equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR CAVALIERS
 equip.no_dame,INTERDIT AU DOMAINE DAME,NOT FOR THE QUEEN DOMAIN
 equip.rarity.common,COMMUN,COMMON
 equip.rarity.rare,RARE,RARE
@@ -94,6 +94,9 @@ equip.soin,AMULETTE DE SOIN,HEALING AMULET
 equip.esquive,CEINTURE DU KARATEKA,KARATE BELT
 equip.franchissement,PIECE DE CAVALERIE,CAVALRY PIECE
 equip.orage,ORAGE,STORM
+equip.armure,ARMURE,ARMOR
+equip.hache,HACHE,AXE
+equip.static,AMULETTE DE RAHAN,RAHAN'S AMULET
 # ── Caracteristiques d'unite ────────────────────────────────────────────────
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
@@ -159,15 +162,15 @@ reward.title,PAYSANS SAUVES,PEASANTS SAVED
 reward.subtitle,COCHE LES PIONS A GARDER,CHECK THE UNITS TO KEEP
 reward.collect,RECUPERER ({0}),COLLECT ({0})
 reserve.count,RESERVE {0}/{1},RESERVE {0}/{1}
-reserve.hint_fuse,GLISSE 3 IDENTIQUES : FUSION,DRAG 3 ALIKE : FUSE
-reserve.hint_del,CLIC DROIT : SUPPRIMER,RIGHT-CLICK : DELETE
+reserve.hint_fuse,GLISSE 3 IDENTIQUES : FUSION,DRAG 3 ALIKE: FUSE
+reserve.hint_del,CLIC DROIT : SUPPRIMER,RIGHT-CLICK: DELETE
 reserve.delete,SUPPRIMER,DELETE
 reserve.fuse,FUSIONNER,FUSE
 reserve.full_hint,PLEINE - FUSIONNE OU SUPPRIME,FULL - FUSE OR DELETE
 reserve.no_room,PLUS DE PLACE - FUSIONNE OU SUPPRIME,NO ROOM - FUSE OR DELETE
-reserve.hint_enter,RB : GERER RESERVE,RB : MANAGE RESERVE
-reserve.hint_pick,A : CHOISIR   B : RETOUR,A : PICK   B : BACK
-reserve.hint_act,A : VALIDER   B : RETOUR,A : CONFIRM   B : BACK
+reserve.hint_enter,RB : GERER RESERVE,RB: MANAGE RESERVE
+reserve.hint_pick,A : CHOISIR   B : RETOUR,A: PICK   B: BACK
+reserve.hint_act,A : VALIDER   B : RETOUR,A: CONFIRM   B: BACK
 # ── Fusion ──────────────────────────────────────────────────────────────────
 fusion.title,FUSION,FUSION
 fusion.subtitle,CHOISIS UNE EVOLUTION,CHOOSE AN EVOLUTION
@@ -205,8 +208,8 @@ kw.rage.desc,AUGMENTE LA PUISSANCE DE 6 SOUS 10 PV,INCREASES POWER BY 6 WHEN BEL
 kw.bouclier_divin.label,BOUCLIER DIVIN,DIVINE SHIELD
 kw.bouclier_divin.desc,PROTÈGE UN ALLIÉ ADJACENT D'UNE ATTAQUE MORTELLE (PV MINI 1),PROTECTS AN ADJACENT ALLY FROM A FATAL HIT (HP MIN 1)
 kw.benediction.label,BENEDICTION,BLESSING
-kw.benediction.desc,AUGMENTE LA PUISSANCE D'UN ALLIÉ ADJACENT DE 5,INCREASES AN ADJACENT ALLY POWER BY 5
-kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLY
+kw.benediction.desc,AUGMENTE LA PUISSANCE D'UN ALLIÉ ADJACENT DE 5,INCREASES AN ADJACENT ALLY'S POWER BY 5
+kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLIES
 kw.pierce_allies.desc,ATTAQUE À TRAVERS SES ALLIÉS SANS LES TOUCHER,ATTACKS THROUGH ALLIES WITHOUT HITTING THEM
 kw.dead_zone.label,ZONE MORTE,DEAD ZONE
 kw.dead_zone.desc,NE FRAPPE PAS AU CORPS À CORPS DIRECT EN LIGNE DROITE (TIR EN DIAGONALE POSSIBLE),CANNOT STRIKE IN DIRECT MELEE IN A STRAIGHT LINE (DIAGONAL SHOT POSSIBLE)
@@ -231,40 +234,40 @@ kw.attaque_libre.desc,TIRE AUSSI COMME UNE DAME (8 DIRECTIONS EN LIGNE) EN PLUS 
 kw.statique.label,STATIQUE,STATIC
 kw.statique.desc,NE PREND JAMAIS LA PLACE DE SA CIBLE EN LA TUANT (RESTE SUR SA CASE),NEVER TAKES THE TARGET'S PLACE ON A KILL (STAYS PUT)
 # ── Effets de combat ─────────────────────────────────────────────────────────
-fx.dodge,ESQUIVE !,DODGE !
+fx.dodge,ESQUIVE !,DODGE!
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
 # Les TITRES restent en capitales (libelles d'UI) ; les consignes et les corps de texte sont des PHRASES,
 # rendues telles quelles (preserveCase) : minuscules accentuees, majuscule en debut de phrase.
 tuto.intro_title,TUTORIEL,TUTORIAL
-tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) - combat - récompense.,A battle has 3 phases : preparation (placement) - battle - reward.
+tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) - combat - récompense.,A battle has 3 phases: preparation (placement) - battle - reward.
 tuto.intro_continue,Clic pour commencer,Click to begin
 tuto.pick_soldier,Clique sur le soldat dans l'inventaire pour le prendre en main.,Click the soldier in the inventory to pick it up.
 tuto.place_soldier,Pose le soldat sur une case libre de ta zone (les rangées du bas).,Drop the soldier on a free tile in your zone (the bottom rows).
 tuto.start_combat,Tes pièces sont en place. Clique sur COMBATTRE en bas du panneau (ou Entrée).,Your pieces are ready. Click FIGHT at the bottom of the panel (or Enter).
 tuto.start_combat_gp,Tes pièces sont en place. Descends sur COMBATTRE et valide avec A (ou Y).,Your pieces are ready. Move down to FIGHT and confirm with A (or Y).
 tuto.chest,Ce coffre cache un équipement. Déplace ton soldat dessus pour l'ouvrir. L'ennemi attend.,This chest hides a piece of equipment. Move your soldier onto it to open it. The enemy waits.
-tuto.move,A chaque tour tu ne fais qu'une action : déplacer une pièce. Rapproche la tienne de l'ennemi.,Each turn you do only one action : move a piece. Bring yours closer to the enemy.
+tuto.move,A chaque tour tu ne fais qu'une action : déplacer une pièce. Rapproche la tienne de l'ennemi.,Each turn you do only one action: move a piece. Bring yours closer to the enemy.
 tuto.enemy_plays,Ton action est faite. C'est au tour de l'adversaire (l'IA) de jouer.,Your action is done. Now the opponent (the AI) takes its turn.
-tuto.attack,Pour attaquer : déplace ta pièce directement sur l'ennemi.,To attack : move your piece straight onto the enemy.
+tuto.attack,Pour attaquer : déplace ta pièce directement sur l'ennemi.,To attack: move your piece straight onto the enemy.
 tuto.counter,L'ennemi a survécu. A son tour il riposte et frappe ta pièce.,The enemy survived. On its turn it strikes back at your piece.
-tuto.attack2,Achève-le : déplace-toi à nouveau sur lui. S'il meurt ta pièce prend sa case.,Finish it : move onto it again. If it dies your piece takes its tile.
-tuto.commander,La pièce au liseré doré est ton commandant. S'il meurt tu perds. Garde-le en vie !,The gold-outlined piece is your commander. If it dies you lose. Keep it alive !
+tuto.attack2,Achève-le : déplace-toi à nouveau sur lui. S'il meurt ta pièce prend sa case.,Finish it: move onto it again. If it dies your piece takes its tile.
+tuto.commander,La pièce au liseré doré est ton commandant. S'il meurt tu perds. Garde-le en vie !,The gold-outlined piece is your commander. If it dies you lose. Keep it alive!
 tuto.card_title,LA CARTE DE TON UNITE,YOUR UNIT CARD
-tuto.card_hp,Points de vie : la pièce meurt quand ils tombent à zéro.,Health : the piece dies when it reaches zero.
-tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power : the damage it deals on each attack.
-tuto.card_move,Mouvement : le nombre de cases franchies en un tour.,Movement : how many tiles it crosses in one turn.
-tuto.card_range,Portée : la distance max à laquelle elle peut attaquer.,Range : the max distance at which it can attack.
-tuto.card_domaine,Déplacement : cette icône montre dans quelles directions elle peut aller.,Movement pattern : this icon shows which directions it can go.
+tuto.card_hp,Points de vie : la pièce meurt quand ils tombent à zéro.,Health: the piece dies when it reaches zero.
+tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power: the damage it deals on each attack.
+tuto.card_move,Mouvement : le nombre de cases franchies en un tour.,Movement: how many tiles it crosses in one turn.
+tuto.card_range,Portée : la distance max à laquelle elle peut attaquer.,Range: the max distance at which it can attack.
+tuto.card_domaine,Déplacement : cette icône montre dans quelles directions elle peut aller.,Movement pattern: this icon shows which directions it can go.
 tuto.card_continue,Clic pour la suite,Click for next
 tuto.card_continue_gp,A pour la suite,A for next
 tuto.skip,PASSER LE TUTO,SKIP TUTORIAL
-tuto.victory_title,BRAVO !,WELL DONE !
+tuto.victory_title,BRAVO !,WELL DONE!
 tuto.continue,Clic pour commencer à jouer,Click to start playing
 # Preparation guidee : fusion -> equipement -> arbre de commandement. Ce que le tuto prete est rendu a la fin.
 tuto.fusion_title,LA FUSION,FUSION
 tuto.fusion_body,Pendant la phase de placement - avant chaque combat - tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase - before each battle - you can fuse three identical pawns into an evolved unit. You just received a third soldier.
 tuto.fusion_do,Glisse tes trois soldats l'un sur l'autre pour les fusionner.,Drag your three soldiers onto each other to fuse them.
-tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board : a pawn can only be equipped once deployed.
+tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board: a pawn can only be equipped once deployed.
 tuto.equip_title,LES EQUIPEMENTS,EQUIPMENT
 tuto.equip_body,Voici l'épée trouvée dans le coffre. Un équipement reste collé au pion qui le porte.,Here is the sword found in the chest. Equipment stays stuck to the pawn that carries it.
 tuto.equip_do,Glisse l'épée sur ton unité pour l'équiper.,Drag the sword onto your unit to equip it.
@@ -274,59 +277,59 @@ tuto.tree_open,Clique sur COMMANDEMENT en bas du panneau pour ouvrir ton arbre. 
 tuto.tree_open_gp,Descends sur COMMANDEMENT dans le panneau et valide avec A pour ouvrir ton arbre.,Move down to COMMAND in the panel and confirm with A to open your tree.
 tuto.tree_do,Clique une amélioration de la rangée du bas pour l'acheter.,Click an upgrade on the bottom row to buy it.
 tuto.tree_do_gp,Choisis une amélioration de la rangée du bas et valide avec A.,Pick an upgrade on the bottom row and confirm with A.
-tuto.recap_body,Tu sais combattre - fusionner - équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight - fuse - equip and command. The real campaign begins : your army starts fresh.
+tuto.recap_body,Tu sais combattre - fusionner - équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight - fuse - equip and command. The real campaign begins: your army starts fresh.
 
 # ── Arbre de commandement (placement) ───────────────────────────────────────
-tree.button,COMMANDEMENT : {0},COMMAND : {0}
+tree.button,COMMANDEMENT : {0},COMMAND: {0}
 tree.title,COMMANDEMENT,COMMAND
-tree.points,POINTS DISPONIBLES : {0},AVAILABLE POINTS : {0}
+tree.points,POINTS DISPONIBLES : {0},AVAILABLE POINTS: {0}
 # Sources de points : la mission (commune) puis celle propre au commandant (cle tree.<idArbre>.income).
 # Ecrites en minuscules : elles sont rendues telles quelles (preserveCase) pour se detacher des libelles.
 tree.income_mission,+{0} points à chaque mission réussie,+{0} points for each mission won
 tree.commandant.income,+{0} points à chaque fusion,+{0} points for each fusion
 tree.close,FERMER,CLOSE
-tree.hint,CLIC : ACHETER   ECHAP : FERMER,CLICK : BUY   ESC : CLOSE
-tree.hint_gp,A : ACHETER   B : FERMER,A : BUY   B : CLOSE
+tree.hint,CLIC : ACHETER   ECHAP : FERMER,CLICK: BUY   ESC: CLOSE
+tree.hint_gp,A : ACHETER   B : FERMER,A: BUY   B: CLOSE
 # Libellés de branche (clé = tree.<idArbre>.branch<N>)
 tree.commandant.branch0,COMMANDANT,COMMANDER
 tree.commandant.branch1,TROUPES,TROOPS
 tree.commandant.branch2,LOGISTIQUE,LOGISTICS
 # Noeuds : branche COMMANDANT
 tree.cmd_Esquive,ESQUIVE,DODGE
-tree.cmd_Esquive.desc,LE COMMANDANT A 25 POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE.,THE COMMANDER HAS A 25 PERCENT CHANCE TO DODGE AN ATTACK.
+tree.cmd_Esquive.desc,le commandant a 25 pourcent de chance d'esquiver une attaque.,the commander has a 25 percent chance to dodge an attack.
 tree.cmd_puissance,PUISSANCE DU MENEUR,LEADER POWER
-tree.cmd_puissance.desc,+1 PUISSANCE AU COMMANDANT PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 POWER TO THE COMMANDER FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.cmd_puissance.desc,+2 puissance au commandant par paire de classes différentes en réserve ou en jeu.,+2 power to the commander for each pair of distinct classes in reserve or in play.
 tree.cmd_vie,VIGUEUR DU MENEUR,LEADER VIGOR
-tree.cmd_vie.desc,+2 PV AU COMMANDANT PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+2 HP TO THE COMMANDER FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.cmd_vie.desc,+2 pv au commandant par paire de classes différentes en réserve ou en jeu.,+2 hp to the commander for each pair of distinct classes in reserve or in play.
 tree.cmd_mouvement,FOULEE DU MENEUR,LEADER STRIDE
-tree.cmd_mouvement.desc,+1 DEPLACEMENT AU COMMANDANT.,+1 MOVEMENT TO THE COMMANDER.
+tree.cmd_mouvement.desc,+1 déplacement au commandant.,+1 movement to the commander.
 tree.cmd_Orage,ORAGE,STORM
-tree.cmd_Orage.desc,A L'ATTAQUE LE COMMANDANT FOUDROIE TOUS LES AUTRES ENNEMIS DE 3.,ON ATTACK THE COMMANDER STRIKES ALL OTHER ENEMIES FOR 3.
+tree.cmd_Orage.desc,à l'attaque le commandant foudroie tous les autres ennemis de 3.,on attack the commander strikes all other enemies for 3.
 tree.cmd_portee,ALLONGE DU MENEUR,LEADER REACH
-tree.cmd_portee.desc,+1 PORTEE AU COMMANDANT.,+1 ATTACK RANGE TO THE COMMANDER.
+tree.cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.
 # Noeuds : branche TROUPES
 tree.troupe_vie,ENDURANCE,ENDURANCE
-tree.troupe_vie.desc,+2 PV A TOUTES LES UNITES SAUF LE COMMANDANT.,+2 HP TO EVERY UNIT EXCEPT THE COMMANDER.
+tree.troupe_vie.desc,+2 pv à toutes les unités sauf le commandant.,+2 hp to every unit except the commander.
 tree.troupe_puissance,TACTIQUE COMBINEE,COMBINED TACTICS
-tree.troupe_puissance.desc,+1 PUISSANCE AUX UNITES PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 POWER TO EVERY UNIT FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.troupe_puissance.desc,+1 puissance aux unités par paire de classes différentes en réserve ou en jeu.,+1 power to every unit for each pair of distinct classes in reserve or in play.
 tree.troupe_vie_paire,COHESION,COHESION
-tree.troupe_vie_paire.desc,+1 PV AUX UNITES PAR PAIRE DE CLASSES DIFFERENTES EN RESERVE OU EN JEU.,+1 HP TO EVERY UNIT FOR EACH PAIR OF DISTINCT CLASSES IN RESERVE OR IN PLAY.
+tree.troupe_vie_paire.desc,+1 pv aux unités par paire de classes différentes en réserve ou en jeu.,+1 hp to every unit for each pair of distinct classes in reserve or in play.
 tree.troupe_fusion,LEVEE EN MASSE,MASS LEVY
-tree.troupe_fusion.desc,CHAQUE FUSION RECRUTE EN PLUS UNE UNITE DE BASE AU HASARD.,EACH FUSION ALSO RECRUITS ONE RANDOM BASIC UNIT.
+tree.troupe_fusion.desc,chaque fusion recrute en plus une unité de base au hasard.,each fusion also recruits one random basic unit.
 tree.troupe_releve,RELEVE,REPLACEMENTS
-tree.troupe_releve.desc,A LA MORT D'UNE UNITE DE TIER 2 OU 3 : UN PION DE BASE ALEATOIRE REJOINT LA RESERVE.,WHEN A TIER 2 OR 3 UNIT DIES A RANDOM BASIC UNIT JOINS THE RESERVE.
+tree.troupe_releve.desc,à la mort d'une unité de tier 2 ou 3 : un pion de base aléatoire rejoint la réserve.,when a tier 2 or 3 unit dies a random basic unit joins the reserve.
 tree.troupe_mouvement,MARCHE FORCEE,FORCED MARCH
-tree.troupe_mouvement.desc,+1 DEPLACEMENT A TOUTES LES UNITES SAUF LE COMMANDANT.,+1 MOVEMENT TO EVERY UNIT EXCEPT THE COMMANDER.
+tree.troupe_mouvement.desc,+1 déplacement à toutes les unités sauf le commandant.,+1 movement to every unit except the commander.
 # Noeuds : branche LOGISTIQUE
 tree.logi_deploiement_1,AVANT-GARDE,VANGUARD
-tree.logi_deploiement_1.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_deploiement_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.logi_reserve_1,INTENDANCE,QUARTERMASTER
-tree.logi_reserve_1.desc,+2 PLACES EN RESERVE.,+2 RESERVE SLOTS.
+tree.logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
 tree.logi_deploiement_2,RENFORTS,REINFORCEMENTS
-tree.logi_deploiement_2.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_deploiement_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.logi_reserve_2,CONVOI,SUPPLY TRAIN
-tree.logi_reserve_2.desc,+2 PLACES EN RESERVE.,+2 RESERVE SLOTS.
+tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.
 tree.logi_deploiement_3,BATAILLE RANGEE,PITCHED BATTLE
-tree.logi_deploiement_3.desc,+1 UNITE DEPLOYABLE SUR LE PLATEAU.,+1 UNIT DEPLOYABLE ON THE BOARD.
+tree.logi_deploiement_3.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.logi_reserve_3,GRANDE ARMEE,GRAND ARMY
-tree.logi_reserve_3.desc,+4 PLACES EN RESERVE.,+4 RESERVE SLOTS.
+tree.logi_reserve_3.desc,+4 places en réserve.,+4 reserve slots.

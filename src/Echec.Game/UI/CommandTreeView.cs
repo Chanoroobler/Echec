@@ -469,7 +469,8 @@ public sealed class CommandTreeView
         _ctx.Style.DrawPanel(sb, box);
         _ctx.Font.Draw(sb, name, new Vector2(box.X + 12, box.Y + 10), 2, Palette.Yellow2);
         for (var i = 0; i < lines.Count; i++)
-            _ctx.Font.Draw(sb, lines[i], new Vector2(box.X + 12, box.Y + 32 + i * 12), 1, Palette.White);
+            _ctx.Font.Draw(sb, lines[i], new Vector2(box.X + 12, box.Y + 32 + i * 12), 1, Palette.White,
+                preserveCase: true);   // descriptions en minuscules (les libellés/nom restent en capitales)
     }
 
     private void DrawFooter(SpriteBatch sb, Rectangle panel, Rectangle area)
