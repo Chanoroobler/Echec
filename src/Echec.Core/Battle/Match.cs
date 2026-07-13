@@ -371,6 +371,7 @@ public sealed class Match
         MoveKind kind;
         if (!victim.IsAlive)
         {
+            unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
             if (CanTakePlace(from, target))
                 MoveUnit(from, target);
@@ -383,7 +384,7 @@ public sealed class Match
                 && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit))
             {
                 ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from));
-                RemoveDeadAt(from);
+                RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
             }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
@@ -500,7 +501,7 @@ public sealed class Match
             if (UnitAt(c) is not { } u || u.Faction == attacker.Faction)
                 continue;
             ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c));
-            RemoveDeadAt(c);
+            RemoveDeadAt(c, attacker);
         }
     }
 
@@ -534,7 +535,7 @@ public sealed class Match
             if (UnitAt(victims[i]) is not { } u)
                 continue;
             ApplyDamage(victims[i], u, amount);
-            RemoveDeadAt(victims[i]);
+            RemoveDeadAt(victims[i], attacker);
         }
     }
 
@@ -547,7 +548,7 @@ public sealed class Match
         if (UnitAt(behind) is not { } u || u.Faction == attacker.Faction)
             return;
         ApplyDamage(behind, u, EffectiveDamage(attacker, from, u, behind));
-        RemoveDeadAt(behind);
+        RemoveDeadAt(behind, attacker);
     }
 
     /// <summary>« Interception » : chaque ennemi du mobile dont la portée couvre la case d'arrivée le frappe.</summary>
@@ -562,17 +563,24 @@ public sealed class Match
             ApplyDamage(movedTo, mover, EffectiveDamage(unit, cell, mover, movedTo));
             if (!mover.IsAlive)
             {
-                RemoveDeadAt(movedTo);
+                RemoveDeadAt(movedTo, unit);   // l'intercepteur abat le mobile : kill crédité
                 return;   // mobile abattu : plus rien à intercepter
             }
         }
     }
 
-    /// <summary>Retire de la grille l'unité morte d'une case (l'essentiel reste suivi pour la victoire).</summary>
-    private void RemoveDeadAt(Cell cell)
+    /// <summary>
+    /// Retire de la grille l'unité morte d'une case (l'essentiel reste suivi pour la victoire). Si un
+    /// <paramref name="killer"/> est fourni et que le mort est de l'autre camp, la mise à mort lui est
+    /// créditée (compteur de kills à vie, cf. <see cref="Unit.Kills"/>).
+    /// </summary>
+    private void RemoveDeadAt(Cell cell, Unit? killer = null)
     {
-        if (UnitAt(cell) is { IsAlive: false })
-            _units[cell.Column, cell.Row] = null;
+        if (UnitAt(cell) is not { IsAlive: false } dead)
+            return;
+        if (killer != null && dead.Faction != killer.Faction)
+            killer.RecordKill();
+        _units[cell.Column, cell.Row] = null;
     }
 
     /// <summary>Alliés BLESSÉS à portée qu'un soigneur (trait « Soin ») peut cibler.</summary>

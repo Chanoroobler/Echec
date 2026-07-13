@@ -126,20 +126,20 @@
       "phases": {
         "1": {
           "hp": 30,
-          "damage": 12,
+          "damage": 14,
           "moveRange": 1,
           "attackRange": 1
         },
         "2": {
           "hp": 44,
-          "damage": 15,
+          "damage": 18,
           "moveRange": 1,
           "attackRange": 2,
           "traits": [ "Rage" ]
         },
         "3": {
           "hp": 60,
-          "damage": 18,
+          "damage": 22,
           "moveRange": 1,
           "attackRange": 2,
           "traits": [ "Rage", "Transpercement"]
@@ -154,22 +154,22 @@
       "phases": {
         "1": {
           "hp": 35,
-          "damage": 10,
+          "damage": 12,
           "moveRange": 1,
           "attackRange": 1
         },
         "2": {
           "hp": 50,
-          "damage": 12,
-          "moveRange": 1,
-          "attackRange": 2,
+          "damage": 16,
+          "moveRange": 2,
+          "attackRange": 1,
           "traits": [ "Esquive" ]
         },
         "3": {
           "hp": 65,
-          "damage": 15,
-          "moveRange": 1,
-          "attackRange": 2,
+          "damage": 20,
+          "moveRange": 2,
+          "attackRange": 1,
           "traits": [ "Esquive", "Orage" ]
         }
       }

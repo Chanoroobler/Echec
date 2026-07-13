@@ -102,12 +102,16 @@ public sealed class UnitSpecSave
     /// <summary>Id de l'équipement porté (collé au pion), ou null. Le commandant n'en a jamais.</summary>
     public string? Equipment { get; set; }
 
+    /// <summary>Total d'ennemis tués À VIE par ce pion. Absent (vieux save) → 0. Voir <see cref="UnitSpec.Kills"/>.</summary>
+    public int Kills { get; set; }
+
     public static UnitSpecSave From(UnitSpec spec) => new()
     {
         Domaine = spec.Domaine,
         Class = spec.UnitClass.Asset,
         Essential = spec.Essential,
         Equipment = spec.Equipment?.Id,
+        Kills = spec.Kills,
     };
 
     public UnitSpec ToSpec()
@@ -116,12 +120,12 @@ public sealed class UnitSpecSave
         {
             // Unité COMMANDE (commandant) : retrouvée par asset dans le registre, repli sur le commandant.
             var def = Commandes.All.FirstOrDefault(c => c.BaseClass.Asset == Class) ?? Commandes.Commander;
-            return new UnitSpec(def.Movement, def.BaseClass, essential: true);
+            return new UnitSpec(def.Movement, def.BaseClass, essential: true) { Kills = Kills };
         }
 
         // Classe quelconque de l'arbre du domaine (base ou évolution), repli sur la classe de base.
         var cls = FindClass(Domaines.Of(Domaine).BaseClass, Class) ?? Domaines.Of(Domaine).BaseClass;
-        var spec = new UnitSpec(Domaine, cls);
+        var spec = new UnitSpec(Domaine, cls) { Kills = Kills };
         if (Equipment is { } id)
             spec.Equipment = Equipments.ById(id);   // équipement inconnu (catalogue modifié) → ignoré
         return spec;

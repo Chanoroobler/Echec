@@ -28,6 +28,13 @@ public sealed class UnitSpec
     /// <summary>Équipement porté (un seul, jamais sur le commandant), ou null. Voir <see cref="Run.Equip"/>.</summary>
     public Equipment? Equipment { get; set; }
 
+    /// <summary>
+    /// Total d'ennemis tués À VIE par ce pion (persistant, sauvegardé). Recopié sur l'<see cref="Unit"/>
+    /// spawnée puis remis à jour à la fin d'un combat gagné (survivants seulement). Une évolution issue
+    /// d'une fusion repart de 0 (le pion sort neuf). Voir <see cref="Unit.Kills"/>.
+    /// </summary>
+    public int Kills { get; set; }
+
     public string Name => UnitClass.Name;
 
     /// <summary>
@@ -36,5 +43,5 @@ public sealed class UnitSpec
     /// ennemi ou un spawn hors campagne.
     /// </summary>
     public Unit Spawn(Faction faction, CommandBuffs? buffs = null) =>
-        new(Domaine, faction, UnitClass, Equipment, buffs) { IsEssential = Essential };
+        new(Domaine, faction, UnitClass, Equipment, buffs, Kills) { IsEssential = Essential };
 }

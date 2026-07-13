@@ -456,6 +456,18 @@ public class RunTests
         Assert.False(later.FirstRun);
     }
 
+    [Fact]
+    public void RunSave_PreservesKillCount()
+    {
+        // Le total de kills à vie de chaque pion survit à un aller-retour de sauvegarde.
+        var run = new Run(seed: 1, firstRun: true);
+        run.Roster[0].Kills = 7;
+
+        var restored = RunSave.From(run).ToRun();
+
+        Assert.Equal(7, restored.Roster[0].Kills);
+    }
+
     [Theory]
     [InlineData(1, true)]
     [InlineData(6, true)]

@@ -1,4 +1,5 @@
 using Echec.Core.Battle;
+using Echec.Core.Campaign;
 using Echec.Core.Map;
 using Xunit;
 
@@ -136,6 +137,41 @@ public class MatchTests
         Assert.Equal(Faction.Player, match.UnitAt(enemyCell)!.Faction);
         Assert.True(match.IsOver);
         Assert.Equal(Faction.Player, match.Winner);
+    }
+
+    [Fact]
+    public void MeleeKill_IncrementsAttackerKillCount()
+    {
+        var match = TwoUnitMatch(out var playerCell, out var enemyCell);
+        var attacker = match.UnitAt(playerCell)!;   // référence conservée : après la mise à mort il prend la place
+        var enemy = match.UnitAt(enemyCell)!;
+        enemy.TakeDamage(enemy.Hp - 1);
+        Assert.Equal(0, attacker.Kills);
+
+        match.TryAttack(playerCell, enemyCell);
+
+        Assert.Equal(1, attacker.Kills);
+    }
+
+    [Fact]
+    public void NonLethalAttack_DoesNotCountAsKill()
+    {
+        // Un soldat ne tue pas un soldat à PV pleins d'un coup : la cible survit, aucun kill crédité.
+        var match = TwoUnitMatch(out var playerCell, out var enemyCell);
+        var attacker = match.UnitAt(playerCell)!;
+
+        match.TryAttack(playerCell, enemyCell);
+
+        Assert.True(match.UnitAt(enemyCell)!.IsAlive);
+        Assert.Equal(0, attacker.Kills);
+    }
+
+    [Fact]
+    public void Spawn_SeedsUnitKillsFromSpec()
+    {
+        // Le total à vie du gabarit est repris sur l'unité spawnée (affiché tel quel dès le combat suivant).
+        var spec = new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass) { Kills = 5 };
+        Assert.Equal(5, spec.Spawn(Faction.Player).Kills);
     }
 
     [Fact]

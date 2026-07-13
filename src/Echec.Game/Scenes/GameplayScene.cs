@@ -3554,6 +3554,8 @@ public sealed class GameplayScene : Scene
             if (!done)
                 return;
 
+            SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
+
             if (IsProtectMission)
             {
                 // « Protéger » : PAS de draft. On tire 1 recrue par paysan sauvé et on affiche l'écran de
@@ -3578,13 +3580,28 @@ public sealed class GameplayScene : Scene
         if (!_match.IsOver)
             return;
         if (_match.Winner == Faction.Player)
+        {
+            SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
             _run.CompleteCombat(PlayerCasualties(), _enemyKillOrder);
+        }
         FinishBattleEnd();
     }
 
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
     private List<UnitSpec> PlayerCasualties() =>
         _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
+
+    /// <summary>
+    /// Recopie le total de kills des pions JOUEUR encore vivants sur leur gabarit persistant (cumul à vie).
+    /// Les morts sont ignorés : ils quittent le roster (permadeath) et emportent leur compteur. À appeler
+    /// à la clôture d'un combat non perdu, AVANT <see cref="Run.CompleteCombat"/> qui retire les pertes.
+    /// </summary>
+    private void SyncKillsToSpecs()
+    {
+        foreach (var (unit, spec) in _playerSpec)
+            if (unit.IsAlive)
+                spec.Kills = unit.Kills;
+    }
 
     /// <summary>
     /// Récompense de la mission « protéger » : 1 recrue (pion tier-1 déjà vu, comme une tuile recrue) par
@@ -6305,7 +6322,7 @@ public sealed class GameplayScene : Scene
                 DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
             else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
                 DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment, cu.Buffs,
-                    TreeNodesFor(cu));
+                    TreeNodesFor(cu), cu.Kills);
             return;
         }
 
@@ -6321,17 +6338,17 @@ public sealed class GameplayScene : Scene
         // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé).
         if (CellUnderMouse() is { } cell && _match.UnitAt(cell) is { } unit)
             DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment, unit.Buffs,
-                TreeNodesFor(unit));
+                TreeNodesFor(unit), unit.Kills);
     }
 
     /// <summary>Carte d'aperçu placée juste à GAUCHE du panneau d'inventaire (espace libre), équipement inclus.</summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
-        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null)
+        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0)
     {
         var vp = VirtualViewport;
         var x = PanelRect().X - CombatCardGap - CombatCardW;
         var rect = new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
-        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip, buffs: buffs, treeNodes: treeNodes);
+        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills);
         DrawKeywordPopupsBelow(sb, c, rect, equip, buffs);
     }
 
@@ -6346,7 +6363,7 @@ public sealed class GameplayScene : Scene
                     + (spec.Equipment?.BonusFor(EquipStat.Hp) ?? 0)
                     + buffs.BonusFor(EquipStat.Hp);
         DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipment, buffs,
-            _run.ActiveNodesFor(spec.Essential));
+            _run.ActiveNodesFor(spec.Essential), spec.Kills);
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
@@ -7147,7 +7164,7 @@ public sealed class GameplayScene : Scene
     {
         var c = unit.Class;
         DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
-            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit));
+            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit), kills: unit.Kills);
         DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs);
     }
 
@@ -7161,7 +7178,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
         Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
-        CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null)
+        CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -7238,7 +7255,7 @@ public sealed class GameplayScene : Scene
         // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
         y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), revealed ? $"{c.Damage + dmgBonus}" : unknown, Palette.Brown3, revealed ? dmgBonus : 0);
         y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), revealed ? $"{c.MoveRange + moveBonus}" : unknown, Palette.Cyan2, revealed ? moveBonus : 0);
-        DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
+        y = DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
 
         // Liste des mots-clés (traits) en bas de carte (séparés par « | »), détaillés dans les popups.
         // MASQUÉS « ??? » tant que l'unité n'est pas découverte : on ne révèle ni le nombre ni la nature des traits.
@@ -7248,6 +7265,11 @@ public sealed class GameplayScene : Scene
                 new Rectangle(rect.X, rect.Bottom - CardPad - 9, rect.Width, 8), 1, Palette.Yellow2);
             return;
         }
+
+        // Palmarès : nombre d'ennemis tués À VIE par ce pion (ligne discrète sous les stats, seulement si > 0).
+        if (kills > 0)
+            Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
+                new Rectangle(rect.X, y + 2, rect.Width, 8), 1, Palette.Purple5);
         var keywords = KeywordsFor(c, equip, b);
         if (keywords.Count > 0)
         {

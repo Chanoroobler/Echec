@@ -15,13 +15,14 @@ namespace Echec.Core.Battle;
 public sealed class Unit
 {
     public Unit(Domaine domaine, Faction faction, UnitClass unitClass, Equipment? equipment = null,
-        CommandBuffs? buffs = null)
+        CommandBuffs? buffs = null, int kills = 0)
     {
         Domaine = domaine;
         Faction = faction;
         Class = unitClass;
         Equipment = equipment;
         Buffs = buffs ?? CommandBuffs.None;
+        Kills = kills;   // total d'ennemis tués à VIE (repris du gabarit, cf. UnitSpec.Spawn)
         Hp = MaxHp;   // PV pleins, bonus d'équipement et d'arbre inclus
     }
 
@@ -46,6 +47,17 @@ public sealed class Unit
     public CommandBuffs Buffs { get; }
 
     public int Hp { get; private set; }
+
+    /// <summary>
+    /// Nombre d'ennemis TUÉS par cette unité, cumulé À VIE (persistant via <see cref="UnitSpec.Kills"/>).
+    /// Amorcé au spawn avec le total du gabarit, puis incrémenté par <see cref="Match"/> à chaque mise à
+    /// mort (attaque directe, éclaboussure, transpercement, foudre, interception, riposte). Recopié dans
+    /// le gabarit à la fin d'un combat gagné pour les survivants (les morts partent avec — permadeath).
+    /// </summary>
+    public int Kills { get; private set; }
+
+    /// <summary>Comptabilise une mise à mort infligée par cette unité. Appelé par le moteur de combat.</summary>
+    public void RecordKill() => Kills++;
 
     /// <summary>
     /// Unité « pivot » dont la mort décide la partie : le commandant (joueur) ou le

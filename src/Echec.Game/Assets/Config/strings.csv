@@ -98,6 +98,7 @@ stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
 stat.range,PORTÉE,RANGE
 stat.hp,PV,HP
+stat.kills,TUÉS : {0},KILLS: {0}
 # ── Environnement (objets de plateau survoles) ──────────────────────────────
 env.bush.name,BUISSON,BUSH
 env.bush.desc,-4 DEGATS RECUS,-4 DAMAGE TAKEN
