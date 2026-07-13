@@ -4529,7 +4529,7 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Trait « Soin » : soigne l'allié ciblé (montant = puissance du soigneur) et passe le tour. Feedback :
+    /// Trait « Soin » : soigne l'allié ciblé (montant = moitié de la puissance du soigneur) et passe le tour. Feedback :
     /// son d'incantation + « +N » vert flottant sur le soigné. La cible est déjà bornée aux alliés blessés à
     /// portée par <see cref="Match.HealTargets"/>/<see cref="Match.TryHeal"/>.
     /// </summary>
@@ -8541,13 +8541,14 @@ public sealed class GameplayScene : Scene
         var pxW = Columns * tile;
         var pxH = (Rows - 1) * tile + spriteHeight;
 
-        // Léger débordement (overscroll) aux bords pour révéler entièrement les sprites des rangées
-        // extrêmes, dessinés AU-DESSUS de leur case (soulèvement) → la rangée du haut reste visible.
-        var margin = tile * 0.5f;
-        // Jeu de pan « libre » quand le plateau tient dans la zone : on autorise un léger débordement
-        // (~1,5 case) dans les 4 directions au lieu de verrouiller au centre, pour pouvoir regarder un
-        // peu autour. Quand le plateau déborde, c'est `margin` (overscroll des bords) qui s'applique.
-        var slack = tile * 1.5f;
+        // Débordement (overscroll) aux bords pour révéler entièrement les sprites des rangées extrêmes
+        // (dessinés AU-DESSUS de leur case) ET laisser une marge de caméra autour du terrain quand on est
+        // zoomé (~1 case de vide visible au-delà de chaque bord).
+        var margin = tile * 1f;
+        // Jeu de pan « libre » quand le plateau tient dans la zone : on autorise un débordement (~2,5 cases)
+        // dans les 4 directions au lieu de verrouiller au centre, pour regarder autour du terrain avec de la
+        // marge. Quand le plateau déborde, c'est `margin` (overscroll des bords) qui s'applique.
+        var slack = tile * 2.5f;
         // Débattement SUPPLÉMENTAIRE vers le haut : la caméra peut descendre le plateau d'une case de
         // plus, pour dégager la rangée du fond de la frise des missions et voir ce qu'il y a au-dessus.
         var topSlack = tile;

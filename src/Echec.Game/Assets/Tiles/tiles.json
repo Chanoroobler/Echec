@@ -108,6 +108,61 @@
       "row": 1
     },
     {
+      "id": "murs_20",
+      "key": "c",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "_comment": "--- Tileset 'murs' (TilesMurs.png) : 1 tuile par case, key unique. blocksMove/blocksFire a ajuster par tuile. ---",
+      "id": "murs_00",
+      "key": "a",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "murs_10",
+      "key": "b",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "murs_01",
+      "key": "j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "murs_60",
+      "key": "i",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "murs_11",
+      "key": "k",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 1
+    },
+    {
       "id": "chemin_angle_hg",
       "key": "6",
       "blocksMove": false,
@@ -170,34 +225,6 @@
       "row": 3
     },
     {
-      "_comment": "--- Tileset 'murs' (TilesMurs.png) : 1 tuile par case, key unique. blocksMove/blocksFire a ajuster par tuile. ---",
-      "id": "murs_00",
-      "key": "a",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 0,
-      "row": 0
-    },
-    {
-      "id": "murs_10",
-      "key": "b",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 1,
-      "row": 0
-    },
-    {
-      "id": "murs_20",
-      "key": "c",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 2,
-      "row": 0
-    },
-    {
       "id": "murs_30",
       "key": "d",
       "blocksMove": false,
@@ -223,33 +250,6 @@
       "sheet": "murs",
       "col": 5,
       "row": 0
-    },
-    {
-      "id": "murs_60",
-      "key": "i",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 6,
-      "row": 0
-    },
-    {
-      "id": "murs_01",
-      "key": "j",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 0,
-      "row": 1
-    },
-    {
-      "id": "murs_11",
-      "key": "k",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 1,
-      "row": 1
     },
     {
       "id": "murs_21",

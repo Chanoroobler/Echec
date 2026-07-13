@@ -276,6 +276,131 @@
           "trait": "Esquive"
         }
       ]
+    },
+    {
+      "id": "armure",
+      "name": "Armure",
+      "rarity": "Common",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 1
+        },
+        {
+          "stat": "Hp",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "id": "armureRare",
+      "name": "Armure",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 2
+        },
+        {
+          "stat": "Hp",
+          "amount": 6
+        }
+      ]
+    },
+    {
+      "id": "armureLegendaire",
+      "name": "Armure",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 3
+        },
+        {
+          "stat": "Hp",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "id": "hache",
+      "name": "Hache",
+      "rarity": "Common",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 2
+        },
+        {
+          "stat": "Hp",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "hacheRare",
+      "name": "Hache",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 3
+        },
+        {
+          "stat": "Hp",
+          "amount": 3
+        }
+      ]
+    },
+    {
+      "id": "hacheLegendaire",
+      "name": "Hache",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 4
+        },
+        {
+          "stat": "Hp",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "id": "static",
+      "name": "Amulette de rahan",
+      "rarity": "Common",
+      "trait": "Statique"
+    },
+    {
+      "id": "staticRare",
+      "name": "Amulette de rahan",
+      "rarity": "Rare",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 2
+        },
+        {
+          "trait": "Statique"
+        }
+      ]
+    },
+    {
+      "id": "staticLegendaire",
+      "name": "Amulette de rahan",
+      "rarity": "Legendary",
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 5
+        },
+        {
+          "trait": "Statique"
+        }
+      ]
     }
   ]
 }
+

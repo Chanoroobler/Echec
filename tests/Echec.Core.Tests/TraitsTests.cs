@@ -220,17 +220,36 @@ public class TraitsTests
     // ── Soutien : Soin ────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Soin_HealsWoundedAlly_ByPower()
+    public void Soin_HealsWoundedAlly_ByHalfPower()
     {
         var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 5, new[] { Trait.Soin }));
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Soin }));   // puissance 10 → soin 5
         var ally = Make(Faction.Player, 20, 5, None);
         ally.TakeDamage(15);   // 5 PV
         m.Place(new Cell(0, 2), ally);
 
         Assert.Contains(new Cell(0, 2), m.HealTargets(new Cell(0, 0)));
         m.TryHeal(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 5 + 5
+        Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 5 + (10 / 2)
+    }
+
+    [Fact]
+    public void Soin_WorksForEssentialUnit_LikeTheCommander()
+    {
+        // Le commandant (unité ESSENTIELLE, qui reçoit Soin via un nœud commanderTrait) soigne comme les
+        // autres : aucune exception dans le moteur pour l'essentiel, ni comme soigneur ni comme cible.
+        var m = Board();
+        var commander = new Unit(Domaine.Tour, Faction.Player,
+            new UnitClass("C", "c", tier: 1, maxHp: 30, damage: 12, moveRange: 1, attackRange: 3,
+                traits: new[] { Trait.Soin })) { IsEssential = true };
+        m.Place(new Cell(0, 0), commander);
+        var ally = Make(Faction.Player, 20, 5, None);
+        ally.TakeDamage(15);   // 5 PV
+        m.Place(new Cell(0, 2), ally);
+
+        Assert.Contains(new Cell(0, 2), m.HealTargets(new Cell(0, 0)));
+        m.TryHeal(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(11, m.UnitAt(new Cell(0, 2))!.Hp);   // 5 + (12 / 2)
     }
 
     [Fact]
@@ -531,6 +550,46 @@ public class TraitsTests
         ballistic.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre, Trait.ZoneMorte, Trait.Balistique }, attackRange: 3));
         ballistic.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
         Assert.Contains(new Cell(0, 2), ballistic.AttackTargets(new Cell(0, 0)));       // balistique ignore la montagne
+    }
+
+    // ── Statique : ne prend jamais la place de sa cible ───────────────────────────
+
+    [Fact]
+    public void Statique_KillsWithoutTakingTheTargetPlace()
+    {
+        // Le pion Statique tue au contact mais NE PREND PAS la place de sa cible : il reste sur sa case,
+        // et la case de la victime reste libre.
+        var board = Board();
+        var from = new Cell(0, 0);
+        var target = new Cell(0, 1);
+        board.Place(from, Make(Faction.Player, 20, 10, new[] { Trait.Statique }));
+        var enemy = Make(Faction.Enemy, 20, 5, None);
+        enemy.TakeDamage(enemy.Hp - 1);   // 1 PV : le prochain coup le tue
+        board.Place(target, enemy);
+
+        var kind = board.TryAttack(from, target);
+
+        Assert.Equal(MoveKind.Killed, kind);
+        Assert.Equal(Faction.Player, board.UnitAt(from)!.Faction);   // resté sur sa case
+        Assert.Null(board.UnitAt(target));                          // cible morte, case LIBRE (pas d'avance)
+    }
+
+    [Fact]
+    public void WithoutStatique_MeleeKillTakesThePlace()
+    {
+        // Contrôle : sans Statique, la même mise à mort au contact fait AVANCER l'attaquant sur la case.
+        var board = Board();
+        var from = new Cell(0, 0);
+        var target = new Cell(0, 1);
+        board.Place(from, Make(Faction.Player, 20, 10, None));
+        var enemy = Make(Faction.Enemy, 20, 5, None);
+        enemy.TakeDamage(enemy.Hp - 1);
+        board.Place(target, enemy);
+
+        board.TryAttack(from, target);
+
+        Assert.Null(board.UnitAt(from));                            // a quitté sa case
+        Assert.Equal(Faction.Player, board.UnitAt(target)!.Faction);   // a pris la place de la cible
     }
 
     /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>

@@ -373,7 +373,9 @@ public sealed class Match
         {
             unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
-            if (CanTakePlace(from, target))
+            // « Statique » : ne prend JAMAIS la place de sa cible — l'attaquant reste sur sa case (la case de
+            // la victime reste libre). Sinon, comportement normal : il avance sur la case si l'accès le permet.
+            if (!unit.HasTrait(Trait.Statique) && CanTakePlace(from, target))
                 MoveUnit(from, target);
             kind = MoveKind.Killed;
         }
@@ -627,14 +629,15 @@ public sealed class Match
             }
     }
 
-    /// <summary>« Soin » : soigne un allié ciblé (montant = puissance du soigneur). Passe le tour.</summary>
+    /// <summary>« Soin » : soigne un allié ciblé (montant = MOITIÉ de la puissance du soigneur, arrondie
+    /// vers le bas). Fonctionne pour n'importe quel porteur du trait, commandant compris. Passe le tour.</summary>
     public MoveKind TryHeal(Cell from, Cell target)
     {
         var unit = ActiveUnitAt(from);
         if (unit == null || !HealTargets(from).Contains(target))
             return MoveKind.Invalid;
 
-        UnitAt(target)!.Heal(unit.Damage);
+        UnitAt(target)!.Heal(unit.Damage / 2);
         EndTurn();
         return MoveKind.Moved;   // action de soutien : tour consommé
     }

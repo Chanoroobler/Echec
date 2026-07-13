@@ -90,9 +90,9 @@
             ]
           },
           {
-            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Esquive"],
+            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
-              { "name": "Javelinier d'élite", "asset": "javelinier_elite", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Embrochage"] },
+              { "name": "Javelinier d'élite", "asset": "javelinier_elite", "hp": 18, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive","Embrochage"] },
               { "name": "Voltigeur",          "asset": "voltigeur",        "hp": 14, "damage": 14, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
             ]
           }

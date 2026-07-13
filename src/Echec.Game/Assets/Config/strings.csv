@@ -228,6 +228,8 @@ kw.tempete.label,TEMPETE,TEMPEST
 kw.tempete.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 6,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 6
 kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM
 kw.attaque_libre.desc,TIRE AUSSI COMME UNE DAME (8 DIRECTIONS EN LIGNE) EN PLUS DE SON ATTAQUE NORMALE,ALSO SHOOTS LIKE A QUEEN (8 DIRECTIONS IN LINE) ON TOP OF ITS NORMAL ATTACK
+kw.statique.label,STATIQUE,STATIC
+kw.statique.desc,NE PREND JAMAIS LA PLACE DE SA CIBLE EN LA TUANT (RESTE SUR SA CASE),NEVER TAKES THE TARGET'S PLACE ON A KILL (STAYS PUT)
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE !
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
