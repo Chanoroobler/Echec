@@ -171,15 +171,51 @@ public class CommandTreeTests
     }
 
     [Fact]
-    public void FusionRecruits_ZeroUntilTheFusionNodeIsBought()
+    public void EliteDeathRecruits_ZeroUntilTheReliefNodeIsBought()
     {
         var run = RunWithPoints(100);
-        Assert.Equal(0, run.FusionRecruits);
+        Assert.Equal(0, run.EliteDeathRecruits);
 
         run.Unlock(Node("troupe_vie"));      // niveau 1, ouvre la branche
         run.Unlock(Node("troupe_puissance"));// niveau 2
-        run.Unlock(Node("troupe_fusion"));   // niveau 3
-        Assert.Equal(1, run.FusionRecruits);
+        run.Unlock(Node("troupe_releve"));   // niveau 3 : nœud « relève »
+        Assert.Equal(1, run.EliteDeathRecruits);
+    }
+
+    [Fact]
+    public void GrantEliteDeathReplacements_AddsOneSeenT1_PerFallenElite()
+    {
+        var run = RunWithPoints(100);
+        run.Unlock(Node("troupe_vie"));
+        run.Unlock(Node("troupe_puissance"));
+        run.Unlock(Node("troupe_releve"));
+
+        var before = run.ReserveCount;
+        var archer = Domaines.Dame.BaseClass.Evolutions[0];   // tier 2
+        var arbaletrier = archer.Evolutions[0];               // tier 3
+        var casualties = new[]
+        {
+            new UnitSpec(Domaine.Dame, archer),                       // tier 2  → 1 relève
+            new UnitSpec(Domaine.Dame, arbaletrier),                  // tier 3  → 1 relève
+            new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass),      // tier 1  → aucune
+        };
+
+        var added = run.GrantEliteDeathReplacements(casualties, new System.Random(1), _ => true);
+
+        Assert.Equal(2, added.Count);
+        Assert.All(added, u => Assert.Equal(1, u.UnitClass.Tier));   // ce sont des pions de base (T1)
+        Assert.Equal(before + 2, run.ReserveCount);
+    }
+
+    [Fact]
+    public void GrantEliteDeathReplacements_DoesNothingWithoutTheNode()
+    {
+        var run = RunWithPoints(100);   // nœud « relève » NON acheté
+        var archer = Domaines.Dame.BaseClass.Evolutions[0];   // tier 2
+        var added = run.GrantEliteDeathReplacements(
+            new[] { new UnitSpec(Domaine.Dame, archer) }, new System.Random(1), _ => true);
+
+        Assert.Empty(added);
     }
 
     // ─── Application des bonus aux unités ────────────────────────────────────────────────────────

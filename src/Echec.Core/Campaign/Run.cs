@@ -236,6 +236,9 @@ public sealed class Run
     /// <summary>Unités tier 1 offertes EN PLUS à chaque fusion (nœud « fusion »). 0 = aucun bonus.</summary>
     public int FusionRecruits => TotalOf(CommandEffectKind.FusionRecruit);
 
+    /// <summary>Unités tier 1 (déjà vues) données en réserve PAR unité tier 2+ tombée au combat (nœud « relève »). 0 = aucun.</summary>
+    public int EliteDeathRecruits => TotalOf(CommandEffectKind.EliteDeathRecruit);
+
     /// <summary>
     /// Bonus d'arbre applicables à <paramref name="spec"/> : ceux du commandant s'il est essentiel, ceux
     /// des troupes sinon. À passer à <see cref="UnitSpec.Spawn"/> — les bonus « par paire » sont figés au
@@ -371,6 +374,47 @@ public sealed class Run
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
     }
 
+    /// <summary>Points de % gagnés par mission (à partir de la mission 2) sur la chance de recruter un T2.</summary>
+    private const int Tier2RecruitChancePerCombat = 5;
+
+    /// <summary>
+    /// Chance (en %) qu'une recrue de TUILE soit un TIER 2 : 0 % à la mission 1, puis
+    /// +<see cref="Tier2RecruitChancePerCombat"/> % par mission à partir de la mission 2. Bornée à [0, 100].
+    /// Voir <see cref="RollSeenRecruit"/>.
+    /// </summary>
+    public int Tier2RecruitChance => Math.Clamp((CombatNumber - 1) * Tier2RecruitChancePerCombat, 0, 100);
+
+    /// <summary>
+    /// Gabarits TIER 2 DÉJÀ DÉCOUVERTS (<paramref name="isSeen"/> = méta-progression : les T2 sont découverts
+    /// à la fusion), tous domaines confondus. Vide tant qu'aucun T2 n'a été découvert. Voir <see cref="RollSeenRecruit"/>.
+    /// </summary>
+    public IReadOnlyList<UnitSpec> SeenTier2Recruits(Func<string, bool> isSeen)
+    {
+        var pool = new List<UnitSpec>();
+        foreach (var def in Domaines.All)
+            foreach (var t2 in def.BaseClass.Evolutions)   // évolutions directes de la base = tier 2
+                if (isSeen(t2.Asset))
+                    pool.Add(new UnitSpec(def.Id, t2));
+        return pool;
+    }
+
+    /// <summary>
+    /// Tire la recrue d'une TUILE RECRUE : avec une probabilité de <see cref="Tier2RecruitChance"/> %, un tier 2
+    /// au hasard parmi les <see cref="SeenTier2Recruits">T2 déjà découverts</see> ; sinon — ou si aucun T2 n'est
+    /// encore découvert (pool vide) — un tier 1 comme <see cref="RollSeenTier1"/>. La chance monte avec la
+    /// progression mais reste sans effet tant que le joueur n'a découvert aucun T2.
+    /// </summary>
+    public UnitSpec RollSeenRecruit(Random rng, Func<string, bool> isSeen)
+    {
+        if (rng.Next(100) < Tier2RecruitChance)
+        {
+            var tier2 = SeenTier2Recruits(isSeen);
+            if (tier2.Count > 0)
+                return tier2[rng.Next(tier2.Count)];
+        }
+        return RollSeenTier1(rng, isSeen);
+    }
+
     // Chances de rareté à l'ouverture d'un coffre, par PHASE (index 0..2 = phase 1..3), en %. Le reste = commun.
     private static readonly int[] LegendaryChanceByPhase = { 2, 5, 10 };
     private static readonly int[] RareChanceByPhase = { 15, 25, 40 };
@@ -487,18 +531,15 @@ public sealed class Run
 
     /// <summary>
     /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : pion non essentiel
-    /// (le commandant ne s'équipe jamais) et — pour un équipement de TRAIT — un pion dont la CLASSE ne
-    /// possède PAS déjà ce trait (pas de doublon de trait). Un objet « Attaque libre » (tir comme une Dame)
-    /// est refusé au domaine Dame (redondant). Restrictions du domaine Cavalier (monté) : objet de PORTÉE
-    /// refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT refusé à TOUS les cavaliers.
-    /// Les autres équipements de stat passent toujours.
+    /// (le commandant ne s'équipe jamais). Un trait déjà natif de la classe est AUTORISÉ (il ne s'empile
+    /// pas : sans effet supplémentaire, mais les éventuels bonus de stat de l'objet s'appliquent). Un objet
+    /// « Attaque libre » (tir comme une Dame) est refusé au domaine Dame (redondant). Restrictions du domaine
+    /// Cavalier (monté) : objet de PORTÉE refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT
+    /// refusé à TOUS les cavaliers. Les autres équipements de stat passent toujours.
     /// </summary>
     public bool CanEquip(UnitSpec spec, Equipment equipment)
     {
         if (spec.Essential)
-            return false;
-        // Pas de doublon de trait : si l'un des traits octroyés est DÉJÀ natif de la classe, on refuse.
-        if (equipment.Traits.Any(t => ClassHasTrait(spec.UnitClass, t)))
             return false;
 
         // « Attaque libre » fait tirer COMME UNE DAME : sans objet (et interdit) sur un pion déjà de domaine Dame.
@@ -530,9 +571,9 @@ public sealed class Run
 
     /// <summary>
     /// Équipe <paramref name="spec"/> avec <paramref name="equipment"/> (pris dans l'inventaire) pendant
-    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais ; un trait déjà présent
-    /// sur la classe est refusé (cf. <see cref="CanEquip"/>). Si le pion en portait déjà un, l'ancien
-    /// retourne à l'inventaire. Renvoie faux si la phase / le pion / l'item l'interdit.
+    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais (cf. <see cref="CanEquip"/>
+    /// pour les restrictions de domaine). Si le pion en portait déjà un, l'ancien retourne à l'inventaire.
+    /// Renvoie faux si la phase / le pion / l'item l'interdit.
     /// </summary>
     public bool Equip(UnitSpec spec, Equipment equipment)
     {
@@ -735,6 +776,31 @@ public sealed class Run
 
         BuildDraft(defeatedEnemies);
         Phase = RunPhase.Recruitment;
+    }
+
+    /// <summary>
+    /// « Relève » (nœud d'arbre TROUPES) : pour chaque unité de TIER 2+ tombée au combat (parmi
+    /// <paramref name="casualties"/>), fait arriver en réserve <see cref="EliteDeathRecruits"/> pion(s) tier 1
+    /// aléatoire(s) DÉJÀ VU(S), dans la limite du plafond de réserve. Sans effet si le nœud n'est pas acheté.
+    /// À appeler APRÈS <see cref="CompleteCombat"/> / <see cref="CompleteSpecialNoDraft"/> (les pertes retirées
+    /// ont libéré la place). Renvoie les recrues ajoutées (pour un éventuel retour visuel).
+    /// </summary>
+    public IReadOnlyList<UnitSpec> GrantEliteDeathReplacements(
+        IEnumerable<UnitSpec> casualties, Random rng, Func<string, bool> isSeen)
+    {
+        var added = new List<UnitSpec>();
+        var perDeath = EliteDeathRecruits;
+        if (perDeath <= 0)
+            return added;
+
+        var elites = casualties.Count(c => c.UnitClass.Tier >= 2);
+        for (var i = 0; i < elites * perDeath && !IsReserveFull; i++)
+        {
+            var recruit = RollSeenTier1(rng, isSeen);
+            _roster.Add(recruit);
+            added.Add(recruit);
+        }
+        return added;
     }
 
     /// <summary>Ajoute l'unité choisie à l'inventaire et lance le placement du combat suivant.</summary>

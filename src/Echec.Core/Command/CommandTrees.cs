@@ -65,7 +65,7 @@ public static class CommandTrees
             Node("troupe_vie",       1, 1, CommandEffect.UnitStat(EquipStat.Hp, 2)),
             Node("troupe_puissance", 1, 2, CommandEffect.UnitStat(EquipStat.Damage, 1, CommandScale.PerDistinctPair)),
             Node("troupe_vie_paire", 1, 2, CommandEffect.UnitStat(EquipStat.Hp, 1, CommandScale.PerDistinctPair)),
-            Node("troupe_fusion",    1, 3, CommandEffect.FusionRecruit()),
+            Node("troupe_releve",    1, 3, CommandEffect.EliteDeathRecruit()),
             Node("troupe_mouvement", 1, 4, CommandEffect.UnitStat(EquipStat.MoveRange, 1)),
 
             // ── Branche 2 : la LOGISTIQUE (déploiement + réserve) ───────────────────────────────

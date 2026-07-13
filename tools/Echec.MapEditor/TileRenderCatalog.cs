@@ -29,7 +29,7 @@ internal sealed class TileInfo
 /// </summary>
 internal sealed class TileRenderCatalog
 {
-    public required IReadOnlyList<TileInfo> Tiles { get; init; }
+    public IReadOnlyList<TileInfo> Tiles { get; private set; } = Array.Empty<TileInfo>();
     public required IReadOnlyDictionary<char, TileInfo> ByKey { get; init; }
     public int TileSize { get; init; } = 64;
     public int Thickness { get; init; } = 16;
@@ -63,6 +63,71 @@ internal sealed class TileRenderCatalog
                     obj["blocksFire"] = blocksFire;
                 }
 
+        RawJson = root.ToJsonString(WriteOpts);
+        File.WriteAllText(SourcePath, RawJson);
+    }
+
+    /// <summary>
+    /// Déplace la tuile <paramref name="movedKey"/> juste AVANT la tuile <paramref name="targetKey"/> dans la
+    /// palette : réordonne la liste en mémoire ET le tableau <c>tiles</c> de tiles.json (le reste du fichier —
+    /// tilesets, règles, variants, feuilles — est préservé). L'ordre du tableau n'a aucun effet sur le jeu
+    /// (qui indexe par id/clé) ; il ne sert qu'à ranger la palette de l'éditeur. Sans effet si une clé est
+    /// inconnue ou si la cible est la tuile déplacée.
+    /// </summary>
+    public void MoveTile(char movedKey, char targetKey)
+    {
+        if (movedKey == targetKey)
+            return;
+
+        var list = Tiles.ToList();
+        var from = list.FindIndex(t => t.Key == movedKey);
+        var to = list.FindIndex(t => t.Key == targetKey);
+        if (from < 0 || to < 0)
+            return;
+
+        var moved = list[from];
+        list.RemoveAt(from);
+        if (from < to) to--;   // la suppression a décalé les indices situés après la source
+        list.Insert(to, moved);
+        Tiles = list;
+
+        PersistOrder(list);
+    }
+
+    /// <summary>Réécrit le tableau <c>tiles</c> de tiles.json dans l'ordre de <paramref name="ordered"/> (par id),
+    /// en clonant les nœuds pour préserver chaque tuile telle quelle (commentaires et champs inclus).</summary>
+    private void PersistOrder(IReadOnlyList<TileInfo> ordered)
+    {
+        var root = JsonNode.Parse(RawJson, documentOptions: new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+        }) as JsonObject ?? throw new FormatException("tiles.json illisible.");
+
+        if (root["tiles"] is not JsonArray oldArr)
+            return;
+
+        // Indexe les nœuds par id (clonés : évite les conflits de parent en les replaçant dans un nouveau tableau).
+        var byId = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+        var extras = new List<JsonNode>();   // nœud sans id (ne devrait pas exister) : préservé en fin
+        foreach (var node in oldArr)
+        {
+            if (node is JsonObject obj && obj["id"]?.GetValue<string>() is { } id)
+                byId[id] = node.DeepClone();
+            else if (node is not null)
+                extras.Add(node.DeepClone());
+        }
+
+        var newArr = new JsonArray();
+        foreach (var t in ordered)
+            if (byId.Remove(t.Id, out var node))
+                newArr.Add(node);
+        foreach (var leftover in byId.Values)   // id absent de la liste (catalogue désynchronisé) : conservé
+            newArr.Add(leftover);
+        foreach (var extra in extras)
+            newArr.Add(extra);
+
+        root["tiles"] = newArr;
         RawJson = root.ToJsonString(WriteOpts);
         File.WriteAllText(SourcePath, RawJson);
     }

@@ -42,6 +42,12 @@ public sealed class GameplayScene : Scene
     // Remontée du sprite (fraction de la case) pour centrer le socle sur la case. 0 = dans la case.
     private const float SpriteLiftFraction = 0.25f;
 
+    // Icône de TIER (1/2/3), 23 (largeur) × 9 (hauteur). Posée au socle en jeu et au-dessus du nom sur la carte.
+    private const int TierIconW = 23;
+    private const int TierIconH = 9;
+    // Position verticale du BAS de l'icône dans le sprite 64×64 (0 = haut … 1 = bas) : sur la face du socle.
+    private const float SocleTierAnchor = 0.93f;
+
     // Panneau latéral droit (inventaire au placement, infos en combat).
     private const int RightPanelWidth = 240;   // élargi pour 3 colonnes de portraits 64×64
     private const int PanelPad = 12;
@@ -1161,9 +1167,10 @@ public sealed class GameplayScene : Scene
         // le cas RÉSERVE PLEINE : le joueur fait de la place (supprimer/fusionner des pions NON déployés) pour
         // la récupérer, ou l'ABANDONNE. Il ne rejoint l'armée qu'à la fin du vol, seulement s'il y a la place.
         // Tirée mais PAS encore ajoutée : la carte est révélée, puis le pion vole vers l'inventaire (UpdateBattle),
-        // et il rejoint l'armée seulement à la fin du vol. Tirage parmi TOUS les tier 1 déjà vus (méta-progression),
-        // sans gating par combat : n'importe quel tier 1 rencontré dans une run peut sortir (cf. RollSeenTier1).
-        _recrueReveal = _run.RollSeenTier1(new System.Random(), Context.Saves.IsUnitDiscovered);
+        // et il rejoint l'armée seulement à la fin du vol. Tirage parmi les tier 1 déjà vus, avec une CHANCE
+        // croissante (0 % mission 1, +5 %/mission dès la mission 2) d'un TIER 2 parmi les T2 déjà découverts
+        // (cf. RollSeenRecruit) — sans effet tant qu'aucun T2 n'est découvert.
+        _recrueReveal = _run.RollSeenRecruit(new System.Random(), Context.Saves.IsUnitDiscovered);
         Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
 
@@ -2430,7 +2437,7 @@ public sealed class GameplayScene : Scene
             {
                 if (!_run.CanEquip(spec, carried))
                 {
-                    // Pion incompatible (il a déjà ce trait) : refus, l'objet retourne à l'inventaire.
+                    // Pion incompatible (restriction de domaine : cf. Run.CanEquip) : refus, l'objet retourne à l'inventaire.
                     _run.AddEquipment(carried);
                     _dragEquip = null;
                     _dragEquipFrom = null;
@@ -3550,7 +3557,10 @@ public sealed class GameplayScene : Scene
         // OU quand la limite de tours est atteinte (« trop tard » — jamais une défaite hors commandant).
         if (_specialMission)
         {
-            var done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0;
+            // « Protéger » : dès qu'il n'y a PLUS d'adversaire, les paysans restants sont sauvés → victoire
+            // IMMÉDIATE (inutile d'attendre la fin des tours ; l'élimination ne clôt pas seule une mission spéciale).
+            var noEnemiesLeft = IsProtectMission && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy);
+            var done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0 || noEnemiesLeft;
             if (!done)
                 return;
 
@@ -3561,7 +3571,9 @@ public sealed class GameplayScene : Scene
                 // « Protéger » : PAS de draft. On tire 1 recrue par paysan sauvé et on affiche l'écran de
                 // récompense (_protectReward) ; le clic les enverra TOUS en réserve (cf. UpdateRecruitment).
                 var rewards = RollProtectedPaysanRecruits();
-                _run.CompleteSpecialNoDraft(PlayerCasualties());   // retire les pertes, va à l'écran post-combat
+                var casualties = PlayerCasualties();
+                _run.CompleteSpecialNoDraft(casualties);   // retire les pertes, va à l'écran post-combat
+                GrantEliteReplacements(casualties);        // nœud « relève » : un T1 par unité tier 2+ tombée
                 _protectReward = rewards.Count > 0 ? rewards : null;   // 0 sauvé → rien à montrer (auto-skip)
                 _rewardKeep.Clear();
                 for (var k = 0; _protectReward != null && k < _protectReward.Count; k++)
@@ -3570,7 +3582,9 @@ public sealed class GameplayScene : Scene
             }
             else
             {
-                _run.CompleteCombat(PlayerCasualties(), _enemyKillOrder);   // « libérer » : draft normal
+                var casualties = PlayerCasualties();
+                _run.CompleteCombat(casualties, _enemyKillOrder);   // « libérer » : draft normal
+                GrantEliteReplacements(casualties);
             }
             FinishBattleEnd();
             return;
@@ -3582,7 +3596,9 @@ public sealed class GameplayScene : Scene
         if (_match.Winner == Faction.Player)
         {
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
-            _run.CompleteCombat(PlayerCasualties(), _enemyKillOrder);
+            var casualties = PlayerCasualties();
+            _run.CompleteCombat(casualties, _enemyKillOrder);
+            GrantEliteReplacements(casualties);
         }
         FinishBattleEnd();
     }
@@ -3590,6 +3606,11 @@ public sealed class GameplayScene : Scene
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
     private List<UnitSpec> PlayerCasualties() =>
         _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
+
+    /// <summary>Nœud « relève » (arbre TROUPES) : un pion T1 déjà vu arrive en réserve par unité tier 2+ tombée.
+    /// Appelé APRÈS la complétion (les pertes retirées ont libéré la place). Voir <see cref="Run.GrantEliteDeathReplacements"/>.</summary>
+    private void GrantEliteReplacements(IReadOnlyList<UnitSpec> casualties) =>
+        _run.GrantEliteDeathReplacements(casualties, new System.Random(), Context.Saves.IsUnitDiscovered);
 
     /// <summary>
     /// Recopie le total de kills des pions JOUEUR encore vivants sur leur gabarit persistant (cumul à vie).
@@ -4780,8 +4801,13 @@ public sealed class GameplayScene : Scene
                 sb.End();
 
                 DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
-                if (_specialMission && !_equipPhase)
-                    DrawSpecialBriefing(sb, viewport);   // rappel de l'objectif sous la frise (placement)
+                if (!_equipPhase)
+                {
+                    if (_specialMission)
+                        DrawSpecialBriefing(sb, viewport);       // rappel de l'objectif sous la frise (placement)
+                    else if (_run.IsBossCombat)
+                        DrawBossBriefing(sb, viewport);          // rappel de la condition de victoire (vaincre le boss)
+                }
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (CommandTreeOpen)
@@ -5294,6 +5320,19 @@ public sealed class GameplayScene : Scene
             var token = new Rectangle(zx + 9, zy + 8 - animLift, size - 18, size - 26);
             DrawChip(sb, unit.Class, unit.Faction, token);
         }
+
+        // Icône de TIER posée sur le socle (bas du sprite), centrée horizontalement, suit le lift et le fondu.
+        // Échelle ENTIÈRE (× zoom des pions, comme les autres icônes de plateau) pour garder la même taille
+        // RELATIVE quel que soit le zoom — sinon, l'icône 23×9 fixe paraît rétrécir quand les pions grandissent.
+        var spriteTop = zy - spriteLift - animLift;
+        var tierZoom = System.Math.Max(1, size / GridLayout.DefaultTileSize);
+        int tiw = TierIconW * tierZoom, tih = TierIconH * tierZoom;
+        var socleIcon = new Rectangle(
+            zx + (size - tiw) / 2,
+            spriteTop + (int)(size * SocleTierAnchor) - tih,
+            tiw, tih);
+        DrawTierIcon(sb, unit.Class.Tier, socleIcon, introA);
+
         // La barre de vie est dessinée dans une passe SÉPARÉE (DrawUnitHpBars), APRÈS les buissons,
         // pour qu'elle reste toujours visible (même quand le feuillage passe devant le pion).
     }
@@ -5844,6 +5883,14 @@ public sealed class GameplayScene : Scene
 
         Context.Font.Draw(sb, CombatTitle(), new Vector2(x, 16), 1, Palette.Yellow1);
         Context.Font.Draw(sb, Loc.T("placement.title"), new Vector2(x, 34), 2, Palette.Yellow2);
+
+        // Place dans la RÉSERVE (roster hors commandant / plafond), TOUJOURS visible en placement : le joueur
+        // voit combien de pions il peut encore recruter. Rouge quand elle est pleine (aligné à droite du titre).
+        var reserve = Loc.T("reserve.count", _run.ReserveCount, _run.ReserveLimit);
+        Context.Font.Draw(sb, reserve,
+            new Vector2(panel.Right - PanelPad - Context.Font.Measure(reserve, 1), 40),
+            1, _run.IsReserveFull ? Palette.Purple5 : Palette.Cyan1);
+
         Context.Font.Draw(sb, Loc.T("placement.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
 
         // Compteur de déploiement (commandant compris), aligné à droite de l'en-tête d'inventaire.
@@ -7081,6 +7128,10 @@ public sealed class GameplayScene : Scene
             return IsProtectMission
                 ? (Loc.T("env.paysan.name"), Loc.T("env.paysan.desc"))
                 : (Loc.T("env.recrue.name"), Loc.T("env.recrue.desc"));
+        // Tuile infranchissable qui coupe AUSSI la ligne de tir (pierre, montagne, mur plein) : obstacle.
+        // L'eau (passage bloqué mais tir possible) est volontairement exclue.
+        if (_battlefield.Contains(cell) && _battlefield[cell] is { BlocksMovement: true, BlocksLineOfFire: true })
+            return (Loc.T("env.obstacle.name"), Loc.T("env.obstacle.desc"));
         return null;
     }
 
@@ -7192,6 +7243,12 @@ public sealed class GameplayScene : Scene
         Context.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
+        // Icône de TIER (23×9) AU-DESSUS du nom, dans la marge haute : ne décale rien dessous. Masquée tant
+        // que l'unité n'est pas découverte (on ne révèle pas son tier).
+        if (revealed)
+            DrawTierIcon(sb, c.Tier,
+                new Rectangle(rect.X + (rect.Width - TierIconW) / 2, rect.Y + 2, TierIconW, TierIconH));
+
         // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte.
         Context.Font.DrawCentered(sb, revealed ? UnitName(c).ToUpperInvariant() : unknown,
             new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
@@ -7255,7 +7312,7 @@ public sealed class GameplayScene : Scene
         // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
         y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), revealed ? $"{c.Damage + dmgBonus}" : unknown, Palette.Brown3, revealed ? dmgBonus : 0);
         y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), revealed ? $"{c.MoveRange + moveBonus}" : unknown, Palette.Cyan2, revealed ? moveBonus : 0);
-        y = DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
+        DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
 
         // Liste des mots-clés (traits) en bas de carte (séparés par « | »), détaillés dans les popups.
         // MASQUÉS « ??? » tant que l'unité n'est pas découverte : on ne révèle ni le nombre ni la nature des traits.
@@ -7266,22 +7323,26 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Palmarès : nombre d'ennemis tués À VIE par ce pion (ligne discrète sous les stats, seulement si > 0).
-        if (kills > 0)
-            Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
-                new Rectangle(rect.X, y + 2, rect.Width, 8), 1, Palette.Purple5);
+        // Bas de carte ancré EN BAS et empilé vers le HAUT (jamais de chevauchement avec les stats ni entre
+        // eux, quel que soit le nombre de traits) : la liste des mots-clés (traits séparés par « | », détaillés
+        // en popups) tout en bas, puis « TUÉS : N » juste au-dessus (palmarès à vie, seulement si > 0).
         var keywords = KeywordsFor(c, equip, b);
+        var bottomY = rect.Bottom - CardPad;
         if (keywords.Count > 0)
         {
             var joined = string.Join(" | ", keywords.Select(k => k.Label));
             var lines = WrapText(joined, rect.Width - 2 * CardPad, 1);
-            var ty = rect.Bottom - CardPad - lines.Count * 9;
+            var ty = bottomY - lines.Count * 9;
             foreach (var line in lines)
             {
                 Context.Font.DrawCentered(sb, line, new Rectangle(rect.X, ty, rect.Width, 8), 1, Palette.Cyan1);
                 ty += 9;
             }
+            bottomY -= lines.Count * 9;
         }
+        if (kills > 0)
+            Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
+                new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
     }
 
     // Grille d'améliorations d'arbre, à gauche du sprite : cadres 34 (icône 32×32 native centrée),
@@ -7487,6 +7548,23 @@ public sealed class GameplayScene : Scene
         DrawRect(sb, Inflate(area, 1), Palette.Black1);
         DrawRect(sb, area, Palette.Navy2);
         Context.Font.DrawCentered(sb, key.ToUpperInvariant()[..1], area, 2, tint);
+    }
+
+    /// <summary>
+    /// Icône du TIER (1/2/3) du pion, dessinée à sa taille native (23×9, non déformée) dans <paramref name="area"/>.
+    /// PNG <c>Assets/Icons/tier_&lt;tier&gt;.png</c> si présent, sinon un bandeau « T&lt;n&gt; » de repli tant que
+    /// l'art n'est pas fourni. <paramref name="alpha"/> pour suivre le fondu d'apparition en jeu.
+    /// </summary>
+    private void DrawTierIcon(SpriteBatch sb, int tier, Rectangle area, float alpha = 1f)
+    {
+        if (IconOrNull($"tier_{tier}") is { } png)
+        {
+            sb.Draw(png, area, Color.White * alpha);   // 23×9 → rect 23×9 : 1:1, pas de déformation
+            return;
+        }
+        DrawRect(sb, Inflate(area, 1), Palette.Black1 * alpha);
+        DrawRect(sb, area, Palette.Navy2 * alpha);
+        Context.Font.DrawCentered(sb, $"T{tier}", area, 1, Palette.White * alpha);
     }
 
     // ── Popups de mots-clés ──────────────────────────────────────────────────────
@@ -8143,11 +8221,29 @@ public sealed class GameplayScene : Scene
     private void DrawSpecialBriefing(SpriteBatch sb, Viewport viewport)
     {
         const int innerW = 360;   // largeur cible du texte (le rail 1280-240 est bien plus large)
-        var title = Loc.T("mission.speciale");
         var goalKey = IsProtectMission ? "special.brief_protect" : "special.brief_goal";
-        var body = new List<string>();
-        body.AddRange(WrapText(Loc.T(goalKey, SpecialTurnBudget()), innerW, 1));
+        var body = WrapText(Loc.T(goalKey, SpecialTurnBudget()), innerW, 1);
+        DrawBriefingBox(sb, Loc.T("mission.speciale"), body);
+    }
 
+    /// <summary>
+    /// Encart de BRIEFING du combat de BOSS, sous la frise, pendant le PLACEMENT : rappelle la CONDITION
+    /// DE VICTOIRE (vaincre le boss suffit à gagner). Même cadre que le briefing de mission spéciale.
+    /// </summary>
+    private void DrawBossBriefing(SpriteBatch sb, Viewport viewport)
+    {
+        const int innerW = 360;
+        var body = WrapText(Loc.T("boss.brief_goal"), innerW, 1);
+        DrawBriefingBox(sb, Loc.T("combat.boss"), body);
+    }
+
+    /// <summary>
+    /// Cadre de briefing (titre doré + texte crème replié) centré sous la frise, à la largeur du plateau.
+    /// Partagé par les briefings de mission spéciale (<see cref="DrawSpecialBriefing"/>) et de boss
+    /// (<see cref="DrawBossBriefing"/>).
+    /// </summary>
+    private void DrawBriefingBox(SpriteBatch sb, string title, IReadOnlyList<string> body)
+    {
         var textW = Context.Font.Measure(title, 1);
         foreach (var l in body)
             textW = System.Math.Max(textW, Context.Font.Measure(l, 1));

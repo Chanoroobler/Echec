@@ -27,6 +27,9 @@ public enum CommandEffectKind
 
     /// <summary>Chaque fusion recrute EN PLUS une unité tier 1 déjà découverte.</summary>
     FusionRecruit,
+
+    /// <summary>Chaque unité de tier 2+ tombée au combat fait arriver en réserve une unité tier 1 aléatoire (déjà vue).</summary>
+    EliteDeathRecruit,
 }
 
 /// <summary>
@@ -107,4 +110,7 @@ public sealed class CommandEffect
 
     public static CommandEffect FusionRecruit(int amount = 1) =>
         new(CommandEffectKind.FusionRecruit, default, amount, null, CommandScale.Flat);
+
+    public static CommandEffect EliteDeathRecruit(int amount = 1) =>
+        new(CommandEffectKind.EliteDeathRecruit, default, amount, null, CommandScale.Flat);
 }

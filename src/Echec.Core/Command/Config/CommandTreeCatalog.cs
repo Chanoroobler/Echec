@@ -66,6 +66,7 @@ public static class CommandTreeCatalog
             "reserveslots" => CommandEffect.ReserveSlots(amount),
             "deployslots" => CommandEffect.DeploySlots(amount),
             "fusionrecruit" => CommandEffect.FusionRecruit(amount),
+            "elitedeathrecruit" => CommandEffect.EliteDeathRecruit(amount),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }

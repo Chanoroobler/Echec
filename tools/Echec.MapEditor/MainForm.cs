@@ -40,6 +40,10 @@ internal sealed class MainForm : Form
     private Button? _selectedPaletteButton;
     private Button? _selectedTierButton;
 
+    // Réorganisation de la palette de terrain par GLISSER-DÉPOSER au clic DROIT : clé de la tuile en cours
+    // de déplacement (null = aucun). Le clic gauche reste le choix du pinceau. Voir TilePaletteButton.
+    private char? _tileDragKey;
+
     // Inspecteur (colonne de droite) : édite blocksMove/blocksFire de la tuile de terrain focalisée.
     private readonly PictureBox _tilePreview = new();
     private readonly Label _tileTitle = new();
@@ -299,7 +303,47 @@ internal sealed class MainForm : Form
             btn.Image = ScaleNearest(tile.Image, 50, 62);
         _tips.SetToolTip(btn, TileTooltip(tile));
         btn.Click += (_, _) => { _canvas.Brush = tile.Key; SelectPaletteButton(btn); FocusTile(tile); };
+
+        // Clic DROIT maintenu = glisser la tuile pour la réorganiser dans la palette ; on la dépose sur la
+        // tuile qui prendra sa place. Le clic GAUCHE (ci-dessus) sélectionne toujours le pinceau.
+        btn.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                _tileDragKey = tile.Key;
+                btn.Cursor = Cursors.SizeAll;
+            }
+        };
+        btn.MouseUp += (_, e) =>
+        {
+            btn.Cursor = Cursors.Default;
+            if (e.Button == MouseButtons.Right && _tileDragKey is { } moved)
+            {
+                _tileDragKey = null;
+                DropTileAtCursor(moved);
+            }
+        };
         return btn;
+    }
+
+    /// <summary>
+    /// Dépose la tuile en cours de glissement (<paramref name="movedKey"/>) sur la tuile de palette sous le
+    /// curseur : réordonne le catalogue (persisté dans tiles.json) puis reconstruit la palette. Sans effet si
+    /// le curseur n'est pas sur une autre tuile de terrain.
+    /// </summary>
+    private void DropTileAtCursor(char movedKey)
+    {
+        if (_catalog is null)
+            return;
+        var target = _palette.GetChildAtPoint(_palette.PointToClient(Cursor.Position)) as Button;
+        if (target?.Tag is not char targetKey || _catalog.TileForKey(targetKey) is null || targetKey == movedKey)
+            return;
+
+        _catalog.MoveTile(movedKey, targetKey);   // écrit l'ordre dans tiles.json ; n'affecte pas la map (donc pas _dirty)
+        _status.Text = $"Tuile '{movedKey}' déplacée. Ordre enregistré dans tiles.json.";
+        // Reconstruit la palette APRÈS la fin de l'événement souris courant : RebuildPalette dispose le
+        // bouton qui gère ce MouseUp (accéder à un contrôle disposé pendant son propre événement plante).
+        BeginInvoke(new Action(RebuildPalette));
     }
 
     private static string TileTooltip(TileInfo tile)

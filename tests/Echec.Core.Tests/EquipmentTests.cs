@@ -252,21 +252,22 @@ public class EquipmentTests
     }
 
     [Fact]
-    public void Equip_TraitAlreadyOnClass_IsRejected_ButAllowedElsewhere()
+    public void Equip_TraitAlreadyOnClass_IsNowAllowed_TraitDoesNotStack()
     {
-        // Le Garde (domaine Tour) a nativement Rempart : refus de l'équipement de trait Rempart sur lui.
+        // Le Garde (domaine Tour) a nativement Rempart. Un équipement de trait Rempart est désormais AUTORISÉ
+        // (le trait ne s'empile pas : aucun effet supplémentaire, mais l'objet est bien porté).
         var garde = Domaines.Tour.BaseClass.Evolutions[0]; // Garde (Rempart)
         var run = RunWith(new UnitSpec(Domaine.Tour, garde));
         var g = run.Roster.First(u => !u.Essential);
         var rempart = RempartEquip;
         run.AddEquipment(rempart);
 
-        Assert.False(run.CanEquip(g, rempart));
-        Assert.False(run.Equip(g, rempart));
-        Assert.Null(g.Equipment);
-        Assert.Contains(rempart, run.EquipmentInventory);   // pas consommé
+        Assert.True(run.CanEquip(g, rempart));
+        Assert.True(run.Equip(g, rempart));
+        Assert.Equal(rempart, g.Equipment);
+        Assert.DoesNotContain(rempart, run.EquipmentInventory);   // consommé (posé sur le pion)
 
-        // Un Soldat (sans Rempart), lui, l'accepte.
+        // Un Soldat (sans Rempart) l'accepte aussi, comme avant.
         var run2 = RunWith(Soldat());
         var soldat = run2.Roster.First(u => !u.Essential);
         var rempart2 = RempartEquip;

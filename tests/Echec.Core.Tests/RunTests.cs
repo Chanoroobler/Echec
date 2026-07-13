@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Echec.Core.Battle;
 using Echec.Core.Campaign;
@@ -521,6 +523,67 @@ public class RunTests
 
         Assert.NotNull(fused);
         Assert.Equal(evo, fused!.UnitClass);
+    }
+
+    // ─── Recrue de tuile : chance croissante d'un T2 déjà découvert ──────────────────────────────
+
+    [Theory]
+    [InlineData(1, 0)]     // mission 1 : jamais de T2
+    [InlineData(2, 5)]     // +5 % dès la mission 2
+    [InlineData(3, 10)]
+    [InlineData(18, 85)]   // dernière mission de la campagne
+    public void Tier2RecruitChance_StartsAtZero_AndGrows5PerMissionFromMission2(int combat, int expected)
+    {
+        Assert.Equal(expected, RunAt(combat).Tier2RecruitChance);
+    }
+
+    [Fact]
+    public void SeenTier2Recruits_ListsOnlyDiscoveredTier2()
+    {
+        // Un seul T2 « découvert » : l'archer (évolution de la Dame). Le pool ne contient que lui.
+        var pool = RunAt(2).SeenTier2Recruits(asset => asset == "archer");
+
+        Assert.Single(pool);
+        Assert.Equal("archer", pool[0].UnitClass.Asset);
+        Assert.Equal(2, pool[0].UnitClass.Tier);
+    }
+
+    [Fact]
+    public void RollSeenRecruit_Mission1_NeverReturnsTier2_EvenWhenAllSeen()
+    {
+        var run = RunAt(1);   // chance 0 %
+        var rng = new Random(1);
+        for (var i = 0; i < 100; i++)
+            Assert.Equal(1, run.RollSeenRecruit(rng, _ => true).UnitClass.Tier);
+    }
+
+    [Fact]
+    public void RollSeenRecruit_NoTier2Discovered_AlwaysTier1_EvenLateGame()
+    {
+        // Seuls les tier 1 sont vus : malgré une forte chance (mission 18), aucun T2 ne peut sortir.
+        var run = RunAt(18);
+        var rng = new Random(1);
+        var seenT1 = new HashSet<string>
+        {
+            Domaines.Dame.BaseClass.Asset, Domaines.Fou.BaseClass.Asset,
+            Domaines.Cavalier.BaseClass.Asset, Domaines.Tour.BaseClass.Asset,
+        };
+        for (var i = 0; i < 100; i++)
+            Assert.Equal(1, run.RollSeenRecruit(rng, seenT1.Contains).UnitClass.Tier);
+    }
+
+    [Fact]
+    public void RollSeenRecruit_LateGame_MixesTier1AndDiscoveredTier2()
+    {
+        // Mission 18 (85 %), tout découvert : sur de nombreux tirages, des T2 ET des T1 sortent.
+        var run = RunAt(18);
+        var rng = new Random(1);
+        var results = new List<UnitSpec>();
+        for (var i = 0; i < 100; i++)
+            results.Add(run.RollSeenRecruit(rng, _ => true));
+
+        Assert.Contains(results, r => r.UnitClass.Tier == 2);
+        Assert.Contains(results, r => r.UnitClass.Tier == 1);   // la chance n'est jamais 100 %
     }
 
     private static Run RunAt(int combatNumber, int seed = 1, bool firstRun = false)

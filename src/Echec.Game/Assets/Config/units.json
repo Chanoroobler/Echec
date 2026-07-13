@@ -61,7 +61,7 @@
         "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
         "evolutions": [
           {
-            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
               { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
               { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
@@ -115,7 +115,7 @@
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
   // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
   "commandes": [
-    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 10, "moveRange": 1, "attackRange": 1,
+    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
       "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2 },
 
     {

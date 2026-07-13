@@ -20,6 +20,7 @@
   //   { "kind": "reserveSlots", "amount": 2 }                 ← agrandit la réserve
   //   { "kind": "deploySlots",  "amount": 1 }                 ← agrandit le déploiement
   //   { "kind": "fusionRecruit", "amount": 1 }                ← chaque fusion recrute en plus un tier 1 vu
+  //   { "kind": "eliteDeathRecruit", "amount": 1 }            ← chaque unité tier 2+ tombée fait arriver un tier 1 vu en réserve
   //
   // "stat"  : hp | damage | moveRange | attackRange
   // "scale" : flat (défaut) | perDistinctPair  → bonus × (classes distinctes du roster hors commandant ÷ 2),
@@ -40,14 +41,14 @@
         { "id": "troupe_vie",       "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 2 } ] },
         { "id": "troupe_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" } ] },
         { "id": "troupe_vie_paire", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "hp",     "amount": 1, "scale": "perDistinctPair" } ] },
-        { "id": "troupe_fusion",    "branch": 1, "level": 3, "effects": [ { "kind": "fusionRecruit", "amount": 1 } ] },
+        { "id": "troupe_releve",    "branch": 1, "level": 3, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1 } ] },
         { "id": "troupe_mouvement", "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1 } ] },
 
         // ── Branche 2 : la LOGISTIQUE (déploiement + réserve) ───────────────────────────────────
         { "id": "logi_deploiement_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "logi_reserve_1",     "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
-        { "id": "logi_deploiement_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
-        { "id": "logi_reserve_2",     "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "troupe_fusion", "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit",  "amount": 1 } ] },
+        { "id": "logi_deploiement_2", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots", "amount": 1 } ] },
         { "id": "logi_deploiement_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "logi_reserve_3",     "branch": 2, "level": 4, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] }
       ]
