@@ -24,7 +24,7 @@ options.volume_sfx,VOLUME EFFETS,SFX VOLUME
 options.language,LANGUE,LANGUAGE
 options.back,RETOUR,BACK
 # ── Menu principal ──────────────────────────────────────────────────────────
-game.title,ECHEC,ECHEC
+game.title,CHESS ARMY,CHESS ARMY
 mainmenu.slot,SLOT {0},SLOT {0}
 mainmenu.slot_progress,COMBAT {0}/{1}   {2} UNITES,BATTLE {0}/{1}   {2} UNITS
 mainmenu.new_game,NOUVELLE PARTIE,NEW GAME
@@ -188,7 +188,7 @@ end.replay,CLIC POUR REJOUER,CLICK TO REPLAY
 kw.rempart.label,REMPART,BULWARK
 kw.rempart.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES À PORTÉE 2 OU PLUS,REDUCES BY 4 DAMAGE FROM ATTACKS AT RANGE 2 OR MORE
 kw.soin.label,SOIN,HEAL
-kw.soin.desc,SOIGNE L'ALLIÉ CIBLE,HEALS THE TARGETED ALLY
+kw.soin.desc,SOIGNE L'ALLIÉ CIBLE DE LA MOITIÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR HALF ITS POWER
 kw.zone.label,DEGATS DE ZONE,AREA DAMAGE
 kw.zone.desc,INFLIGE DES DÉGÂTS SUR UNE ZONE DE PLUSIEURS CASES,DEALS DAMAGE OVER AN AREA OF SEVERAL TILES
 kw.franchissement.label,FRANCHISSEMENT,VAULTING

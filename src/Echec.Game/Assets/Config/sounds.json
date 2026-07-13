@@ -28,6 +28,12 @@
   // ── Objets / coffre ──────────────────────────────────────────
   "reward":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",
   "equip_lost": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
+  // « pop » court (0,33 s) joué à chaque salve du feu d'artifice de butin : 1 fois (rare), plusieurs
+  // fois en crépitement (légendaire). Cf. GameplayScene.EmitLootBurst.
+  "firework":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Fire B.wav",
+  // Fanfare triomphante jouée EN PLUS du jingle reward + du feu d'artifice à la révélation d'un
+  // équipement LÉGENDAIRE. Cf. GameplayScene.UpdateChestRoll.
+  "reward_legendary": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up C.wav",
 
   // ── Menus ────────────────────────────────────────────────────
   "menu_open":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu A.wav",

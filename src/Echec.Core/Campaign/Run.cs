@@ -43,7 +43,7 @@ public sealed class Run
     /// boss de la phase 2 ; remettre <c>= PhaseCount</c> (3) pour la campagne COMPLÈTE. Toute la machinerie des
     /// 3 phases (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée.
     /// </summary>
-    public const int EndAtPhase = 2;
+    public const int EndAtPhase = 3;
 
     /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
     public const int MissionsPerPhase = 6;

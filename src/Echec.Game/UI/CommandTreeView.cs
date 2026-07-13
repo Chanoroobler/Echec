@@ -346,6 +346,9 @@ public sealed class CommandTreeView
         var state = StateOf(run, node);
 
         _ctx.Style.DrawRecessed(sb, rect);
+        // Fond d'icône ÉCLAIRCI : voile clair sur l'intérieur (inset de 2 pour garder le biseau enfoncé),
+        // pour que les icônes 32×32 ressortent mieux que sur le tramage sombre du cadre.
+        Fill(sb, Inflate(rect, -2), Palette.Blue1 * 0.6f);
 
         // Cadre : or (acquis), cyan pulsé (achetable), bleu (trop cher), sombre (verrouillé).
         var border = state switch
@@ -454,7 +457,7 @@ public sealed class CommandTreeView
     private void DrawTooltip(SpriteBatch sb, CommandNode node, Viewport vp)
     {
         var name = Loc.T(node.NameKey);
-        var lines = Wrap(Loc.T(node.DescKey), 260);
+        var lines = Wrap(Capitalize(Loc.T(node.DescKey)), 260);
 
         var w = System.Math.Max(_ctx.Font.Measure(name, 2), lines.Max(l => _ctx.Font.Measure(l, 1))) + 24;
         var h = 22 + lines.Count * 12 + 16;
@@ -488,6 +491,10 @@ public sealed class CommandTreeView
         var hint = Loc.T(_ctx.Input.UsingGamepad ? "tree.hint_gp" : "tree.hint");
         _ctx.Font.DrawCentered(sb, hint, new Rectangle(panel.X, btn.Bottom + 6, panel.Width, 10), 1, Palette.Blue1);
     }
+
+    /// <summary>Met la PREMIÈRE lettre en capitale (le reste des descriptions reste volontairement en minuscules).</summary>
+    private static string Capitalize(string s) =>
+        string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     /// <summary>Découpe <paramref name="text"/> en lignes tenant dans <paramref name="maxWidth"/> pixels (échelle 1).</summary>
     private List<string> Wrap(string text, int maxWidth)

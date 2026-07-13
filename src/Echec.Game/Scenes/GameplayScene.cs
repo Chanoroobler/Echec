@@ -182,6 +182,17 @@ public sealed class GameplayScene : Scene
     private const double ChestFlyDuration = 0.5;
     private const double ChestSettleDuration = 0.6;
 
+    // Feu d'artifice de récompense à la RÉVÉLATION du butin (cf. QueueLootFireworks) : RIEN pour un commun,
+    // une petite gerbe pour un RARE, un bouquet de plusieurs GROSSES salves pour un LÉGENDAIRE. Réutilise le
+    // système d'étincelles (_sparks) — gerbes radiales soumises à la gravité, dessinées PAR-DESSUS la modale.
+    private int _lootBurstsLeft;            // salves restant à tirer (0 = pas de feu d'artifice en cours)
+    private double _lootBurstTimer;         // compte à rebours avant la prochaine salve
+    private bool _lootBurstBig;             // grosses salves dispersées (légendaire) vs petite gerbe centrée (rare)
+    private readonly System.Random _lootFireworkRng = new();
+    private const int RareFireworkBursts = 2;              // nombre de petites salves pour un rare
+    private const int LegendaryFireworkBursts = 5;         // nombre de salves du bouquet légendaire
+    private const double LegendaryFireworkInterval = 0.28; // délai entre deux salves du bouquet
+
     // Dissolution de l'ÉQUIPEMENT perdu quand une unité équipée meurt en combat (feedback de la perte).
     // Détectée par DISPARITION du plateau (toutes causes de mort confondues), jouée APRÈS la dissolution
     // du pion. Réutilise le shader de dissolution des unités (CombatFxRenderer).
@@ -878,6 +889,7 @@ public sealed class GameplayScene : Scene
         _chestRollSwapTimer = 0;
         _chestPhase = ChestPhase.None;
         _chestPhaseTimer = 0;
+        _lootBurstsLeft = 0;   // pas de salve de récompense reportée du combat précédent
         _equipDissolves.Clear();
         _equippedCells = new Dictionary<Unit, Cell>();   // snapshot vidé : pas de fausse mort au 1er combat frame
 
@@ -1256,6 +1268,7 @@ public sealed class GameplayScene : Scene
     private void UpdateChestReveal(float dt)
     {
         _chestPhaseTimer += dt;
+        UpdateLootFireworks(dt);   // les salves de récompense éclatent en parallèle de la révélation
         switch (_chestPhase)
         {
             case ChestPhase.Opening:
@@ -1298,6 +1311,7 @@ public sealed class GameplayScene : Scene
                     _chestReveal = null;
                     _chestRollItem = null;
                     _chestPhase = ChestPhase.None;
+                    _lootBurstsLeft = 0;   // fin de la modale : on annule d'éventuelles salves restantes
                 }
                 break;
         }
@@ -1320,6 +1334,9 @@ public sealed class GameplayScene : Scene
             _chestPhase = ChestPhase.Item;
             _chestPhaseTimer = 0;
             Context.Sounds.Play("reward");   // jingle positif à l'instant où l'objet se fige
+            if (_chestReveal!.Rarity == EquipmentRarity.Legendary)
+                Context.Sounds.Play("reward_legendary");   // fanfare EN PLUS pour un légendaire (par-dessus le feu d'artifice)
+            QueueLootFireworks(_chestReveal!.Rarity);   // rare = petit feu d'artifice, légendaire = grand bouquet
             return;
         }
 
@@ -1341,6 +1358,57 @@ public sealed class GameplayScene : Scene
     {
         var all = Equipments.All;
         return all.Count > 0 ? all[_chestRollRng.Next(all.Count)] : _chestReveal!;
+    }
+
+    /// <summary>
+    /// Programme le feu d'artifice de récompense selon la rareté du butin révélé : RIEN pour un commun, UNE
+    /// petite gerbe pour un RARE, un bouquet de <see cref="LegendaryFireworkBursts"/> GROSSES salves enchaînées
+    /// pour un LÉGENDAIRE. Les salves éclatent au fil du temps (cf. <see cref="UpdateLootFireworks"/>).
+    /// </summary>
+    private void QueueLootFireworks(EquipmentRarity rarity)
+    {
+        if (rarity == EquipmentRarity.Common)
+            return;
+        _lootBurstBig = rarity == EquipmentRarity.Legendary;
+        _lootBurstsLeft = _lootBurstBig ? LegendaryFireworkBursts : RareFireworkBursts;
+        _lootBurstTimer = 0;   // première salve immédiatement
+    }
+
+    /// <summary>Fait éclater les salves programmées (une, puis attente, puis la suivante). Cf. <see cref="QueueLootFireworks"/>.</summary>
+    private void UpdateLootFireworks(float dt)
+    {
+        if (_lootBurstsLeft <= 0)
+            return;
+        _lootBurstTimer -= dt;
+        if (_lootBurstTimer > 0)
+            return;
+        _lootBurstsLeft--;
+        _lootBurstTimer = LegendaryFireworkInterval;   // délai avant la prochaine (ignoré s'il n'en reste plus)
+        EmitLootBurst();
+    }
+
+    /// <summary>
+    /// Une salve : gerbe radiale d'étincelles dans le CIEL au-dessus du coffre (hors du tooltip du butin).
+    /// Légendaire = grosse gerbe dispersée dans le tiers supérieur ; rare = petite gerbe centrée.
+    /// </summary>
+    private void EmitLootBurst()
+    {
+        var vp = VirtualViewport;
+        var availW = vp.Width - RightPanelWidth;
+        if (_lootBurstBig)
+        {
+            var x = availW * (0.25f + (float)_lootFireworkRng.NextDouble() * 0.5f);
+            var y = vp.Height * (0.12f + (float)_lootFireworkRng.NextDouble() * 0.2f);
+            _sparks.EmitFirework(new Vector2(x, y), 48, 3);   // beaucoup de grosses braises
+        }
+        else
+        {
+            // Deux petites gerbes proches du centre, légèrement dispersées pour ne pas se superposer.
+            var x = availW * (0.38f + (float)_lootFireworkRng.NextDouble() * 0.24f);
+            var y = vp.Height * (0.18f + (float)_lootFireworkRng.NextDouble() * 0.1f);
+            _sparks.EmitFirework(new Vector2(x, y), 22, 1);
+        }
+        Context.Sounds.Play("firework", 0.8f);   // « pop » à chaque salve (crépitement pour le bouquet légendaire)
     }
 
     private void PlacePlayer(UnitSpec spec, Cell cell)
@@ -6629,6 +6697,8 @@ public sealed class GameplayScene : Scene
 
         if (_chestPhase == ChestPhase.Fly)
             DrawChestFlight(sb, item);
+
+        _sparks.Draw(sb, Context.Pixel);   // feu d'artifice de récompense PAR-DESSUS le voile (cf. QueueLootFireworks)
     }
 
     /// <summary>
