@@ -589,6 +589,118 @@ public class RunTests
         Assert.Contains(results, r => r.UnitClass.Tier == 1);   // la chance n'est jamais 100 %
     }
 
+    // ─── Relance ─────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NewRun_StartsWithOneReroll_ForPhase1()
+    {
+        Assert.Equal(1, new Run(seed: 1).Rerolls);   // 1 relance offerte à l'ouverture de la phase 1
+    }
+
+    [Fact]
+    public void RerollUnit_SwapsForSameTier_ExcludingRerolledClass_ConsumesOneReroll()
+    {
+        var run = new Run(seed: 1);                          // commandant + 2 Dames T1, 1 relance
+        var pion = run.Roster.First(u => !u.Essential);
+        var before = run.Roster.Count;
+
+        var replacement = run.RerollUnit(pion, new Random(1), _ => true);
+
+        Assert.NotNull(replacement);
+        Assert.Equal(1, replacement!.UnitClass.Tier);        // même tier
+        Assert.NotEqual(pion.UnitClass, replacement.UnitClass); // « sauf la pièce relancée »
+        Assert.Contains(replacement, run.Roster);
+        Assert.DoesNotContain(pion, run.Roster);
+        Assert.Equal(before, run.Roster.Count);              // effectif inchangé (retire 1, ajoute 1)
+        Assert.Equal(0, run.Rerolls);                        // relance consommée
+    }
+
+    [Fact]
+    public void RerollUnit_FailsAndConsumesNothing_WhenNoRerollLeft()
+    {
+        var run = new Run(seed: 1);
+        var pion = run.Roster.First(u => !u.Essential);
+        Assert.NotNull(run.RerollUnit(pion, new Random(1), _ => true));   // épuise la relance
+        var pion2 = run.Roster.First(u => !u.Essential);
+
+        Assert.Null(run.RerollUnit(pion2, new Random(1), _ => true));     // plus de relance
+        Assert.Equal(0, run.Rerolls);
+    }
+
+    [Fact]
+    public void RerollUnit_RefusesCommander()
+    {
+        var run = new Run(seed: 1);
+        Assert.Null(run.RerollUnit(run.Commander, new Random(1), _ => true));
+        Assert.Equal(1, run.Rerolls);   // rien consommé
+    }
+
+    [Fact]
+    public void RerollUnit_Fails_WhenNoOtherDiscoveredClassAtTier()
+    {
+        // Seule la classe du pion est « découverte » : le pool (classe exclue) est vide → échec, sans consommer.
+        var run = new Run(seed: 1);
+        var pion = run.Roster.First(u => !u.Essential);
+
+        Assert.Null(run.RerollUnit(pion, new Random(1), asset => asset == pion.UnitClass.Asset));
+        Assert.Equal(1, run.Rerolls);
+        Assert.Contains(pion, run.Roster);
+    }
+
+    [Fact]
+    public void RerollUnit_ReturnsEquippedItemToInventory()
+    {
+        var run = new Run(seed: 1);
+        var pion = run.Roster.First(u => !u.Essential);
+        var item = Equipment.OfStat("vigueur", "Vigueur", EquipStat.Hp, 5);   // pur bonus de stat : OK sur une Dame
+        run.AddEquipment(item);
+        Assert.True(run.Equip(pion, item));
+        Assert.Empty(run.EquipmentInventory);       // l'item est collé au pion
+
+        run.RerollUnit(pion, new Random(1), _ => true);
+
+        Assert.Contains(item, run.EquipmentInventory);   // le pion relancé rend son équipement
+    }
+
+    [Fact]
+    public void AddReroll_IncrementsCount_ForBrokenEquipment()
+    {
+        var run = new Run(seed: 1);
+        run.AddReroll();
+        Assert.Equal(2, run.Rerolls);
+    }
+
+    [Fact]
+    public void PhaseReroll_GrantedOncePerPhase_Cumulative()
+    {
+        var run = new Run(seed: 1);
+        Assert.Equal(1, run.Rerolls);   // phase 1
+
+        // Traverse les 6 missions de la phase 1 sans dépenser : le passage en phase 2 accorde +1 (cumul).
+        for (var i = 0; i < 6; i++)
+        {
+            run.StartBattle();
+            run.CompleteCombat(System.Array.Empty<UnitSpec>(), DefeatedWave(1));
+            run.Recruit(run.Draft[0]);
+        }
+
+        Assert.Equal(7, run.CombatNumber);
+        Assert.Equal(2, run.PhaseIndex);
+        Assert.Equal(2, run.Rerolls);   // 1 (phase 1) + 1 (phase 2), aucune dépensée
+    }
+
+    [Fact]
+    public void RunSave_PreservesRerolls()
+    {
+        var run = new Run(seed: 1);
+        run.AddReroll();
+        run.AddReroll();               // 1 (départ) + 2 = 3
+
+        var restored = RunSave.From(run).ToRun();
+
+        Assert.Equal(3, restored.Rerolls);
+    }
+
     private static Run RunAt(int combatNumber, int seed = 1, bool firstRun = false)
     {
         var commander = new UnitSpec(Commandes.Commander.Movement, Commandes.Commander.BaseClass, essential: true);

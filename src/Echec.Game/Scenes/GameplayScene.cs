@@ -12,7 +12,6 @@ using Echec.Engine.Localization;
 using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
-using Echec.Game.Dev;
 using Echec.Game.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -25,7 +24,7 @@ namespace Echec.Game.Scenes;
 /// Placement → Combat → Recrutement → … sur 6 combats, le dernier étant le boss.
 /// Le commandant (mort = game over) est posé d'office ; le joueur déploie le reste de
 /// son inventaire par glisser-déposer depuis le panneau de droite, puis combat l'IA.
-/// Échap = menu pause, F1 = bascule du quadrillage, F10 = visualiseur d'arbres (dev).
+/// Échap = menu pause, F1 = bascule du quadrillage.
 /// </summary>
 public sealed class GameplayScene : Scene
 {
@@ -57,6 +56,8 @@ public sealed class GameplayScene : Scene
     private const int InvGapX = 8;
     private const int InvCellH = InvIconSize + 14; // portrait + libellé dessous
     private const int InvGapY = 6;
+    private const int InvRowPitch = InvCellH + InvGapY;   // pas vertical d'une rangée à l'autre
+    private const int InvHintReserve = 52;                // place gardée sous la grille pour les lignes d'aide
     private const int PanelListTop = 110;
 
     // (Ordre de déploiement centre→bords : ColumnsCenterOut(), calculé selon la largeur du plateau.)
@@ -217,7 +218,6 @@ public sealed class GameplayScene : Scene
     private float _time;
     private PauseMenu _pauseMenu = null!;
     private PauseMenuRenderer _pauseRenderer = null!;
-    private DomaineTreeRenderer _treeRenderer = null!;
 
     /// <summary>Écran modal de l'arbre de commandement, ouvert depuis le panneau de placement.</summary>
     private CommandTreeView _commandTree = null!;
@@ -343,6 +343,7 @@ public sealed class GameplayScene : Scene
     private Cell _cursor = new(4, 7);   // valeur par défaut (réinitialisée par combat dans BeginPlacement)
     private bool _gpInventory;
     private int _invFocus;
+    private int _invScrollRow;   // défilement (en rangées) de la grille de réserve quand elle déborde du panneau
     private bool _gpButtons;
     private int _btnFocus;
 
@@ -381,7 +382,6 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _hoverReach = new();
     private readonly List<Cell> _hoverHealTargets = new();
     private double _aiTimer;
-    private bool _showTrees;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
 
     // Cache du GridLayout : déterministe selon la résolution virtuelle, donc recalculé seulement
@@ -460,12 +460,13 @@ public sealed class GameplayScene : Scene
         LoadRecrueSprites();   // tous les looks recrue (Assets/Objects/*_front.png) : une variante par case
         _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
         _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
+        _rerollIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/relance.png"));
+        _recycleIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/recycler.png"));
         _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
-        _treeRenderer = new DomaineTreeRenderer(Context.Pixel, Context.Font, Context.Style);
         _commandTree = new CommandTreeView(Context);
         _combatFx = LoadCombatFx();
 
@@ -927,6 +928,7 @@ public sealed class GameplayScene : Scene
         _cursor = commanderCell;       // curseur manette sur la case de départ du commandant
         _gpInventory = false;
         _gpButtons = false;
+        _invScrollRow = 0;             // réserve remise en haut à chaque nouveau placement
 
         var commander = _run.Commander;
         PlacePlayer(commander, commanderCell);
@@ -1091,6 +1093,8 @@ public sealed class GameplayScene : Scene
     private void BeginBattle()
     {
         CancelDrag();
+        _invScrollRow = 0;   // le panneau de réserve du combat repart non défilé
+
         // Sous-phase Équipement close : un équipement encore porté retourne à l'inventaire (non perdu).
         if (_dragEquip is { } e)
             _run.AddEquipment(e);
@@ -1596,16 +1600,6 @@ public sealed class GameplayScene : Scene
         if (_fusionPunchTimer > 0)
             _fusionPunchTimer -= gameTime.ElapsedGameTime.TotalSeconds;
 
-        // Outil dev (F10) : prioritaire, fige le reste. (F1 = bascule du quadrillage.)
-        if (Context.Input.WasKeyPressed(Keys.F10) && !_pauseMenu.IsOpen)
-            _showTrees = !_showTrees;
-        if (_showTrees)
-        {
-            if (Context.Input.WasKeyPressed(Keys.Escape))
-                _showTrees = false;
-            return;
-        }
-
         // Échap pendant la popup de fusion : annule la fusion plutôt que d'ouvrir le menu pause.
         if (FusionOpen && !_pauseMenu.IsOpen && Context.Input.WasKeyPressed(Keys.Escape))
         {
@@ -2046,6 +2040,16 @@ public sealed class GameplayScene : Scene
 
         MoveCursor();
 
+        // X en PORTANT un pion : le RELANCE (échange contre un pion du même tier), équivalent manette du
+        // glisser sur l'icône à la souris. Le remplaçant rejoint la réserve. Sans effet si plus de relance.
+        if (_tutorial == null && Context.Input.WasTertiaryPressed && _dragSpec is { Essential: false }
+            && TryRerollDraggedUnit(_dragSpec))
+        {
+            _dragSpec = null;
+            _dragFrom = null;
+            return;
+        }
+
         // RB : terrain → panneau (même entrée que la sortie par la droite).
         if (Context.Input.WasRightShoulderPressed && _dragSpec == null && EnterPanelFocus())
             return;
@@ -2089,6 +2093,8 @@ public sealed class GameplayScene : Scene
             else if (EnterButtonsFocus()) { _gpInventory = false; return; }
         }
 
+        EnsureInvFocusVisible();   // la réserve défile pour garder le portrait focalisé à l'écran
+
         // X : fusionner le portrait focus s'il a FusionSize exemplaires en réserve (raccourci manette).
         if (Context.Input.WasTertiaryPressed && CanFuseFromReserve(_pending[_invFocus]))
         {
@@ -2126,6 +2132,7 @@ public sealed class GameplayScene : Scene
         {
             _gpInventory = true;
             _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+            EnsureInvFocusVisible();
             return true;
         }
         return EnterButtonsFocus();
@@ -2165,6 +2172,7 @@ public sealed class GameplayScene : Scene
                 _gpButtons = false;   // remonte dans l'inventaire, sur son dernier portrait
                 _gpInventory = true;
                 _invFocus = _pending.Count - 1;
+                EnsureInvFocusVisible();
                 return;
             }
         }
@@ -2257,6 +2265,17 @@ public sealed class GameplayScene : Scene
     private void EndDragAt(Cell? cell, bool overPanel)
     {
         var spec = _dragSpec!;
+
+        // Lâcher sur l'ICÔNE DE RELANCE (à gauche du panneau, souris) : échange le pion contre un autre du
+        // même tier. Passe avant tout le reste. Le remplaçant rejoint la réserve (cf. TryRerollDraggedUnit).
+        if (_tutorial == null && !Context.Input.UsingGamepad && !spec.Essential
+            && RerollIconRect().Contains(Context.Input.MousePosition)
+            && TryRerollDraggedUnit(spec))
+        {
+            _dragSpec = null;
+            _dragFrom = null;
+            return;
+        }
 
         // Lâcher sur la réserve : tenter d'empiler sur une pièce identique (fusion) avant tout le reste.
         if (overPanel && TryStackOnReserve(spec, Context.Input.MousePosition))
@@ -2440,6 +2459,16 @@ public sealed class GameplayScene : Scene
         }
         _equipFocus = inv.Count == 0 ? 0 : System.Math.Clamp(_equipFocus, 0, inv.Count - 1);
 
+        // X : RECYCLER l'équipement focus de l'inventaire → +1 relance (l'objet est DÉTRUIT).
+        if (_tutorial == null && Context.Input.WasTertiaryPressed && inv.Count > 0)
+        {
+            _run.RemoveEquipment(inv[_equipFocus]);
+            _run.AddReroll();
+            _equipFocus = inv.Count == 0 ? 0 : System.Math.Clamp(_equipFocus, 0, inv.Count - 1);
+            Context.Sounds.Play("equip_lost");   // son de casse (objet détruit)
+            return;
+        }
+
         // A sur un pion déployé non-commandant : équipe l'item focus s'il est nu, sinon le déséquipe.
         if (Context.Input.WasConfirmPressed
             && _match.UnitAt(_cursor) is { Faction: Faction.Player } unit
@@ -2495,6 +2524,17 @@ public sealed class GameplayScene : Scene
     private void DropEquip(Point mouse)
     {
         var carried = _dragEquip!;
+
+        // Lâcher sur l'ICÔNE DE RELANCE : CASSE l'équipement (détruit) contre +1 relance.
+        if (_tutorial == null && RerollIconRect().Contains(mouse))
+        {
+            _run.AddReroll();
+            _dragEquip = null;
+            _dragEquipFrom = null;
+            Context.Sounds.Play("equip_lost");   // son de casse : l'objet est détruit
+            return;
+        }
+
         var layout = BuildLayout();
 
         foreach (var (cell, spec) in DeployedPlayerSpecs().ToList())
@@ -2560,6 +2600,113 @@ public sealed class GameplayScene : Scene
         return null;
     }
 
+    // ─── RELANCE (icône à gauche du panneau) ────────────────────────────────────────────────────
+    // Icône 32×32 flottant juste à GAUCHE du panneau de droite, visible au PLACEMENT et en sous-phase
+    // ÉQUIPEMENT (hors tuto). On y LÂCHE un pion (souris) pour le RELANCER — échange contre un pion du
+    // même tier, cf. Run.RerollUnit — ou un ÉQUIPEMENT pour le CASSER contre +1 relance (Run.AddReroll).
+    // La règle métier vit dans Run ; ici la vue + la détection de dépose. Souris seulement pour l'instant.
+
+    private const int RerollIconSize = 32;    // icône native
+    private const int RerollFrame = 40;       // zone de dépose autour de l'icône
+
+    /// <summary>
+    /// Libellé sous l'icône : le COMPTEUR de relances au placement, « RECYCLER » en sous-phase Équipement
+    /// (où lâcher un objet le casse contre +1 relance). Sert au dessin ET au calcul de l'écart au panneau.
+    /// </summary>
+    private string RerollLabel() =>
+        _equipPhase ? Loc.T("relance.recycle") : Loc.T("relance.count", _run.Rerolls);
+
+    /// <summary>
+    /// Rectangle de l'icône de relance : à GAUCHE du panneau, à hauteur des BOUTONS du bas (bouton Combat).
+    /// L'écart au panneau est JUSTE ce qu'il faut pour que le libellé centré sous l'icône tienne à gauche
+    /// du panneau (pas plus) — évite le trou visuel d'un écart fixe trop large.
+    /// </summary>
+    private Rectangle RerollIconRect()
+    {
+        var fight = FightButtonRect();
+        var labelW = (int)Context.Font.Measure(RerollLabel(), 1);
+        var gap = System.Math.Max(12, (labelW - RerollFrame) / 2 + 12);
+        var x = PanelRect().X - gap - RerollFrame;
+        var y = fight.Y - 2;                  // aligné sur la ligne des boutons du bas
+        return new Rectangle(x, y, RerollFrame, RerollFrame);
+    }
+
+    /// <summary>Relance le pion en cours de glisser (lâché sur l'icône) : remplaçant en réserve. Faux si impossible.</summary>
+    private bool TryRerollDraggedUnit(UnitSpec spec)
+    {
+        var replacement = _run.RerollUnit(spec, new System.Random(), Context.Saves.IsUnitDiscovered);
+        if (replacement == null)
+            return false;
+        _pending.Add(replacement);        // le remplaçant rejoint la réserve
+        ClampInvScroll();
+        Context.Sounds.Play("recruit");   // son positif : nouveau pion obtenu
+        return true;
+    }
+
+    /// <summary>
+    /// Dessine l'icône de relance + le compteur, à gauche du panneau (placement/équipement, hors tuto).
+    /// « Active » = utilisable maintenant : au placement il faut une relance, en équipement casser en donne
+    /// toujours une. Surbrillance quand un glisser compatible la survole.
+    /// </summary>
+    private void DrawRerollIcon(SpriteBatch sb)
+    {
+        if (_tutorial != null)
+            return;
+
+        var frame = RerollIconRect();
+        var active = _equipPhase || _run.HasReroll;
+        var tint = active ? Color.White : Color.White * 0.5f;   // grisé léger quand aucune relance dispo
+
+        // Sous-phase Équipement : icône DIFFÉRENTE (recyclage) + libellé « RECYCLER ». Sinon : relance + compteur.
+        var sprite = _equipPhase ? _recycleIcon : _rerollIcon;
+
+        var icon = new Rectangle(frame.Center.X - RerollIconSize / 2, frame.Center.Y - RerollIconSize / 2,
+            RerollIconSize, RerollIconSize);
+        if (sprite != null)
+        {
+            sb.Draw(sprite, icon, tint);   // PNG tel quel, SANS fond (on n'écrase pas sa transparence)
+        }
+        else
+        {
+            // Repli OPAQUE tant que le PNG n'est pas fourni (pas de transparence sur le plateau).
+            DrawRect(sb, frame, Palette.Navy1);
+            DrawRectBorder(sb, frame, Palette.Blue1, 2);
+            Context.Font.DrawCentered(sb, _equipPhase ? "C" : "R", icon, 2, tint);   // C = reCycler, R = Relance (repli ASCII)
+        }
+
+        // Libellé sous l'icône (centré, largement à gauche du panneau → libellé complet visible).
+        // En JAUNE ; atténué quand aucune relance n'est disponible (mode placement).
+        var label = RerollLabel();
+        var below = new Rectangle(frame.Center.X - 80, frame.Bottom + 3, 160, 8);
+        Context.Font.DrawCentered(sb, label, below, 1, active ? Palette.Yellow2 : Palette.Yellow2 * 0.5f);
+
+        // Survol souris (AVEC OU SANS objet/pion en main) : surbrillance + tooltip descriptive au style
+        // standard du jeu (titre jaune + description repliée), placée au-dessus de l'icône, bornée à l'écran
+        // et à gauche du panneau. Titre/desc selon le mode (relancer un pion / recycler un équipement).
+        if (!Context.Input.UsingGamepad && frame.Contains(Context.Input.MousePosition))
+        {
+            DrawRectBorder(sb, Inflate(frame, 2), Palette.Yellow1, 2);
+            var title = _equipPhase ? Loc.T("relance.recycle") : Loc.T("relance.title");
+            var desc = _equipPhase ? Loc.T("relance.tt_equip") : Loc.T("relance.tt_unit");
+            var w = EnvTooltipWidth;
+            var h = EnvTooltipHeight(desc);
+            var x = System.Math.Clamp(frame.Center.X - w / 2, 8, PanelRect().X - w - 8);
+            var y = frame.Y - h - 6;
+            if (y < 8) y = frame.Bottom + 6;   // pas la place au-dessus : bascule dessous
+            DrawEnvTooltipPanel(sb, title, desc, x, y, sentenceCase: true);
+        }
+        else if (Context.Input.UsingGamepad && _tutorial == null)
+        {
+            // Manette : pas de curseur souris — on met l'icône en surbrillance quand le X des aides agit
+            // MAINTENANT (on porte un pion relançable, ou un objet est recyclable en sous-phase Équipement).
+            var gpAvailable = _equipPhase
+                ? _run.EquipmentInventory.Count > 0
+                : (_dragSpec is { Essential: false } && _run.HasReroll);
+            if (gpAvailable)
+                DrawRectBorder(sb, Inflate(frame, 2), Palette.Yellow1, 2);
+        }
+    }
+
     /// <summary>Bouton « Retour » (vers le placement) juste au-dessus du bouton « Combat ».</summary>
     private Rectangle EquipBackButtonRect()
     {
@@ -2599,12 +2746,68 @@ public sealed class GameplayScene : Scene
         return System.Math.Clamp(_fusionReserveSlot, 0, total - 1);
     }
 
+    /// <summary>Slot VISUEL (0-based, avant décalage de pile) du portrait de réserve d'indice <paramref name="i"/>.</summary>
+    private int PendingVisualSlot(int i) => ReservePileSlot() is { } p && i >= p ? i + 1 : i;
+
     /// <summary>Case du portrait de réserve d'indice <paramref name="i"/>, en sautant le slot de la pile.</summary>
-    private Rectangle PendingCardRect(int i) =>
-        ReservePileSlot() is { } p && i >= p ? PanelCardRect(i + 1) : PanelCardRect(i);
+    private Rectangle PendingCardRect(int i) => SlotRect(PendingVisualSlot(i));
 
     /// <summary>Case de la carte « pile » de réserve : à son slot de formation (sinon en fin de grille).</summary>
-    private Rectangle FusionStackCardRect() => PanelCardRect(ReservePileSlot() ?? _pending.Count);
+    private Rectangle FusionStackCardRect() => SlotRect(ReservePileSlot() ?? _pending.Count);
+
+    // ── Défilement de la grille de réserve ─────────────────────────────────────────────────────────
+    // Quand le roster dépasse la place du panneau (réserve agrandie par l'arbre, canevas 540 en 1080p),
+    // la grille défile en RANGÉES : PanelCardRect reste la grille brute (partagée avec les panneaux de
+    // recrutement/combat, non défilés) ; SlotRect y applique le décalage propre au placement.
+
+    /// <summary>Case d'un slot VISUEL, décalée du défilement courant de la réserve.</summary>
+    private Rectangle SlotRect(int visualSlot)
+    {
+        var r = PanelCardRect(visualSlot);
+        r.Y -= _invScrollRow * InvRowPitch;
+        return r;
+    }
+
+    /// <summary>Nombre de slots occupés dans la grille (portraits + éventuelle pile de fusion).</summary>
+    private int InvSlotCount() => _pending.Count + (ReservePileSlot() is null ? 0 : 1);
+
+    /// <summary>Y sous lequel la grille ne doit pas déborder (au-dessus des lignes d'aide et des boutons).</summary>
+    private int InvGridBottom()
+    {
+        var panel = PanelRect();
+        var firstBtnTop = ShowCommandTreeButton ? CommandTreeButtonRect().Y
+            : ShowFightButton ? FightButtonRect().Y
+            : panel.Bottom - 24;
+        return firstBtnTop - InvHintReserve;
+    }
+
+    /// <summary>Rangées affichables d'un coup ; au-delà, la réserve défile.</summary>
+    private int InvVisibleRows() => System.Math.Max(1, (InvGridBottom() - PanelListTop) / InvRowPitch);
+
+    private int InvTotalRows() => System.Math.Max(1, (InvSlotCount() + InvCols - 1) / InvCols);
+
+    private int InvMaxScrollRow() => System.Math.Max(0, InvTotalRows() - InvVisibleRows());
+
+    /// <summary>Vrai si le slot visuel tombe dans la fenêtre de rangées actuellement affichée.</summary>
+    private bool InvSlotVisible(int visualSlot)
+    {
+        var row = visualSlot / InvCols;
+        return row >= _invScrollRow && row < _invScrollRow + InvVisibleRows();
+    }
+
+    /// <summary>Borne le défilement à la plage valide (réserve rétrécie par un drag/fusion, etc.).</summary>
+    private void ClampInvScroll() => _invScrollRow = System.Math.Clamp(_invScrollRow, 0, InvMaxScrollRow());
+
+    /// <summary>Manette : fait défiler pour que le portrait focalisé reste visible.</summary>
+    private void EnsureInvFocusVisible()
+    {
+        if (_pending.Count == 0)
+            return;
+        var row = PendingVisualSlot(System.Math.Clamp(_invFocus, 0, _pending.Count - 1)) / InvCols;
+        if (row < _invScrollRow) _invScrollRow = row;
+        else if (row >= _invScrollRow + InvVisibleRows()) _invScrollRow = row - InvVisibleRows() + 1;
+        ClampInvScroll();
+    }
 
     /// <summary>Petit bouton d'annulation, DANS le coin haut-droit de la pile de réserve.</summary>
     private Rectangle FusionStackCancelRect()
@@ -4744,9 +4947,16 @@ public sealed class GameplayScene : Scene
 
     private void UpdateCamera(GameTime gameTime)
     {
-        // Molette : un seul cran de zoom (haut = rapproché, bas = retour au cadrage).
+        // Molette : fait défiler la RÉSERVE quand le curseur la survole et qu'elle déborde ; sinon,
+        // un seul cran de zoom du plateau (haut = rapproché, bas = retour au cadrage).
         var scroll = Context.Input.ScrollDelta;
-        if (scroll > 0) SetZoom(true);
+        if (scroll != 0 && _run.Phase == RunPhase.Placement && !_equipPhase && !CommandTreeOpen
+            && IsOverPanel(Context.Input.MousePosition) && InvMaxScrollRow() > 0)
+        {
+            _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
+            ClampInvScroll();
+        }
+        else if (scroll > 0) SetZoom(true);
         else if (scroll < 0) SetZoom(false);
 
         // Pan clavier : flèches + ZQSD (AZERTY). Aller « voir à droite » fait reculer l'origine.
@@ -4953,21 +5163,7 @@ public sealed class GameplayScene : Scene
                 break;
         }
 
-        // Légende des commandes (haut-gauche) pendant placement / combat.
-        if (_run.Phase is RunPhase.Placement or RunPhase.Battle && !_showTrees && !_pauseMenu.IsOpen)
-        {
-            sb.Begin(samplerState: SamplerState.PointClamp);
-            DrawControlsLegend(sb, viewport);
-            sb.End();
-        }
-
-        if (_showTrees)
-        {
-            sb.Begin(samplerState: SamplerState.PointClamp);
-            _treeRenderer.Draw(sb, viewport.Width, viewport.Height);
-            sb.End();
-        }
-        else if (_pauseMenu.IsOpen)
+        if (_pauseMenu.IsOpen)
         {
             // En manette : pointeur synthétique = centre de l'élément focus → réutilise la surbrillance
             // de survol existante. En souris : vraie position.
@@ -4977,6 +5173,10 @@ public sealed class GameplayScene : Scene
             sb.Begin(samplerState: SamplerState.PointClamp);
             _pauseRenderer.Draw(sb, _pauseMenu, viewport.Width, viewport.Height,
                 pointer, gp ? false : Context.Input.IsLeftDown, gp ? focusRect : null);
+            // Rappel des raccourcis de jeu (grille / zones de danger) : affiché UNIQUEMENT dans le menu
+            // pause, et seulement là où ces touches servent (placement / combat).
+            if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
+                DrawControlsLegend(sb, viewport);
             sb.End();
         }
     }
@@ -5107,7 +5307,8 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Légende des commandes en haut à gauche (petit panneau) : bascule grille + zones de danger.
-    /// Les touches affichées correspondent au PÉRIPHÉRIQUE actif (clavier/souris vs manette).
+    /// Affichée UNIQUEMENT par-dessus le menu pause (plus en permanence pendant le jeu), donc dessinée
+    /// après l'overlay de pause. Les touches suivent le PÉRIPHÉRIQUE actif (clavier/souris vs manette).
     /// </summary>
     private void DrawControlsLegend(SpriteBatch sb, Viewport viewport)
     {
@@ -5922,7 +6123,7 @@ public sealed class GameplayScene : Scene
         var total = _pending.Count + (pile is null ? 0 : 1);
         for (var s = 0; s < total; s++)
         {
-            if (!PanelCardRect(s).Contains(p))
+            if (!InvSlotVisible(s) || !SlotRect(s).Contains(p))   // ignore les slots défilés hors vue
                 continue;
             if (pile == s)
                 return null;                              // sur la pile, pas un portrait
@@ -5969,10 +6170,12 @@ public sealed class GameplayScene : Scene
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, full ? Palette.Purple5 : Palette.Cyan1);
 
+        ClampInvScroll();   // au cas où la réserve a rétréci (drag / fusion) depuis la dernière image
         var anyFusable = false;
         for (var i = 0; i < _pending.Count; i++)
         {
-            DrawInventoryCard(sb, _pending[i], PendingCardRect(i));   // saute le slot de la pile
+            if (InvSlotVisible(PendingVisualSlot(i)))
+                DrawInventoryCard(sb, _pending[i], PendingCardRect(i));   // saute le slot de la pile
             if (CanFuseFromReserve(_pending[i]))
                 anyFusable = true;   // sert juste à afficher l'indice de fusion (aucun cadre coloré)
         }
@@ -5980,23 +6183,35 @@ public sealed class GameplayScene : Scene
         // Pile de fusion en cours (état « N/3 ») + son bouton d'annulation.
         DrawFusionStack(sb);
 
-        // Aide JUSTE SOUS l'inventaire (et non collée au bas du panneau). La pile de réserve occupe un slot.
-        var slots = _pending.Count + (ReservePileSlot() is null ? 0 : 1);
-        var rows = System.Math.Max(1, (slots + InvCols - 1) / InvCols);
-        var hintY = PanelListTop + rows * (InvCellH + InvGapY) + 12;
+        // Barre de défilement à droite de la grille dès que la réserve déborde du panneau.
+        DrawInventoryScrollbar(sb);
+
+        // Aide JUSTE SOUS la grille VISIBLE (position stable, que la réserve défile ou non).
+        var shownRows = System.Math.Min(InvTotalRows(), InvVisibleRows());
+        var hintY = PanelListTop + shownRows * InvRowPitch + 12;
         if (Context.Input.UsingGamepad)
         {
-            // L'indice décrit la zone de focus COURANTE (plateau / inventaire / boutons du panneau).
-            var line1 = _gpButtons ? Loc.T("placement.hint_gp_btn")
-                : _gpInventory ? Loc.T("placement.hint_gp_terrain")
-                : Loc.T("placement.hint_gp_inventory");
-            Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
-            Context.Font.Draw(sb, Loc.T("placement.hint_gp_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
-            if (anyFusable)
-                Context.Font.Draw(sb, Loc.T("placement.hint_gp_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
-            if (FusionStacking)   // une pile en cours : B pour la défusionner
-                Context.Font.Draw(sb, Loc.T("placement.hint_gp_unfuse"),
-                    new Vector2(x, hintY + (anyFusable ? 48 : 32)), 1, Palette.Yellow2);
+            if (_dragSpec != null)
+            {
+                // On PORTE un pion : poser / annuler, et RELANCER (X) si une relance est dispo.
+                Context.Font.Draw(sb, Loc.T("placement.hint_gp_hold"), new Vector2(x, hintY), 1, Palette.Blue1);
+                if (!_dragSpec.Essential && _run.HasReroll)
+                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_reroll"), new Vector2(x, hintY + 16), 1, Palette.Yellow2);
+            }
+            else
+            {
+                // L'indice décrit la zone de focus COURANTE (plateau / inventaire / boutons du panneau).
+                var line1 = _gpButtons ? Loc.T("placement.hint_gp_btn")
+                    : _gpInventory ? Loc.T("placement.hint_gp_terrain")
+                    : Loc.T("placement.hint_gp_inventory");
+                Context.Font.Draw(sb, line1, new Vector2(x, hintY), 1, Palette.Blue1);
+                Context.Font.Draw(sb, Loc.T("placement.hint_gp_fight"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+                if (anyFusable)
+                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_fuse"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
+                if (FusionStacking)   // une pile en cours : B pour la défusionner
+                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_unfuse"),
+                        new Vector2(x, hintY + (anyFusable ? 48 : 32)), 1, Palette.Yellow2);
+            }
         }
         else
         {
@@ -6023,6 +6238,8 @@ public sealed class GameplayScene : Scene
             DrawPanelButton(sb, FightButtonRect(), fightLabel, armed ? Palette.White : Palette.Grey,
                 focusIndex: FightButtonIndex, enabled: armed);
         }
+
+        DrawRerollIcon(sb);   // icône de relance à gauche du panneau
     }
 
     /// <summary>
@@ -6059,6 +6276,10 @@ public sealed class GameplayScene : Scene
     {
         if (!FusionStacking || !FusionInReserve || _carryPile)   // pas dessinée quand portée
             return;
+        // La grille ne défile qu'au placement ; le panneau de réserve du combat, lui, affiche tout (non
+        // défilé), donc on n'y masque jamais la pile.
+        if (_run.Phase == RunPhase.Placement && ReservePileSlot() is { } slot && !InvSlotVisible(slot))
+            return;   // pile défilée hors de la fenêtre visible
 
         var card = FusionStackCardRect();
         DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, card, front: true);
@@ -6067,6 +6288,26 @@ public sealed class GameplayScene : Scene
         Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
             new Rectangle(card.X - InvGapX / 2, card.Bottom + 2, card.Width + InvGapX, 10), 1, Palette.Yellow2);
         DrawFusionCancelButton(sb, FusionStackCancelRect());
+    }
+
+    /// <summary>
+    /// Fine barre de défilement à droite de la grille de réserve, seulement quand elle déborde. Piste
+    /// sombre + curseur cyan proportionnel aux rangées visibles, positionné selon <see cref="_invScrollRow"/>.
+    /// </summary>
+    private void DrawInventoryScrollbar(SpriteBatch sb)
+    {
+        var max = InvMaxScrollRow();
+        if (max == 0)
+            return;
+        var panel = PanelRect();
+        var top = PanelListTop;
+        var trackH = InvVisibleRows() * InvRowPitch;
+        var trackX = panel.Right - 14;   // entre le bord droit de la grille et la bande sombre du bord
+        DrawRect(sb, new Rectangle(trackX, top, 2, trackH), Palette.Navy1);
+
+        var thumbH = System.Math.Max(10, trackH * InvVisibleRows() / InvTotalRows());
+        var thumbY = top + (trackH - thumbH) * _invScrollRow / max;
+        DrawRect(sb, new Rectangle(trackX, thumbY, 2, thumbH), Palette.Cyan1);
     }
 
     /// <summary>
@@ -6890,6 +7131,8 @@ public sealed class GameplayScene : Scene
         {
             Context.Font.Draw(sb, Loc.T("equip.hint_gp_equip"), new Vector2(x, hintY), 1, Palette.Blue1);
             Context.Font.Draw(sb, Loc.T("equip.hint_gp_cycle"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
+            if (inv.Count > 0)   // recyclage possible seulement s'il reste un objet en inventaire
+                Context.Font.Draw(sb, Loc.T("equip.hint_gp_recycle"), new Vector2(x, hintY + 32), 1, Palette.Yellow2);
         }
         else
         {
@@ -6913,6 +7156,8 @@ public sealed class GameplayScene : Scene
         if (!Context.Input.UsingGamepad && _dragEquip == null
             && EquipPanelCardAt(Context.Input.MousePosition) is { } hi)
             DrawEquipTooltip(sb, inv[hi], EquipRowRect(hi));
+
+        DrawRerollIcon(sb);   // icône de relance / casse d'équipement, à gauche du panneau
     }
 
     // Bandeau d'équipement : UNE LIGNE par item (icône à gauche + nom à droite) — les noms d'équipement
@@ -7243,16 +7488,19 @@ public sealed class GameplayScene : Scene
         + EquipTooltipPad;
 
     /// <summary>Dessine le cadre tooltip d'environnement (nom jaune + description crème) à un coin haut-gauche.</summary>
-    private void DrawEnvTooltipPanel(SpriteBatch sb, string name, string desc, int x, int y)
+    private void DrawEnvTooltipPanel(SpriteBatch sb, string name, string desc, int x, int y, bool sentenceCase = false)
     {
         int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EnvTooltipWidth - 2 * pad;
         var box = new Rectangle(x, y, EnvTooltipWidth, EnvTooltipHeight(desc));
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, name.ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
         var ly = box.Y + pad + EquipTooltipTitleH;
-        foreach (var line in WrapText(desc, inner, 1))
+        // sentenceCase : description en « casse de phrase » (1re lettre en capitale, reste en minuscules),
+        // comme les tooltips de mots-clés/équipement. La casse ne change ni le nombre de caractères ni le
+        // découpage, donc EnvTooltipHeight (calculé sur desc brut) reste exact.
+        foreach (var line in WrapText(sentenceCase ? SentenceCase(desc) : desc, inner, 1))
         {
-            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White);
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White, preserveCase: sentenceCase);
             ly += lineH;
         }
     }
@@ -7573,6 +7821,10 @@ public sealed class GameplayScene : Scene
     private readonly Dictionary<string, Texture2D?> _equipSprites = new();
     // Fond de slot d'équipement 32×32 (Assets/Equipment/background.png) : derrière l'icône + slot vide.
     private Texture2D? _equipSlotBg;
+    // Icône de RELANCE 32×32 (Assets/UI/relance.png) : cible de dépose à gauche du panneau (placeholder si absente).
+    private Texture2D? _rerollIcon;
+    // Icône de RECYCLAGE 32×32 (Assets/UI/recycler.png) : même emplacement, EN SOUS-PHASE ÉQUIPEMENT (casser un objet → +1 relance).
+    private Texture2D? _recycleIcon;
 
     /// <summary>PNG d'icône dans Assets/Icons (mis en cache), ou null s'il est absent.</summary>
     private Texture2D? IconOrNull(string fileName)
@@ -7878,7 +8130,9 @@ public sealed class GameplayScene : Scene
             return;
 
         var i = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
-        var icon = PanelCardRect(i);
+        if (!InvSlotVisible(PendingVisualSlot(i)))
+            return;   // portrait focalisé défilé hors de la fenêtre : pas de cadre orphelin
+        var icon = PendingCardRect(i);
         // Cadre englobant l'icône ET le nom dessous (cf. DrawInventoryCard : nom large + 12 px sous l'icône).
         var frame = new Rectangle(icon.X - InvGapX / 2, icon.Y, icon.Width + InvGapX, icon.Height + 14);
         DrawRectBorder(sb, Inflate(frame, 3), Palette.Yellow2, 3);

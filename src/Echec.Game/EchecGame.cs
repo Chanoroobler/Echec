@@ -53,6 +53,10 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
     private Rectangle _virtualDest;
     private int _virtualScale = 1;
 
+    // Capture d'écran (F10) : sauve le canvas virtuel PROPRE (sans curseur ni overlay), ré-agrandi
+    // au facteur entier ≥ 1920 px de large, en PNG pixel-perfect → prêt pour la page Steam.
+    private bool _captureRequested;
+
     // ── Overlay de diagnostic FPS / temps de frame (bascule F3) ───────────────────────────────────
     // Mesure le temps RÉEL entre frames au chronomètre : sous IsFixedTimeStep (défaut MonoGame),
     // gameTime.ElapsedGameTime est FIGÉ à la cible (16,6 ms) et ne reflète pas la cadence réelle.
@@ -206,6 +210,8 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _input.Update(gameTime);
         if (_input.WasKeyPressed(Keys.F3))
             _showFps = !_showFps;   // bascule l'overlay de diagnostic FPS / ms
+        if (_input.WasKeyPressed(Keys.F10))
+            _captureRequested = true;   // capture d'écran propre à la prochaine frame (cf. Draw)
         _scenes.Update(gameTime);
         _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
         base.Update(gameTime);
@@ -235,6 +241,14 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         GraphicsDevice.Clear(Color.Black);
         _scenes.Draw(gameTime);
 
+        // Capture propre demandée (F10) : le canvas virtuel est rempli et n'a PAS encore le curseur
+        // ni l'overlay FPS (dessinés plus bas sur l'écran réel) → moment idéal pour l'enregistrer.
+        if (_captureRequested)
+        {
+            _captureRequested = false;
+            CaptureScreenshot();
+        }
+
         // 2. On agrandit la cible vers l'écran réel (échelle entière, PointClamp = net).
         GraphicsDevice.SetRenderTarget(null);
         GraphicsDevice.Clear(Color.Black);
@@ -261,6 +275,35 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         _spriteBatch.End();
 
         base.Draw(gameTime);
+    }
+
+    /// <summary>
+    /// Sauve le canvas virtuel courant en PNG (dossier « Screenshots » à côté de l'exe). On le ré-agrandit
+    /// d'un facteur ENTIER pour atteindre au moins 1920 px de large : image nette (PointClamp), 16:9, sans
+    /// curseur ni overlay — directement utilisable comme screenshot de la page Steam.
+    /// </summary>
+    private void CaptureScreenshot()
+    {
+        if (_virtualTarget == null) return;
+
+        int factor = System.Math.Max(1, _virtualScale);
+        while (_virtualTarget.Width * factor < 1920) factor++;
+        int w = _virtualTarget.Width * factor, h = _virtualTarget.Height * factor;
+
+        using var shot = new RenderTarget2D(GraphicsDevice, w, h, false, SurfaceFormat.Color, DepthFormat.None);
+        GraphicsDevice.SetRenderTarget(shot);
+        GraphicsDevice.Clear(Color.Black);
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        _spriteBatch.Draw(_virtualTarget, new Rectangle(0, 0, w, h), Color.White);
+        _spriteBatch.End();
+        GraphicsDevice.SetRenderTarget(null);
+
+        var dir = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Screenshots");
+        System.IO.Directory.CreateDirectory(dir);
+        var path = System.IO.Path.Combine(dir, $"chessarmy_{System.DateTime.Now:yyyyMMdd_HHmmss}.png");
+        using (var fs = System.IO.File.Create(path))
+            shot.SaveAsPng(fs, w, h);
+        System.Console.WriteLine($"[SCREENSHOT] {path}  ({w}x{h})");
     }
 
     /// <summary>

@@ -50,6 +50,9 @@ public sealed class RunSave
     /// <summary>Points de commandement non dépensés. Absent (vieux save) → 0.</summary>
     public int CommandPoints { get; set; }
 
+    /// <summary>Relances disponibles (1/phase cumulables + équipements cassés). Absent (vieux save) → 0.</summary>
+    public int Rerolls { get; set; }
+
     /// <summary>
     /// Nœuds de l'arbre de commandement achetés (ids). Un id absent de l'arbre courant (JSON modifié depuis
     /// la sauvegarde) est ignoré au chargement — sans rembourser ses points.
@@ -67,6 +70,7 @@ public sealed class RunSave
             CombatNumber = run.CombatNumber, Seed = run.Seed, FirstRun = run.FirstRun,
             LegendaryPity = run.LegendaryPity, RarePity = run.RarePity,
             CommandPoints = run.CommandPoints, CommandNodes = run.UnlockedNodes.ToList(),
+            Rerolls = run.Rerolls,
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -85,7 +89,7 @@ public sealed class RunSave
             .Select(e => e!)
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
-            CommandPoints, CommandNodes);
+            CommandPoints, CommandNodes, Rerolls);
     }
 }
 

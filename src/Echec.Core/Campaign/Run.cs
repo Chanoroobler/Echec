@@ -43,7 +43,7 @@ public sealed class Run
     /// boss de la phase 2 ; remettre <c>= PhaseCount</c> (3) pour la campagne COMPLÈTE. Toute la machinerie des
     /// 3 phases (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée.
     /// </summary>
-    public const int EndAtPhase = 3;
+    public const int EndAtPhase = 2;
 
     /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
     public const int MissionsPerPhase = 6;
@@ -107,6 +107,13 @@ public sealed class Run
 
     /// <summary>Nœuds de l'arbre de commandement ACHETÉS pendant cette run (ids, cf. <see cref="CommandNode.Id"/>).</summary>
     private readonly HashSet<string> _unlocked = new();
+
+    /// <summary>
+    /// RELANCES disponibles : le joueur en gagne 1 à chaque nouvelle PHASE (cumulables, non perdues) et
+    /// en CASSANT un équipement (<see cref="AddReroll"/>). Une relance échange un pion contre un autre du
+    /// MÊME TIER tiré au hasard (<see cref="RerollUnit"/>). Persistée dans <see cref="RunSave"/>.
+    /// </summary>
+    private int _rerolls;
 
     /// <summary>
     /// Graine de la run, SAUVEGARDÉE. La vague ennemie et le terrain de chaque combat en dérivent de
@@ -266,6 +273,12 @@ public sealed class Run
     /// </summary>
     public bool HasEquipment => _equipment.Count > 0 || _roster.Any(u => u.Equipment != null);
 
+    /// <summary>Relances disponibles (cf. <see cref="RerollUnit"/>, <see cref="AddReroll"/>).</summary>
+    public int Rerolls => _rerolls;
+
+    /// <summary>Vrai s'il reste au moins une relance à dépenser.</summary>
+    public bool HasReroll => _rerolls > 0;
+
     public int CombatNumber { get; private set; }
     public RunPhase Phase { get; private set; }
 
@@ -313,9 +326,21 @@ public sealed class Run
         _unlocked.Clear();
         CommandPoints = 0;
         CombatNumber = 1;
+        _rerolls = 1;               // 1 relance offerte à l'ouverture de la phase 1
         LegendaryPity = 0;
         RarePity = 0;
         Phase = RunPhase.Placement;
+    }
+
+    /// <summary>
+    /// 1 relance par PHASE (cumulable) : accordée quand le combat courant OUVRE une nouvelle phase (sa
+    /// 1re mission). Appelée APRÈS l'avancée de <see cref="CombatNumber"/> ; la phase 1 est offerte au
+    /// <see cref="Reset"/>. Persistée avec la run (aucun double-compte à la reprise).
+    /// </summary>
+    private void GrantPhaseRerollIfNewPhase()
+    {
+        if (MissionInPhase == 1)
+            _rerolls++;
     }
 
     /// <summary>
@@ -325,7 +350,7 @@ public sealed class Run
     /// </summary>
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
         IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
-        int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null)
+        int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0)
     {
         var run = new Run(seed, firstRun);
         run._roster.Clear();
@@ -340,6 +365,7 @@ public sealed class Run
             if (run.Tree.ById(id) != null)
                 run._unlocked.Add(id);
         run.CommandPoints = Math.Max(0, commandPoints);
+        run._rerolls = Math.Max(0, rerolls);
         run.CombatNumber = combatNumber;
         run.LegendaryPity = System.Math.Max(0, legendaryPity);
         run.RarePity = System.Math.Max(0, rarePity);
@@ -523,6 +549,59 @@ public sealed class Run
             spec.Equipment = null;
         }
         return _roster.Remove(spec);
+    }
+
+    // ─── RELANCE ─────────────────────────────────────────────────────────────────────────────────
+    // Le joueur gagne 1 relance par PHASE (cumulable, cf. GrantPhaseRerollIfNewPhase) et peut en gagner
+    // en CASSANT un équipement (AddReroll). RerollUnit dépense une relance pour échanger un pion contre
+    // un autre du MÊME TIER, tiré parmi les classes DÉJÀ DÉCOUVERTES, la classe relancée exclue.
+
+    /// <summary>
+    /// Ajoute une relance : appelé quand le joueur CASSE un équipement pour en gagner une (sous-phase
+    /// Équipement). L'équipement détruit ne revient pas à l'inventaire — c'est à l'appelant de ne pas le rendre.
+    /// </summary>
+    public void AddReroll() => _rerolls++;
+
+    /// <summary>
+    /// RELANCE <paramref name="spec"/> : le retire du roster et le remplace par un pion du MÊME TIER tiré au
+    /// hasard parmi les classes DÉJÀ DÉCOUVERTES (<paramref name="isSeen"/>, tous domaines confondus), la
+    /// classe relancée EXCLUE. Consomme une relance. L'équipement éventuel du pion retourne à l'inventaire
+    /// (comme <see cref="DeleteUnit"/>). Renvoie le nouveau gabarit (ajouté au roster), ou <c>null</c> — SANS
+    /// rien consommer — si impossible : plus de relance, pion essentiel/absent, ou aucun remplaçant découvert.
+    /// L'effectif du roster est INCHANGÉ (retire 1, ajoute 1) : le plafond de réserve reste respecté.
+    /// </summary>
+    public UnitSpec? RerollUnit(UnitSpec spec, Random rng, Func<string, bool> isSeen)
+    {
+        if (_rerolls <= 0 || spec.Essential || !_roster.Contains(spec))
+            return null;
+
+        var pool = SeenClassesAtTier(spec.UnitClass.Tier, isSeen)
+            .Where(x => x.Class != spec.UnitClass)   // « sauf la pièce relancée »
+            .ToList();
+        if (pool.Count == 0)
+            return null;
+
+        if (spec.Equipment is { } e)   // l'équipement du pion relancé n'est pas perdu
+        {
+            _equipment.Add(e);
+            spec.Equipment = null;
+        }
+        _roster.Remove(spec);
+
+        var pick = pool[rng.Next(pool.Count)];
+        var replacement = new UnitSpec(pick.Domaine, pick.Class);
+        _roster.Add(replacement);
+        _rerolls--;
+        return replacement;
+    }
+
+    /// <summary>Classes du tier donné DÉJÀ DÉCOUVERTES (méta-progression), tous domaines confondus, avec leur domaine.</summary>
+    private static IEnumerable<(Domaine Domaine, UnitClass Class)> SeenClassesAtTier(int tier, Func<string, bool> isSeen)
+    {
+        foreach (var def in Domaines.All)
+            foreach (var cls in ClassesAtTier(def.Id, tier))
+                if (isSeen(cls.Asset))
+                    yield return (def.Id, cls);
     }
 
     // ─── ÉQUIPEMENT ──────────────────────────────────────────────────────────────────────────────
@@ -819,6 +898,7 @@ public sealed class Run
         _roster.Add(new UnitSpec(choice.Domaine, choice.UnitClass));
         _draft.Clear();
         CombatNumber++;
+        GrantPhaseRerollIfNewPhase();
         Phase = RunPhase.Placement;
     }
 
@@ -834,6 +914,7 @@ public sealed class Run
 
         _draft.Clear();
         CombatNumber++;
+        GrantPhaseRerollIfNewPhase();
         Phase = RunPhase.Placement;
     }
 

@@ -67,6 +67,8 @@ recrue.continue,CLIQUER POUR CONTINUER,CLICK TO CONTINUE
 placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN: FUSE
 placement.hint_gp_fuse,X : FUSIONNER,X: FUSE
 placement.hint_gp_unfuse,B : DEFUSIONNER,B: UNFUSE
+placement.hint_gp_hold,A : POSER   B : ANNULER,A: PLACE   B: CANCEL
+placement.hint_gp_reroll,X : RELANCER,X: REROLL
 # ── Equipement (sous-phase de placement + coffres) ──────────────────────────
 equip.title,EQUIPEMENT,EQUIPMENT
 equip.inventory,EQUIPEMENTS,EQUIPMENT
@@ -76,6 +78,7 @@ equip.back,RETOUR,BACK
 equip.hint_drag,GLISSER SUR UN PION,DRAG ONTO A PAWN
 equip.hint_gp_equip,A : EQUIPER / RETIRER,A: EQUIP / REMOVE
 equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB: ITEM   Y: FIGHT
+equip.hint_gp_recycle,X : RECYCLER (+1 RELANCE),X: RECYCLE (+1 REROLL)
 equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
 equip.stat_bonus,+{0} {1},+{0} {1}
 equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR CAVALIERS (EXCEPT MOUNTED ARCHER)
@@ -171,6 +174,12 @@ reserve.no_room,PLUS DE PLACE - FUSIONNE OU SUPPRIME,NO ROOM - FUSE OR DELETE
 reserve.hint_enter,RB : GERER RESERVE,RB: MANAGE RESERVE
 reserve.hint_pick,A : CHOISIR   B : RETOUR,A: PICK   B: BACK
 reserve.hint_act,A : VALIDER   B : RETOUR,A: CONFIRM   B: BACK
+# ── Relance ─────────────────────────────────────────────────────────────────
+relance.count,RELANCES : {0},REROLLS: {0}
+relance.recycle,RECYCLER,RECYCLE
+relance.title,RELANCE,REROLL
+relance.tt_unit,ECHANGE UN PION CONTRE UN AUTRE DU MÊME TIER.,SWAP A PAWN FOR ANOTHER OF THE SAME TIER.
+relance.tt_equip,CASSE UN ÉQUIPEMENT POUR GAGNER UNE RELANCE.,BREAK AN ITEM TO GAIN A REROLL.
 # ── Fusion ──────────────────────────────────────────────────────────────────
 fusion.title,FUSION,FUSION
 fusion.subtitle,CHOISIS UNE EVOLUTION,CHOOSE AN EVOLUTION

@@ -30,7 +30,12 @@ public sealed class CommandTreeView
     private const int IconSize = 32;     // PNG natif, centré dans la boîte
     private const int NodeGapX = 28;     // entre les deux nœuds d'un même niveau
     private const int BranchGap = 76;    // entre deux colonnes
-    private const int LevelGapY = 100;   // d'un niveau au suivant (haut de boîte à haut de boîte)
+    // Écart d'un niveau au suivant (haut de boîte à haut de boîte). RESSERRÉ dynamiquement entre ces deux
+    // bornes quand l'arbre déborde d'un petit canevas — cf. ComputeMetrics (cas 1080p → canevas 540 de haut).
+    private const int MaxLevelGap = 100;
+    private const int MinLevelGap = 72;
+    // Marge écran conservée en haut/bas quand la modale doit s'étendre sur toute la hauteur pour tenir.
+    private const int Margin = 8;
     private const int BranchWidth = 2 * NodeSize + NodeGapX;
     // L'en-tête loge : le titre, les points disponibles, puis le rappel des SOURCES de points
     // (une ligne par source : la mission, plus celle propre au commandant).
@@ -53,6 +58,12 @@ public sealed class CommandTreeView
     private readonly GameContext _ctx;
     private readonly Dictionary<string, Texture2D?> _icons = new();
     private readonly Dictionary<string, Rectangle> _rects = new();
+
+    // Métriques verticales de l'image courante, recalculées en tête de Layout (donc avant tout dessin ou
+    // test de survol) : écart entre niveaux (resserré si besoin), hauteur de l'arbre et rectangle du panneau.
+    private int _levelGap;
+    private int _treeH;
+    private Rectangle _panel;
 
     private float _pulse;
 
@@ -124,7 +135,7 @@ public sealed class CommandTreeView
         var mouse = _ctx.Input.MousePosition;
         if (_ctx.Input.WasLeftClicked)
         {
-            if (CloseButtonRect(area).Contains(mouse))
+            if (CloseButtonRect().Contains(mouse))
             {
                 if (!canClose) return true;
                 Close();
@@ -189,37 +200,52 @@ public sealed class CommandTreeView
     private static int TreeWidth(CommandTree tree) =>
         tree.BranchCount * BranchWidth + System.Math.Max(0, tree.BranchCount - 1) * BranchGap;
 
-    private static int TreeHeight() => (CommandTree.MaxLevel - 1) * LevelGapY + NodeSize;
+    /// <summary>
+    /// Bouton FERMER, ancré sous les libellés de branche. Lit les métriques de l'image (calculées par
+    /// <see cref="ComputeMetrics"/> en tête de Layout) : à appeler après un Layout de la même image.
+    /// </summary>
+    private Rectangle CloseButtonRect() =>
+        new(_panel.Center.X - 60, _panel.Y + HeaderH + _treeH + CloseButtonY, 120, CloseButtonH);
 
     /// <summary>
-    /// Panneau centré dans <paramref name="area"/> — la zone LIBRE que la scène lui réserve (sous la frise
-    /// des missions, à gauche du panneau d'inventaire), et non le viewport entier : sinon la modale paraît
-    /// décalée par rapport au plateau qu'elle recouvre. Bornée à l'aire si celle-ci est trop courte.
+    /// Calcule pour cette image l'écart entre niveaux, la hauteur de l'arbre et le rectangle du panneau,
+    /// puis les mémorise. Toujours appelée en tête de <see cref="Layout"/>, donc avant tout dessin/survol.
+    ///
+    /// Le panneau se centre par défaut dans <paramref name="area"/> — la zone LIBRE réservée par la scène
+    /// (sous la frise, à gauche de l'inventaire), pour ne pas paraître décalé par rapport au plateau. Mais
+    /// en 1080p le canevas virtuel ne fait que 540 px de haut : l'arbre confortable (4 niveaux) déborde de
+    /// cette zone. On étend alors la modale — qui voile déjà tout l'écran — à la pleine hauteur et on
+    /// RESSERRE l'écart entre niveaux juste assez pour tout afficher. Aux résolutions où tout tient déjà,
+    /// rien ne change (écart = MaxLevelGap, panneau centré sous la frise).
     /// </summary>
-    private static Rectangle PanelRect(CommandTree tree, Rectangle area)
+    private void ComputeMetrics(CommandTree tree, Rectangle area)
     {
+        const int fixedH = HeaderH + FooterH;
         var w = TreeWidth(tree) + 80;
-        var h = TreeHeight() + HeaderH + FooterH;
-        var y = area.Y + System.Math.Max(0, (area.Height - h) / 2);
-        return new Rectangle(area.X + (area.Width - w) / 2, y, w, h);
+        var comfyPanelH = fixedH + (CommandTree.MaxLevel - 1) * MaxLevelGap + NodeSize;
+
+        // Trop haut pour la zone réservée : on récupère toute la hauteur écran (area.Bottom = bas du canevas).
+        var region = comfyPanelH <= area.Height
+            ? area
+            : new Rectangle(area.X, Margin, area.Width, area.Bottom - 2 * Margin);
+
+        _levelGap = System.Math.Clamp(
+            (region.Height - fixedH - NodeSize) / (CommandTree.MaxLevel - 1), MinLevelGap, MaxLevelGap);
+        _treeH = (CommandTree.MaxLevel - 1) * _levelGap + NodeSize;
+
+        var panelH = fixedH + _treeH;
+        var y = region.Y + System.Math.Max(0, (region.Height - panelH) / 2);
+        _panel = new Rectangle(region.X + (region.Width - w) / 2, y, w, panelH);
     }
 
-    private static Rectangle CloseButtonRect(Rectangle area)
-    {
-        // Ancré sous les libellés de branche ; la largeur du panneau dépend de l'arbre, mais il est centré.
-        var h = TreeHeight() + HeaderH + FooterH;
-        var top = area.Y + System.Math.Max(0, (area.Height - h) / 2);
-        return new Rectangle(area.X + area.Width / 2 - 60,
-            top + HeaderH + TreeHeight() + CloseButtonY, 120, CloseButtonH);
-    }
-
-    /// <summary>(Re)calcule le rectangle de chaque nœud pour cette image. Clé = id du nœud.</summary>
+    /// <summary>(Re)calcule le panneau (<see cref="ComputeMetrics"/>) puis le rectangle de chaque nœud pour
+    /// cette image. Clé = id du nœud.</summary>
     private void Layout(CommandTree tree, Rectangle area)
     {
         _rects.Clear();
-        var panel = PanelRect(tree, area);
-        var left = panel.X + (panel.Width - TreeWidth(tree)) / 2;
-        var top = panel.Y + HeaderH;
+        ComputeMetrics(tree, area);
+        var left = _panel.X + (_panel.Width - TreeWidth(tree)) / 2;
+        var top = _panel.Y + HeaderH;
 
         for (var branch = 0; branch < tree.BranchCount; branch++)
         {
@@ -233,7 +259,7 @@ public sealed class CommandTreeView
                 // Le niveau 4 (un seul nœud) se centre ; un niveau à deux nœuds occupe toute la colonne.
                 var rowW = nodes.Count * NodeSize + (nodes.Count - 1) * NodeGapX;
                 var x0 = bx + (BranchWidth - rowW) / 2;
-                var y = top + (CommandTree.MaxLevel - level) * LevelGapY;   // niveau 1 en bas
+                var y = top + (CommandTree.MaxLevel - level) * _levelGap;   // niveau 1 en bas
                 for (var i = 0; i < nodes.Count; i++)
                     _rects[nodes[i].Id] = new Rectangle(x0 + i * (NodeSize + NodeGapX), y, NodeSize, NodeSize);
             }
@@ -249,25 +275,24 @@ public sealed class CommandTreeView
     public void Draw(SpriteBatch sb, Viewport viewport, Rectangle area, Run run)
     {
         var tree = run.Tree;
-        Layout(tree, area);
-        var panel = PanelRect(tree, area);
+        Layout(tree, area);   // met à jour _panel / _treeH / _levelGap pour cette image
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         Fill(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * 0.62f);
-        _ctx.Style.DrawPanel(sb, panel);
+        _ctx.Style.DrawPanel(sb, _panel);
         // Fond du cadre de commandement ÉCLAIRCI : voile bleu-gris clair sur l'intérieur (inset de 3 pour
         // garder le relief du biseau). Le contenu (titre, nœuds, liens) est dessiné PAR-DESSUS, donc lisible.
-        Fill(sb, Inflate(panel, -3), Palette.Navy1 * 0.55f);
+        Fill(sb, Inflate(_panel, -3), Palette.Navy1 * 0.55f);
 
-        DrawHeader(sb, panel, run);
+        DrawHeader(sb, _panel, run);
         DrawLinks(sb, tree, run);
 
         var hovered = _ctx.Input.UsingGamepad ? FocusedNode(tree) : NodeAt(tree, _ctx.Input.MousePosition);
         foreach (var node in tree.Nodes)
             DrawNode(sb, node, run, node == hovered);
 
-        DrawBranchLabels(sb, tree, panel);
-        DrawFooter(sb, panel, area);
+        DrawBranchLabels(sb, tree, _panel);
+        DrawFooter(sb, _panel);
         if (hovered != null)
             DrawTooltip(sb, hovered, viewport);
         sb.End();
@@ -296,7 +321,7 @@ public sealed class CommandTreeView
     private void DrawBranchLabels(SpriteBatch sb, CommandTree tree, Rectangle panel)
     {
         var left = panel.X + (panel.Width - TreeWidth(tree)) / 2;
-        var y = panel.Y + HeaderH + TreeHeight() + BranchLabelY;
+        var y = panel.Y + HeaderH + _treeH + BranchLabelY;
         for (var branch = 0; branch < tree.BranchCount; branch++)
         {
             var bx = left + branch * (BranchWidth + BranchGap);
@@ -476,9 +501,9 @@ public sealed class CommandTreeView
                 preserveCase: true);   // descriptions en minuscules (les libellés/nom restent en capitales)
     }
 
-    private void DrawFooter(SpriteBatch sb, Rectangle panel, Rectangle area)
+    private void DrawFooter(SpriteBatch sb, Rectangle panel)
     {
-        var btn = CloseButtonRect(area);
+        var btn = CloseButtonRect();
         var focused = _ctx.Input.UsingGamepad && _focusLevel == CloseFocusLevel;
         var hover = !_ctx.Input.UsingGamepad && btn.Contains(_ctx.Input.MousePosition);
         var dy = _ctx.Style.DrawButton(sb, btn, UiStyle.StateOf(hover || focused, hover && _ctx.Input.IsLeftDown));
