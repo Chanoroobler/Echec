@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 
 namespace Echec.MapEditor;
@@ -66,6 +67,61 @@ internal sealed class MapCanvas : Panel
             (int)Math.Ceiling(_doc.Width * surface) + 1,
             (int)Math.Ceiling(_doc.Height * surface + extra) + 1);
         Invalidate();
+    }
+
+    /// <summary>Taille NATIVE de l'export (px) : largeur = colonnes × TileSize ; hauteur = rangées × TileSize
+    /// + l'épaisseur de la dernière rangée (comme l'étendue affichée). Null si rien n'est chargé.</summary>
+    public Size? ExportSize()
+    {
+        if (_doc is null || _catalog is null) return null;
+        return new Size(_doc.Width * _catalog.TileSize,
+                        _doc.Height * _catalog.TileSize + _catalog.Thickness);
+    }
+
+    /// <summary>
+    /// Exporte le TERRAIN (+ la GRILLE si <paramref name="drawGrid"/>) en PNG, SANS spawns/objets/tier/survol,
+    /// à la taille NATIVE des tuiles (cf. <see cref="ExportSize"/>). Reproduit le recouvrement 64×80 comme en
+    /// jeu (dessin de haut en bas : chaque rangée couvre l'épaisseur de celle du dessus ; seule la dernière
+    /// garde son épaisseur en bas). Les cases sans art restent TRANSPARENTES. Le zoom d'édition n'affecte pas
+    /// l'export. La grille reprend le trait de l'éditeur (blanc semi-transparent, 1 px sur la surface 64×64).
+    /// </summary>
+    public void ExportTilesPng(string path, bool drawGrid = true)
+    {
+        if (_doc is null || _catalog is null)
+            throw new InvalidOperationException("Aucune map chargée.");
+
+        int ts = _catalog.TileSize;
+        int thick = _catalog.Thickness;
+        var bmp = new Bitmap(_doc.Width * ts, _doc.Height * ts + thick, PixelFormat.Format32bppArgb);
+        try
+        {
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = InterpolationMode.NearestNeighbor;   // pixel art net (1:1 en natif)
+                g.PixelOffsetMode = PixelOffsetMode.Half;
+
+                // 1) Terrain, de HAUT en BAS : l'épaisseur d'une rangée est recouverte par la rangée du dessous.
+                for (var r = 0; r < _doc.Height; r++)
+                    for (var c = 0; c < _doc.Width; c++)
+                    {
+                        var tile = _catalog.TileForKey(_doc.Tiles[r, c]);
+                        if (tile?.Image is not null)
+                            g.DrawImage(tile.Image, c * ts, r * ts, ts, ts + thick);
+                        // pas de placeholder à l'export : une case sans art reste transparente
+                    }
+
+                // 2) Grille sur la surface 64×64 de chaque case (même trait que l'éditeur).
+                if (drawGrid)
+                {
+                    using var gridPen = new Pen(Color.FromArgb(70, 255, 255, 255));
+                    for (var r = 0; r < _doc.Height; r++)
+                        for (var c = 0; c < _doc.Width; c++)
+                            g.DrawRectangle(gridPen, c * ts, r * ts, ts, ts);
+                }
+            }
+            bmp.Save(path, ImageFormat.Png);
+        }
+        finally { bmp.Dispose(); }
     }
 
     protected override void OnPaint(PaintEventArgs e)

@@ -142,6 +142,7 @@ internal sealed class MainForm : Form
         bar.Controls.Add(ToolButton("Ouvrir…", (_, _) => Open()));
         bar.Controls.Add(ToolButton("Enregistrer", (_, _) => Save(false)));
         bar.Controls.Add(ToolButton("Enreg. sous…", (_, _) => Save(true)));
+        bar.Controls.Add(ToolButton("Exporter PNG…", (_, _) => ExportPng()));
 
         bar.Controls.Add(Sep());
         bar.Controls.Add(Label("Nom :"));
@@ -648,6 +649,39 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Écriture impossible :\n{ex.Message}", "Erreur",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Exporte la map en PNG, TUILES SEULES (sans spawns/objets/grille) et à la taille native (cf.
+    /// <see cref="MapCanvas.ExportTilesPng"/>). N'écrit pas la .json : c'est une image, indépendante de la
+    /// sauvegarde. Nom par défaut = nom de la map, dossier par défaut = celui des maps.
+    /// </summary>
+    private void ExportPng()
+    {
+        if (_doc is null || _catalog is null) return;
+        var name = string.IsNullOrWhiteSpace(_nameBox.Text) ? "map" : _nameBox.Text.Trim();
+        using var dlg = new SaveFileDialog
+        {
+            Title = "Exporter la map en PNG (tuiles seules)",
+            Filter = "Image PNG (*.png)|*.png",
+            InitialDirectory = Directory.Exists(AssetPaths.MapsDir) ? AssetPaths.MapsDir : "",
+            FileName = name + ".png",
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            _canvas.ExportTilesPng(dlg.FileName);
+            var size = _canvas.ExportSize();
+            _status.Text = size is { } s
+                ? $"Exporté (tuiles + grille) : {dlg.FileName}  —  {s.Width}×{s.Height}"
+                : $"Exporté (tuiles + grille) : {dlg.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Export impossible :\n{ex.Message}", "Erreur",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
