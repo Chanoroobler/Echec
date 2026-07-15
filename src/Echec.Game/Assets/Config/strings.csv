@@ -8,6 +8,7 @@ lang.english,ENGLISH,ENGLISH
 # ── Menu pause ──────────────────────────────────────────────────────────────
 menu.pause,PAUSE,PAUSE
 menu.resume,REPRENDRE,RESUME
+menu.codex,CODEX,CODEX
 menu.options,OPTIONS,OPTIONS
 menu.main_menu,MENU PRINCIPAL,MAIN MENU
 menu.quit,QUITTER,QUIT
@@ -152,6 +153,20 @@ unit.boss,BOSS,BOSS
 # Noms des boss (cle = unit.<asset>, casse exacte de l'asset PNG)
 unit.Commandant_brute,LE BROYEUR,THE CRUSHER
 unit.Commandant_guerrier,LE FOUDROYEUR,THE THUNDERER
+# ── Codex ───────────────────────────────────────────────────────────────────
+codex.title,CODEX,CODEX
+codex.tab_units,PIONS,PAWNS
+codex.tab_equipment,EQUIPEMENT,EQUIPMENT
+codex.close,FERMER,CLOSE
+codex.progress,{0}/{1},{0}/{1}
+codex.undiscovered,NON DECOUVERT,UNDISCOVERED
+codex.hint,ECHAP POUR FERMER,ESC TO CLOSE
+codex.hint_gp,B FERMER   LB/RB ONGLET   A SELECTION,B CLOSE   LB/RB TAB   A SELECT
+# Noms des domaines (mouvement facon piece d'echecs) : cle domaine.<enum en minuscules>
+domaine.dame,DAME,QUEEN
+domaine.fou,FOU,BISHOP
+domaine.cavalier,CAVALIER,KNIGHT
+domaine.tour,TOUR,ROOK
 # ── HUD / commandes ─────────────────────────────────────────────────────────
 hud.toggle_grid,GRILLE,GRID
 hud.danger_zones,ZONES DE DANGER,DANGER ZONES

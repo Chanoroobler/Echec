@@ -1,6 +1,7 @@
 using Echec.Core.Campaign;
 using Echec.Engine;
 using Echec.Engine.Audio;
+using Echec.Game.UI;
 using Echec.Engine.Input;
 using Echec.Engine.Localization;
 using Echec.Engine.Persistence;
@@ -30,6 +31,9 @@ public sealed class MainMenuScene : Scene
     private PauseMenu _menu = null!;
     private PauseMenuRenderer _menuRenderer = null!;
 
+    /// <summary>Codex (bestiaire des pions + équipements), ouvert en overlay depuis le menu principal.</summary>
+    private CodexView _codex = null!;
+
     // État des 3 slots (null = vide), relu au chargement et après chaque effacement.
     private readonly RunSave?[] _slots = new RunSave?[SaveService.SlotCount];
 
@@ -50,9 +54,12 @@ public sealed class MainMenuScene : Scene
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
         _menu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
+        _codex = new CodexView(Context);
         RefreshSlots();
         Context.Music.Play(MusicScene.Calm);   // menu principal : piste « Relaxed » (continue dans le placement)
     }
+
+    public override void Unload() => _codex.Unload();
 
     private void RefreshSlots()
     {
@@ -63,6 +70,12 @@ public sealed class MainMenuScene : Scene
     // ── Mise à jour ─────────────────────────────────────────────────────────────
     public override void Update(GameTime gameTime)
     {
+        if (_codex.IsOpen)   // overlay par-dessus le menu : capte tout jusqu'à sa fermeture
+        {
+            _codex.Update(new Viewport(0, 0, Context.VirtualResolution.X, Context.VirtualResolution.Y),
+                (float)gameTime.ElapsedGameTime.TotalSeconds);
+            return;
+        }
         if (_confirmMetaReset) { UpdateMetaConfirm(); return; }   // par-dessus les options
         if (_menu.IsOpen) { UpdateOptions(); return; }
         if (_confirmDelete >= 0) { UpdateConfirm(); return; }
@@ -70,7 +83,7 @@ public sealed class MainMenuScene : Scene
         var w = Context.VirtualResolution.X;
         var h = Context.VirtualResolution.Y;
         var lay = BuildLayout(w, h);
-        var count = _slots.Length + 2;   // slots… + Options + Quitter
+        var count = _slots.Length + 3;   // slots… + Codex + Options + Quitter
         _focus = System.Math.Clamp(_focus, 0, count - 1);
 
         // Manette : navigation haut/bas, A valide, X efface un slot occupé.
@@ -103,7 +116,8 @@ public sealed class MainMenuScene : Scene
             }
         }
 
-        if (lay.Options.Contains(p)) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
+        if (lay.Codex.Contains(p)) { _codex.Open(); }
+        else if (lay.Options.Contains(p)) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
         else if (lay.Quit.Contains(p)) { Context.Sounds.Play("menu_click"); Context.Quit(); }
     }
 
@@ -111,7 +125,8 @@ public sealed class MainMenuScene : Scene
     private void ActivateFocus()
     {
         if (_focus < _slots.Length) { Context.Sounds.Play("menu_click"); StartSlot(_focus); }
-        else if (_focus == _slots.Length) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
+        else if (_focus == _slots.Length) { _codex.Open(); }
+        else if (_focus == _slots.Length + 1) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
         else { Context.Sounds.Play("menu_click"); Context.Quit(); }
     }
 
@@ -119,7 +134,8 @@ public sealed class MainMenuScene : Scene
     private Rectangle FocusedRect(MenuLayout lay)
     {
         if (_focus < _slots.Length) return lay.Slots[_focus];
-        return _focus == _slots.Length ? lay.Options : lay.Quit;
+        if (_focus == _slots.Length) return lay.Codex;
+        return _focus == _slots.Length + 1 ? lay.Options : lay.Quit;
     }
 
     /// <summary>Continue la run du slot si elle existe, sinon en démarre une nouvelle dans ce slot.</summary>
@@ -260,7 +276,7 @@ public sealed class MainMenuScene : Scene
         // survol — sinon les boutons s'allument à travers l'overlay semi-transparent (fausse navigation).
         // L'overlay lui-même, en revanche, utilise la vraie position souris. En manette : pointeur
         // synthétique = centre de l'élément focus (réutilise la surbrillance de survol).
-        var overlay = _menu.IsOpen || _confirmDelete >= 0;
+        var overlay = _menu.IsOpen || _confirmDelete >= 0 || _codex.IsOpen;
         var bgPointer = overlay ? new Point(int.MinValue, int.MinValue)
             : (gp ? FocusedRect(lay).Center : mouse);
         var bgDown = !overlay && !gp && mouseDown;
@@ -275,6 +291,7 @@ public sealed class MainMenuScene : Scene
         for (var i = 0; i < _slots.Length; i++)
             DrawSlot(sb, lay.Slots[i], lay.Dels[i], i, bgPointer, bgDown);
 
+        Button(sb, lay.Codex, Loc.T("menu.codex"), bgPointer, bgDown);
         Button(sb, lay.Options, Loc.T("menu.options"), bgPointer, bgDown);
         Button(sb, lay.Quit, Loc.T("menu.quit"), bgPointer, bgDown);
         sb.End();
@@ -308,6 +325,10 @@ public sealed class MainMenuScene : Scene
                 DrawMetaConfirm(sb, w, h, cp, !gp && mouseDown);
             }
         }
+
+        // Codex par-dessus le menu (dessine son propre voile + panneau).
+        if (_codex.IsOpen)
+            _codex.Draw(sb, new Viewport(0, 0, w, h));
     }
 
     private void DrawSlot(SpriteBatch sb, Rectangle main, Rectangle del, int index, Point pointer, bool down)
@@ -356,7 +377,7 @@ public sealed class MainMenuScene : Scene
     private MenuLayout BuildLayout(int w, int h)
     {
         var panelW = ColW + 2 * Pad;
-        var panelH = Pad + _slots.Length * (RowH + Gap) + (BtnH + Gap) + BtnH + Pad;
+        var panelH = Pad + _slots.Length * (RowH + Gap) + 2 * (BtnH + Gap) + BtnH + Pad;
         var panelX = (w - panelW) / 2;
         var panelY = (h - panelH) / 2 + 28;   // décalé vers le bas pour laisser la place au titre
 
@@ -378,6 +399,7 @@ public sealed class MainMenuScene : Scene
             y += RowH + Gap;
         }
 
+        lay.Codex = new Rectangle(x, y, ColW, BtnH); y += BtnH + Gap;
         lay.Options = new Rectangle(x, y, ColW, BtnH); y += BtnH + Gap;
         lay.Quit = new Rectangle(x, y, ColW, BtnH);
         return lay;
@@ -441,6 +463,7 @@ public sealed class MainMenuScene : Scene
         public Rectangle Panel;
         public Rectangle[] Slots;
         public Rectangle[] Dels;
+        public Rectangle Codex;
         public Rectangle Options;
         public Rectangle Quit;
     }

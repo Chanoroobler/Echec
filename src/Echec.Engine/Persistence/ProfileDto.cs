@@ -15,4 +15,10 @@ public sealed class ProfileDto
     /// Sert à révéler une évolution sur la carte de fusion seulement une fois qu'on l'a possédée.
     /// </summary>
     public System.Collections.Generic.List<string> DiscoveredUnits { get; set; } = new();
+
+    /// <summary>
+    /// Méta-progression : ids des équipements déjà OBTENUS par le joueur (toutes parties confondues).
+    /// Sert au codex : un item reste en silhouette tant qu'on ne l'a jamais ramassé.
+    /// </summary>
+    public System.Collections.Generic.List<string> DiscoveredEquipment { get; set; } = new();
 }

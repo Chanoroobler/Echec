@@ -222,6 +222,9 @@ public sealed class GameplayScene : Scene
     /// <summary>Écran modal de l'arbre de commandement, ouvert depuis le panneau de placement.</summary>
     private CommandTreeView _commandTree = null!;
 
+    /// <summary>Codex (bestiaire des pions + équipements), ouvert par-dessus le menu pause.</summary>
+    private CodexView _codex = null!;
+
     /// <summary>Vrai quand l'arbre de commandement est ouvert : le placement est gelé derrière lui.</summary>
     private bool CommandTreeOpen => _commandTree.IsOpen;
 
@@ -468,6 +471,7 @@ public sealed class GameplayScene : Scene
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         _commandTree = new CommandTreeView(Context);
+        _codex = new CodexView(Context);
         _combatFx = LoadCombatFx();
 
         StartRun();
@@ -484,6 +488,7 @@ public sealed class GameplayScene : Scene
         _waterNoise.Dispose();
         _water.Dispose();
         _commandTree.Unload();
+        _codex.Unload();
         foreach (var sprite in _unitSprites.Values)
             sprite?.Dispose();
         _unitSprites.Clear();
@@ -1303,7 +1308,10 @@ public sealed class GameplayScene : Scene
                 if (_chestPhaseTimer >= ChestFlyDuration)
                 {
                     if (_chestReveal is { } item)
+                    {
                         _run.AddEquipment(item);
+                        Context.Saves.DiscoverEquipment(item.Id);   // méta-progression : désormais connu (codex)
+                    }
                     _chestPhase = ChestPhase.Settle;
                     _chestPhaseTimer = 0;
                 }
@@ -1616,6 +1624,14 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // Codex ouvert (depuis le menu pause) : il capte toutes les entrées jusqu'à sa fermeture ; le
+        // menu pause reste ouvert derrière et reprend la main dès qu'on referme le codex.
+        if (_codex.IsOpen)
+        {
+            _codex.Update(VirtualViewport, (float)gameTime.ElapsedGameTime.TotalSeconds);
+            return;
+        }
+
         // Ouverture/fermeture : Échap (clavier) ou Start (manette). En manette, B referme aussi.
         if (Context.Input.WasKeyPressed(Keys.Escape) || Context.Input.WasMenuPressed
             || (_pauseMenu.IsOpen && Context.Input.WasCancelPressed))
@@ -1913,7 +1929,10 @@ public sealed class GameplayScene : Scene
                 // L'épée vient du coffre. Filet de sécurité si la map du tuto n'en portait pas : sans objet
                 // à poser, l'étape ne pourrait jamais se terminer.
                 if (!_run.EquipmentInventory.Any() && Equipments.ById(TutorialEquipmentId) is { } spare)
+                {
                     _run.AddEquipment(spare);
+                    Context.Saves.DiscoverEquipment(spare.Id);   // méta-progression : désormais connu (codex)
+                }
                 EnterEquipPhase();   // le tuto ouvre la sous-phase à la place du bouton SUIVANT
                 break;
             case TutorialStep.TreeOpen:
@@ -5179,6 +5198,10 @@ public sealed class GameplayScene : Scene
                 DrawControlsLegend(sb, viewport);
             sb.End();
         }
+
+        // Codex par-dessus le menu pause (dessine son propre voile + panneau).
+        if (_codex.IsOpen)
+            _codex.Draw(sb, viewport);
     }
 
     /// <summary>
@@ -8983,6 +9006,10 @@ public sealed class GameplayScene : Scene
     {
         switch (action)
         {
+            case MenuAction.Codex:
+                // Ouvre le codex PAR-DESSUS le menu pause (qui reste ouvert derrière) ; sa fermeture y ramène.
+                _codex.Open();
+                break;
             case MenuAction.MainMenu:
                 // La progression est déjà sauvegardée (phase de placement) : on peut quitter vers
                 // le menu, le slot proposera « Continuer ».

@@ -99,12 +99,43 @@ public sealed class SaveService
         });
     }
 
-    /// <summary>Efface toute la méta-progression (unités découvertes). Garde le reste du profil.</summary>
+    // Cache mémoire des équipements découverts (même logique que les unités).
+    private HashSet<string>? _discoveredEquip;
+
+    private HashSet<string> DiscoveredEquipSet() =>
+        _discoveredEquip ??= new HashSet<string>(TryRead<ProfileDto>(ProfilePath)?.DiscoveredEquipment ?? new List<string>());
+
+    /// <summary>Vrai si le joueur a déjà obtenu l'équipement d'id <paramref name="id"/> (toutes parties).</summary>
+    public bool IsEquipmentDiscovered(string id) => DiscoveredEquipSet().Contains(id);
+
+    /// <summary>
+    /// Marque un équipement comme découvert. Idempotent. Set mémoire mis à jour SYNCHRONE ; persistance
+    /// disque (lecture-modification-écriture sous verrou pour préserver les autres champs) en arrière-plan.
+    /// </summary>
+    public void DiscoverEquipment(string id)
+    {
+        if (!DiscoveredEquipSet().Add(id))
+            return;
+        var snapshot = new List<string>(DiscoveredEquipSet());
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.DiscoveredEquipment = snapshot;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+    }
+
+    /// <summary>Efface toute la méta-progression (unités ET équipements découverts). Garde le reste du profil.</summary>
     public void ResetMetaProgression()
     {
         _discovered = new HashSet<string>();
+        _discoveredEquip = new HashSet<string>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
+        dto.DiscoveredEquipment = new List<string>();
         TryWrite(ProfilePath, dto);
     }
 
