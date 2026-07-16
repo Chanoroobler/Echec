@@ -10,10 +10,13 @@ using Echec.Engine.Settings;
 namespace Echec.Engine.Persistence;
 
 /// <summary>
-/// Persistance disque des réglages et de la progression, sous <c>%AppData%\Echec</c>.
-///  • Réglages : un unique <c>options.json</c> (réécrit à chaque modification).
-///  • Progression : <see cref="SlotCount"/> slots indépendants (<c>save-slot-N.json</c>), chacun
-///    une <see cref="RunSave"/> auto-sauvegardée en phase de placement.
+/// Persistance disque des réglages et de la progression, sous <c>%AppData%\Echec</c>. Les deux sont
+/// dans des dossiers SÉPARÉS pour que la progression seule puisse être synchronisée sur le cloud
+/// (les réglages, eux, décrivent la machine : résolution, mode d'affichage, volumes) :
+///  • Réglages, à la racine : un unique <c>options.json</c> (réécrit à chaque modification).
+///  • Progression, dans <c>save\</c> : le profil global (<c>profile.json</c>) et <see cref="SlotCount"/>
+///    slots indépendants (<c>save-slot-N.json</c>), chacun une <see cref="RunSave"/> auto-sauvegardée
+///    en phase de placement.
 /// Toutes les E/S sont tolérantes aux pannes : un fichier manquant ou corrompu retombe sur les
 /// valeurs par défaut / un slot vide plutôt que de faire planter le jeu.
 /// </summary>
@@ -28,7 +31,9 @@ public sealed class SaveService
         Converters = { new JsonStringEnumConverter() },
     };
 
+    // Racine (réglages, propres à la machine) et sous-dossier de progression (candidat au cloud).
     private readonly string _dir;
+    private readonly string _saveDir;
 
     // Sérialise les écritures de slot en arrière-plan (SaveSlotAsync) pour qu'elles ne se chevauchent pas.
     private readonly object _ioLock = new();
@@ -37,7 +42,10 @@ public sealed class SaveService
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         _dir = Path.Combine(appData, "Echec");
-        TryEnsureDir();
+        _saveDir = Path.Combine(_dir, "save");
+        TryEnsureDir(_dir);
+        TryEnsureDir(_saveDir);
+        MigrateLegacyLayout();
     }
 
     // ── Réglages ──────────────────────────────────────────────────────────────────
@@ -183,8 +191,33 @@ public sealed class SaveService
     // ── E/S internes ────────────────────────────────────────────────────────────────
 
     private string OptionsPath => Path.Combine(_dir, "options.json");
-    private string ProfilePath => Path.Combine(_dir, "profile.json");
-    private string SlotPath(int index) => Path.Combine(_dir, $"save-slot-{index + 1}.json");
+    private string ProfilePath => Path.Combine(_saveDir, "profile.json");
+    private string SlotPath(int index) => Path.Combine(_saveDir, $"save-slot-{index + 1}.json");
+
+    /// <summary>
+    /// Récupère la progression des versions d'avant la séparation, qui écrivaient tout à plat à la
+    /// racine, en la déplaçant vers <c>save\</c>. Un fichier déjà présent dans la nouvelle
+    /// arborescence fait autorité : l'ancien est alors laissé tel quel plutôt qu'écrasé.
+    /// </summary>
+    private void MigrateLegacyLayout()
+    {
+        TryMove(Path.Combine(_dir, "profile.json"), ProfilePath);
+        for (var i = 0; i < SlotCount; i++)
+            TryMove(Path.Combine(_dir, $"save-slot-{i + 1}.json"), SlotPath(i));
+    }
+
+    private static void TryMove(string from, string to)
+    {
+        try
+        {
+            if (File.Exists(from) && !File.Exists(to))
+                File.Move(from, to);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Migration de {from} ignorée : {ex.Message}");
+        }
+    }
 
     private static T? TryRead<T>(string path) where T : class
     {
@@ -201,11 +234,11 @@ public sealed class SaveService
         }
     }
 
-    private void TryWrite<T>(string path, T value)
+    private static void TryWrite<T>(string path, T value)
     {
         try
         {
-            TryEnsureDir();
+            TryEnsureDir(Path.GetDirectoryName(path));
             File.WriteAllText(path, JsonSerializer.Serialize(value, Json));
         }
         catch (Exception ex)
@@ -214,9 +247,11 @@ public sealed class SaveService
         }
     }
 
-    private void TryEnsureDir()
+    private static void TryEnsureDir(string? dir)
     {
-        try { Directory.CreateDirectory(_dir); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Création de {_dir} ignorée : {ex.Message}"); }
+        if (string.IsNullOrEmpty(dir))
+            return;
+        try { Directory.CreateDirectory(dir); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Création de {dir} ignorée : {ex.Message}"); }
     }
 }

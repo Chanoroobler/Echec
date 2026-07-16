@@ -353,7 +353,13 @@ public class EchecGame : Microsoft.Xna.Framework.Game, IDisplayService
         if (settings.Mode == WindowMode.Fullscreen)
         {
             _graphics.PreferredBackBufferWidth = screen.Width;
-            _graphics.PreferredBackBufferHeight = screen.Height;
+            // +1 VOLONTAIRE, ne pas « corriger » : une fenêtre sans bordure qui couvre l'écran au pixel
+            // près déclenche les « optimisations plein écran » de Windows, qui la basculent sur un chemin
+            // de présentation direct — et la capture d'écran d'OBS/Streamlabs n'y voit alors que du noir.
+            // Une rangée de trop (hors écran, jamais recouverte par le blit ni visible) suffit à l'éviter.
+            // Sans effet sur le rendu : ConfigureVirtualScreen recentre en division ENTIÈRE, donc ce pixel
+            // est absorbé et la zone 16:9 reste identique.
+            _graphics.PreferredBackBufferHeight = screen.Height + 1;
             _graphics.ApplyChanges();
             // IsBorderless / Position APRÈS ApplyChanges : sous DesktopGL (SDL), ApplyChanges peut
             // redimensionner/repositionner la fenêtre et écraser ces drapeaux s'ils sont posés avant.
