@@ -54,6 +54,11 @@ public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
 /// Le tirage aléatoire (mise à portée comme avancée) évite de toujours pousser la même pièce : l'armée
 /// progresse en se renouvelant au lieu d'envoyer un éclaireur solitaire.
 ///
+/// MALADRESSE (difficulté) : l'IA ne joue son meilleur coup qu'avec une probabilité
+/// <c>accuracy</c> (cf. <see cref="DifficultySettings.AiAccuracy"/>). Sinon elle DESCEND D'UN CRAN de
+/// priorité — elle renonce au kill parfait pour une attaque simple, à l'engagement pour une avancée, etc.
+/// Elle ne descend jamais jusqu'à ne rien faire : s'il n'existe qu'un seul rang de coups, elle le joue.
+///
 /// SUICIDAIRE en fin de partie : quand il ne reste plus qu'UNE unité ennemie, elle abandonne le filet
 /// « sans mourir » et s'engage même si elle doit y rester — sinon elle fuit et le joueur lui court après.
 /// </summary>
@@ -62,18 +67,29 @@ public static class EnemyAi
     /// <summary>Distance (Chebyshev) à laquelle un joueur « réveille » un garde défensif.</summary>
     public const int AlertRadius = 2;
 
+    /// <summary>Jeu parfait : l'IA prend toujours la meilleure décision disponible. Défaut hors difficulté.</summary>
+    public const double PerfectAccuracy = 1.0;
+
     private static readonly Random SharedRng = new();
     private static readonly IReadOnlyCollection<Cell> NoPaysans = Array.Empty<Cell>();
 
     public static AiAction? ChooseAction(Match match) => ChooseAction(match, NoPaysans, SharedRng);
 
-    public static AiAction? ChooseAction(Match match, IReadOnlyCollection<Cell> paysanCells) =>
-        ChooseAction(match, paysanCells, SharedRng);
+    public static AiAction? ChooseAction(
+        Match match, IReadOnlyCollection<Cell> paysanCells, double accuracy = PerfectAccuracy) =>
+        ChooseAction(match, paysanCells, SharedRng, accuracy);
 
     /// <param name="paysanCells">Cases des paysans (tuiles recrue non résolues) : GARDÉES par les défensifs,
     /// ASSAILLIES par les offensifs.</param>
     /// <param name="rng">Source d'aléa (injectable pour des tests déterministes).</param>
-    public static AiAction? ChooseAction(Match match, IReadOnlyCollection<Cell> paysanCells, Random rng)
+    /// <param name="accuracy">Probabilité (0..1) de jouer le MEILLEUR coup ; sinon l'IA descend d'un cran de
+    /// priorité. Défaut <see cref="PerfectAccuracy"/> : c'est l'appelant (couche Game) qui applique la
+    /// difficulté, cf. <see cref="DifficultySettings.Active"/>.</param>
+    public static AiAction? ChooseAction(
+        Match match,
+        IReadOnlyCollection<Cell> paysanCells,
+        Random rng,
+        double accuracy = PerfectAccuracy)
     {
         if (match.IsOver || match.CurrentTurn != Faction.Enemy)
             return null;
@@ -176,14 +192,30 @@ public static class EnemyAi
                 guardByUnit.Add(grd);
         }
 
-        if (capture.Count > 0) return capture[rng.Next(capture.Count)];
-        if (bestKill is { } kill) return kill;
-        if (bestAttack is { } attack) return attack;
-        if (engage.Count > 0) return engage[rng.Next(engage.Count)];
-        if (advanceByUnit.Count > 0) return advanceByUnit[rng.Next(advanceByUnit.Count)];
-        if (guardByUnit.Count > 0) return guardByUnit[rng.Next(guardByUnit.Count)];
-        if (anyLegalMove.Count > 0) return anyLegalMove[rng.Next(anyLegalMove.Count)];
-        return null;
+        // Rangs de priorité effectivement disponibles ce tour-ci (les vides sont ignorés).
+        var ranks = new List<IReadOnlyList<AiAction>>(7);
+        void Rank(IReadOnlyList<AiAction> actions)
+        {
+            if (actions.Count > 0)
+                ranks.Add(actions);
+        }
+
+        Rank(capture);
+        if (bestKill is { } kill) ranks.Add(new[] { kill });
+        if (bestAttack is { } attack) ranks.Add(new[] { attack });
+        Rank(engage);
+        Rank(advanceByUnit);
+        Rank(guardByUnit);
+        Rank(anyLegalMove);
+
+        if (ranks.Count == 0)
+            return null;
+
+        // MALADRESSE : l'IA rate sa décision et descend d'un cran. Jamais jusqu'à ne rien faire — s'il n'y a
+        // qu'un rang, elle le joue (l'ennemi doit BOUGER quoi qu'il arrive).
+        var blundered = ranks.Count > 1 && rng.NextDouble() >= accuracy;
+        var chosen = ranks[blundered ? 1 : 0];
+        return chosen[rng.Next(chosen.Count)];
     }
 
     /// <summary>Case de <paramref name="cells"/> la plus proche de <paramref name="from"/> (Chebyshev), ou null si aucune.</summary>

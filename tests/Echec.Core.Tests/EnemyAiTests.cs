@@ -245,4 +245,56 @@ public class EnemyAiTests
 
         Assert.Equal(Faction.Player, match.Winner);
     }
+
+    /// <summary>Ennemi au contact d'un joueur à 1 PV : le kill est disponible ce tour-ci.</summary>
+    private static Match KillAvailable(Cell playerCell, Cell enemyCell)
+    {
+        var match = new Match(8, 8);
+        var player = Units.Soldat(Faction.Player);
+        player.TakeDamage(player.Hp - 1);   // un coup suffit à le tuer
+        match.Place(playerCell, player);
+        match.Place(enemyCell, Units.Soldat(Faction.Enemy));
+        match.PassTurn();   // Player -> Enemy
+        return match;
+    }
+
+    [Fact]
+    public void Accuracy_Perfect_TakesTheKill()
+    {
+        var player = new Cell(4, 4);
+        var match = KillAvailable(player, new Cell(4, 3));
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), EnemyAi.PerfectAccuracy);
+
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(player, action.Value.To);
+    }
+
+    [Fact]
+    public void Accuracy_Zero_SkipsTheKill_AndDropsOneRank()
+    {
+        // Maladresse maximale : l'IA renonce au kill parfait et descend d'un cran (ici un déplacement,
+        // la seule autre attaque possible étant précisément ce kill).
+        var match = KillAvailable(new Cell(4, 4), new Cell(4, 3));
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
+
+        Assert.NotNull(action);
+        Assert.False(action!.Value.IsAttack);
+    }
+
+    [Fact]
+    public void Accuracy_Zero_SingleRank_StillActs()
+    {
+        // Exigence maintenue malgré la maladresse : l'ennemi BOUGE quoi qu'il arrive. Un garde sans case à
+        // garder et joueur lointain n'a qu'UN seul rang de coups (repli) — il le joue au lieu de ne rien faire.
+        var match = EnemyTurn(new Cell(0, 7), new Cell(4, 0), out var enemy);
+        enemy.AiKind = AiKind.Defensif;
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
+
+        Assert.NotNull(action);
+        Assert.False(action!.Value.IsAttack);
+    }
 }

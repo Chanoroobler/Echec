@@ -186,10 +186,25 @@ sur une case mortelle. C'est un adversaire *cohérent*, pas *optimal*.
    profils faciles.
 5. **Effectifs / tiers** (`CampaignPlan`) : −1 pion par vague en phase 1, retarder T2/T3.
 
-### Prochaine étape recommandée
+### État : maladresse IA implémentée
 
-Introduire un `enum Difficulty` + `DifficultySettings` (multiplicateur dégâts, taux de
-maladresse, anti-one-shot on/off, `StormMaxTargets`) injecté dans `EnemyAi`, `Match` et la
-génération de vagues — puis **re-mesurer** baseline vs facile avec ce harnais pour vérifier
-les cibles ci-dessus. Les points d'injection existent déjà (le catalogue est data-driven,
-`EnemyAi.ChooseAction` prend un `Random`, `Match` prend le calcul de dégâts au même endroit).
+`enum Difficulty` (Facile / Normal / Difficile) + `DifficultySettings` existent dans
+`src/Echec.Core/Battle/Difficulty.cs`. Un seul levier est branché pour l'instant, le plus
+puissant : **la maladresse** (`AiAccuracy` = probabilité de jouer le meilleur coup ;
+**0,50 / 0,75 / 1,00**). En pratique l'IA choisit par rangs de priorité et, quand elle rate son
+jet, **descend d'un cran** (renonce au kill parfait pour une attaque simple, etc.) plutôt que de
+jouer n'importe quoi — elle ne descend jamais jusqu'à ne rien faire.
+
+Le cœur reste neutre : `EnemyAi.ChooseAction` prend `accuracy` en paramètre (défaut
+`PerfectAccuracy`), c'est `GameplayScene.UpdateAiTurn` qui passe `DifficultySettings.Active`.
+BalanceSim n'est donc pas affecté et continue de mesurer la baseline en jeu parfait.
+
+### Prochaines étapes
+
+1. Exposer le niveau dans le **menu Options** (`PauseMenu` + `options.json` + `strings.csv`) —
+   aujourd'hui `DifficultySettings.Current` se change dans le code, et rien n'est persisté.
+2. Brancher les leviers restants sur `DifficultySettings` : multiplicateur de dégâts,
+   anti-one-shot, `StormMaxTargets`, effectifs de vagues.
+3. Ajouter un `--ai-accuracy` au harnais et **re-mesurer** baseline vs facile pour vérifier les
+   cibles ci-dessus (le `--blunder` actuel de BalanceSim est un prototype indépendant, qui
+   remplace l'attaque par un coup au hasard — ce n'est pas la même règle que le jeu).

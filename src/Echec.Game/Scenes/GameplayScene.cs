@@ -4265,7 +4265,9 @@ public sealed class GameplayScene : Scene
         if (_aiTimer > 0)
             return;
 
-        var action = EnemyAi.ChooseAction(_match, PaysanCells());
+        // La difficulté s'applique ICI : l'IA ne joue son meilleur coup qu'avec la précision du niveau
+        // courant, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
+        var action = EnemyAi.ChooseAction(_match, PaysanCells(), DifficultySettings.Active.AiAccuracy);
         if (action is not { } a)
         {
             // Aucun coup productif (ex. gardes défensifs déjà en place, joueur hors de portée) : l'ennemi
