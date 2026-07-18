@@ -450,12 +450,22 @@ public sealed class GameplayScene : Scene
     private readonly int _saveSlot;
     private Run? _initialRun;
 
+    // Choix faits sur l'écran de sélection du commandant (nouvelle partie uniquement) : ignorés à la reprise,
+    // où le commandant et la difficulté viennent de la sauvegarde.
+    private readonly CommandeDef? _chosenCommander;
+    private readonly Difficulty _chosenDifficulty;
+
     /// <param name="saveSlot">Index du slot (0..2) où sauvegarder la progression.</param>
     /// <param name="run">Run à reprendre (depuis une sauvegarde), ou null pour une nouvelle partie.</param>
-    public GameplayScene(GameContext context, int saveSlot, Run? run = null) : base(context)
+    /// <param name="commander">Commandant choisi pour une NOUVELLE partie (null → le commandant par défaut).</param>
+    /// <param name="difficulty">Difficulté choisie pour une NOUVELLE partie.</param>
+    public GameplayScene(GameContext context, int saveSlot, Run? run = null,
+        CommandeDef? commander = null, Difficulty difficulty = Difficulty.Normal) : base(context)
     {
         _saveSlot = saveSlot;
         _initialRun = run;
+        _chosenCommander = commander;
+        _chosenDifficulty = difficulty;
     }
 
     /// <summary>Viewport logique (espace virtuel) dans lequel l'UI se met en page.</summary>
@@ -822,7 +832,7 @@ public sealed class GameplayScene : Scene
             var firstRun = !Context.Saves.HasPlayedBefore();
             if (firstRun)
                 Context.Saves.MarkPlayed();
-            _run = new Run(firstRun: firstRun);
+            _run = new Run(firstRun: firstRun, commander: _chosenCommander, difficulty: _chosenDifficulty);
         }
         _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
 
@@ -4266,8 +4276,9 @@ public sealed class GameplayScene : Scene
             return;
 
         // La difficulté s'applique ICI : l'IA ne joue son meilleur coup qu'avec la précision du niveau
-        // courant, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
-        var action = EnemyAi.ChooseAction(_match, PaysanCells(), DifficultySettings.Active.AiAccuracy);
+        // choisi POUR CETTE RUN, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
+        var accuracy = DifficultySettings.For(_run?.Difficulty ?? Difficulty.Normal).AiAccuracy;
+        var action = EnemyAi.ChooseAction(_match, PaysanCells(), accuracy);
         if (action is not { } a)
         {
             // Aucun coup productif (ex. gardes défensifs déjà en place, joueur hors de portée) : l'ennemi

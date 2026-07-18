@@ -138,11 +138,17 @@ public sealed class MainMenuScene : Scene
         return _focus == _slots.Length + 1 ? lay.Options : lay.Quit;
     }
 
-    /// <summary>Continue la run du slot si elle existe, sinon en démarre une nouvelle dans ce slot.</summary>
+    /// <summary>
+    /// Continue la run du slot si elle existe, sinon en démarre une nouvelle. Une NOUVELLE partie passe
+    /// d'abord par l'écran de sélection du commandant (commandant + difficulté, figés pour toute la run) ;
+    /// une reprise va directement au jeu, ces deux choix venant alors de la sauvegarde.
+    /// </summary>
     private void StartSlot(int index)
     {
-        var run = _slots[index]?.ToRun();   // null → GameplayScene crée une nouvelle campagne
-        Context.Scenes.Change(new GameplayScene(Context, index, run));
+        if (_slots[index]?.ToRun() is { } run)
+            Context.Scenes.Change(new GameplayScene(Context, index, run));
+        else
+            Context.Scenes.Change(new CommanderSelectScene(Context, index));
     }
 
     private void UpdateOptions()

@@ -115,8 +115,19 @@
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
   // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
   "commandes": [
-    { "role": "Commander", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
-      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2 },
+    { "role": "Commander", "id": "commandant", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
+      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2,
+      "startingUnits": [ "Dame", "Dame" ] },
+
+    // PROVISOIRE : deuxieme commandant, la pour eprouver le carrousel de selection. Il reprend le sprite du
+    // boss Commandant_brute (les boss deviendront des commandants par la suite) et l'arbre du premier.
+    // Brute : plus resistant et plus fort, mais il se deplace moins loin, deploie moins de pions, et il
+    // commence avec TROIS pions plus varies au lieu de deux Soldats.
+    // "unlocked": false => VERROUILLE : silhouette noire dans le carrousel, partie impossible a lancer.
+    // La condition de deblocage reste a definir ; en attendant, basculer ce champ suffit a l'ouvrir.
+    { "role": "Commander", "id": "brute", "domaine": "Dame", "name": "Brute", "asset": "Commandant_brute", "hp": 36, "damage": 14, "moveRange": 1, "attackRange": 1,
+      "deployments": 4, "reserveSize": 8, "tree": "commandant", "fusionPoints": 3,
+      "startingUnits": [ "Dame", "Tour", "Fou" ], "unlocked": false },
 
     {
       "role": "Boss",
@@ -124,7 +135,7 @@
       "asset": "Commandant_brute",
       "domaine": "Dame",
       "phases": {
-        "1": {
+        "1": { 
           "hp": 30,
           "damage": 14,
           "moveRange": 1,

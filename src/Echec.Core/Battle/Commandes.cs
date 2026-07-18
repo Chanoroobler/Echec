@@ -22,14 +22,28 @@ public static class Commandes
 
     public static IReadOnlyList<CommandeDef> All => _all;
 
-    /// <summary>Premier commandant défini (le choix par le joueur viendra plus tard).</summary>
+    /// <summary>Commandants JOUABLES, dans l'ordre du JSON : c'est la source du carrousel de sélection.</summary>
+    public static IReadOnlyList<CommandeDef> Playable =>
+        _all.Where(c => c.Role == CommandeRole.Commander).ToList();
+
+    /// <summary>Commandant par défaut (premier défini) : sert quand aucun choix n'a été fait.</summary>
     public static CommandeDef Commander => _all.First(c => c.Role == CommandeRole.Commander);
+
+    /// <summary>
+    /// Commandant par son <see cref="CommandeDef.Id"/> (insensible à la casse), ou <c>null</c>. Utilisé à la
+    /// reprise d'une sauvegarde : un id inconnu (commandant supprimé du JSON) doit être traité par l'appelant.
+    /// </summary>
+    public static CommandeDef? ById(string? id) =>
+        string.IsNullOrWhiteSpace(id)
+            ? null
+            : _all.FirstOrDefault(c => c.Role == CommandeRole.Commander
+                && string.Equals(c.Id, id, System.StringComparison.OrdinalIgnoreCase));
 
     // Repli codé (doit rester aligné avec Assets/Config/units.json). Les boss sont dans Bosses.Defaults.
     private static IReadOnlyList<CommandeDef> Defaults() => new[]
     {
         new CommandeDef(CommandeRole.Commander, Domaine.Dame,
             new UnitClass("Commandant", "commandant", tier: 1, maxHp: 26, damage: 6, moveRange: 2, attackRange: 1),
-            deployments: 5, reserveSize: 8, treeId: "commandant", fusionPoints: 4),
+            deployments: 5, reserveSize: 8, treeId: "commandant", fusionPoints: 4, id: "commandant"),
     };
 }

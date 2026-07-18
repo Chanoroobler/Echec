@@ -14,14 +14,18 @@ namespace Echec.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> = 18).
-    /// v1 = ancienne boucle plate de 6 combats : ces sauvegardes restent LISIBLES (leur
+    /// Version du format. v3 = le commandant choisi (<see cref="CommanderId"/>) et la difficulté
+    /// (<see cref="Difficulty"/>) sont persistés.
+    /// v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> = 18) : ces sauvegardes
+    /// restent LISIBLES — sans id, le commandant est retrouvé par l'asset de sa classe, et la difficulté
+    /// absente vaut Normal.
+    /// v1 = ancienne boucle plate de 6 combats : LISIBLES aussi (leur
     /// <see cref="CombatNumber"/> 1..6 tombe dans 1..18 et pointe désormais vers la nouvelle grille —
     /// combat 6 devient le boss de la PHASE 1, non plus le boss final ; migration acceptée telle quelle).
     /// En revanche un <see cref="CombatNumber"/> hors [1..18] est impossible sous ce format → à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -59,6 +63,15 @@ public sealed class RunSave
     /// </summary>
     public List<string> CommandNodes { get; set; } = new();
 
+    /// <summary>
+    /// Id du commandant choisi à la création (<see cref="CommandeDef.Id"/>). Absent (sauvegarde v2 ou
+    /// antérieure) → retrouvé par l'asset de la classe du commandant dans le roster.
+    /// </summary>
+    public string? CommanderId { get; set; }
+
+    /// <summary>Difficulté choisie à la création, figée pour la run. Absente (vieux save) → Normal.</summary>
+    public Difficulty Difficulty { get; set; } = Difficulty.Normal;
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -71,6 +84,7 @@ public sealed class RunSave
             LegendaryPity = run.LegendaryPity, RarePity = run.RarePity,
             CommandPoints = run.CommandPoints, CommandNodes = run.UnlockedNodes.ToList(),
             Rerolls = run.Rerolls,
+            CommanderId = run.CommanderDef.Id, Difficulty = run.Difficulty,
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -89,7 +103,7 @@ public sealed class RunSave
             .Select(e => e!)
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
-            CommandPoints, CommandNodes, Rerolls);
+            CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty);
     }
 }
 

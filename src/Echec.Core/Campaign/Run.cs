@@ -144,10 +144,21 @@ public sealed class Run
     /// </summary>
     public int RarePity { get; private set; }
 
-    public Run(int? seed = null, bool firstRun = false)
+    /// <summary>
+    /// Niveau de difficulté de CETTE campagne : choisi à la création, figé pour toute la run et persisté
+    /// avec elle. Pilote la précision de l'IA (cf. <see cref="DifficultySettings.AiAccuracy"/>).
+    /// </summary>
+    public Difficulty Difficulty { get; private set; }
+
+    /// <param name="commander">Commandant choisi par le joueur. <c>null</c> → le commandant par défaut.</param>
+    /// <param name="difficulty">Niveau figé pour toute la campagne.</param>
+    public Run(int? seed = null, bool firstRun = false, CommandeDef? commander = null,
+        Difficulty difficulty = Difficulty.Normal)
     {
         Seed = seed ?? new Random().Next();
         FirstRun = firstRun;
+        Difficulty = difficulty;
+        CommanderDef = commander ?? Commandes.Commander;
         Reset();
     }
 
@@ -313,14 +324,16 @@ public sealed class Run
 
     public UnitSpec Commander => _roster.First(u => u.Essential);
 
-    /// <summary>(Re)démarre une campagne : commandant + 2 soldats, combat 1, arbre de commandement vierge.</summary>
+    /// <summary>
+    /// (Re)démarre une campagne : le commandant COURANT (celui choisi à la création — <see cref="Reset"/> n'en
+    /// change pas) et ses pions de départ, combat 1, arbre de commandement vierge.
+    /// </summary>
     public void Reset()
     {
-        CommanderDef = Commandes.Commander;
         _roster.Clear();
         _roster.Add(ToSpec(CommanderDef));
-        _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
-        _roster.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+        foreach (var domaine in CommanderDef.StartingUnits)
+            _roster.Add(new UnitSpec(domaine, Domaines.Of(domaine).BaseClass));
         _draft.Clear();
         _equipment.Clear();
         _unlocked.Clear();
@@ -350,12 +363,13 @@ public sealed class Run
     /// </summary>
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
         IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
-        int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0)
+        int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
+        string? commanderId = null, Difficulty difficulty = Difficulty.Normal)
     {
-        var run = new Run(seed, firstRun);
+        var run = new Run(seed, firstRun, difficulty: difficulty);
         run._roster.Clear();
         run._roster.AddRange(roster);
-        run.CommanderDef = ResolveCommander(roster);
+        run.CommanderDef = ResolveCommander(roster, commanderId);
         run._equipment.Clear();
         if (inventory != null)
             run._equipment.AddRange(inventory);
@@ -375,12 +389,16 @@ public sealed class Run
     }
 
     /// <summary>
-    /// Retrouve la définition du commandant sauvegardé par l'asset de sa classe (repli : le commandant de
-    /// départ). Le roster ne conserve que des <see cref="UnitSpec"/> ; les plafonds et l'arbre vivent, eux,
-    /// sur la <see cref="CommandeDef"/>.
+    /// Retrouve la définition du commandant sauvegardé. On lit d'abord son ID (persisté depuis la v3 de la
+    /// sauvegarde) ; à défaut on retombe sur l'ASSET de sa classe, ce qui couvre les sauvegardes antérieures.
+    /// Dernier repli : le commandant par défaut. Le roster ne conserve que des <see cref="UnitSpec"/> ;
+    /// les plafonds et l'arbre vivent, eux, sur la <see cref="CommandeDef"/>.
     /// </summary>
-    private static CommandeDef ResolveCommander(IReadOnlyList<UnitSpec> roster)
+    private static CommandeDef ResolveCommander(IReadOnlyList<UnitSpec> roster, string? commanderId)
     {
+        if (Commandes.ById(commanderId) is { } byId)
+            return byId;
+
         var asset = roster.FirstOrDefault(u => u.Essential)?.UnitClass.Asset;
         return Commandes.All.FirstOrDefault(c => c.Role == CommandeRole.Commander && c.BaseClass.Asset == asset)
                ?? Commandes.Commander;
@@ -701,7 +719,7 @@ public sealed class Run
 
         var pool = UnlockedDomaines();
         var counts = new Dictionary<UnitClass, int>();   // pour éviter au max plus de 2 fois la même classe
-        foreach (var tier in CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers)
+        foreach (var tier in AdjustTiers(CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers, Difficulty))
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
 
@@ -756,11 +774,58 @@ public sealed class Run
         var counts = new Dictionary<UnitClass, int>();   // éviter au max plus de 2 fois la même classe
         // Tiers FIXÉS par la map (calque « tiers » de l'éditeur, boss/spéciale) s'ils existent, sinon le
         // gabarit de la mission (campaign.json). Cyclés si l'effectif dépasse la liste fournie.
-        var tiers = fixedTiers is { Count: > 0 } ? fixedTiers : CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers;
+        var template = fixedTiers is { Count: > 0 } ? fixedTiers : CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers;
+
+        // On déroule d'ABORD la vague réelle, puis on lui applique la difficulté UNE seule fois. Ajuster le
+        // gabarit avant de le cycler multiplierait le décalage par le nombre de cycles.
+        var tiers = new List<int>(count);
         for (var k = 0; k < count; k++)
-            wave.Add(PickEnemy(rng, pool, tiers[k % tiers.Count], isSeen, counts));
+            tiers.Add(template[k % template.Count]);
+        tiers = AdjustTiers(tiers, Difficulty).ToList();
+
+        foreach (var tier in tiers)
+            wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);
         return wave;
+    }
+
+    /// <summary>Bornes de tier d'un pion (la table de campagne ne sort jamais de 1..3).</summary>
+    private const int MinTier = 1, MaxTier = 3;
+
+    /// <summary>
+    /// Applique la DIFFICULTÉ à la composition en tiers d'une vague. La table de campagne
+    /// (<c>campaign.json</c>) est calée sur <see cref="Difficulty.Normal"/>, qui ne change donc rien ;
+    /// <see cref="Difficulty.Facile"/> RÉTROGRADE un pion du tier le plus haut et
+    /// <see cref="Difficulty.Difficile"/> PROMEUT un pion du tier le plus bas — soit, sur une vague
+    /// <c>{1,1,1,1,2,2,2}</c> : <c>{1,1,1,1,1,2,2}</c> en facile, <c>{1,1,1,2,2,2,2}</c> en difficile.
+    ///
+    /// UN SEUL pion est touché par vague, et l'EFFECTIF ne bouge jamais : réduire le nombre d'ennemis
+    /// serait un levier bien plus fort (il change le rythme des tours et la pression sur le plateau).
+    /// Quand il n'y a rien à faire — tout est déjà au tier 1 en facile, ou au tier 3 en difficile — la
+    /// vague est renvoyée telle quelle : on ne compense pas ailleurs.
+    ///
+    /// Le boss d'une mission n'est PAS concerné : il est ajouté à part, hors de cette liste.
+    /// </summary>
+    public static IReadOnlyList<int> AdjustTiers(IReadOnlyList<int> tiers, Difficulty difficulty)
+    {
+        var shift = DifficultySettings.For(difficulty).TierShift;
+        if (shift == 0 || tiers.Count == 0)
+            return tiers;
+
+        // Facile : on vise le pion le plus FORT (le seul qu'on puisse affaiblir sans passer sous le tier 1).
+        // Difficile : on vise le plus FAIBLE — miroir exact, et ça évite de sortir un T3 dès la phase 1.
+        var target = 0;
+        for (var i = 1; i < tiers.Count; i++)
+            if (shift < 0 ? tiers[i] > tiers[target] : tiers[i] < tiers[target])
+                target = i;
+
+        var shifted = tiers[target] + shift;
+        if (shifted < MinTier || shifted > MaxTier)
+            return tiers;   // déjà au plancher (tout T1) ou au plafond (tout T3)
+
+        var adjusted = tiers.ToList();
+        adjusted[target] = shifted;
+        return adjusted;
     }
 
     /// <summary>Nombre MAX d'exemplaires d'une même classe qu'on cherche à ne pas dépasser dans une vague.</summary>

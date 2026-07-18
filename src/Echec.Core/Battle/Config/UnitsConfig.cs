@@ -52,6 +52,24 @@ public sealed class CommandeConfig
 
     /// <summary>COMMANDANT : points de commandement gagnés à chaque fusion (sa source de gain propre). Absent → 0.</summary>
     public int? FusionPoints { get; set; }
+
+    /// <summary>
+    /// COMMANDANT : identifiant stable, persisté dans la sauvegarde (indépendant du nom et de l'asset).
+    /// Absent → l'asset fait office d'id. Ignoré pour un boss.
+    /// </summary>
+    public string? Id { get; set; }
+
+    /// <summary>
+    /// COMMANDANT : pions de départ, en plus de lui-même — une liste de DOMAINES dont la classe de base est
+    /// recrutée (ex. <c>[ "Dame", "Dame" ]</c> = deux Soldats). Absent → deux Soldats. Liste vide = seul.
+    /// </summary>
+    public List<string>? StartingUnits { get; set; }
+
+    /// <summary>
+    /// COMMANDANT : disponible dès le départ. <c>false</c> = verrouillé (silhouette noire dans le carrousel,
+    /// impossible à lancer). Absent → <c>true</c>. La CONDITION de déblocage n'existe pas encore.
+    /// </summary>
+    public bool? Unlocked { get; set; }
 }
 
 /// <summary>

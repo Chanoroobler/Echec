@@ -37,6 +37,42 @@ mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES?
 mainmenu.reset_meta_desc1,TOUTES LES UNITES DECOUVERTES SERONT OUBLIEES,ALL DISCOVERED UNITS WILL BE FORGOTTEN
 mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOLUTIONS BECOME SHADOWS AGAIN WHEN FUSING
 mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED)
+# ── Selection du commandant (creation d'une nouvelle partie) ────────────────
+# Nom affiche d'un commandant : cle commander.<id> (repli sur le nom de units.json)
+commander.commandant,COMMANDANT,COMMANDER
+commander.brute,BRUTE,BRUTE
+commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER
+commander.starting_units,PIONS DE DEPART,STARTING PAWNS
+# Remplace le titre des pions de depart quand le commandant n'est pas encore debloque
+commander.locked,COMMANDANT NON DEBLOQUE,COMMANDER NOT UNLOCKED
+commander.alone,AUCUN : IL COMMENCE SEUL,NONE: STARTS ALONE
+commander.points,GAIN DE POINT DE COMMANDE,COMMAND POINT GAIN
+commander.points_mission,+{0} DE POINTS PAR MISSION REUSSIE,+{0} POINTS PER MISSION WON
+commander.points_fusion,+{0} DE POINTS PAR FUSION REALISEE,+{0} POINTS PER FUSION
+commander.stats,STATS,STATS
+commander.army,ARMEE,ARMY
+commander.deploy,DEPLOIEMENT,DEPLOYMENT
+commander.reserve,RESERVE,RESERVE
+commander.index,{0} / {1},{0} / {1}
+commander.tree,ARBRE DE COMPETENCE,SKILL TREE
+# Niveaux de difficulte affiches en BOUTONS numerotes (0/1/2) ; le nom et l'effet sortent au survol
+difficulty.level_0,0,0
+difficulty.level_1,1,1
+difficulty.level_2,2,2
+commander.start,LANCER,START
+commander.back,RETOUR,BACK
+commander.hint,ECHAP POUR REVENIR,ESC TO GO BACK
+commander.hint_gp,A CHOISIR   B RETOUR   LB/RB COMMANDANT,A SELECT   B BACK   LB/RB COMMANDER
+difficulty.label,DIFFICULTE,DIFFICULTY
+difficulty.facile,FACILE,EASY
+difficulty.normal,NORMAL,NORMAL
+difficulty.difficile,DIFFICILE,HARD
+# Corps d'infobulle : des PHRASES (preserveCase), donc minuscules accentuees et majuscule d'attaque
+difficulty.desc,IA optimale {0}% du temps,AI plays the best move {0}% of the time
+# Affiche sur un niveau dont les vagues sont plus fortes que celles du niveau precedent ; la variante
+# « again » sert des qu'un niveau inferieur renforcait deja les vagues
+difficulty.more_evolved,Plus d'ennemis évolués,More evolved enemies
+difficulty.more_evolved_again,Encore plus d'ennemis évolués,Even more evolved enemies
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}

@@ -45,9 +45,17 @@ public static class DomaineCatalog
         if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
             throw new InvalidOperationException($"Domaine de mouvement inconnu pour la commande '{c.Name}' : '{c.Domaine}'.");
 
+        IReadOnlyList<Domaine>? starting = null;
+        if (c.StartingUnits is { } list)
+            starting = list.Select(d => Enum.TryParse<Domaine>(d, ignoreCase: true, out var sd)
+                ? sd
+                : throw new InvalidOperationException(
+                    $"Domaine de pion de départ inconnu pour le commandant '{c.Name}' : '{d}'.")).ToList();
+
         return new CommandeDef(CommandeRole.Commander, domaine,
             new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange),
-            c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0);
+            c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
+            c.Id, starting, c.Unlocked ?? true);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

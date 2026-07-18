@@ -108,8 +108,11 @@ public sealed class CommandTreeView
     /// <summary>
     /// <paramref name="canClose"/> faux (tutoriel) : le bouton FERMER et B sont inertes tant que le joueur
     /// n'a pas acheté son nœud — le guide referme l'arbre lui-même.
+    /// <paramref name="readOnly"/> vrai (CONSULTATION, ex. écran de sélection du commandant avant la partie) :
+    /// on peut naviguer et lire les infobulles, mais aucun achat n'est tenté — pas même le retour sonore de
+    /// refus. La <see cref="Run"/> passée peut alors n'être qu'une run d'aperçu servant à porter l'arbre.
     /// </summary>
-    public bool Update(Run run, Rectangle area, float dt, bool canClose = true)
+    public bool Update(Run run, Rectangle area, float dt, bool canClose = true, bool readOnly = false)
     {
         _pulse += dt;
         Layout(run.Tree, area);
@@ -126,7 +129,7 @@ public sealed class CommandTreeView
                     Close();
                     return false;
                 }
-                if (FocusedNode(run.Tree) is { } focused)
+                if (!readOnly && FocusedNode(run.Tree) is { } focused)
                     TryUnlock(run, focused);
             }
             return true;
@@ -141,7 +144,7 @@ public sealed class CommandTreeView
                 Close();
                 return false;
             }
-            if (NodeAt(run.Tree, mouse) is { } clicked)
+            if (!readOnly && NodeAt(run.Tree, mouse) is { } clicked)
                 TryUnlock(run, clicked);
         }
         return true;
