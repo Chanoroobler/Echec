@@ -67,12 +67,19 @@ difficulty.label,DIFFICULTE,DIFFICULTY
 difficulty.facile,FACILE,EASY
 difficulty.normal,NORMAL,NORMAL
 difficulty.difficile,DIFFICILE,HARD
-# Corps d'infobulle : des PHRASES (preserveCase), donc minuscules accentuees et majuscule d'attaque
-difficulty.desc,IA optimale {0}% du temps,AI plays the best move {0}% of the time
+# Corps d'infobulle : des PHRASES (preserveCase), donc minuscules accentuees et majuscule d'attaque.
+# Chaque ligne dit ce qui CHANGE par rapport au niveau du dessous ; le niveau le plus bas se decrit lui-meme.
+# Pas de chiffres : le joueur compare des paliers, il n'a pas a lire un pourcentage.
+difficulty.ai_low,L'IA fait beaucoup d'erreurs,The AI makes many mistakes
+difficulty.ai_fewer,L'IA fait moins d'erreurs,The AI makes fewer mistakes
+difficulty.ai_fewer_again,L'IA fait encore moins d'erreurs,The AI makes even fewer mistakes
 # Affiche sur un niveau dont les vagues sont plus fortes que celles du niveau precedent ; la variante
 # « again » sert des qu'un niveau inferieur renforcait deja les vagues
 difficulty.more_evolved,Plus d'ennemis évolués,More evolved enemies
 difficulty.more_evolved_again,Encore plus d'ennemis évolués,Even more evolved enemies
+# Idem pour l'equipement porte par les ennemis : « again » des qu'un niveau inferieur en donnait deja
+difficulty.equipped,Ennemis parfois équipés,Enemies sometimes equipped
+difficulty.equipped_again,Ennemis souvent équipés,Enemies often equipped
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}

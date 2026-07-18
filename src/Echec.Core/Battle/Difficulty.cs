@@ -31,16 +31,25 @@ public enum Difficulty
 /// seule la composition en tiers bouge. La table de campagne (campaign.json) est calée sur Normal.
 /// Cf. <see cref="Campaign.Run.AdjustTiers"/>.
 /// </param>
-public sealed record DifficultySettings(double AiAccuracy, int TierShift)
+/// <param name="EnemyEquipBonus">
+/// Pions ennemis ÉQUIPÉS par vague, en écart au barème de base de la phase (cf.
+/// <see cref="Campaign.Run.EnemyEquipCount"/>) : <c>0</c> = le barème tel quel, <c>+1</c> = un porteur de
+/// plus. <c>null</c> = AUCUN ennemi équipé, quel que soit le barème. Le boss n'est jamais concerné (il est
+/// <c>Essential</c>, comme le commandant du joueur).
+/// </param>
+public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus)
 {
-    /// <summary>IA maladroite (1 coup sur 2 raté) et une vague affaiblie d'un tier.</summary>
-    public static readonly DifficultySettings Facile = new(AiAccuracy: 0.50, TierShift: -1);
+    /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé.</summary>
+    public static readonly DifficultySettings Facile =
+        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null);
 
-    /// <summary>Défaut : l'IA rate un coup sur quatre, la vague est celle de la table telle quelle.</summary>
-    public static readonly DifficultySettings Normal = new(AiAccuracy: 0.75, TierShift: 0);
+    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, barème d'équipement de base.</summary>
+    public static readonly DifficultySettings Normal =
+        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0);
 
-    /// <summary>Jeu parfait, et une vague renforcée d'un tier.</summary>
-    public static readonly DifficultySettings Difficile = new(AiAccuracy: 1.00, TierShift: +1);
+    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus.</summary>
+    public static readonly DifficultySettings Difficile =
+        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1);
 
     /// <summary>Tous les niveaux, dans l'ordre croissant : c'est l'ordre du sélecteur de l'écran de sélection.</summary>
     public static readonly IReadOnlyList<Difficulty> AllLevels =

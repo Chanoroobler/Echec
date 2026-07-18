@@ -710,24 +710,32 @@ public sealed class CommanderSelectScene : Scene
     /// </summary>
     private void DrawDifficultyTooltip(SpriteBatch sb, int level, Rectangle anchor, Rectangle bounds)
     {
-        const int pad = 8, lineH = 11;
+        // Trois modifications empilées se lisaient comme un pavé : un tiret par ligne et un interligne plus
+        // large en font une LISTE, qu'on parcourt d'un coup d'œil.
+        const int pad = 8, lineH = 13, bullet = 10;
         var difficulty = DifficultySettings.AllLevels[level];
         var title = DifficultyName(difficulty);
 
+        // L'IA : même grammaire que les autres leviers — on dit ce qui CHANGE par rapport au palier du
+        // dessous. Le niveau le plus bas n'a rien en dessous, il se décrit donc lui-même.
         var lines = new List<string>
         {
-            Loc.T("difficulty.desc", (int)Math.Round(DifficultySettings.For(difficulty).AiAccuracy * 100)),
+            Loc.T(!SharperAi(level) ? "difficulty.ai_low"
+                : SharperAi(level - 1) ? "difficulty.ai_fewer_again"
+                : "difficulty.ai_fewer"),
         };
-        // « Encore plus » dès qu'un niveau INFÉRIEUR renforçait déjà les vagues : c'est un cran de plus sur
-        // une échelle qui monte, pas un premier palier.
+        // « Encore plus » dès qu'un niveau INFÉRIEUR faisait déjà monter le même levier : c'est un cran de
+        // plus sur une échelle qui monte, pas un premier palier.
         if (RaisesWaves(level))
             lines.Add(Loc.T(RaisesWaves(level - 1) ? "difficulty.more_evolved_again" : "difficulty.more_evolved"));
+        if (EquipsEnemies(level))
+            lines.Add(Loc.T(EquipsEnemies(level - 1) ? "difficulty.equipped_again" : "difficulty.equipped"));
 
         var w = Context.Font.Measure(title, 2);
         foreach (var line in lines)
-            w = Math.Max(w, Context.Font.Measure(line, 1));
+            w = Math.Max(w, bullet + Context.Font.Measure(line, 1));
         w += 2 * pad;
-        var h = pad + 16 + 4 + lines.Count * lineH + pad;
+        var h = pad + 16 + 6 + lines.Count * lineH + pad;
 
         var x = Math.Clamp(anchor.Center.X - w / 2, bounds.X, Math.Max(bounds.X, bounds.Right - w));
         // Au-DESSUS du bouton : la barre de difficulté est déjà en bas de l'écran.
@@ -736,12 +744,14 @@ public sealed class CommanderSelectScene : Scene
         var box = new Rectangle(x, y, w, h);
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, title, new Vector2(box.X + pad, box.Y + pad), 2, DifficultyColor(difficulty));
-        var ty = box.Y + pad + 20;
+        var ty = box.Y + pad + 22;
         foreach (var line in lines)
         {
             // preserveCase : ce sont des PHRASES, pas des libellés d'UI — et la police ne dessine les
             // accents QU'EN MINUSCULES (en capitales, « é » retombe sur « E »).
-            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ty), 1, Palette.Blue1, preserveCase: true);
+            Context.Font.Draw(sb, "-", new Vector2(box.X + pad, ty), 1, Palette.Yellow1);
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad + bullet, ty), 1, Palette.White,
+                preserveCase: true);
             ty += lineH;
         }
     }
@@ -751,10 +761,22 @@ public sealed class CommanderSelectScene : Scene
     /// Comparé au PRÉCÉDENT et non à Normal : la mention reste juste si d'autres niveaux s'ajoutent plus
     /// tard. Le niveau le plus bas n'a rien sous lui, donc rien à annoncer.
     /// </summary>
+    /// <summary>Vrai si l'IA de <paramref name="level"/> se trompe moins que celle du niveau juste en dessous.</summary>
+    private static bool SharperAi(int level) =>
+        Climbs(level, s => s.AiAccuracy);
+
     private static bool RaisesWaves(int level) =>
+        Climbs(level, s => s.TierShift);
+
+    /// <summary>Vrai si <paramref name="level"/> équipe plus d'ennemis que le niveau juste en dessous.</summary>
+    private static bool EquipsEnemies(int level) =>
+        Climbs(level, s => s.EnemyEquipBonus ?? -1);   // null (aucun équipement) se classe sous tous les autres
+
+    /// <summary>Vrai si un levier de difficulté MONTE entre le niveau précédent et celui-ci.</summary>
+    private static bool Climbs(int level, Func<DifficultySettings, double> lever) =>
         level > 0 && level < DifficultySettings.AllLevels.Count
-        && DifficultySettings.For(DifficultySettings.AllLevels[level]).TierShift
-         > DifficultySettings.For(DifficultySettings.AllLevels[level - 1]).TierShift;
+        && lever(DifficultySettings.For(DifficultySettings.AllLevels[level]))
+         > lever(DifficultySettings.For(DifficultySettings.AllLevels[level - 1]));
 
     /// <summary>Index du focusable courant (manette), ou -1.</summary>
     private int FocusData() => _focus < _focusables.Count ? _focusables[_focus].Data : -1;

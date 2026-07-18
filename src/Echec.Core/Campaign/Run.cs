@@ -498,6 +498,75 @@ public sealed class Run
         return null;
     }
 
+    /// <summary>Pions ennemis ÉQUIPÉS par vague en difficulté NORMALE, par phase (index 0..2 = phase 1..3).</summary>
+    private static readonly int[] EnemyEquipByPhase = { 1, 3, 3 };
+
+    /// <summary>
+    /// Combats du DÉBUT de campagne sans aucun ennemi équipé : le joueur découvre d'abord le jeu nu.
+    /// </summary>
+    private const int NoEquipCombats = 2;
+
+    /// <summary>
+    /// Nombre EXACT de pions ennemis équipés dans la vague courante : le barème de la phase
+    /// (<see cref="EnemyEquipByPhase"/>) décalé par la difficulté
+    /// (<see cref="DifficultySettings.EnemyEquipBonus"/>). Zéro en facile, et zéro sur les
+    /// <see cref="NoEquipCombats"/> premiers combats quelle que soit la difficulté.
+    /// </summary>
+    public int EnemyEquipCount()
+    {
+        if (DifficultySettings.For(Difficulty).EnemyEquipBonus is not { } bonus)
+            return 0;
+        if (CombatNumber <= NoEquipCombats)
+            return 0;
+
+        var phase = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
+        return Math.Max(0, EnemyEquipByPhase[phase] + bonus);
+    }
+
+    /// <summary>
+    /// ÉQUIPE exactement <see cref="EnemyEquipCount"/> pions de la vague, tirés au sort sans doublon (et
+    /// plafonnés à l'effectif disponible). Le BOSS est épargné : il est <c>Essential</c>, comme le
+    /// commandant du joueur que <see cref="CanEquip"/> refuse d'équiper — d'où l'appel AVANT son insertion
+    /// en tête de vague.
+    ///
+    /// Le tirage utilise un SEL de RNG propre (3) : il reste déterministe — reprendre la partie régénère la
+    /// même vague avec le même équipement, sans rien ajouter à la sauvegarde — tout en ne décalant ni le
+    /// terrain (sel 0), ni la composition de la vague (sel 1), ni l'ordre des cases (sel 2).
+    /// </summary>
+    private void EquipEnemies(List<UnitSpec> wave)
+    {
+        var carriers = wave.Where(s => !s.Essential).ToList();
+        var count = Math.Min(EnemyEquipCount(), carriers.Count);
+        if (count <= 0)
+            return;
+
+        var rng = CombatRng(3);
+        Shuffle(carriers, rng);   // qui porte l'objet est aléatoire ; COMBIEN en portent ne l'est pas
+        for (var i = 0; i < count; i++)
+            carriers[i].Equipment = RollEnemyEquipment(rng);
+    }
+
+    /// <summary>
+    /// Équipement d'UN pion ennemi : COMMUN ou RARE, jamais légendaire — un légendaire sur un ennemi de
+    /// passage serait hors de proportion. La chance « rare » de la phase départage les deux, donc la menace
+    /// monte avec la campagne. Deux différences avec <see cref="RollChestEquipment"/> : la « PITIÉ » n'est
+    /// ni lue ni modifiée (elle appartient aux coffres du joueur — la toucher ici fausserait ses drops), et
+    /// l'anti-doublon ne s'applique pas (il compte ce que le JOUEUR possède). Repli sur le commun si le pool
+    /// rare est vide.
+    /// </summary>
+    private Equipment? RollEnemyEquipment(Random rng)
+    {
+        var phase = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
+        var rarity = rng.NextDouble() * 100.0 < RareChanceByPhase[phase]
+            ? EquipmentRarity.Rare
+            : EquipmentRarity.Common;
+
+        for (var r = (int)rarity; r >= 0; r--)
+            if (Equipments.Roll((EquipmentRarity)r, rng) is { } item)
+                return item;
+        return null;
+    }
+
     /// <summary>Nombre d'exemplaires de chaque équipement POSSÉDÉ (inventaire + posés sur les pions), par id.</summary>
     private Dictionary<string, int> OwnedEquipmentCounts()
     {
@@ -722,6 +791,7 @@ public sealed class Run
         foreach (var tier in AdjustTiers(CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers, Difficulty))
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
+        EquipEnemies(wave);   // AVANT l'insertion du boss : lui n'est jamais équipé
 
         // Mission boss : le boss ASSIGNÉ à la phase courante est placé EN TÊTE (la scène le pose en premier).
         // Cf. BossSpecFor / BossOfPhase (tirage déterministe de 3 boss distincts par run).
@@ -786,6 +856,7 @@ public sealed class Run
         foreach (var tier in tiers)
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);
+        EquipEnemies(wave);   // le boss est ajouté par l'appelant APRÈS : il n'est jamais équipé
         return wave;
     }
 

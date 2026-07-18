@@ -5127,6 +5127,7 @@ public sealed class GameplayScene : Scene
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
+                DrawEnemyEquipBadges(sb, board);         // objets ennemis visibles DÈS le placement : ça se prépare
                 if (_equipPhase)
                 {
                     DrawEquipBadgesPlacement(sb, board); // icône au-dessus de la tête (UNIQUEMENT en phase Équipement)
@@ -5190,6 +5191,7 @@ public sealed class GameplayScene : Scene
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
+                DrawEnemyEquipBadges(sb, board);         // icône de l'objet porté par un ennemi
                 DrawAllyThreatIcons(sb, board);          // « ! » au-dessus des alliés à portée d'un ennemi
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
@@ -7170,6 +7172,18 @@ public sealed class GameplayScene : Scene
                 continue;
             DrawEquipBadge(sb, layout, cell, e);
         }
+    }
+
+    /// <summary>
+    /// Icône d'équipement au-dessus des pions ENNEMIS qui en portent un (difficulté ≥ 1). Volontairement
+    /// SANS le fond de slot du badge joueur : ce fond signale une cible de dépose, or rien ne se dépose sur
+    /// un ennemi. Ici c'est purement informatif — savoir quel pion frappe plus fort avant de l'engager.
+    /// </summary>
+    private void DrawEnemyEquipBadges(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var (cell, unit) in _match.Units())
+            if (unit.Faction == Faction.Enemy && unit.Equipment is { } e)
+                DrawEquipIcon(sb, e, EquipBadgeRect(cell, layout));
     }
 
     private void DrawEquipBadge(SpriteBatch sb, GridLayout layout, Cell cell, Equipment equip)

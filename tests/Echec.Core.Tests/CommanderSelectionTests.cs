@@ -4,6 +4,7 @@ using System.Linq;
 using Echec.Core.Battle;
 using Echec.Core.Battle.Config;
 using Echec.Core.Campaign;
+using Echec.Core.Equip;
 using Xunit;
 
 namespace Echec.Core.Tests;
@@ -258,8 +259,8 @@ public class CommanderSelectionTests
     /// <summary>Composition FIXÉE dans l'éditeur de map : la référence, calée sur Normal.</summary>
     private static readonly int[] DrawnTiers = { 1, 1, 2, 2, 2, 2 };
 
-    private static Run RunAt(int combat, Difficulty difficulty) =>
-        Run.Restore(new Run(seed: 1).Roster.ToList(), combatNumber: combat, seed: 1, firstRun: false,
+    private static Run RunAt(int combat, Difficulty difficulty, int seed = 1) =>
+        Run.Restore(new Run(seed: seed).Roster.ToList(), combatNumber: combat, seed: seed, firstRun: false,
             difficulty: difficulty);
 
     private static (int T1, int T2) Count(IEnumerable<UnitSpec> units)
@@ -306,6 +307,83 @@ public class CommanderSelectionTests
             Assert.Equal(bosses[0].MaxHp, b.MaxHp);
             Assert.Equal(bosses[0].Damage, b.Damage);
         });
+    }
+
+    // ── Difficulté : équipement des pions ennemis ────────────────────────────────
+
+    private static int Equipped(int combat, Difficulty difficulty, int seed = 1) =>
+        RunAt(combat, difficulty, seed).BuildEnemyWave().Count(u => u.Equipment != null);
+
+    [Theory]
+    // Le nombre d'équipés est EXACT, pas probabiliste : phase 1 → 1, phases 2-3 → 3, +1 en difficile.
+    [InlineData(3, Difficulty.Facile, 0)]      // facile : jamais d'équipement
+    [InlineData(3, Difficulty.Normal, 1)]      // phase 1
+    [InlineData(3, Difficulty.Difficile, 2)]
+    [InlineData(7, Difficulty.Normal, 3)]      // phase 2
+    [InlineData(7, Difficulty.Difficile, 4)]
+    [InlineData(13, Difficulty.Normal, 3)]     // phase 3
+    [InlineData(13, Difficulty.Difficile, 4)]
+    public void EnemyEquipment_ExactCountPerPhaseAndDifficulty(int combat, Difficulty difficulty, int expected)
+    {
+        // Même nombre quelle que soit la graine : seul le PORTEUR et l'OBJET sont tirés au sort.
+        for (var seed = 1; seed <= 15; seed++)
+            Assert.Equal(expected, Equipped(combat, difficulty, seed));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void EnemyEquipment_NoneOnTheFirstTwoCombats(int combat)
+    {
+        // Montée en douceur : le joueur découvre le jeu nu, même en difficile.
+        foreach (var difficulty in DifficultySettings.AllLevels)
+            for (var seed = 1; seed <= 10; seed++)
+                Assert.Equal(0, Equipped(combat, difficulty, seed));
+    }
+
+    [Fact]
+    public void EnemyEquipment_IsNeverLegendary()
+    {
+        // Un légendaire sur un ennemi de passage serait hors de proportion : commun ou rare seulement.
+        for (var combat = 3; combat <= 18; combat++)
+            for (var seed = 1; seed <= 10; seed++)
+                Assert.All(RunAt(combat, Difficulty.Difficile, seed).BuildEnemyWave(),
+                    u => Assert.NotEqual(EquipmentRarity.Legendary, u.Equipment?.Rarity ?? EquipmentRarity.Common));
+    }
+
+    [Fact]
+    public void EnemyEquipment_BossIsNeverEquipped()
+    {
+        // Le boss est Essential, comme le commandant du joueur que Run.CanEquip refuse d'équiper.
+        for (var seed = 1; seed <= 20; seed++)
+        {
+            var wave = RunAt(6, Difficulty.Difficile, seed)
+                .BuildBossEnemyWave(DrawnTiers.Length, fixedTiers: DrawnTiers);
+
+            Assert.Null(wave[0].Equipment);   // le boss est inséré EN TÊTE
+        }
+    }
+
+    [Fact]
+    public void EnemyEquipment_SameSeed_GivesTheSameWave()
+    {
+        // La vague n'est pas sauvegardée : elle est REGÉNÉRÉE depuis la graine. Reprendre une partie doit
+        // donc rendre exactement les mêmes ennemis avec les mêmes objets.
+        var first = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipment?.Id).ToList();
+        var second = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipment?.Id).ToList();
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void EnemyEquipment_DoesNotDisturbWaveComposition()
+    {
+        // Le tirage d'équipement a son PROPRE sel de RNG : il ne doit décaler ni l'effectif ni les tiers.
+        var wave = RunAt(7, Difficulty.Normal).BuildEnemyWave();
+
+        Assert.Equal(7, wave.Count);
+        Assert.Equal(4, wave.Count(u => u.UnitClass.Tier == 1));
+        Assert.Equal(3, wave.Count(u => u.UnitClass.Tier == 2));
     }
 
     [Fact]
