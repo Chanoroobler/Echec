@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework;
 namespace Echec.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, Codex, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged }
+public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -20,7 +20,7 @@ public enum MenuPanel { Root, Options }
 public enum PauseElement
 {
     None,
-    Resume, Codex, Options, MainMenu, Quit,
+    Resume, Codex, Options, Restart, MainMenu, Quit,
     ResLeft, ResRight, ModeLeft, ModeRight,
     MasterLeft, MasterRight,
     MusicLeft, MusicRight,
@@ -38,7 +38,7 @@ public struct PauseLayout
     public Rectangle Panel;
     public Rectangle Title;
     // Racine
-    public Rectangle Resume, Codex, Options, MainMenu, Quit;
+    public Rectangle Resume, Codex, Options, Restart, MainMenu, Quit;
     // Options : lignes (label à gauche, contrôle à droite)
     public Rectangle ResRow, ResLeft, ResValue, ResRight;
     public Rectangle ModeRow, ModeLeft, ModeValue, ModeRight;
@@ -112,7 +112,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? 5 : 7;
+    private int FocusCount => Panel == MenuPanel.Root ? RootButtons : 7;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -124,7 +124,10 @@ public sealed class PauseMenu
     {
         var l = Layout(vpW, vpH);
         if (Panel == MenuPanel.Root)
-            return _focus switch { 0 => l.Resume, 1 => l.Codex, 2 => l.Options, 3 => l.MainMenu, _ => l.Quit };
+            return _focus switch
+            {
+                0 => l.Resume, 1 => l.Codex, 2 => l.Options, 3 => l.Restart, 4 => l.MainMenu, _ => l.Quit,
+            };
         return _focus switch
         {
             0 => l.ResRow, 1 => l.ModeRow,
@@ -141,7 +144,8 @@ public sealed class PauseMenu
                 0 => CloseReturning(MenuAction.Resume),
                 1 => MenuAction.Codex,          // ouvre le codex par-dessus, sans fermer la pause
                 2 => OpenOptionsPanel(),
-                3 => CloseReturning(MenuAction.MainMenu),
+                3 => CloseReturning(MenuAction.RestartMission),
+                4 => CloseReturning(MenuAction.MainMenu),
                 _ => MenuAction.Quit,
             };
         return _focus switch
@@ -198,9 +202,12 @@ public sealed class PauseMenu
     public PauseLayout Layout(int vpW, int vpH)
         => Panel == MenuPanel.Root ? RootLayout(vpW, vpH) : OptionsLayout(vpW, vpH);
 
+    /// <summary>Nombre de boutons de la racine — source unique pour la hauteur du panneau ET le focus.</summary>
+    private const int RootButtons = 6;
+
     private PauseLayout RootLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (5 * BtnH + 4 * Gap) + Pad;
+        int h = Pad + TitleH + Gap + (RootButtons * BtnH + (RootButtons - 1) * Gap) + Pad;
         var panel = Centered(vpW, vpH, RootW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -212,6 +219,8 @@ public sealed class PauseMenu
         l.Resume = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.Codex = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.Options = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
+        // Recommencer est groupé avec « Menu principal » : ce sont les deux sorties de la mission en cours.
+        l.Restart = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.MainMenu = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
         l.Quit = new Rectangle(bx, y, bw, BtnH);
         return l;
@@ -277,6 +286,7 @@ public sealed class PauseMenu
         if (l.Resume.Contains(p)) { Close(); return MenuAction.Resume; }
         if (l.Codex.Contains(p)) return MenuAction.Codex;   // ouvre le codex ; la pause reste ouverte derrière
         if (l.Options.Contains(p)) { Panel = MenuPanel.Options; _focus = 0; return MenuAction.None; }
+        if (l.Restart.Contains(p)) { Close(); return MenuAction.RestartMission; }
         if (l.MainMenu.Contains(p)) { Close(); return MenuAction.MainMenu; }
         if (l.Quit.Contains(p)) return MenuAction.Quit;
         return MenuAction.None;
@@ -316,6 +326,7 @@ public sealed class PauseMenu
             if (l.Resume.Contains(p)) return PauseElement.Resume;
             if (l.Codex.Contains(p)) return PauseElement.Codex;
             if (l.Options.Contains(p)) return PauseElement.Options;
+            if (l.Restart.Contains(p)) return PauseElement.Restart;
             if (l.MainMenu.Contains(p)) return PauseElement.MainMenu;
             if (l.Quit.Contains(p)) return PauseElement.Quit;
             return PauseElement.None;

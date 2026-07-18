@@ -990,7 +990,36 @@ public sealed class GameplayScene : Scene
         // plein combat — on reprend toujours proprement au placement du combat courant. L'instantané
         // (RunSave.From) est pris ICI, sur le thread de jeu ; l'écriture disque part en arrière-plan pour
         // ne pas figer la frame où démarre l'émergence des tuiles (cf. SaveSlotAsync).
-        Context.Saves.SaveSlotAsync(_saveSlot, RunSave.From(_run));
+        // Le MÊME instantané sert à « Recommencer » (menu pause). Il est pris ici et nulle part ailleurs,
+        // exactement comme la sauvegarde : c'est l'état d'ENTRÉE dans la mission, avant tout placement,
+        // équipement, déplacement ou perte. On le garde en mémoire plutôt que de relire le disque — pas de
+        // course avec l'écriture asynchrone, et ça marche même si le slot n'a pas encore été écrit.
+        var snapshot = RunSave.From(_run);
+        _missionStart = snapshot;
+        Context.Saves.SaveSlotAsync(_saveSlot, snapshot);
+    }
+
+    /// <summary>
+    /// État de la run à l'ENTRÉE de la mission courante, pour « Recommencer ». Null tant qu'aucune phase de
+    /// placement n'a eu lieu (tutoriel) : l'option est alors sans effet.
+    /// </summary>
+    private RunSave? _missionStart;
+
+    /// <summary>
+    /// Rejoue la mission courante depuis son état d'entrée : on reconstruit la scène avec une run neuve
+    /// issue de <see cref="_missionStart"/>. Terrain, vague ennemie et équipement ennemi sont regénérés à
+    /// l'identique (tout dérive de la graine), et les pions tombés sont de retour puisque les pertes ne sont
+    /// appliquées à la run qu'à la fin d'un combat gagné.
+    /// </summary>
+    private void RestartMission()
+    {
+        if (_missionStart is not { } start)
+            return;   // tutoriel : aucune phase de placement n'a eu lieu, rien à rejouer
+        // Uniquement TANT QU'ON Y EST : en recrutement, la mission est déjà gagnée et « recommencer »
+        // annulerait la victoire — ce serait ressenti comme un bug plutôt que comme un choix.
+        if (_run.Phase is not (RunPhase.Placement or RunPhase.Battle))
+            return;
+        Context.Scenes.Change(new GameplayScene(Context, _saveSlot, start.ToRun()));
     }
 
     /// <summary>
@@ -9417,6 +9446,9 @@ public sealed class GameplayScene : Scene
             case MenuAction.Codex:
                 // Ouvre le codex PAR-DESSUS le menu pause (qui reste ouvert derrière) ; sa fermeture y ramène.
                 _codex.Open();
+                break;
+            case MenuAction.RestartMission:
+                RestartMission();
                 break;
             case MenuAction.MainMenu:
                 // La progression est déjà sauvegardée (phase de placement) : on peut quitter vers

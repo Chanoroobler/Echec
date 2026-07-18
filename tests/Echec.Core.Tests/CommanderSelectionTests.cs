@@ -387,6 +387,21 @@ public class CommanderSelectionTests
     }
 
     [Fact]
+    public void MissionSnapshot_SurvivesLosses_SoRestartBringsPawnsBack()
+    {
+        // « Recommencer » (menu pause) rejoue l'instantané pris à l'ENTRÉE de la mission. Il doit rester
+        // intact quoi qu'il arrive ensuite à la run vivante — c'est ce qui ramène les pions tombés.
+        var run = new Run(seed: 1);                       // commandant + 2 soldats
+        var snapshot = RunSave.From(run);
+        var victim = run.Roster.First(u => !u.Essential);
+
+        run.CompleteCombat(new[] { victim }, System.Array.Empty<UnitSpec>());
+
+        Assert.Equal(2, run.Roster.Count);                // la perte est bien appliquée à la run vivante
+        Assert.Equal(3, snapshot.ToRun().Roster.Count);   // l'instantané, lui, garde l'effectif d'origine
+    }
+
+    [Fact]
     public void ById_IsCaseInsensitive_AndNullForUnknown()
     {
         WithCommanders(new[] { Def("brute", "Commandant_brute") }, () =>

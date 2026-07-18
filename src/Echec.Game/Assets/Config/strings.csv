@@ -10,6 +10,7 @@ menu.pause,PAUSE,PAUSE
 menu.resume,REPRENDRE,RESUME
 menu.codex,CODEX,CODEX
 menu.options,OPTIONS,OPTIONS
+menu.restart,RECOMMENCER,RESTART
 menu.main_menu,MENU PRINCIPAL,MAIN MENU
 menu.quit,QUITTER,QUIT
 # ── Options ─────────────────────────────────────────────────────────────────
