@@ -114,6 +114,16 @@ public sealed class GameplayScene : Scene
     private bool _specialMission;              // vrai si le combat courant est une vraie mission spéciale
     private SpecialObjective _specialObjective = SpecialObjective.Aucun;   // sous-objectif de la map courante
     private int _specialRoundsLeft;            // rounds restants (décrémenté à chaque action ennemie résolue)
+    private bool _specialBriefOpen;            // modale de briefing ouverte : gèle le placement jusqu'au clic / A
+
+    /// <summary>
+    /// Chiffres d'une mission spéciale FIGÉS à sa clôture (avant que la complétion ne retire les pertes du
+    /// roster), affichés par la modale de bilan avant l'écran de récupération des pions.
+    /// </summary>
+    private readonly record struct SpecialRecap(
+        bool Protect, int Paysans, int PaysansTotal, int Turns, int TurnBudget, int Losses);
+
+    private SpecialRecap? _specialRecap;       // bilan à valider ; non-null = modale ouverte (gèle le recrutement)
 
     // Écran de récompense « protéger » (post-combat) : les pions gagnés (1 par paysan sauvé) sont affichés
     // en cartes ; un clic les envoie TOUS en réserve (pas de draft « choisir 1 parmi 3 »). Non-null = actif.
@@ -828,6 +838,7 @@ public sealed class GameplayScene : Scene
     {
         _protectReward = null;   // écran de récompense « protéger » du combat précédent : soldé
         _protectRewardFlight = 0f;
+        _specialRecap = null;    // bilan de la mission précédente : soldé
         _reserveSel = null;
         _reserveFuseChoice = false;
         _reserveZone = false;
@@ -877,6 +888,9 @@ public sealed class GameplayScene : Scene
         var playerBlocked = IsProtectMission ? _recrueCells : null;
         _match = new Match(Columns, Rows, _battlefield, _bushCells,
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
+        // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
+        // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
+        _specialBriefOpen = _specialMission;
 
         // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
         _boardIntro = 0f;
@@ -1648,9 +1662,9 @@ public sealed class GameplayScene : Scene
 
         // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau, et pas pendant
         // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
-        // Caméra gelée derrière un modal de placement (popup de fusion / animation d'évolution).
+        // Caméra gelée derrière un modal de placement (briefing / popup de fusion / animation d'évolution).
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0
-            && !FusionOpen && !EvoPlaying)
+            && !FusionOpen && !EvoPlaying && !_specialBriefOpen)
             UpdateCamera(gameTime);
 
         switch (_run.Phase)
@@ -1687,6 +1701,17 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlacement(GameTime gameTime)
     {
+        // Briefing de mission spéciale : modale d'ouverture qui gèle toute la préparation jusqu'au clic / A.
+        if (_specialBriefOpen)
+        {
+            if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+            {
+                _specialBriefOpen = false;
+                Context.Sounds.Play("menu_close");
+            }
+            return;
+        }
+
         // Tuto, PRÉPARATION guidée : ces étapes pilotent elles-mêmes les modales (sous-phase Équipement,
         // arbre de commandement) et doivent donc être évaluées AVANT les retours anticipés ci-dessous.
         if (_tutorial is { InPreparation: true })
@@ -3856,12 +3881,18 @@ public sealed class GameplayScene : Scene
 
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
 
+            // Bilan FIGÉ ici : la complétion va retirer les pertes du roster (permadeath) et remettre le
+            // compteur de tours à zéro au combat suivant. Modale à valider avant la récupération des pions.
+            var casualties = PlayerCasualties();
+            _specialRecap = new SpecialRecap(IsProtectMission,
+                IsProtectMission ? PaysansProtected : PaysansResolved, PaysansTotal,
+                SpecialTurnBudget() - System.Math.Max(0, _specialRoundsLeft), SpecialTurnBudget(), casualties.Count);
+
             if (IsProtectMission)
             {
                 // « Protéger » : PAS de draft. On tire 1 recrue par paysan sauvé et on affiche l'écran de
                 // récompense (_protectReward) ; le clic les enverra TOUS en réserve (cf. UpdateRecruitment).
                 var rewards = RollProtectedPaysanRecruits();
-                var casualties = PlayerCasualties();
                 _run.CompleteSpecialNoDraft(casualties);   // retire les pertes, va à l'écran post-combat
                 GrantEliteReplacements(casualties);        // nœud « relève » : un T1 par unité tier 2+ tombée
                 _protectReward = rewards.Count > 0 ? rewards : null;   // 0 sauvé → rien à montrer (auto-skip)
@@ -3872,7 +3903,6 @@ public sealed class GameplayScene : Scene
             }
             else
             {
-                var casualties = PlayerCasualties();
                 _run.CompleteCombat(casualties, _enemyKillOrder);   // « libérer » : draft normal
                 GrantEliteReplacements(casualties);
             }
@@ -4283,6 +4313,17 @@ public sealed class GameplayScene : Scene
 
     private void UpdateRecruitment(GameTime gameTime)
     {
+        // Bilan de mission spéciale : modale à valider AVANT la récupération des pions (draft / récompense).
+        if (_specialRecap != null)
+        {
+            if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+            {
+                _specialRecap = null;
+                Context.Sounds.Play("menu_close");
+            }
+            return;
+        }
+
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _sparks.Update(dt);
         if (_reserveFullFlash > 0f)   // feedback « plus de place » (draft ou récompense)
@@ -4564,14 +4605,17 @@ public sealed class GameplayScene : Scene
         return n;
     }
 
-    /// <summary>Rectangle du bouton « Récupérer » (sous les cartes de récompense).</summary>
-    private Rectangle RewardCollectBtnRect(int availW, int vpH)
+    /// <summary>
+    /// Rectangle du bouton « Récupérer », SOUS la rangée de cartes — comme « Abandonner » du draft (cf.
+    /// <see cref="RecruitAbandonBtnRect"/>). C'est possible depuis que le détail des traits n'est plus
+    /// affiché en permanence sous chaque carte : seule la carte survolée le montre, et sa pile se pose À
+    /// CÔTÉ d'elle (cf. <see cref="DrawHoveredCardKeywords"/>) — le dessous des cartes est donc libre.
+    /// </summary>
+    private static Rectangle RewardCollectBtnRect(int availW, int vpH)
     {
         var cards = DraftCardRect(0, 1, availW, vpH);   // y identique quel que soit le nombre de cartes
-        const int w = 220, h = 30;
-        // AU-DESSUS des cartes (sous le titre) : sous les cartes, il passerait devant les infobulles de
-        // mots-clés dessinées au bas de chaque carte.
-        return new Rectangle((availW - w) / 2, cards.Top - h - 14, w, h);
+        const int w = 220;
+        return new Rectangle((availW - w) / 2, cards.Bottom + 14, w, PostCombatBtnH);
     }
 
     // ── Édition de la réserve (écrans draft / récompense) ───────────────────────────────────────────
@@ -5119,6 +5163,8 @@ public sealed class GameplayScene : Scene
                     DrawEvolutionAnimation(sb, viewport);   // morph base → évolution
                 else if (_sparks.HasActive)
                     _sparks.Draw(sb, Context.Pixel);        // fin du feu d'artifice (pièce rangée)
+                if (_specialBriefOpen)
+                    DrawSpecialBriefingModal(sb, viewport);   // briefing d'ouverture : PAR-DESSUS tout le reste
                 break;
             case RunPhase.Battle:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -5170,7 +5216,12 @@ public sealed class GameplayScene : Scene
                 DrawUnits(sb, board);
                 DrawDim(sb, viewport);
                 sb.End();
-                DrawRecruitment(sb, viewport);     // gère son propre batch (panneau + cartes + vol)
+                // Mission spéciale : le BILAN passe d'abord (plateau figé derrière), la récupération des
+                // pions n'apparaît qu'une fois validé — les deux gèrent leur propre batch.
+                if (_specialRecap is { } recap)
+                    DrawSpecialRecap(sb, viewport, recap);
+                else
+                    DrawRecruitment(sb, viewport);     // gère son propre batch (panneau + cartes + vol)
                 break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
@@ -5282,8 +5333,9 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive)
-            return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre : = DrawDim
+        if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive
+            || _specialBriefOpen)
+            return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre / briefing : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -6438,16 +6490,20 @@ public sealed class GameplayScene : Scene
             new Rectangle(cancel.X, cancel.Y + dyCancel, cancel.Width, cancel.Height), 2,
             hovered ? Palette.Yellow2 : Palette.White);
 
-        // Cartes d'évolution (mots-clés détaillés SOUS chaque carte, désormais dégagés). Le sprite reste
-        // en SILHOUETTE tant que le joueur n'a jamais obtenu cette évolution (méta-progression).
+        // Cartes d'évolution. Le sprite reste en SILHOUETTE tant que le joueur n'a jamais obtenu cette
+        // évolution (méta-progression) — et son détail de traits reste masqué (entrée nulle dans la rangée).
+        var kwRow = new List<UnitClass?>(count);
         for (var i = 0; i < count; i++)
         {
             var rect = FusionCardRect(i, count);
             var revealed = Context.Saves.IsUnitDiscovered(options[i].Asset);
             DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
-            if (revealed)
-                DrawKeywordPopupsBelow(sb, options[i], rect);   // détail des traits : masqué tant que non découvert
+            kwRow.Add(revealed ? options[i] : null);
         }
+        // Détail des traits : sous les cartes si tout y tient (le cas en 1440p), sinon au survol seulement —
+        // deux évolutions à 3-4 traits ne rentrent pas sous les cartes en 1080p.
+        var vpF = VirtualViewport;
+        DrawRowKeywords(sb, kwRow, _fusionFocus, vpF.Width, vpF.Height, vpF.Height - KwScreenMargin);
 
         // Surbrillance de la carte focus.
         var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
@@ -6701,7 +6757,7 @@ public sealed class GameplayScene : Scene
                 DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
             else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
                 DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment, cu.Buffs,
-                    TreeNodesFor(cu), cu.Kills);
+                    TreeNodesFor(cu), cu.Kills, subject: _cursor);
             return;
         }
 
@@ -6717,16 +6773,24 @@ public sealed class GameplayScene : Scene
         // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé).
         if (CellUnderMouse() is { } cell && _match.UnitAt(cell) is { } unit)
             DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment, unit.Buffs,
-                TreeNodesFor(unit), unit.Kills);
+                TreeNodesFor(unit), unit.Kills, subject: cell);
     }
 
-    /// <summary>Carte d'aperçu placée juste à GAUCHE du panneau d'inventaire (espace libre), équipement inclus.</summary>
+    /// <summary>
+    /// Carte d'aperçu, équipement inclus. Par défaut à DROITE, c'est-à-dire juste à gauche du panneau
+    /// d'inventaire (<see cref="RightCardRect"/> se borne à son bord en placement) : c'est la place
+    /// d'un aperçu de la réserve, qui ne décrit aucune case.
+    /// <paramref name="subject"/> = case du pion décrit, quand la carte vient du survol du PLATEAU :
+    /// la carte bascule alors à gauche si elle recouvrait ce pion (cf. <see cref="CardGoesRight"/>).
+    /// </summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
-        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0)
+        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
+        Cell? subject = null)
     {
-        var vp = VirtualViewport;
-        var x = PanelRect().X - CombatCardGap - CombatCardW;
-        var rect = new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+        var layout = BuildLayout();
+        var board = BoardRect(layout);
+        var right = subject is not { } s || CardGoesRight(s, layout, board, preferRight: true);
+        var rect = right ? RightCardRect(board) : LeftCardRect(board);
         DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills);
         DrawKeywordPopupsBelow(sb, c, rect, equip, buffs);
     }
@@ -7431,23 +7495,62 @@ public sealed class GameplayScene : Scene
         var ownCell = _selected;
         if (ownCell is null && hovered is { } h && _match.UnitAt(h) is { Faction: Faction.Player })
             ownCell = h;
-        Rectangle? rightCard = null;
+
+        // Carte de l'ennemi SURVOLÉ (à gauche).
+        Cell? enemyCell = hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } ? he : null;
+
+        // Côté de chaque carte : elle bascule en face si elle recouvrait le pion qu'elle décrit.
+        var ownRight = ownCell is not { } o || CardGoesRight(o, layout, board, preferRight: true);
+        var enemyRight = enemyCell is { } e && CardGoesRight(e, layout, board, preferRight: false);
+
+        // Même côté = les deux cartes se recouvriraient (elles ont la même hauteur et le même Y). Celle
+        // de l'ennemi SURVOLÉ garde son côté : c'est LUI qu'on désigne. La nôtre prend l'autre — notre
+        // pion sélectionné reste repérable par son cadre et ses zones de déplacement sur le plateau.
+        if (ownCell is not null && enemyCell is not null && ownRight == enemyRight)
+            ownRight = !enemyRight;
+
+        Rectangle? ownCard = null;
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
-            rightCard = RightCardRect(board);
-            DrawUnitCard(sb, own, rightCard.Value);
+            ownCard = ownRight ? RightCardRect(board) : LeftCardRect(board);
+            DrawUnitCard(sb, own, ownCard.Value);
         }
 
-        // Carte de l'ennemi survolé (à gauche). Si NOTRE pion sélectionné le vise (case à portée d'attaque),
-        // on prévisualise les dégâts : les PV menacés clignotent sur sa barre.
-        if (hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } enemy)
+        // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
+        // les PV menacés clignotent sur sa barre.
+        if (enemyCell is { } ec && _match.UnitAt(ec) is { } enemy)
         {
-            var preview = _selected is { } sel && _attackTargets.Contains(he) ? _match.PreviewDamage(sel, he) : 0;
-            DrawUnitCard(sb, enemy, LeftCardRect(board), preview);
+            var preview = _selected is { } sel && _attackTargets.Contains(ec) ? _match.PreviewDamage(sel, ec) : 0;
+            DrawUnitCard(sb, enemy, enemyRight ? RightCardRect(board) : LeftCardRect(board), preview);
         }
 
         // Tooltip d'environnement (buisson) de la case survolée.
-        DrawEnvironmentTooltip(sb, layout, hovered, ownCell, rightCard);
+        DrawEnvironmentTooltip(sb, layout, hovered, ownCell, ownCard);
+    }
+
+    /// <summary>
+    /// Côté d'une carte flottante : le côté demandé, sauf s'il recouvre le pion que la carte décrit —
+    /// auquel cas elle passe en face, pour que le pion désigné reste toujours visible.
+    ///
+    /// En combat le plateau occupe TOUTE la largeur : <see cref="RightCardRect"/> et
+    /// <see cref="LeftCardRect"/> ne trouvent pas de marge libre et se font borner à l'écran, donc
+    /// posées PAR-DESSUS les colonnes du bord. Sans ça, survoler un pion d'une colonne de bord
+    /// affichait sa carte juste sur lui.
+    ///
+    /// Test en X UNIQUEMENT, volontairement : le côté ne doit pas dépendre de la rangée, sinon la
+    /// carte sauterait d'un bord à l'autre entre deux pions d'une même colonne. Ça couvre du même coup
+    /// la pile de popups de mots-clés, qui descend sous la carte dans la même bande verticale.
+    /// Si les DEUX côtés le recouvrent (plateau plus large que l'écran), on garde le côté demandé.
+    /// </summary>
+    private bool CardGoesRight(Cell cell, GridLayout layout, Rectangle board, bool preferRight)
+    {
+        int px = (int)layout.CellToScreen(cell.Column, cell.Row).X;
+        int pRight = px + layout.TileSize;
+        bool Hides(Rectangle card) => card.X < pRight && px < card.Right;
+
+        if (!Hides(preferRight ? RightCardRect(board) : LeftCardRect(board)))
+            return preferRight;
+        return Hides(preferRight ? LeftCardRect(board) : RightCardRect(board)) ? preferRight : !preferRight;
     }
 
     // ── Tooltip d'environnement (objets de plateau : buisson) ─────────────────────
@@ -7475,18 +7578,18 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Tooltip d'environnement au survol d'une case « notable » (buisson). S'il y a un pion DESSUS dont
-    /// la carte est affichée à droite, le tooltip se place AU-DESSUS de cette carte (l'objet est caché
-    /// par le pion) ; sinon il flotte juste au-dessus de la case.
+    /// la carte est affichée, le tooltip se place AU-DESSUS de cette carte (l'objet est caché par le
+    /// pion) — de quelque côté qu'elle soit ; sinon il flotte juste au-dessus de la case.
     /// </summary>
-    private void DrawEnvironmentTooltip(SpriteBatch sb, GridLayout layout, Cell? hovered, Cell? rightCardCell, Rectangle? rightCard)
+    private void DrawEnvironmentTooltip(SpriteBatch sb, GridLayout layout, Cell? hovered, Cell? ownCardCell, Rectangle? ownCard)
     {
         if (hovered is not { } cell || CellEnvironment(cell) is not { } env)
             return;
 
         int h = EnvTooltipHeight(env.Desc);
-        if (rightCard is { } card && rightCardCell == cell)
+        if (ownCard is { } card && ownCardCell == cell)
         {
-            // Un pion se tient sur la case (sa carte est à droite) : tooltip au-dessus de la carte.
+            // Un pion se tient sur la case (sa carte est affichée) : tooltip au-dessus de la carte.
             int x = card.X + (CombatCardW - EnvTooltipWidth) / 2;
             int y = System.Math.Max(8, card.Y - h - 8);
             DrawEnvTooltipPanel(sb, env.Name, env.Desc, x, y);
@@ -7590,9 +7693,13 @@ public sealed class GameplayScene : Scene
             DrawTierIcon(sb, c.Tier,
                 new Rectangle(rect.X + (rect.Width - TierIconW) / 2, rect.Y + 2, TierIconW, TierIconH));
 
-        // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte.
-        Context.Font.DrawCentered(sb, revealed ? UnitName(c).ToUpperInvariant() : unknown,
-            new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
+        // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte. Échelle 2 par
+        // défaut, repliée en 1 si le nom déborde de la carte (« ARBALETRIER MONTE » mesure 202 px pour une
+        // carte de 200, et les cartes rétrécissent encore en 1080p). Pas d'échelle intermédiaire : le rendu
+        // est pixel-perfect à l'échelle ENTIÈRE. La hauteur réservée ne bouge pas → rien ne se décale dessous.
+        var name = revealed ? UnitName(c).ToUpperInvariant() : unknown;
+        var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CardPad ? 2 : 1;
+        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, 14), nameScale, Palette.White);
         y += 22;
 
         // Sprite du pion (comme en jeu, de face). En SILHOUETTE si l'unité n'est pas encore découverte.
@@ -7943,56 +8050,92 @@ public sealed class GameplayScene : Scene
         return list;
     }
 
-    /// <summary>Popups permanents empilés SOUS la carte (évite la coupe au bord droit de l'écran).</summary>
+    /// <summary>
+    /// Popups permanents empilés SOUS la carte, ou À CÔTÉ d'elle quand ils n'y tiennent pas.
+    ///
+    /// <see cref="DrawKeywordPopupStack"/> remonte une pile qui dépasserait le bas de l'écran pour ne
+    /// pas la couper — mais passé ~2 traits cette remontée la fait passer PAR-DESSUS la carte qu'on
+    /// est en train de lire (en canvas 540, la carte tient 105→435 : il ne reste que ~90 px dessous,
+    /// contre ~200 pour 4 traits). On bascule donc à côté, comme les écrans de draft (cf.
+    /// <see cref="DrawRowKeywords"/>). Aucune disposition verticale n'est possible dans ce cas :
+    /// carte (330) + pile (200) = toute la hauteur du canvas.
+    /// </summary>
     private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null,
         CommandBuffs? buffs = null)
-        => DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs);
+    {
+        var h = KeywordStackHeight(c, card.Width, equip, buffs);
+        if (h == 0)
+            return;
+
+        // Ordonnée qu'aurait la pile une fois remontée : si elle mord sur la carte, on passe à côté.
+        if (VirtualViewport.Height - KwScreenMargin - h >= card.Bottom)
+        {
+            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs);
+            return;
+        }
+
+        // À côté, vers le CENTRE de l'écran (la carte est collée à un bord : il n'y a de place que
+        // de l'autre côté), alignée sur son haut.
+        var x = card.X - CombatCardGap - card.Width;
+        if (x < KwScreenMargin)
+            x = card.Right + CombatCardGap;
+        DrawKeywordPopupStack(sb, c, new Point(x, card.Y), card.Width, equip, buffs);
+    }
 
     /// <summary>
     /// Empile verticalement un popup par mot-clé depuis <paramref name="origin"/> : un panneau avec le
     /// libellé (jaune) et la description en lignes repliées. Rien si l'unité n'a aucun mot-clé.
     /// Inclut le trait d'un éventuel équipement (cf. <see cref="KeywordsFor"/>).
     /// </summary>
+    private const int KwPad = 8, KwLineH = 9, KwGap = 8, KwScreenMargin = 8;
+
+    /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
+    private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H)> KeywordBoxes(UnitClass c, int width,
+        Equipment? equip, CommandBuffs? buffs)
+    {
+        var boxes = new List<(UnitKeywords.Keyword, List<string>, int)>();
+        foreach (var kw in KeywordsFor(c, equip, buffs))
+        {
+            var lines = WrapText(SentenceCase(kw.Description), width - 2 * KwPad, 1);
+            boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad));   // titre + lignes
+        }
+        return boxes;
+    }
+
+    /// <summary>Hauteur totale de la pile de popups d'une classe (0 si elle n'a aucun mot-clé).</summary>
+    private int KeywordStackHeight(UnitClass c, int width, Equipment? equip = null, CommandBuffs? buffs = null)
+    {
+        var boxes = KeywordBoxes(c, width, equip, buffs);
+        return boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
+    }
+
     private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null,
         CommandBuffs? buffs = null)
     {
-        var keywords = KeywordsFor(c, equip, buffs);
-        if (keywords.Count == 0)
+        var boxes = KeywordBoxes(c, width, equip, buffs);
+        if (boxes.Count == 0)
             return;
+        var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
 
-        const int pad = 8, lineH = 9, gap = 8;
-
-        // Pré-calcule chaque popup (lignes + hauteur) pour connaître la hauteur TOTALE de la pile...
-        var boxes = new List<(UnitKeywords.Keyword Kw, List<string> Lines, int H)>(keywords.Count);
-        var total = -gap;
-        foreach (var kw in keywords)
-        {
-            var lines = WrapText(SentenceCase(kw.Description), width - 2 * pad, 1);
-            var h = pad + 10 + lines.Count * lineH + pad;     // titre + lignes
-            boxes.Add((kw, lines, h));
-            total += h + gap;
-        }
-
-        // ...pour REMONTER la pile si elle dépasse le bas de l'écran (sinon les derniers popups sont coupés,
-        // ex. une évolution à 3 traits en phase de fusion). Décalage MINIMAL, borné en haut de l'écran.
-        const int screenMargin = 8;
+        // REMONTE la pile si elle dépasse le bas de l'écran (sinon les derniers popups sont coupés, ex. une
+        // évolution à 3 traits en phase de fusion). Décalage MINIMAL, borné en haut de l'écran.
         var y = origin.Y;
-        if (y + total > VirtualViewport.Height - screenMargin)
-            y = System.Math.Max(screenMargin, VirtualViewport.Height - screenMargin - total);
+        if (y + total > VirtualViewport.Height - KwScreenMargin)
+            y = System.Math.Max(KwScreenMargin, VirtualViewport.Height - KwScreenMargin - total);
 
         foreach (var (kw, lines, h) in boxes)
         {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
-            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + pad, box.Y + pad), 1, Palette.Cyan1);
-            var ly = box.Y + pad + 11;
+            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, Palette.Cyan1);
+            var ly = box.Y + KwPad + 11;
             foreach (var line in lines)
             {
-                Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.White, preserveCase: true);
-                ly += lineH;
+                Context.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                ly += KwLineH;
             }
-            y += h + gap;
+            y += h + KwGap;
         }
     }
 
@@ -8185,11 +8328,12 @@ public sealed class GameplayScene : Scene
         var titleW = Context.Font.Measure(Loc.T("recruit.title"), 3);
         var subW = Context.Font.Measure(Loc.T("recruit.subtitle"), 1);
         var boxW = System.Math.Max(titleW, subW) + 56;
-        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, 48, boxW, 72));
-        Context.Font.DrawCentered(sb, Loc.T("recruit.title"), new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
+        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, PostCombatTitleY, boxW, PostCombatTitleH));
+        Context.Font.DrawCentered(sb, Loc.T("recruit.title"),
+            new Rectangle(0, PostCombatTitleY + 12, availW, 24), 3, Palette.Yellow2);
         var held = _recruitChoice is not null && _recruitHold <= 0f;   // pion tenu (réserve pleine)
         Context.Font.DrawCentered(sb, Loc.T(held ? "recruit.hold_prompt" : "recruit.subtitle"),
-            new Rectangle(0, 100, availW, 12), 1, held ? Palette.Cyan1 : Palette.Blue1);
+            new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, held ? Palette.Cyan1 : Palette.Blue1);
         for (var i = 0; i < _run.Draft.Count; i++)
             DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height));
 
@@ -8216,6 +8360,10 @@ public sealed class GameplayScene : Scene
             var fi = System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1);
             var fr = DraftCardRect(fi, _run.Draft.Count, availW, viewport.Height);
             DrawRectBorder(sb, Inflate(fr, 3), Palette.Yellow2, 3);
+            // Détail des traits, par-dessus la rangée. Rien sous les cartes ici → la place libre va jusqu'au
+            // bas du canvas. Pas quand un pion est TENU : le bouton « Abandonner » y est dessiné.
+            DrawRowKeywords(sb, KeywordRow(_run.Draft), _recruitFocus, availW, viewport.Height,
+                viewport.Height - KwScreenMargin);
         }
 
         // Panneau RÉSERVE (à droite) = _pending, avec FUSION façon placement (empiler → pile « N/3 »).
@@ -8248,10 +8396,10 @@ public sealed class GameplayScene : Scene
         var title = Loc.T("reward.title");
         var sub = Loc.T("reward.subtitle");
         var boxW = System.Math.Max(Context.Font.Measure(title, 3), Context.Font.Measure(sub, 1)) + 56;
-        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, 48, boxW, 72));
-        Context.Font.DrawCentered(sb, title, new Rectangle(0, 60, availW, 24), 3, Palette.Yellow2);
+        Context.Style.DrawPanel(sb, new Rectangle((availW - boxW) / 2, PostCombatTitleY, boxW, PostCombatTitleH));
+        Context.Font.DrawCentered(sb, title, new Rectangle(0, PostCombatTitleY + 12, availW, 24), 3, Palette.Yellow2);
         if (!flying)
-            Context.Font.DrawCentered(sb, sub, new Rectangle(0, 100, availW, 12), 1, Palette.Blue1);
+            Context.Font.DrawCentered(sb, sub, new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, Palette.Blue1);
 
         for (var i = 0; i < rewards.Count; i++)
         {
@@ -8269,6 +8417,11 @@ public sealed class GameplayScene : Scene
             if (Context.Input.UsingGamepad && !_reserveZone && rewards.Count > 0)
                 DrawRectBorder(sb, Inflate(DraftCardRect(System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1),
                     rewards.Count, availW, viewport.Height), 3), Palette.Cyan1, 3);
+
+            // Détail des traits, par-dessus la rangée. La place libre s'arrête au bouton « Récupérer »
+            // (posé sous les cartes) : en pratique on est donc toujours au survol sur cet écran.
+            DrawRowKeywords(sb, KeywordRow(rewards), _rewardFocus, availW, viewport.Height,
+                RewardCollectBtnRect(availW, viewport.Height).Y - KwScreenMargin);
 
             // Bouton « Récupérer (N) » : doré si collectable, rouge sinon.
             var btn = RewardCollectBtnRect(availW, viewport.Height);
@@ -8477,19 +8630,126 @@ public sealed class GameplayScene : Scene
     private void DrawDraftCard(SpriteBatch sb, UnitSpec spec, Rectangle rect)
     {
         var c = spec.UnitClass;
-        // Recrutement : portrait de FACE, PV pleins (l'unité est neuve).
+        // Recrutement : portrait de FACE, PV pleins (l'unité est neuve). Le DÉTAIL des traits n'est pas
+        // dessiné ici : il n'apparaît que sous la carte survolée (cf. DrawHoveredCardKeywords).
         DrawCardLayout(sb, rect, c, Faction.Player, spec.Domaine, c.MaxHp, c.MaxHp);
-        // Cartes côte à côte : les popups descendent SOUS la carte (pas sur le côté).
-        DrawKeywordPopupsBelow(sb, c, rect);
     }
 
+    // ── Écrans post-combat (draft / récompense) : gabarit ───────────────────────────────────────────────
+    // Tout est dérivé de la taille du CANVAS, jamais d'ordonnées fixes : il ne fait que 960×540 en
+    // 1920×1080 contre 1280×720 en 1440p (agrandissement ENTIER — cf. EchecGame.ConfigureVirtualScreen).
+    // Le 1080p est donc le cas le plus serré, et c'est celui qu'on ne voit pas en dev. Deux bugs venaient
+    // de là : les 4 cartes de récompense débordaient en largeur, et le bouton (calé sur le haut des cartes,
+    // qui remontent quand le canvas rétrécit) venait se poser DANS le cadre de titre resté à un Y fixe.
+    private const int PostCombatTitleY = 8;                                    // haut du cadre de titre
+    private const int PostCombatTitleH = 72;                                   // titre (échelle 3) + sous-titre (échelle 1)
+    private const int PostCombatGap = 8;
+    private const int PostCombatBtnH = 30;
+    private const int DraftCardH = 330;
+
+    /// <summary>
+    /// Haut de la rangée de cartes : centrée verticalement, mais JAMAIS sous le cadre de titre. En 1440p le
+    /// centrage l'emporte (disposition inchangée) ; en 1080p c'est le titre qui borne.
+    /// </summary>
+    private static int DraftCardsY(int vpH) =>
+        System.Math.Max(PostCombatTitleY + PostCombatTitleH + PostCombatGap, (vpH - DraftCardH) / 2 + 20);
+
+    /// <summary>
+    /// Rectangle de la carte <paramref name="index"/> parmi <paramref name="count"/>, en rangée centrée dans
+    /// <paramref name="vpW"/>. La rangée RÉTRÉCIT si elle déborde (écarts d'abord, largeur de carte ensuite) :
+    /// les 4 cartes de récompense d'une mission « protéger » ne tiennent pas à la largeur de référence en
+    /// 1080p. Le draft (3 cartes) tient partout et garde donc sa taille. Le contenu suit : tout
+    /// <see cref="DrawCardLayout"/> se cale sur le rectangle reçu.
+    /// </summary>
     private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH)
     {
-        const int cardW = 200, cardH = 330, gap = 28;
-        var total = count * cardW + (count - 1) * gap;     // centré sur le NOMBRE réel de cartes (peut être < 3)
+        const int fullW = 200, fullGap = 28, minGap = 12, minW = 150, sideMargin = 16;
+        var avail = vpW - 2 * sideMargin;
+        int w = fullW, gap = fullGap;
+        if (count > 1 && count * w + (count - 1) * gap > avail)
+        {
+            // Plancher minW : en dessous, le libellé d'une stat chevauche sa valeur (cf. DrawStatRow).
+            // Il borne donc le nombre de cartes affichables — 4 en 1080p, la limite des maps actuelles.
+            gap = minGap;
+            w = System.Math.Clamp((avail - (count - 1) * gap) / count, minW, fullW);
+        }
+        var total = count * w + (count - 1) * gap;     // centré sur le NOMBRE réel de cartes (peut être < 3)
         var x0 = (vpW - total) / 2;
-        var y = (vpH - cardH) / 2 + 20;
-        return new Rectangle(x0 + index * (cardW + gap), y, cardW, cardH);
+        return new Rectangle(x0 + index * (w + gap), DraftCardsY(vpH), w, DraftCardH);
+    }
+
+    /// <summary>
+    /// Indice de la carte SURVOLÉE d'une rangée de <paramref name="count"/> cartes : celle sous la souris,
+    /// ou celle qui a le focus <paramref name="gamepadFocus"/> à la manette. -1 si aucune.
+    /// </summary>
+    private int HoveredCardIndex(int count, int gamepadFocus, int rowW, int vpH)
+    {
+        if (count <= 0)
+            return -1;
+        if (Context.Input.UsingGamepad)
+            return System.Math.Clamp(gamepadFocus, 0, count - 1);
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < count; i++)
+            if (DraftCardRect(i, count, rowW, vpH).Contains(mouse))
+                return i;
+        return -1;
+    }
+
+    /// <summary>
+    /// Détail des traits d'une RANGÉE de cartes (draft / récompense / fusion), à appeler APRÈS toute la
+    /// rangée. Deux régimes :
+    /// <list type="bullet">
+    ///   <item>Toutes les piles tiennent dans la place libre sous les cartes → on les affiche TOUTES, chacune
+    ///   sous la sienne : tout est comparable d'un coup d'œil (cas courant, et seul régime en 1440p).</item>
+    ///   <item>Sinon → seule la carte survolée/focalisée montre sa pile, posée À CÔTÉ d'elle (à droite, ou à
+    ///   gauche faute de place) : elle ne recouvre que les VOISINES, jamais la carte qu'on cherche à lire.</item>
+    /// </list>
+    /// Une classe peut porter 4 traits (≈240 de pile) alors qu'il ne reste que ~70 px sous les cartes en 1080p
+    /// (canvas 540 dont 330 rien que pour la carte) : tout afficher y ferait remonter les piles PAR-DESSUS les
+    /// cartes. Les libellés restent de toute façon lisibles en bas de chaque carte (cf. DrawCardLayout).
+    /// Une entrée <c>null</c> = carte sans détail à montrer (évolution non découverte en fusion).
+    /// </summary>
+    /// <param name="rowW">Largeur de la zone de la rangée (borne le repli à droite/gauche).</param>
+    /// <param name="bottomLimit">Ordonnée à ne pas dépasser : bas du canvas, ou haut d'un bouton posé sous les cartes.</param>
+    private void DrawRowKeywords(SpriteBatch sb, IReadOnlyList<UnitClass?> cards, int gamepadFocus,
+        int rowW, int vpH, int bottomLimit)
+    {
+        if (cards.Count == 0)
+            return;
+        var first = DraftCardRect(0, cards.Count, rowW, vpH);
+        var below = first.Bottom + 10;
+
+        var allFit = true;
+        foreach (var c in cards)
+            if (c != null && below + KeywordStackHeight(c, first.Width) > bottomLimit)
+                allFit = false;
+
+        if (allFit)
+        {
+            for (var i = 0; i < cards.Count; i++)
+                if (cards[i] is { } c)
+                    DrawKeywordPopupsBelow(sb, c, DraftCardRect(i, cards.Count, rowW, vpH));
+            return;
+        }
+
+        var hi = HoveredCardIndex(cards.Count, gamepadFocus, rowW, vpH);
+        if (hi < 0 || cards[hi] is not { } hovered)
+            return;
+        var card = DraftCardRect(hi, cards.Count, rowW, vpH);
+        const int sideGap = 10;
+        var x = card.Right + sideGap;
+        if (x + card.Width > rowW)
+            x = System.Math.Max(0, card.X - sideGap - card.Width);
+        DrawKeywordPopupStack(sb, hovered, new Point(x, card.Y), card.Width);
+    }
+
+    /// <summary>Les classes d'une rangée de cartes, pour <see cref="DrawRowKeywords"/>.</summary>
+    private static List<UnitClass?> KeywordRow(IReadOnlyList<UnitSpec> specs)
+    {
+        var row = new List<UnitClass?>(specs.Count);
+        foreach (var s in specs)
+            row.Add(s.UnitClass);
+        return row;
     }
 
     private void DrawEndHud(SpriteBatch sb, Viewport viewport)
@@ -8612,6 +8872,127 @@ public sealed class GameplayScene : Scene
             Context.Font.DrawCentered(sb, l, new Rectangle(box.X, y, box.Width, 7), 1, Palette.White);
             y += lineH;
         }
+        sb.End();
+    }
+
+    // ── Modales de mission spéciale (briefing d'ouverture / bilan de clôture) ───
+    private const int ModalPadH = 28;    // marge gauche/droite du cadre
+    private const int ModalPadV = 20;    // marge haut/bas du cadre
+    private const int ModalLineH = 12;   // pas vertical d'une ligne de texte (échelle 1)
+    private const int ModalGap = 14;     // respiration entre deux blocs
+
+    /// <summary>
+    /// Modale d'OUVERTURE d'une mission spéciale, au début de la préparation : ce qu'il faut FAIRE (les
+    /// paysans et leurs cases « ? ») puis les règles qui la distinguent d'une escarmouche (limite de tours
+    /// non fatale, seule la chute du commandant fait perdre). Gèle le placement jusqu'au clic / A
+    /// (cf. <see cref="UpdatePlacement"/>) ; une fois fermée, <see cref="DrawSpecialBriefing"/> en garde le
+    /// rappel d'une ligne sous la frise.
+    /// </summary>
+    private void DrawSpecialBriefingModal(SpriteBatch sb, Viewport viewport)
+    {
+        const int innerW = 420;   // largeur cible du texte replié
+        var protect = IsProtectMission;
+        var title = Loc.T(protect ? "special.title_protect" : "special.title_liberate");
+        var body = WrapText(Loc.T(protect ? "special.desc_protect" : "special.desc_liberate"), innerW, 1);
+        var rules = new[]
+        {
+            "- " + Loc.T("special.rule_turns", SpecialTurnBudget()),
+            "- " + Loc.T("special.rule_timeout"),
+            "- " + Loc.T("special.rule_defeat"),
+        };
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "special.brief_continue_gp" : "special.brief_continue");
+
+        var textW = System.Math.Max(Context.Font.Measure(title, 2), Context.Font.Measure(prompt, 1));
+        foreach (var l in body)
+            textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
+        foreach (var l in rules)
+            textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
+
+        var boxW = textW + 2 * ModalPadH;
+        var boxH = ModalPadV + 7 + ModalGap + 14 + ModalGap + (body.Count + rules.Length) * ModalLineH
+                   + 2 * ModalGap + 7 + ModalPadV;
+        var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawDim(sb, viewport);   // voile du canvas ; les bandes du letterbox le sont via FullScreenDim
+        Context.Style.DrawPanel(sb, box);
+
+        var y = box.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, Loc.T("mission.speciale"), new Rectangle(box.X, y, box.Width, 7), 1, Palette.Blue1);
+        y += 7 + ModalGap;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 14), 2, Palette.Yellow2);
+        y += 14 + ModalGap;
+        // Corps et règles alignés à GAUCHE : un pavé centré se lit mal sur plusieurs lignes.
+        var x = box.X + ModalPadH;
+        foreach (var l in body)
+        {
+            Context.Font.Draw(sb, l, new Vector2(x, y), 1, Palette.White);
+            y += ModalLineH;
+        }
+        y += ModalGap;
+        foreach (var l in rules)
+        {
+            Context.Font.Draw(sb, l, new Vector2(x, y), 1, Palette.Cyan1);
+            y += ModalLineH;
+        }
+        y += ModalGap;
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));   // invite pulsée, comme la fin d'évolution
+        Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
+        sb.End();
+    }
+
+    /// <summary>
+    /// Modale de BILAN à la clôture d'une mission spéciale : le résultat de l'objectif (paysans X/N,
+    /// tours consommés, pertes) figé par <see cref="CheckBattleEnd"/>. Gèle la phase de récupération des
+    /// pions jusqu'au clic / A (cf. <see cref="UpdateRecruitment"/>). Le plateau et son voile sont déjà
+    /// dessinés par l'appelant : pas de second voile ici (sinon décalage avec les bandes du letterbox).
+    /// </summary>
+    private void DrawSpecialRecap(SpriteBatch sb, Viewport viewport, SpecialRecap recap)
+    {
+        var title = Loc.T("recap.title");
+        var sub = Loc.T(recap.Protect ? "special.title_protect" : "special.title_liberate");
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.continue_gp" : "recap.continue");
+        var rows = new (string Label, string Value)[]
+        {
+            (Loc.T(recap.Protect ? "recap.paysans_saved" : "recap.paysans_freed"), $"{recap.Paysans} / {recap.PaysansTotal}"),
+            (Loc.T("recap.turns"), $"{recap.Turns} / {recap.TurnBudget}"),
+            (Loc.T("recap.losses"), recap.Losses.ToString()),
+        };
+
+        const int colGap = 40;   // écart mini entre le libellé et sa valeur (colonnes label/valeur)
+        int labelW = 0, valueW = 0;
+        foreach (var (label, value) in rows)
+        {
+            labelW = System.Math.Max(labelW, Context.Font.Measure(label, 1));
+            valueW = System.Math.Max(valueW, Context.Font.Measure(value, 1));
+        }
+        var tableW = labelW + colGap + valueW;
+        var textW = System.Math.Max(System.Math.Max(Context.Font.Measure(title, 3), Context.Font.Measure(sub, 1)),
+            System.Math.Max(tableW, Context.Font.Measure(prompt, 1)));
+
+        var boxW = textW + 2 * ModalPadH;
+        var boxH = ModalPadV + 21 + ModalGap + 7 + ModalGap + rows.Length * ModalLineH + ModalGap + 7 + ModalPadV;
+        var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Style.DrawPanel(sb, box);
+
+        var y = box.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 21), 3, Palette.Yellow2);
+        y += 21 + ModalGap;
+        Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Blue1);
+        y += 7 + ModalGap;
+        // Libellés à gauche, valeurs alignées à droite : les chiffres se comparent en colonne.
+        var tx = box.X + (box.Width - tableW) / 2;
+        foreach (var (label, value) in rows)
+        {
+            Context.Font.Draw(sb, label, new Vector2(tx, y), 1, Palette.White);
+            Context.Font.Draw(sb, value, new Vector2(tx + tableW - Context.Font.Measure(value, 1), y), 1, Palette.Yellow1);
+            y += ModalLineH;
+        }
+        y += ModalGap;
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+        Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
         sb.End();
     }
 

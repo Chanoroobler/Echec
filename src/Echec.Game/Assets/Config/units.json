@@ -20,7 +20,7 @@
             "name": "Archer", "asset": "archer", "hp": 12, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
             "evolutions": [
               { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 15, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte"] }
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3 }
             ]
           },
           {
@@ -42,14 +42,14 @@
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
               { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
-              { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 5, "traits": ["Soin", "Bénédiction"] }
+              { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bénédiction"] }
             ]
           },
           {
-            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 4, "traits": ["Orage"],
+            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 3, "traits": ["Orage"],
             "evolutions": [
-              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 4, "traits": ["Tempête"] },
-              { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 4, "traits": ["Drain de vie"] }
+              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 3, "traits": ["Tempête"] },
+              { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 3, "traits": ["Drain de vie"] }
             ]
           }
         ]
@@ -133,15 +133,15 @@
         "2": {
           "hp": 44,
           "damage": 18,
-          "moveRange": 1,
-          "attackRange": 2,
+          "moveRange": 2,
+          "attackRange": 1,
           "traits": [ "Rage" ]
         },
         "3": {
           "hp": 60,
           "damage": 22,
-          "moveRange": 1,
-          "attackRange": 2,
+          "moveRange": 2,
+          "attackRange": 1,
           "traits": [ "Rage", "Transpercement"]
         }
       }
