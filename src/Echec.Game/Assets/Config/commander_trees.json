@@ -52,6 +52,40 @@
         { "id": "logi_deploiement_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "logi_reserve_3",     "branch": 2, "level": 4, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] }
       ]
+    },
+
+    // ── Arbre du commandant LANCIER (tree "commandantLancier") ─────────────────────────────────────────
+    // Thème : le domaine de la TOUR (Lanciers) et les AURAS. Trois nouveaux effets par rapport à l'arbre de
+    // base : "domaine" restreint un bonus d'unité au domaine ciblé (ici Tour) ; l'échelle "perDomaineUnit"
+    // multiplie le bonus par le nombre d'unités de ce domaine (réserve + jeu) ; une recrue (fusion/relève)
+    // avec "domaine" recrute la CLASSE DE BASE de ce domaine (un Lancier) au lieu d'un tier 1 vu au hasard.
+    {
+      "id": "commandantLancier",
+      "nodes": [
+        // ── Branche 0 : le COMMANDANT (Lancier) ─────────────────────────────────────────────────
+        { "id": "lan_cmd_rempart",           "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Rempart" } ] },
+        { "id": "lan_cmd_pm",                "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "moveRange", "amount": 1 } ] },
+        { "id": "lan_cmd_pv_tour",           "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 3, "scale": "perDomaineUnit", "domaine": "Tour" } ] },
+        { "id": "lan_cmd_aura_rempart",      "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Aura de rempart" } ] },
+        { "id": "lan_cmd_riposte",           "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },
+        { "id": "lan_cmd_aura_surpuissance", "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Aura de surpuissance" } ] },
+
+        // ── Branche 1 : les UNITÉS du domaine TOUR (Lanciers) ───────────────────────────────────
+        { "id": "lan_tour_pv",             "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 4, "domaine": "Tour" } ] },
+        { "id": "lan_tour_pv_tour",        "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 2, "scale": "perDomaineUnit", "domaine": "Tour" } ] },
+        { "id": "lan_tour_aura_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Aura de puissance", "domaine": "Tour" } ] },
+        { "id": "lan_tour_releve",         "branch": 1, "level": 3, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Tour" } ] },
+        { "id": "lan_tour_pm",             "branch": 1, "level": 3, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1, "domaine": "Tour" } ] },
+        { "id": "lan_tour_portee",         "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "attackRange", "amount": 1, "domaine": "Tour" } ] },
+
+        // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + fusion) ───────────────────────────
+        { "id": "lan_logi_deploy_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "lan_logi_fusion",   "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Tour" } ] },
+        { "id": "lan_logi_deploy_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "lan_logi_reserve_1","branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "lan_logi_deploy_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "lan_logi_reserve_2","branch": 2, "level": 4, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] }
+      ]
     }
   ]
 }

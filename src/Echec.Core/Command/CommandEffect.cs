@@ -1,3 +1,4 @@
+using Echec.Core.Battle;
 using Echec.Core.Equip;
 
 namespace Echec.Core.Command;
@@ -25,10 +26,10 @@ public enum CommandEffectKind
     /// <summary>Agrandit le déploiement (pions posables sur le plateau, commandant compris).</summary>
     DeploySlots,
 
-    /// <summary>Chaque fusion recrute EN PLUS une unité tier 1 déjà découverte.</summary>
+    /// <summary>Chaque fusion recrute EN PLUS une unité tier 1 déjà découverte (ou un domaine PRÉCIS, cf. <see cref="CommandEffect.Domaine"/>).</summary>
     FusionRecruit,
 
-    /// <summary>Chaque unité de tier 2+ tombée au combat fait arriver en réserve une unité tier 1 aléatoire (déjà vue).</summary>
+    /// <summary>Chaque unité de tier 2+ tombée au combat fait arriver en réserve une unité tier 1 (déjà vue, ou un domaine PRÉCIS).</summary>
     EliteDeathRecruit,
 }
 
@@ -46,6 +47,13 @@ public enum CommandScale
     /// variété de l'armée. Cf. <see cref="Campaign.Run.DistinctPairs"/>.
     /// </summary>
     PerDistinctPair,
+
+    /// <summary>
+    /// Bonus × le nombre d'unités du <see cref="CommandEffect.Domaine"/> visé dans le roster (hors
+    /// commandant, réserve ET pions déployés). Recalculé à chaque phase de placement. Cf.
+    /// <see cref="Campaign.Run.DomaineUnitCount"/>.
+    /// </summary>
+    PerDomaineUnit,
 }
 
 /// <summary>
@@ -57,13 +65,15 @@ public enum CommandScale
 /// </summary>
 public sealed class CommandEffect
 {
-    private CommandEffect(CommandEffectKind kind, EquipStat stat, int amount, string? trait, CommandScale scale)
+    private CommandEffect(CommandEffectKind kind, EquipStat stat, int amount, string? trait, CommandScale scale,
+        Domaine? domaine)
     {
         Kind = kind;
         Stat = stat;
         Amount = amount;
         Trait = trait;
         Scale = scale;
+        Domaine = domaine;
     }
 
     public CommandEffectKind Kind { get; }
@@ -80,37 +90,57 @@ public sealed class CommandEffect
     /// <summary>Mise à l'échelle du bonus de stat (plat par défaut).</summary>
     public CommandScale Scale { get; }
 
+    /// <summary>
+    /// Domaine CIBLÉ, optionnel (null = tous). Pour un effet d'UNITÉ (<see cref="CommandEffectKind.UnitStat"/> /
+    /// <see cref="CommandEffectKind.UnitTrait"/>), restreint le bonus aux seules unités de ce domaine. Pour un
+    /// effet de RECRUE (<see cref="CommandEffectKind.FusionRecruit"/> / <see cref="CommandEffectKind.EliteDeathRecruit"/>),
+    /// désigne la classe de base recrutée (au lieu d'un tier 1 déjà vu au hasard). Pour l'échelle
+    /// <see cref="CommandScale.PerDomaineUnit"/>, désigne le domaine dont on compte les unités.
+    /// </summary>
+    public Domaine? Domaine { get; }
+
     /// <summary>Vrai si l'effet vise le COMMANDANT (stat ou trait).</summary>
     public bool TargetsCommander => Kind is CommandEffectKind.CommanderStat or CommandEffectKind.CommanderTrait;
 
     /// <summary>Vrai si l'effet vise les unités NON essentielles (stat ou trait).</summary>
     public bool TargetsUnits => Kind is CommandEffectKind.UnitStat or CommandEffectKind.UnitTrait;
 
-    /// <summary>Valeur effective du bonus, connaissant le nombre de paires de classes distinctes du roster.</summary>
-    public int AmountFor(int distinctPairs) =>
-        Scale == CommandScale.PerDistinctPair ? Amount * distinctPairs : Amount;
+    /// <summary>
+    /// Valeur effective du bonus, connaissant le nombre de paires de classes distinctes du roster et — pour
+    /// l'échelle <see cref="CommandScale.PerDomaineUnit"/> — le nombre d'unités du domaine visé
+    /// (<paramref name="domaineCount"/> évalué sur <see cref="Domaine"/>). Absent → l'échelle par domaine vaut 0.
+    /// </summary>
+    public int AmountFor(int distinctPairs, System.Func<Domaine, int>? domaineCount = null) =>
+        Scale switch
+        {
+            CommandScale.PerDistinctPair => Amount * distinctPairs,
+            CommandScale.PerDomaineUnit => Domaine is { } d ? Amount * (domaineCount?.Invoke(d) ?? 0) : Amount,
+            _ => Amount,
+        };
 
-    public static CommandEffect CommanderStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat) =>
-        new(CommandEffectKind.CommanderStat, stat, amount, null, scale);
+    public static CommandEffect CommanderStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat,
+        Domaine? domaine = null) =>
+        new(CommandEffectKind.CommanderStat, stat, amount, null, scale, domaine);
 
     public static CommandEffect CommanderTrait(string trait) =>
-        new(CommandEffectKind.CommanderTrait, default, 0, trait, CommandScale.Flat);
+        new(CommandEffectKind.CommanderTrait, default, 0, trait, CommandScale.Flat, null);
 
-    public static CommandEffect UnitStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat) =>
-        new(CommandEffectKind.UnitStat, stat, amount, null, scale);
+    public static CommandEffect UnitStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat,
+        Domaine? domaine = null) =>
+        new(CommandEffectKind.UnitStat, stat, amount, null, scale, domaine);
 
-    public static CommandEffect UnitTrait(string trait) =>
-        new(CommandEffectKind.UnitTrait, default, 0, trait, CommandScale.Flat);
+    public static CommandEffect UnitTrait(string trait, Domaine? domaine = null) =>
+        new(CommandEffectKind.UnitTrait, default, 0, trait, CommandScale.Flat, domaine);
 
     public static CommandEffect ReserveSlots(int amount) =>
-        new(CommandEffectKind.ReserveSlots, default, amount, null, CommandScale.Flat);
+        new(CommandEffectKind.ReserveSlots, default, amount, null, CommandScale.Flat, null);
 
     public static CommandEffect DeploySlots(int amount) =>
-        new(CommandEffectKind.DeploySlots, default, amount, null, CommandScale.Flat);
+        new(CommandEffectKind.DeploySlots, default, amount, null, CommandScale.Flat, null);
 
-    public static CommandEffect FusionRecruit(int amount = 1) =>
-        new(CommandEffectKind.FusionRecruit, default, amount, null, CommandScale.Flat);
+    public static CommandEffect FusionRecruit(int amount = 1, Domaine? domaine = null) =>
+        new(CommandEffectKind.FusionRecruit, default, amount, null, CommandScale.Flat, domaine);
 
-    public static CommandEffect EliteDeathRecruit(int amount = 1) =>
-        new(CommandEffectKind.EliteDeathRecruit, default, amount, null, CommandScale.Flat);
+    public static CommandEffect EliteDeathRecruit(int amount = 1, Domaine? domaine = null) =>
+        new(CommandEffectKind.EliteDeathRecruit, default, amount, null, CommandScale.Flat, domaine);
 }

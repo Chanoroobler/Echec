@@ -473,6 +473,34 @@ public class RunTests
         Assert.Equal(7, restored.Roster[0].Kills);
     }
 
+    [Fact]
+    public void RunSave_PreservesRunStats()
+    {
+        // Le récap cumulé de la run (dégâts par classe, tués, perdus, déblocages) survit à un aller-retour.
+        var run = new Run(seed: 1);
+        run.Stats.AddDamage("Paladin", 120);
+        run.Stats.AddDamage("Lancier", 60);
+        run.Stats.AddKills(7);
+        run.Stats.AddUnitsLost(3);
+        run.Stats.AddFusion();
+        run.Stats.AddPaysansSaved(2);
+        run.Stats.AddEquipmentFound();
+        run.Stats.AddUnlockedCommander("LANCIER");
+        run.Stats.AddDiscoveredClass("Garde");
+
+        var s = RunSave.From(run).ToRun().Stats;
+
+        Assert.Equal(180, s.TotalDamage);
+        Assert.Equal(("Paladin", 120), s.TopDamage(1)[0]);
+        Assert.Equal(7, s.TotalKills);
+        Assert.Equal(3, s.UnitsLost);
+        Assert.Equal(1, s.Fusions);
+        Assert.Equal(2, s.PaysansSaved);
+        Assert.Equal(1, s.EquipmentFound);
+        Assert.Equal(new[] { "LANCIER" }, s.UnlockedCommanders);
+        Assert.Equal(new[] { "Garde" }, s.DiscoveredClasses);
+    }
+
     [Theory]
     [InlineData(1, true)]
     [InlineData(6, true)]

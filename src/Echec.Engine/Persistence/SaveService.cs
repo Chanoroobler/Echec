@@ -87,14 +87,15 @@ public sealed class SaveService
     public bool IsUnitDiscovered(string asset) => DiscoveredSet().Contains(asset);
 
     /// <summary>
-    /// Marque une unité comme découverte. Idempotent. Le set mémoire est mis à jour SYNCHRONE (IsUnitDiscovered
-    /// est correct dès le retour) ; la persistance disque (lecture-modification-écriture de profile.json, sous
-    /// verrou pour préserver les autres champs) part en arrière-plan pour ne pas figer la frame appelante.
+    /// Marque une unité comme découverte. Idempotent. Renvoie <c>true</c> si c'était une NOUVEAUTÉ (utile au
+    /// récap de fin de run). Le set mémoire est mis à jour SYNCHRONE (IsUnitDiscovered est correct dès le
+    /// retour) ; la persistance disque (lecture-modification-écriture de profile.json, sous verrou pour
+    /// préserver les autres champs) part en arrière-plan pour ne pas figer la frame appelante.
     /// </summary>
-    public void DiscoverUnit(string asset)
+    public bool DiscoverUnit(string asset)
     {
         if (!DiscoveredSet().Add(asset))
-            return;
+            return false;
         var snapshot = new List<string>(DiscoveredSet());
         Task.Run(() =>
         {
@@ -105,6 +106,7 @@ public sealed class SaveService
                 TryWrite(ProfilePath, dto);
             }
         });
+        return true;
     }
 
     // Cache mémoire des équipements découverts (même logique que les unités).
@@ -117,13 +119,14 @@ public sealed class SaveService
     public bool IsEquipmentDiscovered(string id) => DiscoveredEquipSet().Contains(id);
 
     /// <summary>
-    /// Marque un équipement comme découvert. Idempotent. Set mémoire mis à jour SYNCHRONE ; persistance
-    /// disque (lecture-modification-écriture sous verrou pour préserver les autres champs) en arrière-plan.
+    /// Marque un équipement comme découvert. Idempotent. Renvoie <c>true</c> si c'était une NOUVEAUTÉ. Set
+    /// mémoire mis à jour SYNCHRONE ; persistance disque (lecture-modification-écriture sous verrou pour
+    /// préserver les autres champs) en arrière-plan.
     /// </summary>
-    public void DiscoverEquipment(string id)
+    public bool DiscoverEquipment(string id)
     {
         if (!DiscoveredEquipSet().Add(id))
-            return;
+            return false;
         var snapshot = new List<string>(DiscoveredEquipSet());
         Task.Run(() =>
         {
@@ -134,16 +137,53 @@ public sealed class SaveService
                 TryWrite(ProfilePath, dto);
             }
         });
+        return true;
     }
 
-    /// <summary>Efface toute la méta-progression (unités ET équipements découverts). Garde le reste du profil.</summary>
+    // Cache mémoire des commandants débloqués (même logique que les unités).
+    private HashSet<string>? _unlockedCommanders;
+
+    private HashSet<string> UnlockedCommanderSet() =>
+        _unlockedCommanders ??= new HashSet<string>(TryRead<ProfileDto>(ProfilePath)?.UnlockedCommanders ?? new List<string>());
+
+    /// <summary>Ids des commandants débloqués (méta-progression), à injecter dans une <see cref="Run"/>.</summary>
+    public IReadOnlySet<string> UnlockedCommanders() => UnlockedCommanderSet();
+
+    /// <summary>Vrai si le commandant d'id <paramref name="id"/> a été débloqué (toutes parties confondues).</summary>
+    public bool IsCommanderUnlocked(string id) => UnlockedCommanderSet().Contains(id);
+
+    /// <summary>
+    /// Débloque un commandant (le rend jouable dans le carrousel). Idempotent. Renvoie <c>true</c> si c'était
+    /// une NOUVEAUTÉ. Set mémoire mis à jour SYNCHRONE ; persistance disque (lecture-modification-écriture sous
+    /// verrou pour préserver les autres champs) en arrière-plan.
+    /// </summary>
+    public bool UnlockCommander(string id)
+    {
+        if (string.IsNullOrEmpty(id) || !UnlockedCommanderSet().Add(id))
+            return false;
+        var snapshot = new List<string>(UnlockedCommanderSet());
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.UnlockedCommanders = snapshot;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+        return true;
+    }
+
+    /// <summary>Efface toute la méta-progression (unités, équipements découverts ET commandants débloqués). Garde le reste du profil.</summary>
     public void ResetMetaProgression()
     {
         _discovered = new HashSet<string>();
         _discoveredEquip = new HashSet<string>();
+        _unlockedCommanders = new HashSet<string>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
         dto.DiscoveredEquipment = new List<string>();
+        dto.UnlockedCommanders = new List<string>();
         TryWrite(ProfilePath, dto);
     }
 

@@ -23,7 +23,8 @@ public sealed class CommandeDef
 
     public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass,
         int deployments = 5, int reserveSize = 8, string treeId = "commandant", int fusionPoints = 0,
-        string? id = null, IReadOnlyList<Domaine>? startingUnits = null, bool startsUnlocked = true)
+        string? id = null, IReadOnlyList<Domaine>? startingUnits = null, bool startsUnlocked = true,
+        int onHitPoints = 0, int onHitCap = int.MaxValue)
     {
         StartsUnlocked = startsUnlocked;
         Role = role;
@@ -33,6 +34,8 @@ public sealed class CommandeDef
         ReserveSize = reserveSize;
         TreeId = treeId;
         FusionPoints = fusionPoints;
+        OnHitPoints = onHitPoints;
+        OnHitCap = onHitCap;
         Id = string.IsNullOrWhiteSpace(id) ? baseClass.Asset : id!;
         StartingUnits = startingUnits ?? DefaultStartingUnits;
     }
@@ -84,11 +87,21 @@ public sealed class CommandeDef
     public string TreeId { get; }
 
     /// <summary>
-    /// COMMANDANT : points de commandement gagnés à CHAQUE fusion. C'est la source de gain PROPRE au
-    /// commandant, en plus des <see cref="Campaign.Run.PointsPerMission"/> de chaque mission réussie ;
-    /// les futurs commandants la remplaceront par la leur. 0 = pas de bonus de fusion.
+    /// COMMANDANT : points de commandement gagnés à CHAQUE fusion. C'est UNE des sources de gain PROPRES au
+    /// commandant, en plus des <see cref="Campaign.Run.PointsPerMission"/> de chaque mission réussie.
+    /// 0 = pas de bonus de fusion (le commandant gagne alors ses points autrement, cf. <see cref="OnHitPoints"/>).
     /// </summary>
     public int FusionPoints { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à CHAQUE fois qu'il se fait TOUCHER en combat (source de
+    /// gain alternative à <see cref="FusionPoints"/>), plafonnée à <see cref="OnHitCap"/> coups par combat.
+    /// 0 = ce commandant ne gagne pas de points sur coup reçu. Cf. <see cref="Campaign.Run.GrantCommanderHitPoints"/>.
+    /// </summary>
+    public int OnHitPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de coups reçus comptabilisés par combat pour <see cref="OnHitPoints"/>.</summary>
+    public int OnHitCap { get; }
 
     public string Name => BaseClass.Name;
 }

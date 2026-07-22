@@ -14,8 +14,9 @@ namespace Echec.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v3 = le commandant choisi (<see cref="CommanderId"/>) et la difficulté
-    /// (<see cref="Difficulty"/>) sont persistés.
+    /// Version du format. v4 = le récap de run (<see cref="Stats"/>) est persisté (compteurs de fin de run).
+    /// v3 = le commandant choisi (<see cref="CommanderId"/>) et la difficulté (<see cref="Difficulty"/>) sont
+    /// persistés ; ces sauvegardes restent LISIBLES (récap absent → compteur neuf).
     /// v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> = 18) : ces sauvegardes
     /// restent LISIBLES — sans id, le commandant est retrouvé par l'asset de sa classe, et la difficulté
     /// absente vaut Normal.
@@ -25,7 +26,7 @@ public sealed class RunSave
     /// En revanche un <see cref="CombatNumber"/> hors [1..18] est impossible sous ce format → à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -72,6 +73,10 @@ public sealed class RunSave
     /// <summary>Difficulté choisie à la création, figée pour la run. Absente (vieux save) → Normal.</summary>
     public Difficulty Difficulty { get; set; } = Difficulty.Normal;
 
+    /// <summary>Récap CUMULÉ de la run (dégâts par classe, tués, perdus, déblocages…). Absent (save v3 ou
+    /// antérieur) → compteur neuf à la reprise.</summary>
+    public RunStatsSave? Stats { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -85,6 +90,7 @@ public sealed class RunSave
             CommandPoints = run.CommandPoints, CommandNodes = run.UnlockedNodes.ToList(),
             Rerolls = run.Rerolls,
             CommanderId = run.CommanderDef.Id, Difficulty = run.Difficulty,
+            Stats = RunStatsSave.From(run.Stats),
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -103,7 +109,42 @@ public sealed class RunSave
             .Select(e => e!)
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
-            CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty);
+            CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats());
+    }
+}
+
+/// <summary>Forme sérialisable du récap cumulé d'une run (<see cref="RunStats"/>) — persistée dans le slot.</summary>
+public sealed class RunStatsSave
+{
+    /// <summary>Dégâts infligés par NOM de classe.</summary>
+    public Dictionary<string, int> Damage { get; set; } = new();
+
+    public int Kills { get; set; }
+    public int Lost { get; set; }
+    public int Fusions { get; set; }
+    public int Paysans { get; set; }
+    public int Equipment { get; set; }
+
+    public List<string> UnlockedCommanders { get; set; } = new();
+    public List<string> DiscoveredClasses { get; set; } = new();
+    public List<string> DiscoveredEquipment { get; set; } = new();
+
+    public static RunStatsSave From(RunStats s) => new()
+    {
+        Damage = new Dictionary<string, int>(s.DamageByClass),
+        Kills = s.TotalKills, Lost = s.UnitsLost, Fusions = s.Fusions,
+        Paysans = s.PaysansSaved, Equipment = s.EquipmentFound,
+        UnlockedCommanders = s.UnlockedCommanders.ToList(),
+        DiscoveredClasses = s.DiscoveredClasses.ToList(),
+        DiscoveredEquipment = s.DiscoveredEquipment.ToList(),
+    };
+
+    public RunStats ToStats()
+    {
+        var s = new RunStats();
+        s.Restore(Damage, Kills, Lost, Fusions, Paysans, Equipment,
+            UnlockedCommanders, DiscoveredClasses, DiscoveredEquipment);
+        return s;
     }
 }
 

@@ -60,6 +60,26 @@ public sealed class Unit
     public void RecordKill() => Kills++;
 
     /// <summary>
+    /// Nombre de fois où cette unité a été TOUCHÉE (a réellement encaissé des dégâts) durant le combat
+    /// courant. Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
+    /// <see cref="Match"/>. Sert à la source de points « sur coup reçu » d'un commandant (cf. <c>CommandeDef.OnHitPoints</c>).
+    /// </summary>
+    public int TimesHit { get; private set; }
+
+    /// <summary>Comptabilise un coup REÇU (dégâts réellement encaissés). Appelé par le moteur de combat.</summary>
+    public void RecordHit() => TimesHit++;
+
+    /// <summary>
+    /// Total des dégâts RÉELLEMENT infligés par cette unité durant le combat courant (esquive/bouclier
+    /// déduits). Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
+    /// <see cref="Match"/>. Sert au récap de fin de run (dégâts par type de pion).
+    /// </summary>
+    public int DamageDealt { get; private set; }
+
+    /// <summary>Comptabilise des dégâts INFLIGÉS (montant réellement encaissé par la cible). Appelé par le moteur.</summary>
+    public void RecordDamage(int amount) => DamageDealt += System.Math.Max(0, amount);
+
+    /// <summary>
     /// Unité « pivot » dont la mort décide la partie : le commandant (joueur) ou le
     /// boss (ennemi). Voir <see cref="Match"/> pour les conditions de victoire.
     /// </summary>

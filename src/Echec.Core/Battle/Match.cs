@@ -350,7 +350,7 @@ public sealed class Match
 
         var victim = _units[target.Column, target.Row]!;
         var victimHpBefore = victim.Hp;
-        ApplyDamage(target, victim, EffectiveDamage(unit, from, victim, target));
+        ApplyDamage(target, victim, EffectiveDamage(unit, from, victim, target), unit);
 
         // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (esquive/bouclier inclus).
         if (unit.HasTrait(Trait.DrainDeVie))
@@ -390,7 +390,7 @@ public sealed class Match
                 && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit)
                 && CanStrike(target, victim, from))
             {
-                ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from));
+                ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from), victim);
                 RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
             }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
@@ -408,6 +408,8 @@ public sealed class Match
     private const int RageBonus = 6;             // +6 puissance quand l'attaquant est sous le seuil PV
     private const int RageHpThreshold = 10;      // seuil de PV de Rage
     private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
+    private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
+    private const int AuraSurpuissanceBonus = 5; // +5 puissance offerte par un allié « Aura de surpuissance » adjacent
     private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
     private const double EsquiveChance = 0.25;   // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
@@ -446,8 +448,9 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Bénédiction (offensifs), Rempart / Aura de
-    /// rempart (à distance ≥ 2) et Duelliste (corps à corps) en réduction. Borné à 0.
+    /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Bénédiction / Aura de puissance / Aura de
+    /// surpuissance (offensifs), Rempart / Aura de rempart (à distance ≥ 2) et Duelliste (corps à corps) en
+    /// réduction. Borné à 0.
     /// </summary>
     private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
     {
@@ -456,6 +459,10 @@ public sealed class Match
             dmg += RageBonus;
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.Benediction))
             dmg += BenedictionBonus;
+        if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.AuraDePuissance))
+            dmg += AuraPuissanceBonus;
+        if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.AuraDeSurpuissance))
+            dmg += AuraSurpuissanceBonus;
         if (attacker.HasTrait(Trait.Formation))
             dmg += FormationBonus * AdjacentAllyCount(attackerCell, attacker.Faction);
 
@@ -476,7 +483,7 @@ public sealed class Match
     /// Applique des dégâts. « Esquive » peut annuler entièrement l'attaque (25 %). Un allié adjacent
     /// « Bouclier divin » empêche la mort (PV ≥ 1).
     /// </summary>
-    private void ApplyDamage(Cell cell, Unit unit, int amount)
+    private void ApplyDamage(Cell cell, Unit unit, int amount, Unit? attacker)
     {
         if (amount <= 0)
             return;
@@ -485,7 +492,11 @@ public sealed class Match
         if (amount >= unit.Hp && HasAdjacentAlly(cell, unit.Faction, Trait.BouclierDivin))
             amount = unit.Hp - 1;   // laisse 1 PV : l'attaque n'est jamais mortelle
         if (amount > 0)
+        {
             unit.TakeDamage(amount);
+            unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
+            attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
+        }
     }
 
     /// <summary>Dégâts EFFECTIFS qu'infligerait l'attaque de <paramref name="from"/> sur
@@ -507,7 +518,7 @@ public sealed class Match
             var c = new Cell(center.Column + dc, center.Row + dr);
             if (UnitAt(c) is not { } u || u.Faction == attacker.Faction)
                 continue;
-            ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c));
+            ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c), attacker);
             RemoveDeadAt(c, attacker);
         }
     }
@@ -541,7 +552,7 @@ public sealed class Match
         {
             if (UnitAt(victims[i]) is not { } u)
                 continue;
-            ApplyDamage(victims[i], u, amount);
+            ApplyDamage(victims[i], u, amount, attacker);
             RemoveDeadAt(victims[i], attacker);
         }
     }
@@ -554,7 +565,7 @@ public sealed class Match
         var behind = new Cell(target.Column + dc, target.Row + dr);
         if (UnitAt(behind) is not { } u || u.Faction == attacker.Faction)
             return;
-        ApplyDamage(behind, u, EffectiveDamage(attacker, from, u, behind));
+        ApplyDamage(behind, u, EffectiveDamage(attacker, from, u, behind), attacker);
         RemoveDeadAt(behind, attacker);
     }
 
@@ -567,7 +578,7 @@ public sealed class Match
                 continue;
             if (!ThreatenedCells(cell).Contains(movedTo))
                 continue;
-            ApplyDamage(movedTo, mover, EffectiveDamage(unit, cell, mover, movedTo));
+            ApplyDamage(movedTo, mover, EffectiveDamage(unit, cell, mover, movedTo), unit);
             if (!mover.IsAlive)
             {
                 RemoveDeadAt(movedTo, unit);   // l'intercepteur abat le mobile : kill crédité

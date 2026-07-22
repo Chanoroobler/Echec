@@ -55,7 +55,7 @@ public static class DomaineCatalog
         return new CommandeDef(CommandeRole.Commander, domaine,
             new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange),
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
-            c.Id, starting, c.Unlocked ?? true);
+            c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue);
     }
 
     private static BossDef ToBoss(CommandeConfig c)
@@ -85,7 +85,7 @@ public static class DomaineCatalog
             profiles[phase] = new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange);
         }
 
-        return new BossDef(c.Name, c.Asset, domaine, profiles);
+        return new BossDef(c.Name, c.Asset, domaine, profiles, c.UnlocksCommander);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

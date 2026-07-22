@@ -50,8 +50,14 @@ public sealed class CommandeConfig
     /// <summary>COMMANDANT : id de son arbre dans commander_trees.json. Absent → « commandant ».</summary>
     public string? Tree { get; set; }
 
-    /// <summary>COMMANDANT : points de commandement gagnés à chaque fusion (sa source de gain propre). Absent → 0.</summary>
+    /// <summary>COMMANDANT : points de commandement gagnés à chaque fusion (une source de gain propre). Absent → 0.</summary>
     public int? FusionPoints { get; set; }
+
+    /// <summary>COMMANDANT : points gagnés à chaque coup REÇU en combat (source alternative). Absent → 0.</summary>
+    public int? OnHitPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de coups reçus comptabilisés par combat pour <c>onHitPoints</c>. Absent → illimité.</summary>
+    public int? OnHitCap { get; set; }
 
     /// <summary>
     /// COMMANDANT : identifiant stable, persisté dans la sauvegarde (indépendant du nom et de l'asset).
@@ -67,9 +73,16 @@ public sealed class CommandeConfig
 
     /// <summary>
     /// COMMANDANT : disponible dès le départ. <c>false</c> = verrouillé (silhouette noire dans le carrousel,
-    /// impossible à lancer). Absent → <c>true</c>. La CONDITION de déblocage n'existe pas encore.
+    /// impossible à lancer). Absent → <c>true</c>. Le déblocage se fait en battant le boss lié (cf.
+    /// <see cref="UnlocksCommander"/>) en dernière phase, mémorisé dans le profil.
     /// </summary>
     public bool? Unlocked { get; set; }
+
+    /// <summary>
+    /// BOSS : id du COMMANDANT débloqué en battant ce boss en dernière phase (cf. <see cref="Id"/> d'un
+    /// Commander). Absent → ce boss ne débloque personne (ex. la Brute). Ignoré pour un Commander.
+    /// </summary>
+    public string? UnlocksCommander { get; set; }
 }
 
 /// <summary>

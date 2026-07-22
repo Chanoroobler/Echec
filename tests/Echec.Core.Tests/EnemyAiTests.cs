@@ -272,16 +272,81 @@ public class EnemyAiTests
     }
 
     [Fact]
-    public void Accuracy_Zero_SkipsTheKill_AndDropsOneRank()
+    public void Accuracy_Zero_LoneKiller_StillTakesKill()
     {
-        // Maladresse maximale : l'IA renonce au kill parfait et descend d'un cran (ici un déplacement,
-        // la seule autre attaque possible étant précisément ce kill).
-        var match = KillAvailable(new Cell(4, 4), new Cell(4, 3));
+        // Maladresse maximale MAIS un seul ennemi : la règle « rater un kill = jouer un AUTRE pion » ne peut
+        // pas s'appliquer (il n'y a pas d'autre pion) → le kill se fait quand même (l'ennemi doit agir).
+        var player = new Cell(4, 4);
+        var match = KillAvailable(player, new Cell(4, 3));
 
         var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
 
         Assert.NotNull(action);
-        Assert.False(action!.Value.IsAttack);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(player, action.Value.To);
+    }
+
+    [Fact]
+    public void Accuracy_Zero_NonLethalAttack_IsNeverSkipped()
+    {
+        // Le meilleur coup est une attaque qui NE TUE PAS (joueur plein PV au contact) : même maladresse
+        // maximale, l'IA la joue toujours (règle : taper-sans-tuer se fait toujours).
+        var player = new Cell(4, 4);
+        var match = EnemyTurn(player, new Cell(4, 3), out _);   // Normal, joueur plein PV
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
+
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(player, action.Value.To);
+    }
+
+    [Fact]
+    public void Accuracy_Zero_KillBlunder_AnotherPawnPlays_NotTheKiller()
+    {
+        // Un tueur au contact d'un joueur à 1 PV, et un second ennemi loin. Maladresse maximale : l'IA
+        // renonce au kill et joue l'AUTRE pion (il avance) — jamais le tueur, jamais le kill.
+        var match = new Match(8, 8);
+        var weak = Units.Soldat(Faction.Player);
+        weak.TakeDamage(weak.Hp - 1);                 // 1 PV
+        match.Place(new Cell(4, 4), weak);
+        var killer = new Cell(4, 3);                  // au contact → peut tuer
+        match.Place(killer, Units.Soldat(Faction.Enemy));
+        var other = new Cell(0, 0);                   // loin → ne peut qu'avancer
+        match.Place(other, Units.Soldat(Faction.Enemy));
+        match.PassTurn();
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
+
+        Assert.NotNull(action);
+        Assert.False(action!.Value.IsAttack);       // pas de kill
+        Assert.Equal(other, action.Value.From);     // c'est l'AUTRE pion qui joue
+    }
+
+    [Fact]
+    public void Accuracy_Zero_KillBlunder_AnotherPawnTakesItsNonLethalAttack()
+    {
+        // Un tueur (joueur à 1 PV au contact) et un AUTRE ennemi au contact d'un joueur PLEIN PV. Maladresse
+        // maximale : pas de kill ; l'autre pion prend son attaque NON-LÉTALE (priorité au coup non-létal).
+        var match = new Match(8, 8);
+        var weak = Units.Soldat(Faction.Player);
+        weak.TakeDamage(weak.Hp - 1);
+        match.Place(new Cell(4, 4), weak);
+        var killer = new Cell(4, 3);
+        match.Place(killer, Units.Soldat(Faction.Enemy));
+
+        var healthy = new Cell(1, 1);
+        match.Place(healthy, Units.Soldat(Faction.Player));   // plein PV
+        var attacker = new Cell(1, 2);                        // au contact → attaque non-létale
+        match.Place(attacker, Units.Soldat(Faction.Enemy));
+        match.PassTurn();
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng(), accuracy: 0.0);
+
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(attacker, action.Value.From);   // l'autre pion attaque
+        Assert.Equal(healthy, action.Value.To);       // le joueur plein PV (pas le kill)
     }
 
     [Fact]

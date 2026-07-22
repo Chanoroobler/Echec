@@ -40,10 +40,11 @@ public sealed class Run
 
     /// <summary>
     /// ⚙️ PLAYTEST — la run se termine (VICTOIRE) au boss de CETTE phase. Mettre <c>= 2</c> pour s'arrêter au
-    /// boss de la phase 2 ; remettre <c>= PhaseCount</c> (3) pour la campagne COMPLÈTE. Toute la machinerie des
-    /// 3 phases (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée.
+    /// boss de la phase 2 ; <c>= PhaseCount</c> (3) pour la campagne COMPLÈTE. Toute la machinerie des 3 phases
+    /// (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée. Réglé sur <see cref="PhaseCount"/>
+    /// pour que le boss de phase 3 — et le déblocage de commandant qui en dépend — soit atteignable.
     /// </summary>
-    public const int EndAtPhase = 2;
+    public const int EndAtPhase = PhaseCount;
 
     /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
     public const int MissionsPerPhase = 6;
@@ -187,6 +188,13 @@ public sealed class Run
     /// <summary>Points de commandement disponibles (non dépensés).</summary>
     public int CommandPoints { get; private set; }
 
+    /// <summary>
+    /// Statistiques CUMULÉES de la run (récap de fin : dégâts par classe, tués, perdus, déblocages…).
+    /// Alimentée par la scène de jeu et PERSISTÉE avec la run (cf. <see cref="RunSave"/>) : elle survit à un
+    /// « Continuer » et entre sessions. Neuve à chaque nouvelle campagne (<see cref="Reset"/>).
+    /// </summary>
+    public RunStats Stats { get; private set; } = new();
+
     /// <summary>Ids des nœuds achetés (l'ordre n'a pas de sens).</summary>
     public IReadOnlyCollection<string> UnlockedNodes => _unlocked;
 
@@ -216,6 +224,14 @@ public sealed class Run
         _roster.Where(u => !u.Essential).Select(u => u.UnitClass).Distinct().Count() / 2;
 
     /// <summary>
+    /// Nombre d'unités du <paramref name="domaine"/> dans le roster HORS commandant (réserve ET pions
+    /// déployés — même objet). Multiplicateur des bonus « par unité de domaine »
+    /// (<see cref="CommandScale.PerDomaineUnit"/>), figé au roster de la phase de placement.
+    /// </summary>
+    public int DomaineUnitCount(Domaine domaine) =>
+        _roster.Count(u => !u.Essential && u.Domaine == domaine);
+
+    /// <summary>
     /// Vrai si <paramref name="node"/> est achetable MAINTENANT : en placement, pas déjà pris, prérequis
     /// satisfait (un nœud du niveau inférieur dans la même branche) et assez de points.
     /// </summary>
@@ -231,6 +247,19 @@ public sealed class Run
     /// acheter son premier nœud. Un montant négatif est ignoré.
     /// </summary>
     public void GrantCommandPoints(int amount) => CommandPoints += Math.Max(0, amount);
+
+    /// <summary>
+    /// Source de points « sur coup reçu » : crédite <c>CommandeDef.OnHitPoints</c> par fois que le COMMANDANT
+    /// a été touché ce combat (<paramref name="commanderHits"/>), plafonné à <c>CommandeDef.OnHitCap</c> coups.
+    /// Sans effet pour un commandant dont ce n'est pas la source (OnHitPoints = 0). À appeler à la clôture
+    /// d'un combat non perdu (le commandant est alors vivant).
+    /// </summary>
+    public void GrantCommanderHitPoints(int commanderHits)
+    {
+        if (CommanderDef.OnHitPoints <= 0 || commanderHits <= 0)
+            return;
+        CommandPoints += Math.Min(commanderHits, CommanderDef.OnHitCap) * CommanderDef.OnHitPoints;
+    }
 
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
@@ -270,7 +299,7 @@ public sealed class Run
     /// roster du moment, donc recalculés à chaque phase de placement.
     /// </summary>
     public CommandBuffs BuffsFor(UnitSpec spec) =>
-        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs);
+        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount);
 
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
@@ -342,6 +371,7 @@ public sealed class Run
         _rerolls = 1;               // 1 relance offerte à l'ouverture de la phase 1
         LegendaryPity = 0;
         RarePity = 0;
+        Stats = new RunStats();     // récap remis à zéro pour la nouvelle campagne
         Phase = RunPhase.Placement;
     }
 
@@ -364,9 +394,11 @@ public sealed class Run
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
         IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
         int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
-        string? commanderId = null, Difficulty difficulty = Difficulty.Normal)
+        string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
+        if (stats != null)
+            run.Stats = stats;   // récap repris de la sauvegarde (sinon compteur neuf du constructeur)
         run._roster.Clear();
         run._roster.AddRange(roster);
         run.CommanderDef = ResolveCommander(roster, commanderId);
@@ -423,6 +455,26 @@ public sealed class Run
         var pool = IntroOrder.Where(d => isSeen(Domaines.Of(d).BaseClass.Asset)).ToList();
         var domaine = pool.Count > 0 ? pool[rng.Next(pool.Count)] : Domaine.Dame;
         return new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+    }
+
+    /// <summary>
+    /// Une recrue pour l'effet d'arbre <paramref name="e"/> : la classe de base de son domaine s'il en
+    /// précise un (ex. « recrute un Lancier » → domaine Tour), sinon un tier 1 déjà vu au hasard
+    /// (<see cref="RollSeenTier1"/>).
+    /// </summary>
+    private UnitSpec RecruitFor(CommandEffect e, Random rng, Func<string, bool> isSeen) =>
+        e.Domaine is { } d ? new UnitSpec(d, Domaines.Of(d).BaseClass) : RollSeenTier1(rng, isSeen);
+
+    /// <summary>
+    /// Recrues offertes par les nœuds « fusion » de l'arbre à CHAQUE fusion, une par recrue (le domaine
+    /// précisé par l'effet, sinon un tier 1 déjà vu). L'appelant les ajoute au roster dans la limite de la
+    /// réserve (une fusion libère deux places, donc le plafond ne mord jamais pour la 1re recrue).
+    /// </summary>
+    public IEnumerable<UnitSpec> FusionRecruitSpecs(Random rng, Func<string, bool> isSeen)
+    {
+        foreach (var e in ActiveEffects.Where(x => x.Kind == CommandEffectKind.FusionRecruit))
+            for (var i = 0; i < e.Amount; i++)
+                yield return RecruitFor(e, rng, isSeen);
     }
 
     /// <summary>Points de % gagnés par mission (à partir de la mission 2) sur la chance de recruter un T2.</summary>
@@ -1002,26 +1054,29 @@ public sealed class Run
 
     /// <summary>
     /// « Relève » (nœud d'arbre TROUPES) : pour chaque unité de TIER 2+ tombée au combat (parmi
-    /// <paramref name="casualties"/>), fait arriver en réserve <see cref="EliteDeathRecruits"/> pion(s) tier 1
-    /// aléatoire(s) DÉJÀ VU(S), dans la limite du plafond de réserve. Sans effet si le nœud n'est pas acheté.
-    /// À appeler APRÈS <see cref="CompleteCombat"/> / <see cref="CompleteSpecialNoDraft"/> (les pertes retirées
-    /// ont libéré la place). Renvoie les recrues ajoutées (pour un éventuel retour visuel).
+    /// <paramref name="casualties"/>), fait arriver en réserve un pion tier 1 par recrue du nœud — un tier 1
+    /// DÉJÀ VU au hasard, ou la classe de base d'un DOMAINE précisé par l'effet (ex. un Lancier). Dans la
+    /// limite du plafond de réserve. Sans effet si le nœud n'est pas acheté. À appeler APRÈS
+    /// <see cref="CompleteCombat"/> / <see cref="CompleteSpecialNoDraft"/> (les pertes retirées ont libéré la
+    /// place). Renvoie les recrues ajoutées (pour un éventuel retour visuel).
     /// </summary>
     public IReadOnlyList<UnitSpec> GrantEliteDeathReplacements(
         IEnumerable<UnitSpec> casualties, Random rng, Func<string, bool> isSeen)
     {
         var added = new List<UnitSpec>();
-        var perDeath = EliteDeathRecruits;
-        if (perDeath <= 0)
+        var elites = casualties.Count(c => c.UnitClass.Tier >= 2);
+        if (elites <= 0)
             return added;
 
-        var elites = casualties.Count(c => c.UnitClass.Tier >= 2);
-        for (var i = 0; i < elites * perDeath && !IsReserveFull; i++)
-        {
-            var recruit = RollSeenTier1(rng, isSeen);
-            _roster.Add(recruit);
-            added.Add(recruit);
-        }
+        // Un nœud « relève » peut préciser un domaine (ex. « mort T2/T3 → recrute un Lancier ») ; à défaut,
+        // un tier 1 déjà vu au hasard. Chaque nœud produit elites × son Amount recrues.
+        foreach (var e in ActiveEffects.Where(x => x.Kind == CommandEffectKind.EliteDeathRecruit))
+            for (var i = 0; i < elites * e.Amount && !IsReserveFull; i++)
+            {
+                var recruit = RecruitFor(e, rng, isSeen);
+                _roster.Add(recruit);
+                added.Add(recruit);
+            }
         return added;
     }
 
@@ -1210,7 +1265,24 @@ public sealed class Run
     // après « Continuer »). Le boss d'une phase combat avec le PROFIL (stats + traits) de CETTE phase.
     // Repli sur répétition si moins de boss éligibles que de phases. Cf. Bosses.AssignForRun.
     private IReadOnlyList<BossDef>? _bossAssignment;
-    private IReadOnlyList<BossDef> BossAssignment => _bossAssignment ??= Bosses.AssignForRun(Seed, PhaseCount);
+    private IReadOnlyList<BossDef> BossAssignment =>
+        _bossAssignment ??= Bosses.AssignForRun(Seed, PhaseCount, _unlockedCommanders);
+
+    /// <summary>
+    /// Ids des commandants DÉJÀ débloqués (méta-progression du profil), injectés par la scène au démarrage.
+    /// La dernière phase priorise un boss dont le commandant n'est PAS ici (cf. <see cref="Bosses.AssignForRun"/>).
+    /// </summary>
+    private IReadOnlySet<string> _unlockedCommanders = new HashSet<string>();
+
+    /// <summary>
+    /// Renseigne les commandants déjà débloqués (profil global). À appeler AVANT le premier combat de boss :
+    /// réinitialise le tirage mis en cache pour qu'il tienne compte de la priorité de déblocage.
+    /// </summary>
+    public void SetUnlockedCommanders(IReadOnlySet<string> ids)
+    {
+        _unlockedCommanders = ids ?? new HashSet<string>();
+        _bossAssignment = null;
+    }
 
     /// <summary>Boss (identité + profils par phase) assigné à la <paramref name="phase"/> (1..<see cref="PhaseCount"/>) de CETTE run.</summary>
     public BossDef BossOfPhase(int phase) => BossAssignment[phase - 1];

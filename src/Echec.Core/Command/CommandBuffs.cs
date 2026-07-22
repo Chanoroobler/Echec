@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Echec.Core.Battle;
 using Echec.Core.Equip;
 
 namespace Echec.Core.Command;
@@ -42,9 +44,12 @@ public sealed class CommandBuffs
     /// Agrège les effets qui visent la cible voulue. <paramref name="commander"/> vrai → on ne retient que
     /// les effets <see cref="CommandEffect.TargetsCommander"/> ; faux → <see cref="CommandEffect.TargetsUnits"/>.
     /// Les effets de méta (slots, fusion) sont ignorés ici (lus directement par la <see cref="Campaign.Run"/>).
-    /// <paramref name="distinctPairs"/> met à l'échelle les bonus « par paire ».
+    /// <paramref name="distinctPairs"/> met à l'échelle les bonus « par paire ». Pour une unité,
+    /// <paramref name="targetDomaine"/> filtre les effets restreints à un domaine (cf. <see cref="CommandEffect.Domaine"/>) ;
+    /// <paramref name="domaineCount"/> alimente l'échelle « par unité de domaine ».
     /// </summary>
-    public static CommandBuffs From(IEnumerable<CommandEffect> effects, bool commander, int distinctPairs)
+    public static CommandBuffs From(IEnumerable<CommandEffect> effects, bool commander, int distinctPairs,
+        Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null)
     {
         var stats = new Dictionary<EquipStat, int>();
         var traits = new List<string>();
@@ -54,6 +59,11 @@ public sealed class CommandBuffs
             if (commander ? !e.TargetsCommander : !e.TargetsUnits)
                 continue;
 
+            // Effets d'UNITÉ restreints à un domaine : ignorés pour une unité d'un autre domaine. Le
+            // commandant, lui, n'est jamais filtré (son domaine sert seulement à l'échelle par domaine).
+            if (!commander && e.Domaine is { } fd && targetDomaine != fd)
+                continue;
+
             if (e.Kind is CommandEffectKind.CommanderTrait or CommandEffectKind.UnitTrait)
             {
                 if (e.Trait is { } t && !traits.Contains(t))
@@ -61,7 +71,7 @@ public sealed class CommandBuffs
                 continue;
             }
 
-            var amount = e.AmountFor(distinctPairs);
+            var amount = e.AmountFor(distinctPairs, domaineCount);
             if (amount != 0)
                 stats[e.Stat] = stats.GetValueOrDefault(e.Stat, 0) + amount;
         }

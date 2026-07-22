@@ -27,6 +27,8 @@ public static class UnitKeywords
         ["Transpercement"] = "kw.transpercement",
         ["Interception"] = "kw.interception",
         ["Aura de rempart"] = "kw.aura_rempart",
+        ["Aura de puissance"] = "kw.aura_puissance",
+        ["Aura de surpuissance"] = "kw.aura_surpuissance",
         ["Riposte"] = "kw.riposte",
         ["Duelliste"] = "kw.duelliste",
         ["Rage"] = "kw.rage",

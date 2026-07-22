@@ -89,6 +89,25 @@ public class DomaineCatalogTests
     }
 
     [Fact]
+    public void BossesFromJson_ReadsUnlockedCommander()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Boss", "name": "Commandant_lancier", "asset": "Commandant_lancier", "domaine": "Tour",
+              "unlocksCommander": "Commandant_lancier",
+              "phases": { "3": { "hp": 64, "damage": 20, "moveRange": 2, "attackRange": 3, "piercesAllies": true } }
+            }
+          ]
+        }
+        """;
+
+        var boss = Assert.Single(DomaineCatalog.BossesFromJson(json));
+        Assert.Equal("Commandant_lancier", boss.UnlocksCommander);
+    }
+
+    [Fact]
     public void AssignForRun_IsDeterministic_AndPrefersDistinctBosses()
     {
         var pool = new[] { Boss("A"), Boss("B"), Boss("C") };
@@ -98,6 +117,30 @@ public class DomaineCatalogTests
 
         Assert.Equal(a1.Select(b => b.Name), a2.Select(b => b.Name));   // rejoué à l'identique
         Assert.Equal(3, a1.Select(b => b.Name).Distinct().Count());     // 3 boss distincts (pool suffisant)
+    }
+
+    [Fact]
+    public void AssignForRun_FinalPhase_PrioritizesLockedUnlockableBoss()
+    {
+        var pool = new[] { Boss("A"), Boss("B"), UnlockBoss("Lancier", "cmd_lancier") };
+        // Commandant encore verrouillé : le boss qui le débloque occupe la DERNIÈRE phase, quel que soit le seed.
+        for (var seed = 0; seed < 40; seed++)
+        {
+            var assign = Bosses.AssignForRun(pool, seed, phaseCount: 3, unlockedCommanders: new HashSet<string>());
+            Assert.Equal("cmd_lancier", assign[2].UnlocksCommander);
+        }
+    }
+
+    [Fact]
+    public void AssignForRun_FinalPhase_NoPriority_WhenCommanderAlreadyUnlocked()
+    {
+        var pool = new[] { Boss("A"), Boss("B"), UnlockBoss("Lancier", "cmd_lancier") };
+        var already = new HashSet<string> { "cmd_lancier" };
+        var finalUnlocks = new HashSet<string?>();
+        for (var seed = 0; seed < 40; seed++)
+            finalUnlocks.Add(Bosses.AssignForRun(pool, seed, phaseCount: 3, already)[2].UnlocksCommander);
+        // Déjà débloqué → plus de priorité : la phase 3 n'est plus systématiquement le boss lié.
+        Assert.Contains(null, finalUnlocks);
     }
 
     [Fact]
@@ -122,6 +165,15 @@ public class DomaineCatalogTests
         [2] = new(name, name, tier: 1, maxHp: 40, damage: 11, moveRange: 1, attackRange: 1),
         [3] = new(name, name, tier: 1, maxHp: 50, damage: 13, moveRange: 1, attackRange: 1),
     });
+
+    /// <summary>Boss éligible aux 3 phases qui DÉBLOQUE le commandant <paramref name="unlocksCommander"/>.</summary>
+    private static BossDef UnlockBoss(string name, string unlocksCommander) =>
+        new(name, name, Domaine.Dame, new Dictionary<int, UnitClass>
+        {
+            [1] = new(name, name, tier: 1, maxHp: 30, damage: 9,  moveRange: 1, attackRange: 1),
+            [2] = new(name, name, tier: 1, maxHp: 40, damage: 11, moveRange: 1, attackRange: 1),
+            [3] = new(name, name, tier: 1, maxHp: 50, damage: 13, moveRange: 1, attackRange: 1),
+        }, unlocksCommander: unlocksCommander);
 
     [Fact]
     public void Load_OverridesDefaults()

@@ -461,14 +461,15 @@ public class CommandTreeTests
         System.IO.Path.Combine(new[] { RepoRoot(), "src", "Echec.Game", "Assets" }.Concat(parts).ToArray());
 
     [Fact]
-    public void ShippedTree_Parses_AndEveryNodeHasItsLocalizedLabelAndDescription()
+    public void ShippedTrees_Parse_AndEveryNodeHasItsLocalizedLabelAndDescription()
     {
         var trees = CommandTreeCatalog.FromJson(
             System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
-        var tree = Assert.Single(trees);
+        Assert.NotEmpty(trees);
 
         // strings.csv : chaque nœud DOIT avoir « tree.<id> » et « tree.<id>.desc », sinon l'infobulle affiche
-        // la clé brute (le bug d'un id renommé sans sa traduction).
+        // la clé brute (le bug d'un id renommé sans sa traduction). Idem pour les libellés de branche et la
+        // ligne de gain de chaque arbre.
         var keys = new HashSet<string>();
         foreach (var line in System.IO.File.ReadAllLines(AssetPath("Config", "strings.csv")))
         {
@@ -480,10 +481,106 @@ public class CommandTreeTests
                 keys.Add(line[..comma].Trim());
         }
 
-        foreach (var node in tree.Nodes)
+        foreach (var tree in trees)
         {
-            Assert.True(keys.Contains(node.NameKey), $"libellé manquant : {node.NameKey}");
-            Assert.True(keys.Contains(node.DescKey), $"description manquante : {node.DescKey}");
+            foreach (var node in tree.Nodes)
+            {
+                Assert.True(keys.Contains(node.NameKey), $"libellé manquant : {node.NameKey}");
+                Assert.True(keys.Contains(node.DescKey), $"description manquante : {node.DescKey}");
+            }
+
+            // Libellés de branche (clé tree.<id>.branch<N>) et ligne de gain (tree.<id>.income).
+            for (var branch = 0; branch < tree.BranchCount; branch++)
+                Assert.True(keys.Contains($"tree.{tree.Id}.branch{branch}"),
+                    $"libellé de branche manquant : tree.{tree.Id}.branch{branch}");
+            Assert.True(keys.Contains($"tree.{tree.Id}.income"),
+                $"ligne de gain manquante : tree.{tree.Id}.income");
         }
+    }
+
+    // ─── Effets CIBLÉS PAR DOMAINE / échelle par domaine (arbre Lancier) ──────────────────────────
+
+    // ─── Source de points « sur coup reçu » (commandant Lancier) ─────────────────────────────────
+
+    [Fact]
+    public void GrantCommanderHitPoints_CreditsPerHit_UpToCap()
+    {
+        var onHit = new CommandeDef(CommandeRole.Commander, Domaine.Dame,
+            new UnitClass("L", "l", tier: 1, maxHp: 40, damage: 10, moveRange: 1, attackRange: 1),
+            fusionPoints: 0, onHitPoints: 1, onHitCap: 2);
+        var run = new Run(seed: 1, commander: onHit);   // CommandPoints = 0 au départ
+
+        run.GrantCommanderHitPoints(1);
+        Assert.Equal(1, run.CommandPoints);              // 1 coup → 1 point
+
+        run.GrantCommanderHitPoints(5);
+        Assert.Equal(3, run.CommandPoints);              // plafonné à 2 coups → +2 (total 3)
+
+        run.GrantCommanderHitPoints(0);
+        Assert.Equal(3, run.CommandPoints);              // 0 coup → rien
+    }
+
+    [Fact]
+    public void GrantCommanderHitPoints_NoOp_WhenCommanderHasNoOnHitSource()
+    {
+        var fusionCmd = new CommandeDef(CommandeRole.Commander, Domaine.Dame,
+            new UnitClass("C", "c", tier: 1, maxHp: 28, damage: 12, moveRange: 1, attackRange: 1),
+            fusionPoints: 2);   // OnHitPoints = 0 (défaut)
+        var run = new Run(seed: 1, commander: fusionCmd);
+        run.GrantCommanderHitPoints(5);
+        Assert.Equal(0, run.CommandPoints);
+    }
+
+    // ─── Effets CIBLÉS PAR DOMAINE / échelle par domaine (arbre Lancier) ──────────────────────────
+
+    [Fact]
+    public void UnitStat_DomaineFilter_OnlyBuffsThatDomaine()
+    {
+        var effects = new[] { CommandEffect.UnitStat(EquipStat.Hp, 4, domaine: Domaine.Tour) };
+        var tour = CommandBuffs.From(effects, commander: false, distinctPairs: 0, targetDomaine: Domaine.Tour);
+        var dame = CommandBuffs.From(effects, commander: false, distinctPairs: 0, targetDomaine: Domaine.Dame);
+        Assert.Equal(4, tour.BonusFor(EquipStat.Hp));   // unité du bon domaine : bonus appliqué
+        Assert.Equal(0, dame.BonusFor(EquipStat.Hp));   // autre domaine : pas touchée
+    }
+
+    [Fact]
+    public void PerDomaineUnit_ScalesByDomaineUnitCount()
+    {
+        var effects = new[] { CommandEffect.CommanderStat(EquipStat.Hp, 3, CommandScale.PerDomaineUnit, Domaine.Tour) };
+        var buffs = CommandBuffs.From(effects, commander: true, distinctPairs: 0,
+            targetDomaine: null, domaineCount: d => d == Domaine.Tour ? 2 : 0);
+        Assert.Equal(6, buffs.BonusFor(EquipStat.Hp));   // 3 × 2 unités du domaine Tour
+    }
+
+    [Fact]
+    public void UnitTrait_DomaineFilter_OnlyGrantsToThatDomaine()
+    {
+        var effects = new[] { CommandEffect.UnitTrait(Trait.AuraDePuissance, Domaine.Tour) };
+        Assert.True(CommandBuffs.From(effects, false, 0, Domaine.Tour).GrantsTrait(Trait.AuraDePuissance));
+        Assert.False(CommandBuffs.From(effects, false, 0, Domaine.Fou).GrantsTrait(Trait.AuraDePuissance));
+    }
+
+    [Fact]
+    public void LancierTree_RecruitAndTargetedNodes_CarryTourDomaine()
+    {
+        var trees = CommandTreeCatalog.FromJson(
+            System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
+        var lancier = trees.Single(t => t.Id == "commandantLancier");
+
+        CommandEffect Effect(string nodeId) => lancier.ById(nodeId)!.Effects.Single();
+
+        // Recrutement d'un LANCIER (domaine Tour) plutôt qu'un tier 1 générique.
+        var fusion = Effect("lan_logi_fusion");
+        Assert.Equal(CommandEffectKind.FusionRecruit, fusion.Kind);
+        Assert.Equal(Domaine.Tour, fusion.Domaine);
+
+        var releve = Effect("lan_tour_releve");
+        Assert.Equal(CommandEffectKind.EliteDeathRecruit, releve.Kind);
+        Assert.Equal(Domaine.Tour, releve.Domaine);
+
+        // Bonus d'unité restreint au domaine de la tour + échelle par unité de ce domaine.
+        Assert.Equal(Domaine.Tour, Effect("lan_tour_pv").Domaine);
+        Assert.Equal(CommandScale.PerDomaineUnit, Effect("lan_tour_pv_tour").Scale);
+        Assert.Equal(Domaine.Tour, Effect("lan_cmd_pv_tour").Domaine);   // échelle par unité Tour côté commandant
     }
 }

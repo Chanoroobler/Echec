@@ -849,6 +849,9 @@ public sealed class GameplayScene : Scene
             _run = new Run(firstRun: firstRun, commander: _chosenCommander, difficulty: _chosenDifficulty);
         }
         _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
+        // Priorité de tirage du boss de dernière phase : le jeu privilégie un boss qui débloquerait un
+        // commandant encore verrouillé (cf. Bosses.AssignForRun). À poser AVANT tout combat de boss.
+        _run.SetUnlockedCommanders(Context.Saves.UnlockedCommanders());
 
         // Nouvelle campagne → tutoriel « combat zéro » (skippable). Reprise → direct au combat réel.
         if (resumed)
@@ -1377,7 +1380,9 @@ public sealed class GameplayScene : Scene
                     if (_chestReveal is { } item)
                     {
                         _run.AddEquipment(item);
-                        Context.Saves.DiscoverEquipment(item.Id);   // méta-progression : désormais connu (codex)
+                        _run.Stats.AddEquipmentFound();   // récap : équipement ramassé
+                        if (Context.Saves.DiscoverEquipment(item.Id))   // méta-progression : désormais connu (codex)
+                            _run.Stats.AddDiscoveredEquipment(item.Name);   // récap : équipement DÉCOUVERT cette run
                     }
                     _chestPhase = ChestPhase.Settle;
                     _chestPhaseTimer = 0;
@@ -1727,8 +1732,8 @@ public sealed class GameplayScene : Scene
             case RunPhase.Recruitment: UpdateRecruitment(gameTime); break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
-                // Run terminée (slot déjà effacé) : un clic ramène au menu principal.
-                if (Context.Input.WasLeftClicked)
+                // Run terminée (slot déjà effacé) : le récap est affiché ; clic / A / Entrée ramène au menu.
+                if (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
                     Context.Scenes.Change(new MainMenuScene(Context));
                 break;
         }
@@ -3165,6 +3170,9 @@ public sealed class GameplayScene : Scene
         // Version LONGUE (grand moment) uniquement la 1re fois qu'on obtient l'unité ; sinon version courte.
         var firstTime = !Context.Saves.IsUnitDiscovered(fused.UnitClass.Asset);
         Context.Saves.DiscoverUnit(fused.UnitClass.Asset);   // méta-progression : désormais connue
+        _run.Stats.AddFusion();                                   // récap : fusion réalisée
+        if (firstTime)
+            _run.Stats.AddDiscoveredClass(fused.UnitClass.Name);  // récap : évolution DÉCOUVERTE cette run
         StartEvolutionAnimation(baseClass, fused.UnitClass, firstTime, source);
         _fusionGroup.Clear();
         _fusionCell = null;
@@ -3915,6 +3923,7 @@ public sealed class GameplayScene : Scene
         // Défaite (commandant tombé / armée anéantie) : décisive dans TOUS les modes, y compris spéciale.
         if (_match.IsOver && _match.Winner == Faction.Enemy)
         {
+            AccumulateCombatStats();   // récap : contribution du combat perdu (avant permadeath)
             _defeatReason = CommanderAlive() ? Loc.T("defeat.army_destroyed") : Loc.T("defeat.commander_fallen");
             _run.Defeat();
             FinishBattleEnd();
@@ -3937,12 +3946,15 @@ public sealed class GameplayScene : Scene
             // ni points de commandement, ni recrutement, ni récompense ne doivent être accordés.
             if (PaysansSaved < PaysansRequired)
             {
+                AccumulateCombatStats();   // récap : contribution du combat (quota de paysans manqué → défaite)
                 _defeatReason = Loc.T("defeat.paysans", PaysansSaved, PaysansRequired);
                 _run.Defeat();
                 FinishBattleEnd();
                 return;
             }
 
+            AccumulateCombatStats();   // récap : contribution du combat (AVANT sync/permadeath)
+            _run.Stats.AddPaysansSaved(PaysansSaved);   // paysans sauvés/libérés de cette mission
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
 
             // Bilan FIGÉ ici : la complétion va retirer les pertes du roster (permadeath) et remettre le
@@ -3959,6 +3971,7 @@ public sealed class GameplayScene : Scene
                 var rewards = RollProtectedPaysanRecruits();
                 _run.CompleteSpecialNoDraft(casualties);   // retire les pertes, va à l'écran post-combat
                 GrantEliteReplacements(casualties);        // nœud « relève » : un T1 par unité tier 2+ tombée
+                GrantCommanderHitPoints();                 // source « sur coup reçu » (commandant Lancier)
                 _protectReward = rewards.Count > 0 ? rewards : null;   // 0 sauvé → rien à montrer (auto-skip)
                 _rewardKeep.Clear();
                 for (var k = 0; _protectReward != null && k < _protectReward.Count; k++)
@@ -3969,6 +3982,7 @@ public sealed class GameplayScene : Scene
             {
                 _run.CompleteCombat(casualties, _enemyKillOrder);   // « libérer » : draft normal
                 GrantEliteReplacements(casualties);
+                GrantCommanderHitPoints();
             }
             FinishBattleEnd();
             return;
@@ -3979,22 +3993,72 @@ public sealed class GameplayScene : Scene
             return;
         if (_match.Winner == Faction.Player)
         {
+            AccumulateCombatStats();   // récap : contribution du combat (AVANT sync/permadeath)
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
             var casualties = PlayerCasualties();
+            UnlockBossCommanderIfFinal();   // battre le boss de dernière phase débloque son commandant lié
             _run.CompleteCombat(casualties, _enemyKillOrder);
             GrantEliteReplacements(casualties);
+            GrantCommanderHitPoints();
         }
         FinishBattleEnd();
+    }
+
+    /// <summary>
+    /// Battre le boss de la DERNIÈRE phase (cf. <see cref="Run.IsFinalBoss"/>) débloque le commandant que ce
+    /// boss porte (<see cref="BossDef.UnlocksCommander"/>), mémorisé dans le profil (méta-progression).
+    /// Sans effet si la mission n'est pas ce boss ou si le boss ne débloque personne (ex. la Brute). Idempotent.
+    /// </summary>
+    private void UnlockBossCommanderIfFinal()
+    {
+        if (!_run.IsFinalBoss)
+            return;
+        if (_run.BossOfPhase(_run.PhaseIndex).UnlocksCommander is { } id && Context.Saves.UnlockCommander(id))
+            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + id, id));   // NOUVEAU déblocage → récap
     }
 
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
     private List<UnitSpec> PlayerCasualties() =>
         _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
 
+    /// <summary>
+    /// Verse dans <see cref="Run.Stats"/> la contribution du combat qui se termine : dégâts par CLASSE (compteur
+    /// par combat de chaque pion), ennemis tués (delta de kills de ce combat) et pions perdus (hors commandant).
+    /// À appeler UNE fois par fin de combat et AVANT <see cref="SyncKillsToSpecs"/> / la complétion : le delta
+    /// de kills se lit tant que <c>spec.Kills</c> porte encore la valeur d'AVANT ce combat.
+    /// </summary>
+    private void AccumulateCombatStats()
+    {
+        var kills = 0;
+        var lost = 0;
+        foreach (var (unit, spec) in _playerSpec)
+        {
+            _run.Stats.AddDamage(unit.Class.Name, unit.DamageDealt);
+            kills += System.Math.Max(0, unit.Kills - spec.Kills);
+            if (!unit.IsAlive && !spec.Essential)
+                lost++;
+        }
+        _run.Stats.AddKills(kills);
+        _run.Stats.AddUnitsLost(lost);
+    }
+
     /// <summary>Nœud « relève » (arbre TROUPES) : un pion T1 déjà vu arrive en réserve par unité tier 2+ tombée.
     /// Appelé APRÈS la complétion (les pertes retirées ont libéré la place). Voir <see cref="Run.GrantEliteDeathReplacements"/>.</summary>
     private void GrantEliteReplacements(IReadOnlyList<UnitSpec> casualties) =>
         _run.GrantEliteDeathReplacements(casualties, new System.Random(), Context.Saves.IsUnitDiscovered);
+
+    /// <summary>
+    /// Source de points « sur coup reçu » (commandant Lancier) : crédite la <see cref="Run"/> selon le nombre
+    /// de fois où le COMMANDANT a été touché ce combat (<see cref="Echec.Core.Battle.Unit.TimesHit"/>), plafonné
+    /// par le commandant. Sans effet pour un commandant dont ce n'est pas la source. À appeler sur combat gagné
+    /// (le commandant est alors vivant, donc encore dans <c>_playerSpec</c>).
+    /// </summary>
+    private void GrantCommanderHitPoints()
+    {
+        var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential);
+        if (commander != null)
+            _run.GrantCommanderHitPoints(commander.TimesHit);
+    }
 
     /// <summary>
     /// Recopie le total de kills des pions JOUEUR encore vivants sur leur gabarit persistant (cumul à vie).
@@ -4884,17 +4948,18 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Applique le bonus du nœud « fusion » de l'arbre de commandement : ajoute au roster
-    /// <see cref="Run.FusionRecruits"/> unités tier 1 tirées parmi celles DÉJÀ DÉCOUVERTES
+    /// Applique le bonus des nœuds « fusion » de l'arbre de commandement : ajoute au roster les recrues
+    /// (<see cref="Run.FusionRecruitSpecs"/>) — un domaine précis (ex. Lancier) ou un tier 1 déjà découvert
     /// (méta-progression). Renvoie les gabarits ajoutés pour que l'appelant les affiche s'il le faut.
     /// Le plafond de réserve reste respecté (une fusion la libère de deux places, donc il ne mord jamais).
     /// </summary>
     private List<UnitSpec> GrantFusionRecruits()
     {
         var added = new List<UnitSpec>();
-        for (var i = 0; i < _run.FusionRecruits && !_run.IsReserveFull; i++)
+        foreach (var bonus in _run.FusionRecruitSpecs(new System.Random(), Context.Saves.IsUnitDiscovered))
         {
-            var bonus = _run.RollSeenTier1(new System.Random(), Context.Saves.IsUnitDiscovered);
+            if (_run.IsReserveFull)
+                break;
             _run.AddUnit(bonus);
             added.Add(bonus);
         }
@@ -5297,7 +5362,7 @@ public sealed class GameplayScene : Scene
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawUnits(sb, board);
                 DrawDim(sb, viewport);
-                DrawEndHud(sb, viewport);
+                DrawRunRecap(sb, viewport);
                 sb.End();
                 break;
         }
@@ -8833,19 +8898,200 @@ public sealed class GameplayScene : Scene
         return row;
     }
 
-    private void DrawEndHud(SpriteBatch sb, Viewport viewport)
+    /// <summary>
+    /// Récap de FIN DE RUN (victoire ou défaite), dessiné dans le batch de l'appelant sur le plateau figé et
+    /// voilé : en-tête (résultat, commandant, difficulté, combat atteint), BILAN (tués/perdus/dégâts/fusions/…),
+    /// dégâts par CLASSE (barres, top 6), MVP survivant, et déblocages de la run le cas échéant. Un clic / A
+    /// ramène au menu (le slot est déjà effacé). Données lues sur <see cref="_run"/> + <see cref="Run.Stats"/>.
+    /// </summary>
+    private void DrawRunRecap(SpriteBatch sb, Viewport viewport)
     {
         var victory = _run.Phase == RunPhase.Victory;
         var title = victory ? Loc.T("end.victory") : Loc.T("end.defeat");
-        var sub = victory ? Loc.T("end.boss_defeated") : _defeatReason;
 
-        Context.Font.DrawCentered(sb, title,
-            new Rectangle(0, viewport.Height / 2 - 40, viewport.Width, 28), 4,
-            victory ? Palette.Yellow2 : Palette.Purple5);
-        Context.Font.DrawCentered(sb, sub,
-            new Rectangle(0, viewport.Height / 2 + 4, viewport.Width, 12), 2, Palette.White);
-        Context.Font.DrawCentered(sb, Loc.T("end.replay"),
-            new Rectangle(0, viewport.Height / 2 + 36, viewport.Width, 12), 1, Palette.Blue1);
+        var cmdName = Loc.TOr("commander." + _run.CommanderDef.Id, _run.CommanderDef.Name);
+        var diff = Loc.T("difficulty." + _run.Difficulty.ToString().ToLowerInvariant());
+        var sub = $"{cmdName}  -  {diff}  -  {Loc.T("recap.run_combat", _run.CombatNumber, Run.TotalCombats)}";
+        var reason = victory ? "" : _defeatReason;
+
+        var bilan = new List<(string Label, string Value)>
+        {
+            (Loc.T("recap.run_kills"), _run.Stats.TotalKills.ToString()),
+            (Loc.T("recap.run_lost"), _run.Stats.UnitsLost.ToString()),
+            (Loc.T("recap.run_damage_total"), _run.Stats.TotalDamage.ToString()),
+            (Loc.T("recap.run_fusions"), _run.Stats.Fusions.ToString()),
+        };
+        if (_run.Stats.PaysansSaved > 0) bilan.Add((Loc.T("recap.run_paysans"), _run.Stats.PaysansSaved.ToString()));
+        if (_run.Stats.EquipmentFound > 0) bilan.Add((Loc.T("recap.run_equipment"), _run.Stats.EquipmentFound.ToString()));
+
+        var dmg = _run.Stats.TopDamage(6);
+        var maxDmg = dmg.Count > 0 ? System.Math.Max(1, dmg[0].Damage) : 1;
+
+        // MVP : pion SURVIVANT avec le plus de kills (à vie ; ignoré si personne n'a tué).
+        string? mvp = null;
+        var best = _run.Roster.Where(u => u.Kills > 0).OrderByDescending(u => u.Kills).FirstOrDefault();
+        if (best != null)
+            mvp = Loc.T("recap.run_mvp", best.UnitClass.Name, best.Kills);
+
+        // DÉBLOCAGES : pour l'instant seuls les COMMANDANTS débloqués y figurent (les classes/équipements
+        // découverts restent collectés dans RunStats mais ne s'affichent pas ici).
+        var unlocks = _run.Stats.UnlockedCommanders.ToList();
+
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
+
+        var hasUnlocks = unlocks.Count > 0;
+        var bilanHead = Loc.T("recap.run_bilan");
+        var dmgHead = Loc.T("recap.run_damage");
+        var deblocHead = Loc.T("recap.run_unlocks");
+        var deblocSub = Loc.T("recap.run_unlock_sub");
+
+        // ── Mesures ──────────────────────────────────────────────────────────
+        const int SecGap = 12, BarW = 130, ColGap = 24, ItemGap = 8, MidGap = 44, RowH = 11, HeadH = 14,
+                  DashH = 2, ChipPadH = 16, ChipPadV = 9;
+        int Meas(string t, int s) => Context.Font.Measure(t, s);
+
+        // Colonne GAUCHE (BILAN : libellé + valeur).
+        int biLabel = 0, biValue = 0;
+        foreach (var (l, v) in bilan) { biLabel = System.Math.Max(biLabel, Meas(l, 1)); biValue = System.Math.Max(biValue, Meas(v, 1)); }
+        var leftColW = System.Math.Max(Meas(bilanHead, 2), biLabel + ColGap + biValue);
+
+        // Colonne DROITE (DÉGÂTS : nom + barre + valeur).
+        int dLabel = 0, dValue = 0;
+        foreach (var (c, d) in dmg) { dLabel = System.Math.Max(dLabel, Meas(c, 1)); dValue = System.Math.Max(dValue, Meas(d.ToString(), 1)); }
+        var rightColW = System.Math.Max(Meas(dmgHead, 2), dmg.Count > 0 ? dLabel + ItemGap + BarW + ItemGap + dValue : 0);
+
+        var columnsW = leftColW + MidGap + rightColW;
+        var rowsH = System.Math.Max(bilan.Count, dmg.Count) * RowH;
+        var columnsBlockH = HeadH + 6 + rowsH;
+
+        var chipW = hasUnlocks ? System.Math.Max(Meas(unlocks[0], 1), Meas(deblocSub, 1)) + 2 * ChipPadH : 0;
+        var chipH = 7 + 6 + 7 + 2 * ChipPadV;
+
+        var contentW = new[]
+        {
+            columnsW, Meas(title, 3), Meas(sub, 1), Meas(reason, 1), Meas(prompt, 1),
+            mvp != null ? Meas(mvp, 1) : 0, hasUnlocks ? Meas(deblocHead, 2) : 0, hasUnlocks ? chipW : 0,
+        }.Max();
+        var boxW = contentW + 2 * ModalPadH;
+
+        // ── Hauteur (mêmes incréments que le tracé) ────────────────────────────
+        var boxH = ModalPadV + 21 + SecGap + 7;                     // titre + sous-titre
+        if (!victory) boxH += 4 + 7;                                // raison de défaite
+        boxH += SecGap + DashH + SecGap;                            // filet haut
+        boxH += columnsBlockH;                                      // colonnes BILAN | DÉGÂTS
+        boxH += SecGap + DashH + SecGap;                            // filet bas colonnes
+        if (hasUnlocks) boxH += HeadH + 6 + chipH + SecGap + DashH + SecGap;   // déblocages + filet
+        if (mvp != null) boxH += 7 + SecGap;                        // MVP
+        boxH += 7 + ModalPadV;                                      // prompt + marge basse
+
+        var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+        Context.Style.DrawPanel(sb, box);
+
+        var innerX = box.X + ModalPadH;
+        var innerW = box.Width - 2 * ModalPadH;
+
+        // En-tête.
+        var y = box.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 21), 3, victory ? Palette.Yellow2 : Palette.Purple5);
+        y += 21 + SecGap;
+        Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Blue1);
+        y += 7;
+        if (!victory)
+        {
+            y += 4;
+            Context.Font.DrawCentered(sb, reason, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Purple5);
+            y += 7;
+        }
+
+        // Filet pointillé, puis les deux colonnes séparées par un filet vertical.
+        y += SecGap;
+        DrawDashedH(sb, innerX, y, innerW, DashColor);
+        y += DashH + SecGap;
+
+        var colsX = box.X + (box.Width - columnsW) / 2;
+        var rightX = colsX + leftColW + MidGap;
+        var colsTop = y;
+        Context.Font.DrawCentered(sb, bilanHead, new Rectangle(colsX, y, leftColW, HeadH), 2, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, dmgHead, new Rectangle(rightX, y, rightColW, HeadH), 2, Palette.Yellow2);
+        var rowY = y + HeadH + 6;
+
+        var ly = rowY;
+        foreach (var (l, v) in bilan)
+        {
+            Context.Font.Draw(sb, l, new Vector2(colsX, ly), 1, Palette.White);
+            Context.Font.Draw(sb, v, new Vector2(colsX + leftColW - Meas(v, 1), ly), 1, Palette.Yellow1);
+            ly += RowH;
+        }
+        var ry = rowY;
+        foreach (var (c, d) in dmg)
+        {
+            Context.Font.Draw(sb, c, new Vector2(rightX, ry), 1, Palette.White);
+            var barX = rightX + dLabel + ItemGap;
+            DrawRect(sb, new Rectangle(barX, ry, BarW, 6), Palette.Blue1 * 0.30f);
+            DrawRect(sb, new Rectangle(barX, ry, System.Math.Max(1, BarW * d / maxDmg), 6), Palette.Yellow1);
+            Context.Font.Draw(sb, d.ToString(), new Vector2(barX + BarW + ItemGap, ry), 1, Palette.Yellow1);
+            ry += RowH;
+        }
+        DrawDashedV(sb, colsX + leftColW + MidGap / 2, colsTop, columnsBlockH, DashColor);
+        y = colsTop + columnsBlockH;
+
+        y += SecGap;
+        DrawDashedH(sb, innerX, y, innerW, DashColor);
+        y += DashH + SecGap;
+
+        // Déblocages : le(s) commandant(s) débloqué(s), en puce (nom + sous-titre).
+        if (hasUnlocks)
+        {
+            Context.Font.DrawCentered(sb, deblocHead, new Rectangle(box.X, y, box.Width, HeadH), 2, Palette.Yellow2);
+            y += HeadH + 6;
+            var cx = box.X + (box.Width - chipW) / 2;
+            var chip = new Rectangle(cx, y, chipW, chipH);
+            DrawRect(sb, chip, Palette.Blue1 * 0.14f);
+            DrawBorderRect(sb, chip, Palette.Blue1 * 0.55f);
+            Context.Font.DrawCentered(sb, unlocks[0], new Rectangle(cx, y + ChipPadV, chipW, 7), 1, Palette.Yellow2);
+            Context.Font.DrawCentered(sb, deblocSub, new Rectangle(cx, y + ChipPadV + 13, chipW, 7), 1, Palette.Blue1);
+            y += chipH;
+            y += SecGap;
+            DrawDashedH(sb, innerX, y, innerW, DashColor);
+            y += DashH + SecGap;
+        }
+
+        // MVP.
+        if (mvp != null)
+        {
+            Context.Font.DrawCentered(sb, mvp, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1);
+            y += 7 + SecGap;
+        }
+
+        // Invite pulsée → retour menu.
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+        Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
+    }
+
+    /// <summary>Couleur des filets pointillés du récap de fin de run.</summary>
+    private static Color DashColor => Palette.Blue1 * 0.5f;
+
+    /// <summary>Filet pointillé HORIZONTAL (tirets de 6 px, espacés de 5, épais de 2).</summary>
+    private void DrawDashedH(SpriteBatch sb, int x, int y, int width, Color color)
+    {
+        for (var dx = 0; dx < width; dx += 11)
+            DrawRect(sb, new Rectangle(x + dx, y, System.Math.Min(6, width - dx), 2), color);
+    }
+
+    /// <summary>Filet pointillé VERTICAL (tirets de 6 px, espacés de 5, épais de 2).</summary>
+    private void DrawDashedV(SpriteBatch sb, int x, int y, int height, Color color)
+    {
+        for (var dy = 0; dy < height; dy += 11)
+            DrawRect(sb, new Rectangle(x, y + dy, 2, System.Math.Min(6, height - dy)), color);
+    }
+
+    /// <summary>Cadre 1 px autour d'un rectangle (quatre côtés).</summary>
+    private void DrawBorderRect(SpriteBatch sb, Rectangle r, Color color)
+    {
+        DrawRect(sb, new Rectangle(r.X, r.Y, r.Width, 1), color);
+        DrawRect(sb, new Rectangle(r.X, r.Bottom - 1, r.Width, 1), color);
+        DrawRect(sb, new Rectangle(r.X, r.Y, 1, r.Height), color);
+        DrawRect(sb, new Rectangle(r.Right - 1, r.Y, 1, r.Height), color);
     }
 
     // ── Helpers de dessin ───────────────────────────────────────────────────────
@@ -9016,17 +9262,18 @@ public sealed class GameplayScene : Scene
         y += 7 + ModalGap;
         Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 14), 2, Palette.Yellow2);
         y += 14 + ModalGap;
-        // Corps et règles alignés à GAUCHE : un pavé centré se lit mal sur plusieurs lignes.
+        // Corps et règles alignés à GAUCHE : un pavé centré se lit mal sur plusieurs lignes. Rendus en CASSE
+        // DE PHRASE (preserveCase) : ce sont des phrases, pas des libellés — minuscules avec majuscule initiale.
         var x = box.X + ModalPadH;
         foreach (var l in body)
         {
-            Context.Font.Draw(sb, l, new Vector2(x, y), 1, Palette.White);
+            Context.Font.Draw(sb, l, new Vector2(x, y), 1, Palette.White, preserveCase: true);
             y += ModalLineH;
         }
         y += ModalGap;
         foreach (var (text, color) in rules)
         {
-            Context.Font.Draw(sb, text, new Vector2(x, y), 1, color);
+            Context.Font.Draw(sb, text, new Vector2(x, y), 1, color, preserveCase: true);
             y += ModalLineH;
         }
         y += ModalGap;

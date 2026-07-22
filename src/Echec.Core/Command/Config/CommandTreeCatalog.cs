@@ -59,17 +59,23 @@ public static class CommandTreeCatalog
         var amount = e.Amount ?? 1;
         return e.Kind?.ToLowerInvariant() switch
         {
-            "commanderstat" => CommandEffect.CommanderStat(Stat(e, nodeId), amount, Scale(e, nodeId)),
-            "unitstat" => CommandEffect.UnitStat(Stat(e, nodeId), amount, Scale(e, nodeId)),
+            "commanderstat" => CommandEffect.CommanderStat(Stat(e, nodeId), amount, Scale(e, nodeId), DomaineOf(e, nodeId)),
+            "unitstat" => CommandEffect.UnitStat(Stat(e, nodeId), amount, Scale(e, nodeId), DomaineOf(e, nodeId)),
             "commandertrait" => CommandEffect.CommanderTrait(TraitOf(e, nodeId)),
-            "unittrait" => CommandEffect.UnitTrait(TraitOf(e, nodeId)),
+            "unittrait" => CommandEffect.UnitTrait(TraitOf(e, nodeId), DomaineOf(e, nodeId)),
             "reserveslots" => CommandEffect.ReserveSlots(amount),
             "deployslots" => CommandEffect.DeploySlots(amount),
-            "fusionrecruit" => CommandEffect.FusionRecruit(amount),
-            "elitedeathrecruit" => CommandEffect.EliteDeathRecruit(amount),
+            "fusionrecruit" => CommandEffect.FusionRecruit(amount, DomaineOf(e, nodeId)),
+            "elitedeathrecruit" => CommandEffect.EliteDeathRecruit(amount, DomaineOf(e, nodeId)),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }
+
+    /// <summary>Parse un domaine ciblé optionnel (« domaine »). Null si absent ; lève si invalide.</summary>
+    private static Battle.Domaine? DomaineOf(EffectEntry e, string nodeId) =>
+        string.IsNullOrWhiteSpace(e.Domaine) ? null
+        : Enum.TryParse<Battle.Domaine>(e.Domaine, ignoreCase: true, out var d) ? d
+        : throw new InvalidOperationException($"Domaine invalide pour le nœud '{nodeId}' : '{e.Domaine}'.");
 
     private static EquipStat Stat(EffectEntry e, string nodeId) =>
         Enum.TryParse<EquipStat>(e.Stat, ignoreCase: true, out var s)

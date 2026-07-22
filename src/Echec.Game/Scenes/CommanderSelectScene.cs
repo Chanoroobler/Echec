@@ -105,12 +105,12 @@ public sealed class CommanderSelectScene : Scene
     private bool HasChoice => _commanders.Count > 1;
 
     /// <summary>
-    /// SEUL point de vérité du verrouillage d'un commandant. Aujourd'hui c'est une donnée figée
-    /// (<see cref="CommandeDef.StartsUnlocked"/>, champ <c>unlocked</c> de units.json) : la condition de
-    /// déblocage n'existe pas encore. Quand elle arrivera — méta-progression dans profile.json, succès de
-    /// run, etc. — c'est ICI qu'on la branche, et tout l'écran suivra.
+    /// SEUL point de vérité du verrouillage d'un commandant : ouvert d'office par la donnée
+    /// (<see cref="CommandeDef.StartsUnlocked"/>, champ <c>unlocked</c> de units.json) OU débloqué dans le
+    /// profil (méta-progression, en battant son boss lié en dernière phase — cf. <c>SaveService.IsCommanderUnlocked</c>).
     /// </summary>
-    private static bool IsUnlocked(CommandeDef def) => def.StartsUnlocked;
+    private bool IsUnlocked(CommandeDef def) =>
+        def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id);
 
     public override void Load()
     {

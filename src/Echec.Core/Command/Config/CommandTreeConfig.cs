@@ -34,7 +34,7 @@ public sealed class NodeEntry
 
 /// <summary>
 /// Un effet. <c>kind</c> nomme la cible (<c>commanderStat</c>, <c>commanderTrait</c>, <c>unitStat</c>,
-/// <c>unitTrait</c>, <c>reserveSlots</c>, <c>deploySlots</c>, <c>fusionRecruit</c>).
+/// <c>unitTrait</c>, <c>reserveSlots</c>, <c>deploySlots</c>, <c>fusionRecruit</c>, <c>eliteDeathRecruit</c>).
 /// </summary>
 public sealed class EffectEntry
 {
@@ -49,6 +49,13 @@ public sealed class EffectEntry
     /// <summary>Trait de combat octroyé (cf. <c>Battle.Trait</c>), pour les effets de trait.</summary>
     public string? Trait { get; set; }
 
-    /// <summary>Mise à l'échelle du bonus : <c>flat</c> (défaut) ou <c>perDistinctPair</c>.</summary>
+    /// <summary>Mise à l'échelle du bonus : <c>flat</c> (défaut), <c>perDistinctPair</c> ou <c>perDomaineUnit</c>.</summary>
     public string? Scale { get; set; }
+
+    /// <summary>
+    /// Domaine ciblé, optionnel (<c>Dame</c>, <c>Tour</c>, <c>Cavalier</c>, <c>Fou</c>…). Sur un effet
+    /// d'unité : restreint le bonus à ce domaine. Sur une recrue (fusion/relève) : désigne la classe de base
+    /// recrutée. Avec l'échelle <c>perDomaineUnit</c> : le domaine dont on compte les unités.
+    /// </summary>
+    public string? Domaine { get; set; }
 }

@@ -13,12 +13,14 @@ namespace Echec.Core.Battle;
 /// </summary>
 public sealed class BossDef
 {
-    public BossDef(string name, string asset, Domaine movement, IReadOnlyDictionary<int, UnitClass> profiles)
+    public BossDef(string name, string asset, Domaine movement, IReadOnlyDictionary<int, UnitClass> profiles,
+        string? unlocksCommander = null)
     {
         Name = name;
         Asset = asset;
         Movement = movement;
         Profiles = profiles;
+        UnlocksCommander = unlocksCommander;
     }
 
     public string Name { get; }
@@ -31,6 +33,12 @@ public sealed class BossDef
 
     /// <summary>Profil (classe : stats + traits) par phase (1..3). Au moins une entrée (garanti au chargement).</summary>
     public IReadOnlyDictionary<int, UnitClass> Profiles { get; }
+
+    /// <summary>
+    /// Id du COMMANDANT (cf. <see cref="CommandeDef.Id"/>) débloqué en battant ce boss en dernière phase.
+    /// Null = ce boss ne débloque aucun commandant (ex. la Brute). Cf. la méta-progression du profil.
+    /// </summary>
+    public string? UnlocksCommander { get; }
 
     /// <summary>Vrai si ce boss DÉCLARE un profil pour cette phase (= éligible à y être tiré).</summary>
     public bool SupportsPhase(int phase) => Profiles.ContainsKey(phase);

@@ -103,6 +103,67 @@ public class TraitsTests
         Assert.Equal(15, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 5)
     }
 
+    [Fact]
+    public void AuraDePuissance_AdjacentAlly_AddsThreePower()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, new[] { Trait.AuraDePuissance })); // allié adjacent
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
+        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(17, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 3)
+    }
+
+    [Fact]
+    public void AuraDeSurpuissance_AdjacentAlly_AddsFivePower()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, new[] { Trait.AuraDeSurpuissance })); // allié adjacent
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
+        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(15, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 5)
+    }
+
+    // ── Coups reçus (Unit.TimesHit) : source de points du commandant ───────────────
+
+    [Fact]
+    public void RecordHit_CountsOnlyLandedDamage()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(1, m.UnitAt(new Cell(0, 2))!.TimesHit);   // un coup encaissé
+
+        // Une attaque totalement absorbée (dégâts nets 0 grâce à Rempart) ne compte PAS comme un coup reçu.
+        var shielded = Board();
+        shielded.Place(new Cell(0, 0), Make(Faction.Player, 20, 4, None));                    // 4 de dégâts
+        shielded.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));  // -4 à distance ≥ 2 → 0
+        shielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(20, shielded.UnitAt(new Cell(0, 2))!.Hp);        // aucun dégât
+        Assert.Equal(0, shielded.UnitAt(new Cell(0, 2))!.TimesHit);   // donc pas un coup reçu
+    }
+
+    [Fact]
+    public void RecordDamage_CreditsLandedDamageToAttacker()
+    {
+        var m = Board();
+        var attacker = Make(Faction.Player, 20, 10, None);
+        m.Place(new Cell(0, 0), attacker);
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(10, attacker.DamageDealt);   // 10 dégâts infligés → crédités à l'attaquant
+
+        // Attaque totalement absorbée (Rempart à distance ≥ 2) : aucun dégât compté.
+        var shielded = Board();
+        var weak = Make(Faction.Player, 20, 4, None);
+        shielded.Place(new Cell(0, 0), weak);
+        shielded.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        shielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(0, weak.DamageDealt);   // 4 - 4 (rempart) = 0 infligé
+    }
+
     // ── Bouclier divin : protège de la mort ───────────────────────────────────────
 
     [Fact]

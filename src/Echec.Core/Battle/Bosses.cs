@@ -30,12 +30,18 @@ public static class Bosses
     /// façon déterministe depuis <paramref name="seed"/>. On privilégie, pour chaque phase, un boss ENCORE
     /// non utilisé qui déclare cette phase ; à défaut (pool trop petit) on réutilise un boss qui la déclare ;
     /// en tout dernier recours, n'importe lequel (son profil de repli le plus proche s'appliquera).
+    ///
+    /// PRIORITÉ DÉBLOCAGE : la DERNIÈRE phase privilégie un boss dont <see cref="BossDef.UnlocksCommander"/>
+    /// n'est pas encore dans <paramref name="unlockedCommanders"/> (le joueur affronte en priorité un boss
+    /// qui lui débloquerait un commandant) ; les autres phases évitent de « consommer » ces boss.
     /// </summary>
-    public static IReadOnlyList<BossDef> AssignForRun(int seed, int phaseCount) =>
-        AssignForRun(_all, seed, phaseCount);
+    public static IReadOnlyList<BossDef> AssignForRun(int seed, int phaseCount,
+        IReadOnlySet<string>? unlockedCommanders = null) =>
+        AssignForRun(_all, seed, phaseCount, unlockedCommanders);
 
     /// <summary>Variante pure (sur un pool fourni) — sert au repli et aux tests.</summary>
-    public static IReadOnlyList<BossDef> AssignForRun(IReadOnlyList<BossDef> pool, int seed, int phaseCount)
+    public static IReadOnlyList<BossDef> AssignForRun(IReadOnlyList<BossDef> pool, int seed, int phaseCount,
+        IReadOnlySet<string>? unlockedCommanders = null)
     {
         if (pool.Count == 0)
             pool = Defaults();
@@ -49,13 +55,27 @@ public static class Bosses
             (order[i], order[j]) = (order[j], order[i]);
         }
 
+        // Un boss est « à débloquer » s'il lie un commandant que le joueur n'a pas encore obtenu.
+        bool ToUnlock(BossDef b) =>
+            b.UnlocksCommander is { } id && !(unlockedCommanders?.Contains(id) ?? false);
+
         var result = new BossDef[phaseCount];
         var used = new HashSet<BossDef>();
         for (var phase = 1; phase <= phaseCount; phase++)
         {
-            var pick = order.FirstOrDefault(b => b.SupportsPhase(phase) && !used.Contains(b))  // distinct + éligible
-                       ?? order.FirstOrDefault(b => b.SupportsPhase(phase))                    // réutilise un éligible
-                       ?? order[0];                                                            // dernier recours
+            var isFinal = phase == phaseCount;
+            BossDef? pick = isFinal
+                // Phase finale : d'abord un boss « à débloquer » (distinct, puis réutilisable), sinon normal.
+                ? order.FirstOrDefault(b => ToUnlock(b) && b.SupportsPhase(phase) && !used.Contains(b))
+                  ?? order.FirstOrDefault(b => ToUnlock(b) && b.SupportsPhase(phase))
+                  ?? order.FirstOrDefault(b => b.SupportsPhase(phase) && !used.Contains(b))
+                  ?? order.FirstOrDefault(b => b.SupportsPhase(phase))
+                // Phases précédentes : on RÉSERVE les boss « à débloquer » pour la finale quand c'est possible.
+                : order.FirstOrDefault(b => !ToUnlock(b) && b.SupportsPhase(phase) && !used.Contains(b))
+                  ?? order.FirstOrDefault(b => b.SupportsPhase(phase) && !used.Contains(b))
+                  ?? order.FirstOrDefault(b => b.SupportsPhase(phase));
+            pick ??= order[0];   // dernier recours
+
             result[phase - 1] = pick;
             used.Add(pick);
         }

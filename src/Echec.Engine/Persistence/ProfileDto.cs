@@ -21,4 +21,11 @@ public sealed class ProfileDto
     /// Sert au codex : un item reste en silhouette tant qu'on ne l'a jamais ramassé.
     /// </summary>
     public System.Collections.Generic.List<string> DiscoveredEquipment { get; set; } = new();
+
+    /// <summary>
+    /// Méta-progression : ids des COMMANDANTS débloqués (cf. <c>CommandeDef.Id</c>), en battant leur boss lié
+    /// en dernière phase. Ces commandants deviennent jouables dans le carrousel de sélection. Les commandants
+    /// déjà ouverts par défaut (<c>unlocked: true</c> dans units.json) n'ont pas besoin d'y figurer.
+    /// </summary>
+    public System.Collections.Generic.List<string> UnlockedCommanders { get; set; } = new();
 }

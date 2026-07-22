@@ -20,6 +20,8 @@ public static class Trait
     public const string Transpercement = "Transpercement";   // touche aussi l'unité juste derrière la cible
     public const string Interception = "Interception";       // attaque d'opportunité sur un ennemi entrant en portée
     public const string AuraDeRempart = "Aura de rempart";   // donne l'effet Rempart aux alliés adjacents
+    public const string AuraDePuissance = "Aura de puissance"; // +AuraPuissanceBonus de puissance aux alliés adjacents
+    public const string AuraDeSurpuissance = "Aura de surpuissance"; // +AuraSurpuissanceBonus de puissance aux alliés adjacents
     public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
     public const string Rage = "Rage";                       // +RageBonus de puissance sous RageHpThreshold PV
@@ -41,7 +43,7 @@ public static class Trait
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, DegatsDeZone, Franchissement, Transpercement, Interception,
-        AuraDeRempart, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
+        AuraDeRempart, AuraDePuissance, AuraDeSurpuissance, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete, AttaqueLibre,
         Statique,
     };

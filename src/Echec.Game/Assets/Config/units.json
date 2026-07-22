@@ -42,7 +42,7 @@
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
               { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
-              { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bénédiction"] }
+              { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
             ]
           },
           {
@@ -86,7 +86,7 @@
             "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
               { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Formation"] },
-              { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"] }
+              { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
             ]
           },
           {
@@ -113,7 +113,8 @@
   //
   // Un COMMANDANT porte en plus ses plafonds d'armée (deployments = pions posables COMMANDANT COMPRIS,
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
-  // commander_trees.json) et sa source de points PROPRE (fusionPoints = points gagnés à chaque fusion).
+  // commander_trees.json) et sa source de points PROPRE : soit fusionPoints (points gagnés à chaque fusion),
+  // soit onHitPoints (points gagnés à chaque coup REÇU par le commandant, plafonné à onHitCap coups par combat).
   "commandes": [
     { "role": "Commander", "id": "commandant", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
       "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2,
@@ -124,9 +125,25 @@
     // commence avec TROIS pions plus varies au lieu de deux Soldats.
     // "unlocked": false => VERROUILLE : silhouette noire dans le carrousel, partie impossible a lancer.
     // La condition de deblocage reste a definir ; en attendant, basculer ce champ suffit a l'ouvrir.
-    { "role": "Commander", "id": "brute", "domaine": "Dame", "name": "Brute", "asset": "Commandant_brute", "hp": 36, "damage": 14, "moveRange": 1, "attackRange": 1,
-      "deployments": 4, "reserveSize": 8, "tree": "commandant", "fusionPoints": 3,
-      "startingUnits": [ "Dame", "Tour", "Fou" ], "unlocked": false },
+    {
+      "role": "Commander",
+      "id": "Commandant_lancier",
+      "domaine": "Tour",
+      "name": "Lancier",
+      "asset": "Commandant_lancier",
+      "hp": 40,
+      "damage": 10,
+      "moveRange": 1,
+      "attackRange": 1,
+      "deployments": 4,
+      "reserveSize": 8,
+      "tree": "commandantLancier",
+      "fusionPoints": 0,
+      "onHitPoints": 1,
+      "onHitCap": 2,
+      "startingUnits": [ "Tour", "Tour" ],
+      "unlocked": false
+    },
 
     {
       "role": "Boss",
@@ -181,6 +198,41 @@
           "moveRange": 2,
           "attackRange": 1,
           "traits": [ "Esquive", "Orage" ]
+        }
+      }
+    },
+    // Boss LANCIER : battu en dernière phase, il DÉBLOQUE le commandant "Commandant_lancier"
+    // (unlocksCommander). Boss normal (escortes aléatoires comme les autres). Domaine Tour + tir traversant,
+    // thème "rempart/aura" cohérent avec l'arbre du commandant. STATS PROVISOIRES, à équilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_lancier",
+      "asset": "Commandant_lancier",
+      "domaine": "Tour",
+      "unlocksCommander": "Commandant_lancier",
+      "phases": {
+        "1": {
+          "hp": 34,
+          "damage": 12,
+          "moveRange": 2,
+          "attackRange": 2,
+          "piercesAllies": true
+        },
+        "2": {
+          "hp": 48,
+          "damage": 16,
+          "moveRange": 2,
+          "attackRange": 2,
+          "piercesAllies": true,
+          "traits": [ "Rempart" ]
+        },
+        "3": {
+          "hp": 64,
+          "damage": 20,
+          "moveRange": 2,
+          "attackRange": 3,
+          "piercesAllies": true,
+          "traits": [ "Rempart", "Aura de rempart" ]
         }
       }
     }

@@ -42,6 +42,7 @@ mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGO
 # Nom affiche d'un commandant : cle commander.<id> (repli sur le nom de units.json)
 commander.commandant,COMMANDANT,COMMANDER
 commander.brute,BRUTE,BRUTE
+commander.Commandant_lancier,LANCIER,SPEARMAN
 commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER
 commander.starting_units,PIONS DE DEPART,STARTING PAWNS
 # Remplace le titre des pions de depart quand le commandant n'est pas encore debloque
@@ -101,16 +102,16 @@ special.brief_protect,PROTEGER LE MAXIMUM DE PAYSANS EN {0} TOURS,PROTECT AS MAN
 # Modale de briefing ouverte au debut du placement d'une mission speciale
 special.title_liberate,LIBERER LES PAYSANS,FREE THE PEASANTS
 special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS
-special.desc_liberate,DES PAYSANS SONT RETENUS PAR L'ENNEMI SUR LE CHAMP DE BATAILLE. AMENE UN PION SUR UN PAYSAN POUR LE LIBERER : IL REJOINT AUSSITOT TA RESERVE.,PEASANTS ARE HELD BY THE ENEMY ACROSS THE BATTLEFIELD. MOVE A PIECE ONTO A PEASANT TO FREE THEM : THEY JOIN YOUR RESERVE AT ONCE.
-special.desc_protect,L'ENNEMI VEUT CAPTURER TES PAYSANS. TU NE PEUX PAS TE POSER SUR EUX : BARRE-LUI LA ROUTE. CHAQUE PAYSAN ENCORE LIBRE A LA FIN T'OFFRE UNE RECRUE.,THE ENEMY WANTS TO CAPTURE YOUR PEASANTS. YOU CANNOT STAND ON THEM : BLOCK THE WAY. EACH PEASANT STILL FREE AT THE END GRANTS A RECRUIT.
-special.rule_turns,LIMITE : {0} TOURS,LIMIT : {0} ROUNDS
+special.desc_liberate,Des paysans sont retenus par l'ennemi sur le champ de bataille. Amène un pion sur un paysan pour le libérer. Il rejoint aussitôt ta réserve.,Peasants are held by the enemy across the battlefield. Move a piece onto a peasant to free them. They join your reserve at once.
+special.desc_protect,L'ennemi veut capturer les paysans. Tu ne peux pas te poser sur eux. Barre-lui la route. Chaque paysan encore libre à la fin devient une nouvelle recrue.,The enemy wants to capture the peasants. You cannot stand on them. Block the way. Each peasant still free at the end becomes a new recruit.
+special.rule_turns,Limite de {0} tours,Limit of {0} rounds
 # Regles annoncees au briefing. Les deux dernieres dependent du QUOTA de difficulte : sans quota le temps
 # ecoule ne fait que clore la mission, avec quota il peut la faire PERDRE.
-special.rule_quota,SAUVER AU MOINS {0} PAYSAN(S),FREE AT LEAST {0} PEASANT(S)
-special.rule_quota_protect,PROTEGER AU MOINS {0} PAYSAN(S),KEEP AT LEAST {0} PEASANT(S) SAFE
-special.rule_defeat_quota,ECHOUER OU PERDRE LE COMMANDANT FAIT PERDRE,FAILING OR LOSING THE COMMANDER ENDS THE RUN
-special.rule_timeout,LE TEMPS ECOULE CLOT LA MISSION SANS DEFAITE,RUNNING OUT OF TIME ENDS THE MISSION - NOT A DEFEAT
-special.rule_defeat,SEULE LA CHUTE DU COMMANDANT FAIT PERDRE,ONLY THE COMMANDER FALLING MEANS DEFEAT
+special.rule_quota,Sauver au moins {0} paysan(s),Free at least {0} peasant(s)
+special.rule_quota_protect,Protéger au moins {0} paysan(s),Keep at least {0} peasant(s) safe
+special.rule_defeat_quota,Échouer ou perdre le commandant fait perdre,Failing or losing the commander ends the run
+special.rule_timeout,Le temps écoulé clôt la mission sans défaite,Running out of time ends the mission without defeat
+special.rule_defeat,Seule la chute du commandant fait perdre,Only the commander falling means defeat
 special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
 special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT
 # Modale de bilan affichee a la cloture d'une mission speciale
@@ -280,6 +281,21 @@ end.victory,VICTOIRE,VICTORY
 end.defeat,DEFAITE,DEFEAT
 end.boss_defeated,BOSS VAINCU,BOSS DEFEATED
 end.replay,CLIC POUR REJOUER,CLICK TO REPLAY
+# ── Recap de fin de run (victoire ou defaite) ───────────────────────────────
+recap.run_combat,COMBAT {0}/{1},BATTLE {0}/{1}
+recap.run_bilan,BILAN,SUMMARY
+recap.run_kills,ENNEMIS TUES,ENEMIES KILLED
+recap.run_lost,UNITES PERDUES,UNITS LOST
+recap.run_damage_total,DEGATS INFLIGES,DAMAGE DEALT
+recap.run_fusions,FUSIONS,FUSIONS
+recap.run_paysans,PAYSANS SAUVES,PEASANTS SAVED
+recap.run_equipment,EQUIPEMENTS,EQUIPMENT
+recap.run_damage,DEGATS PAR TYPE,DAMAGE BY TYPE
+recap.run_mvp,MVP : {0} ({1} TUES),MVP: {0} ({1} KILLS)
+recap.run_unlocks,COMMANDANT DEBLOQUE,COMMANDER UNLOCKED
+recap.run_unlock_sub,NOUVEAU COMMANDANT JOUABLE,NEW PLAYABLE COMMANDER
+recap.run_back,CLIC POUR REVENIR AU MENU,CLICK TO RETURN TO MENU
+recap.run_back_gp,A : MENU,A: MENU
 # ── Mots-cles d'unite (label + description) ─────────────────────────────────
 kw.rempart.label,REMPART,BULWARK
 kw.rempart.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES À PORTÉE 2 OU PLUS,REDUCES BY 4 DAMAGE FROM ATTACKS AT RANGE 2 OR MORE
@@ -295,6 +311,10 @@ kw.interception.label,INTERCEPTION,INTERCEPT
 kw.interception.desc,UN ENNEMI QUI ENTRE DANS LA ZONE D'ATTAQUE SUBIT UNE ATTAQUE D'OPPORTUNITÉ,AN ENEMY ENTERING THE ATTACK ZONE SUFFERS AN OPPORTUNITY ATTACK
 kw.aura_rempart.label,AURA DE REMPART,BULWARK AURA
 kw.aura_rempart.desc,LE BONUS DE REMPART S'APPLIQUE AUX UNITÉS ADJACENTES,THE BULWARK BONUS APPLIES TO ADJACENT UNITS
+kw.aura_puissance.label,AURA DE PUISSANCE,POWER AURA
+kw.aura_puissance.desc,AUGMENTE LA PUISSANCE DES ALLIÉS ADJACENTS DE 3,INCREASES ADJACENT ALLIES' POWER BY 3
+kw.aura_surpuissance.label,AURA DE SURPUISSANCE,GREATER POWER AURA
+kw.aura_surpuissance.desc,AUGMENTE LA PUISSANCE DES ALLIÉS ADJACENTS DE 5,INCREASES ADJACENT ALLIES' POWER BY 5
 kw.riposte.label,RIPOSTE,RIPOSTE
 kw.riposte.desc,CONTRE-ATTAQUE SI ELLE SURVIT ET PEUT ATTEINDRE L'ASSAILLANT,COUNTERS IF IT SURVIVES AND CAN REACH THE ATTACKER
 kw.duelliste.label,DUELLISTE,DUELIST
@@ -429,3 +449,47 @@ tree.logi_deploiement_3,BATAILLE RANGEE,PITCHED BATTLE
 tree.logi_deploiement_3.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.logi_reserve_3,GRANDE ARMEE,GRAND ARMY
 tree.logi_reserve_3.desc,+4 places en réserve.,+4 reserve slots.
+# ── Arbre du commandant LANCIER (tree "commandantLancier") ──
+tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat)
+tree.commandantLancier.branch0,COMMANDANT,COMMANDER
+tree.commandantLancier.branch1,LANCIERS,SPEARMEN
+tree.commandantLancier.branch2,LOGISTIQUE,LOGISTICS
+# Noeuds : branche COMMANDANT (Lancier)
+tree.lan_cmd_rempart,REMPART DU MENEUR,LEADER BULWARK
+tree.lan_cmd_rempart.desc,le commandant réduit de 4 les dégâts des attaques à portée 2 ou plus.,the commander reduces by 4 the damage of attacks at range 2 or more.
+tree.lan_cmd_pm,FOULEE DU MENEUR,LEADER STRIDE
+tree.lan_cmd_pm.desc,+1 déplacement au commandant.,+1 movement to the commander.
+tree.lan_cmd_pv_tour,MENEUR DE LANCIERS,SPEAR CAPTAIN
+tree.lan_cmd_pv_tour.desc,+3 pv au commandant par unité du domaine de la tour en réserve ou en jeu.,+3 hp to the commander for each rook-domain unit in reserve or in play.
+tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA
+tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficient de rempart.,units adjacent to the commander gain bulwark.
+tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE
+tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.
+tree.lan_cmd_aura_surpuissance,AURA DE SURPUISSANCE,GREATER POWER AURA
+tree.lan_cmd_aura_surpuissance.desc,+5 puissance aux unités adjacentes au commandant.,+5 power to units adjacent to the commander.
+# Noeuds : branche LANCIERS (domaine de la tour)
+tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD
+tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.
+tree.lan_tour_pv_tour,MUR DE LANCES,SPEAR WALL
+tree.lan_tour_pv_tour.desc,+2 pv aux unités du domaine de la tour par unité du domaine de la tour en réserve ou en jeu.,+2 hp to rook-domain units for each rook-domain unit in reserve or in play.
+tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA
+tree.lan_tour_aura_puissance.desc,les lanciers augmentent de 3 la puissance des alliés adjacents.,spearmen increase adjacent allies' power by 3.
+tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
+tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
+tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
+tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
+tree.lan_tour_portee,ALLONGE DES LANCIERS,SPEAR REACH
+tree.lan_tour_portee.desc,+1 portée aux unités du domaine de la tour.,+1 attack range to units of the rook domain.
+# Noeuds : branche LOGISTIQUE
+tree.lan_logi_deploy_1,AVANT-GARDE,VANGUARD
+tree.lan_logi_deploy_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
+tree.lan_logi_fusion,APPEL AUX LANCIERS,SPEAR CALL
+tree.lan_logi_fusion.desc,chaque fusion recrute en plus un lancier.,each fusion also recruits one spearman.
+tree.lan_logi_deploy_2,RENFORTS,REINFORCEMENTS
+tree.lan_logi_deploy_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
+tree.lan_logi_reserve_1,INTENDANCE,QUARTERMASTER
+tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
+tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE
+tree.lan_logi_deploy_3.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
+tree.lan_logi_reserve_2,GRANDE ARMEE,GRAND ARMY
+tree.lan_logi_reserve_2.desc,+4 places en réserve.,+4 reserve slots.

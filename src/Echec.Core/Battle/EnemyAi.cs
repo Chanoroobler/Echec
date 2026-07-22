@@ -56,7 +56,11 @@ public readonly record struct AiAction(Cell From, Cell To, bool IsAttack);
 ///
 /// MALADRESSE (difficulté) : l'IA ne joue son meilleur coup qu'avec une probabilité
 /// <c>accuracy</c> (cf. <see cref="DifficultySettings.AiAccuracy"/>). Sinon elle DESCEND D'UN CRAN de
-/// priorité — elle renonce au kill parfait pour une attaque simple, à l'engagement pour une avancée, etc.
+/// priorité (engagement → avancée, etc.). DEUX exceptions pour que la maladresse reste crédible :
+///   • une ATTAQUE NON-LÉTALE en tête est TOUJOURS jouée — un pion qui peut taper sans tuer le fait
+///     (le sauter paraîtrait absurde) ;
+///   • rater un KILL ne fait pas faire une bêtise au pion tueur : c'est un AUTRE pion (≠ ceux qui
+///     pouvaient tuer) qui joue son meilleur coup NON-LÉTAL. Si personne d'autre ne peut agir, le kill se fait.
 /// Elle ne descend jamais jusqu'à ne rien faire : s'il n'existe qu'un seul rang de coups, elle le joue.
 ///
 /// SUICIDAIRE en fin de partie : quand il ne reste plus qu'UNE unité ennemie, elle abandonne le filet
@@ -106,25 +110,33 @@ public static class EnemyAi
         var suicidal = enemies.Count <= 1;
 
         var capture = new List<AiAction>();             // 0. offensif : se poser sur un paysan (objectif de mission)
-        AiAction? bestKill = null, bestAttack = null;   // 1. attaques (mortelle prioritaire)
-        var engage = new List<AiAction>();              // 2. mise à portée (normal / défensif alerté)
-        var advanceByUnit = new List<AiAction>();       // 3. avancée vers la cible (normal → joueur, offensif → paysan)
-        var guardByUnit = new List<AiAction>();         // 4. repositionnement des gardes défensifs
-        var anyLegalMove = new List<AiAction>();        // 5. repli anti-blocage (tous)
+        AiAction? bestKill = null;                      // 1. une attaque MORTELLE (jouée telle quelle)
+        var killCells = new HashSet<Cell>();            //    cases des pions capables de TUER ce tour (repli de maladresse)
+        var attackByUnit = new List<AiAction>();        // 2. une attaque NON-LÉTALE par pion (jamais ratée)
+        var engage = new List<AiAction>();              // 3. mise à portée (normal / défensif alerté)
+        var advanceByUnit = new List<AiAction>();       // 4. avancée vers la cible (normal → joueur, offensif → paysan)
+        var guardByUnit = new List<AiAction>();         // 5. repositionnement des gardes défensifs
+        var anyLegalMove = new List<AiAction>();        // 6. repli anti-blocage (tous)
 
         foreach (var (from, unit) in enemies)
         {
             var defensif = unit.AiKind == AiKind.Defensif;
             var offensif = unit.AiKind == AiKind.Offensif;
 
+            AiAction? unitAttack = null;   // une attaque NON-LÉTALE de CE pion (variété + repli de maladresse sur un kill)
             foreach (var target in match.AttackTargets(from))
             {
                 var victim = match.UnitAt(target)!;
                 if (unit.Damage >= victim.Hp)
+                {
                     bestKill ??= new AiAction(from, target, IsAttack: true);
+                    killCells.Add(from);   // ce pion peut tuer ce tour-ci
+                }
                 else
-                    bestAttack ??= new AiAction(from, target, IsAttack: true);
+                    unitAttack ??= new AiAction(from, target, IsAttack: true);
             }
+            if (unitAttack is { } ua)
+                attackByUnit.Add(ua);
 
             // S'ENGAGER = se mettre à portée du joueur. Un normal ET un OFFENSIF le font (l'offensif est
             // AGRESSIF : il attaque vite et prend des risques, cf. le filet levé plus bas). Un garde défensif
@@ -202,7 +214,7 @@ public static class EnemyAi
 
         Rank(capture);
         if (bestKill is { } kill) ranks.Add(new[] { kill });
-        if (bestAttack is { } attack) ranks.Add(new[] { attack });
+        Rank(attackByUnit);
         Rank(engage);
         Rank(advanceByUnit);
         Rank(guardByUnit);
@@ -211,11 +223,38 @@ public static class EnemyAi
         if (ranks.Count == 0)
             return null;
 
-        // MALADRESSE : l'IA rate sa décision et descend d'un cran. Jamais jusqu'à ne rien faire — s'il n'y a
-        // qu'un rang, elle le joue (l'ennemi doit BOUGER quoi qu'il arrive).
-        var blundered = ranks.Count > 1 && rng.NextDouble() >= accuracy;
-        var chosen = ranks[blundered ? 1 : 0];
-        return chosen[rng.Next(chosen.Count)];
+        AiAction Pick(IReadOnlyList<AiAction> r) => r[rng.Next(r.Count)];
+
+        // Nature du rang du DESSUS : elle conditionne la maladresse.
+        var topIsAttack = capture.Count == 0 && bestKill is null && attackByUnit.Count > 0;
+        var topIsKill = capture.Count == 0 && bestKill is not null;
+
+        // RÈGLE 1 : une ATTAQUE NON-LÉTALE en tête est TOUJOURS jouée — la maladresse ne la saute jamais
+        // (un pion qui pourrait taper sans tuer le fait, sinon ça paraît trop bête).
+        if (topIsAttack)
+            return Pick(ranks[0]);
+
+        // MALADRESSE : avec la probabilité (1 - accuracy) l'IA rate sa décision. Jamais jusqu'à ne rien faire —
+        // s'il n'y a qu'un rang, elle le joue (l'ennemi doit BOUGER quoi qu'il arrive).
+        if (ranks.Count == 1 || rng.NextDouble() < accuracy)
+            return Pick(ranks[0]);   // pas de maladresse : meilleur coup
+
+        // RÈGLE 2 : rater un KILL ne fait pas faire une bêtise au pion tueur — c'est un AUTRE pion (≠ ceux
+        // qui pouvaient tuer) qui joue son meilleur coup NON-LÉTAL, selon la même priorité. Si personne
+        // d'autre ne peut agir, le kill se fait quand même.
+        if (topIsKill)
+        {
+            foreach (var rank in new[] { attackByUnit, engage, advanceByUnit, guardByUnit, anyLegalMove })
+            {
+                var others = rank.Where(a => !killCells.Contains(a.From)).ToList();
+                if (others.Count > 0)
+                    return Pick(others);
+            }
+            return bestKill!.Value;   // topIsKill ⇒ non-null ; aucun autre pion ne peut agir → le kill se fait
+        }
+
+        // LE RESTE (capture, engagement, avancée…) : on descend d'un cran, comme avant.
+        return Pick(ranks[1]);
     }
 
     /// <summary>Case de <paramref name="cells"/> la plus proche de <paramref name="from"/> (Chebyshev), ou null si aucune.</summary>
