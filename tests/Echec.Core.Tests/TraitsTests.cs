@@ -201,7 +201,7 @@ public class TraitsTests
     }
 
     [Fact]
-    public void Riposte_CountersMeleeAttacker_WhenSurviving()
+    public void Riposte_CountersAttacker_WhenSurviving()
     {
         var melee = Board();
         melee.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
@@ -209,12 +209,53 @@ public class TraitsTests
         melee.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(14, melee.UnitAt(new Cell(0, 1))!.Hp);   // victime survit (20 - 6)
         Assert.Equal(12, melee.UnitAt(new Cell(0, 0))!.Hp);   // attaquant contre-attaqué (20 - 8)
+    }
 
-        var ranged = Board();
-        ranged.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
-        ranged.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }));
-        ranged.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(20, ranged.UnitAt(new Cell(0, 0))!.Hp);  // pas de riposte à distance
+    [Fact]
+    public void Riposte_ReachesAtRange_WhenItCouldHaveAttacked()
+    {
+        // La riposte n'est PAS réservée au corps à corps : l'unité de test tire à 3 cases, elle rend donc
+        // le coup à un assaillant distant de 2 sur la même ligne.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.Equal(12, m.UnitAt(new Cell(0, 0))!.Hp);   // 20 - 8
+    }
+
+    [Fact]
+    public void Riposte_StaysSilent_WhenItCouldNotHaveAttacked()
+    {
+        // Hors de portée : l'unité tire à 3, l'assaillant frappe de 4 cases. Elle encaisse sans rendre.
+        var far = Board();
+        far.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, attackRange: 5));
+        far.Place(new Cell(0, 4), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }));
+        far.TryAttack(new Cell(0, 0), new Cell(0, 4));
+        Assert.Equal(20, far.UnitAt(new Cell(0, 0))!.Hp);
+
+        // Mauvais MOTIF : l'unité de test est du domaine Tour (lignes droites), l'assaillant est en
+        // diagonale. Elle n'aurait pas pu le viser, donc pas de riposte.
+        var diagonal = Board();
+        diagonal.Place(new Cell(1, 1), Make(Faction.Player, 20, 6, None, domaine: Domaine.Dame));
+        diagonal.Place(new Cell(2, 2), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }));
+        diagonal.TryAttack(new Cell(1, 1), new Cell(2, 2));
+        Assert.Equal(20, diagonal.UnitAt(new Cell(1, 1))!.Hp);
+    }
+
+    [Fact]
+    public void Riposte_StaysSilent_WhenTheLineIsBlocked()
+    {
+        // Un allié de la victime s'interpose : sa ligne de tir est coupée, donc aucune riposte.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 8, None));                        // écran
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 1));   // on frappe l'écran, pas le riposteur
+
+        Assert.Equal(20, m.UnitAt(new Cell(0, 0))!.Hp);
     }
 
     // ── Soutien : Soin ────────────────────────────────────────────────────────────

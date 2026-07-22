@@ -381,9 +381,14 @@ public sealed class Match
         }
         else
         {
-            // Riposte : la victime survivante contre-attaque en mêlée (attaquant resté au contact).
-            if (victim.HasTrait(Trait.Riposte) && ChebyshevDistance(from, target) == 1
-                && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit))
+            // Riposte : la victime SURVIVANTE contre-attaque, à condition de POUVOIR réellement frapper son
+            // assaillant — mêmes règles que son attaque normale (motif, portée, zone morte, ligne de tir,
+            // traverse-allié). Ce n'est donc plus réservé au corps à corps : un tireur riposte à distance,
+            // mais un assaillant hors de portée, en diagonale d'une unité « Tour » ou derrière un obstacle
+            // ne prend rien.
+            if (victim.HasTrait(Trait.Riposte)
+                && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit)
+                && CanStrike(target, victim, from))
             {
                 ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from));
                 RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
@@ -683,6 +688,21 @@ public sealed class Match
     {
         LegalMoves(from, _placeBuffer);
         return _placeBuffer.Contains(target);
+    }
+
+    /// <summary>
+    /// Vrai si <paramref name="unit"/>, postée en <paramref name="from"/>, POURRAIT frapper
+    /// <paramref name="target"/> : mêmes règles que <see cref="AttackTargets(Cell)"/> — motif d'attaque,
+    /// portée, zone morte, ligne de tir, traverse-allié — mais SANS la condition « c'est son tour ».
+    /// Sert aux réactions (riposte), qui se produisent pendant le tour de l'adversaire.
+    /// </summary>
+    private bool CanStrike(Cell from, Unit unit, Cell target)
+    {
+        var reach = new List<Cell>();
+        AppendAttackTargets(from, unit, unit.AttackDomaine, reach);
+        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
+            AppendAttackTargets(from, unit, Domaine.Dame, reach);
+        return reach.Contains(target);
     }
 
     private Unit? ActiveUnitAt(Cell cell)

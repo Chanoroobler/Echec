@@ -81,6 +81,9 @@ difficulty.more_evolved_again,Encore plus d'ennemis évolués,Even more evolved 
 # Idem pour l'equipement porte par les ennemis : « again » des qu'un niveau inferieur en donnait deja
 difficulty.equipped,Ennemis parfois équipés,Enemies sometimes equipped
 difficulty.equipped_again,Ennemis souvent équipés,Enemies often equipped
+# Quota de paysans des missions speciales : le rater fait PERDRE la run
+difficulty.special_quota,Objectif obligatoire en mission spéciale,Mandatory objective in special missions
+difficulty.special_quota_again,Objectif de mission spéciale plus exigeant,Harder objective in special missions
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
@@ -101,6 +104,11 @@ special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS
 special.desc_liberate,DES PAYSANS SONT RETENUS PAR L'ENNEMI SUR LE CHAMP DE BATAILLE. AMENE UN PION SUR UN PAYSAN POUR LE LIBERER : IL REJOINT AUSSITOT TA RESERVE.,PEASANTS ARE HELD BY THE ENEMY ACROSS THE BATTLEFIELD. MOVE A PIECE ONTO A PEASANT TO FREE THEM : THEY JOIN YOUR RESERVE AT ONCE.
 special.desc_protect,L'ENNEMI VEUT CAPTURER TES PAYSANS. TU NE PEUX PAS TE POSER SUR EUX : BARRE-LUI LA ROUTE. CHAQUE PAYSAN ENCORE LIBRE A LA FIN T'OFFRE UNE RECRUE.,THE ENEMY WANTS TO CAPTURE YOUR PEASANTS. YOU CANNOT STAND ON THEM : BLOCK THE WAY. EACH PEASANT STILL FREE AT THE END GRANTS A RECRUIT.
 special.rule_turns,LIMITE : {0} TOURS,LIMIT : {0} ROUNDS
+# Regles annoncees au briefing. Les deux dernieres dependent du QUOTA de difficulte : sans quota le temps
+# ecoule ne fait que clore la mission, avec quota il peut la faire PERDRE.
+special.rule_quota,SAUVER AU MOINS {0} PAYSAN(S),FREE AT LEAST {0} PEASANT(S)
+special.rule_quota_protect,PROTEGER AU MOINS {0} PAYSAN(S),KEEP AT LEAST {0} PEASANT(S) SAFE
+special.rule_defeat_quota,ECHOUER OU PERDRE LE COMMANDANT FAIT PERDRE,FAILING OR LOSING THE COMMANDER ENDS THE RUN
 special.rule_timeout,LE TEMPS ECOULE CLOT LA MISSION SANS DEFAITE,RUNNING OUT OF TIME ENDS THE MISSION - NOT A DEFEAT
 special.rule_defeat,SEULE LA CHUTE DU COMMANDANT FAIT PERDRE,ONLY THE COMMANDER FALLING MEANS DEFEAT
 special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
@@ -110,6 +118,7 @@ recap.title,BILAN DE MISSION,MISSION REPORT
 recap.paysans_freed,PAYSANS LIBERES,PEASANTS FREED
 recap.paysans_saved,PAYSANS PROTEGES,PEASANTS SAFE
 recap.turns,TOURS UTILISES,ROUNDS USED
+recap.required,MINIMUM EXIGE,REQUIRED MINIMUM
 recap.losses,PERTES,LOSSES
 recap.continue,CLIC POUR CONTINUER,CLICK TO CONTINUE
 recap.continue_gp,A : CONTINUER,A : CONTINUE
@@ -266,6 +275,7 @@ fusion.continue_gp,A POUR RANGER LA PIECE,A TO STORE THE UNIT
 # ── Fin de partie ───────────────────────────────────────────────────────────
 defeat.army_destroyed,ARMEE DETRUITE,ARMY DESTROYED
 defeat.commander_fallen,COMMANDANT TOMBE,COMMANDER FALLEN
+defeat.paysans,PAYSANS SAUVES : {0} SUR {1} EXIGES,PEASANTS SAVED: {0} OF {1} REQUIRED
 end.victory,VICTOIRE,VICTORY
 end.defeat,DEFAITE,DEFEAT
 end.boss_defeated,BOSS VAINCU,BOSS DEFEATED
@@ -286,7 +296,7 @@ kw.interception.desc,UN ENNEMI QUI ENTRE DANS LA ZONE D'ATTAQUE SUBIT UNE ATTAQU
 kw.aura_rempart.label,AURA DE REMPART,BULWARK AURA
 kw.aura_rempart.desc,LE BONUS DE REMPART S'APPLIQUE AUX UNITÉS ADJACENTES,THE BULWARK BONUS APPLIES TO ADJACENT UNITS
 kw.riposte.label,RIPOSTE,RIPOSTE
-kw.riposte.desc,CONTRE-ATTAQUE AU CORPS À CORPS SI L'UNITÉ SURVIT,COUNTERS IN MELEE IF THE UNIT SURVIVES
+kw.riposte.desc,CONTRE-ATTAQUE SI ELLE SURVIT ET PEUT ATTEINDRE L'ASSAILLANT,COUNTERS IF IT SURVIVES AND CAN REACH THE ATTACKER
 kw.duelliste.label,DUELLISTE,DUELIST
 kw.duelliste.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES AU CORPS À CORPS,REDUCES BY 4 DAMAGE FROM MELEE ATTACKS
 kw.rage.label,RAGE,RAGE

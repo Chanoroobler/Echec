@@ -121,7 +121,7 @@ public sealed class GameplayScene : Scene
     /// roster), affichés par la modale de bilan avant l'écran de récupération des pions.
     /// </summary>
     private readonly record struct SpecialRecap(
-        bool Protect, int Paysans, int PaysansTotal, int Turns, int TurnBudget, int Losses);
+        bool Protect, int Paysans, int PaysansTotal, int Turns, int TurnBudget, int Losses, int Required);
 
     private SpecialRecap? _specialRecap;       // bilan à valider ; non-null = modale ouverte (gèle le recrutement)
 
@@ -153,6 +153,20 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Nombre total de paysans sur la map (tuiles recrue).</summary>
     private int PaysansTotal => _recrueCells.Count;
+
+    /// <summary>
+    /// Paysans portés à l'actif du joueur : ceux qu'il a LIBÉRÉS en mission « libérer », ceux qu'il a
+    /// EMPÊCHÉ de capturer en mission « protéger ». C'est ce chiffre que le quota de difficulté compare.
+    /// </summary>
+    private int PaysansSaved => IsProtectMission ? PaysansProtected : PaysansResolved;
+
+    /// <summary>
+    /// Quota de paysans imposé par la difficulté (0 = aucun). PLAFONNÉ au nombre de paysans réellement
+    /// présents sur la map : une exigence impossible à tenir serait une défaite garantie.
+    /// </summary>
+    private int PaysansRequired => _run == null
+        ? 0
+        : System.Math.Min(DifficultySettings.For(_run.Difficulty).PaysansRequired, PaysansTotal);
 
     /// <summary>Limite de tours effective de la mission spéciale : celle de la map si fixée, sinon le défaut.</summary>
     private int SpecialTurnBudget() => _map is { TurnLimit: > 0 } m ? m.TurnLimit : SpecialTurnLimit;
@@ -3918,14 +3932,25 @@ public sealed class GameplayScene : Scene
             if (!done)
                 return;
 
+            // QUOTA DE DIFFICULTÉ : la mission est close, mais si le joueur n'a pas sauvé assez de paysans
+            // la run est perdue — au même titre que la chute du commandant. Testé AVANT toute complétion :
+            // ni points de commandement, ni recrutement, ni récompense ne doivent être accordés.
+            if (PaysansSaved < PaysansRequired)
+            {
+                _defeatReason = Loc.T("defeat.paysans", PaysansSaved, PaysansRequired);
+                _run.Defeat();
+                FinishBattleEnd();
+                return;
+            }
+
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
 
             // Bilan FIGÉ ici : la complétion va retirer les pertes du roster (permadeath) et remettre le
             // compteur de tours à zéro au combat suivant. Modale à valider avant la récupération des pions.
             var casualties = PlayerCasualties();
-            _specialRecap = new SpecialRecap(IsProtectMission,
-                IsProtectMission ? PaysansProtected : PaysansResolved, PaysansTotal,
-                SpecialTurnBudget() - System.Math.Max(0, _specialRoundsLeft), SpecialTurnBudget(), casualties.Count);
+            _specialRecap = new SpecialRecap(IsProtectMission, PaysansSaved, PaysansTotal,
+                SpecialTurnBudget() - System.Math.Max(0, _specialRoundsLeft), SpecialTurnBudget(),
+                casualties.Count, PaysansRequired);
 
             if (IsProtectMission)
             {
@@ -8950,22 +8975,35 @@ public sealed class GameplayScene : Scene
         var protect = IsProtectMission;
         var title = Loc.T(protect ? "special.title_protect" : "special.title_liberate");
         var body = WrapText(Loc.T(protect ? "special.desc_protect" : "special.desc_liberate"), innerW, 1);
-        var rules = new[]
+        // Le QUOTA change la nature de la mission : sans lui le temps écoulé ne fait que clore, avec lui il
+        // peut faire perdre. Les deux dernières règles sont donc formulées différemment selon qu'il existe —
+        // et en ROUGE, la couleur du danger dans tout le jeu, parce que ce sont elles qui font perdre la run.
+        var quota = PaysansRequired;
+        var rules = new List<(string Text, Color Color)>
         {
-            "- " + Loc.T("special.rule_turns", SpecialTurnBudget()),
-            "- " + Loc.T("special.rule_timeout"),
-            "- " + Loc.T("special.rule_defeat"),
+            ("- " + Loc.T("special.rule_turns", SpecialTurnBudget()), Palette.Cyan1),
         };
+        if (quota > 0)
+        {
+            rules.Add(("- " + Loc.T(IsProtectMission ? "special.rule_quota_protect" : "special.rule_quota", quota),
+                Palette.Purple5));
+            rules.Add(("- " + Loc.T("special.rule_defeat_quota"), Palette.Purple5));
+        }
+        else
+        {
+            rules.Add(("- " + Loc.T("special.rule_timeout"), Palette.Cyan1));
+            rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
+        }
         var prompt = Loc.T(Context.Input.UsingGamepad ? "special.brief_continue_gp" : "special.brief_continue");
 
         var textW = System.Math.Max(Context.Font.Measure(title, 2), Context.Font.Measure(prompt, 1));
         foreach (var l in body)
             textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
-        foreach (var l in rules)
-            textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
+        foreach (var (text, _) in rules)
+            textW = System.Math.Max(textW, Context.Font.Measure(text, 1));
 
         var boxW = textW + 2 * ModalPadH;
-        var boxH = ModalPadV + 7 + ModalGap + 14 + ModalGap + (body.Count + rules.Length) * ModalLineH
+        var boxH = ModalPadV + 7 + ModalGap + 14 + ModalGap + (body.Count + rules.Count) * ModalLineH
                    + 2 * ModalGap + 7 + ModalPadV;
         var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
 
@@ -8986,9 +9024,9 @@ public sealed class GameplayScene : Scene
             y += ModalLineH;
         }
         y += ModalGap;
-        foreach (var l in rules)
+        foreach (var (text, color) in rules)
         {
-            Context.Font.Draw(sb, l, new Vector2(x, y), 1, Palette.Cyan1);
+            Context.Font.Draw(sb, text, new Vector2(x, y), 1, color);
             y += ModalLineH;
         }
         y += ModalGap;
@@ -9008,12 +9046,15 @@ public sealed class GameplayScene : Scene
         var title = Loc.T("recap.title");
         var sub = Loc.T(recap.Protect ? "special.title_protect" : "special.title_liberate");
         var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.continue_gp" : "recap.continue");
-        var rows = new (string Label, string Value)[]
+        var rows = new List<(string Label, string Value)>
         {
             (Loc.T(recap.Protect ? "recap.paysans_saved" : "recap.paysans_freed"), $"{recap.Paysans} / {recap.PaysansTotal}"),
-            (Loc.T("recap.turns"), $"{recap.Turns} / {recap.TurnBudget}"),
-            (Loc.T("recap.losses"), recap.Losses.ToString()),
         };
+        // Quota de difficulté : rappelé seulement s'il y en a un (aucun en facile).
+        if (recap.Required > 0)
+            rows.Add((Loc.T("recap.required"), recap.Required.ToString()));
+        rows.Add((Loc.T("recap.turns"), $"{recap.Turns} / {recap.TurnBudget}"));
+        rows.Add((Loc.T("recap.losses"), recap.Losses.ToString()));
 
         const int colGap = 40;   // écart mini entre le libellé et sa valeur (colonnes label/valeur)
         int labelW = 0, valueW = 0;
@@ -9027,7 +9068,7 @@ public sealed class GameplayScene : Scene
             System.Math.Max(tableW, Context.Font.Measure(prompt, 1)));
 
         var boxW = textW + 2 * ModalPadH;
-        var boxH = ModalPadV + 21 + ModalGap + 7 + ModalGap + rows.Length * ModalLineH + ModalGap + 7 + ModalPadV;
+        var boxH = ModalPadV + 21 + ModalGap + 7 + ModalGap + rows.Count * ModalLineH + ModalGap + 7 + ModalPadV;
         var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
 
         sb.Begin(samplerState: SamplerState.PointClamp);

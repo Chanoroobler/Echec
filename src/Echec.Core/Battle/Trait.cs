@@ -20,7 +20,7 @@ public static class Trait
     public const string Transpercement = "Transpercement";   // touche aussi l'unité juste derrière la cible
     public const string Interception = "Interception";       // attaque d'opportunité sur un ennemi entrant en portée
     public const string AuraDeRempart = "Aura de rempart";   // donne l'effet Rempart aux alliés adjacents
-    public const string Riposte = "Riposte";                 // contre-attaque en mêlée si l'unité survit
+    public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
     public const string Rage = "Rage";                       // +RageBonus de puissance sous RageHpThreshold PV
     public const string BouclierDivin = "Bouclier divin";    // un allié adjacent ne peut pas mourir (PV >= 1)

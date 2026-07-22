@@ -37,19 +37,25 @@ public enum Difficulty
 /// plus. <c>null</c> = AUCUN ennemi équipé, quel que soit le barème. Le boss n'est jamais concerné (il est
 /// <c>Essential</c>, comme le commandant du joueur).
 /// </param>
-public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus)
+/// <param name="PaysansRequired">
+/// MISSIONS SPÉCIALES : nombre MINIMUM de paysans à sauver (mission « libérer ») ou à préserver de la
+/// capture (mission « protéger ») pour que la mission compte. En dessous, la run est PERDUE, comme si le
+/// commandant était tombé. <c>0</c> = aucune exigence, la mission ne peut pas être ratée.
+/// </param>
+public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus,
+    int PaysansRequired)
 {
-    /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé.</summary>
+    /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé, aucun quota.</summary>
     public static readonly DifficultySettings Facile =
-        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null);
+        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null, PaysansRequired: 0);
 
-    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, barème d'équipement de base.</summary>
+    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base, 1 paysan exigé.</summary>
     public static readonly DifficultySettings Normal =
-        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0);
+        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0, PaysansRequired: 1);
 
-    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus.</summary>
+    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus, 2 paysans exigés.</summary>
     public static readonly DifficultySettings Difficile =
-        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1);
+        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1, PaysansRequired: 2);
 
     /// <summary>Tous les niveaux, dans l'ordre croissant : c'est l'ordre du sélecteur de l'écran de sélection.</summary>
     public static readonly IReadOnlyList<Difficulty> AllLevels =

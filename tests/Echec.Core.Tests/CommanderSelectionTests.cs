@@ -386,6 +386,16 @@ public class CommanderSelectionTests
         Assert.Equal(3, wave.Count(u => u.UnitClass.Tier == 2));
     }
 
+    [Theory]
+    [InlineData(Difficulty.Facile, 0)]      // aucune exigence : la mission spéciale ne peut pas être ratée
+    [InlineData(Difficulty.Normal, 1)]
+    [InlineData(Difficulty.Difficile, 2)]
+    public void SpecialMissions_PaysanQuotaPerDifficulty(Difficulty difficulty, int required)
+    {
+        // Contrat lu par GameplayScene pour décider si la mission spéciale est perdue (= fin de run).
+        Assert.Equal(required, DifficultySettings.For(difficulty).PaysansRequired);
+    }
+
     [Fact]
     public void MissionSnapshot_SurvivesLosses_SoRestartBringsPawnsBack()
     {

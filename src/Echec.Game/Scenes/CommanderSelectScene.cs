@@ -730,6 +730,9 @@ public sealed class CommanderSelectScene : Scene
             lines.Add(Loc.T(RaisesWaves(level - 1) ? "difficulty.more_evolved_again" : "difficulty.more_evolved"));
         if (EquipsEnemies(level))
             lines.Add(Loc.T(EquipsEnemies(level - 1) ? "difficulty.equipped_again" : "difficulty.equipped"));
+        if (DemandsPaysans(level))
+            lines.Add(Loc.T(DemandsPaysans(level - 1)
+                ? "difficulty.special_quota_again" : "difficulty.special_quota"));
 
         var w = Context.Font.Measure(title, 2);
         foreach (var line in lines)
@@ -767,6 +770,10 @@ public sealed class CommanderSelectScene : Scene
 
     private static bool RaisesWaves(int level) =>
         Climbs(level, s => s.TierShift);
+
+    /// <summary>Vrai si <paramref name="level"/> exige plus de paysans sauvés que le niveau juste en dessous.</summary>
+    private static bool DemandsPaysans(int level) =>
+        Climbs(level, s => s.PaysansRequired);
 
     /// <summary>Vrai si <paramref name="level"/> équipe plus d'ennemis que le niveau juste en dessous.</summary>
     private static bool EquipsEnemies(int level) =>
