@@ -42,6 +42,42 @@ public static class Textures
     }
 
     /// <summary>
+    /// Dégradé vertical TRAMÉ (dithering ordonné Bayer 4×4) entre plusieurs paliers de couleur, du haut
+    /// (<paramref name="stops"/>[0]) vers le bas. Entre deux paliers voisins, la proportion de pixels du
+    /// palier suivant croît avec la hauteur selon le seuil de Bayer : l'œil fond la trame en un dégradé
+    /// continu tout en gardant des pixels NETS (pixel-art, palette respectée), au lieu d'un dégradé lissé
+    /// qui jurerait avec le reste. À dessiner en <see cref="SamplerState.PointClamp"/> SANS mise à l'échelle
+    /// (la texture fait déjà la taille du canevas).
+    /// </summary>
+    public static Texture2D CreateVerticalDitherGradient(GraphicsDevice graphicsDevice, int width, int height,
+        params Color[] stops)
+    {
+        if (stops.Length == 0)
+            stops = new[] { Color.Black };
+
+        var segments = Math.Max(1, stops.Length - 1);
+        var data = new Color[width * height];
+        for (var y = 0; y < height; y++)
+        {
+            // Position continue dans la rampe [0 .. segments] ; on isole le segment courant et l'avancée dedans.
+            var p = height > 1 ? (float)y / (height - 1) * segments : 0f;
+            var i = Math.Min((int)p, segments - 1);
+            var frac = p - i;                       // 0 (palier lo) … 1 (palier hi) dans le segment
+            var lo = stops[i];
+            var hi = stops[i + 1];
+            for (var x = 0; x < width; x++)
+            {
+                var threshold = (Bayer4[y & 3, x & 3] + 0.5f) / 16f;
+                data[y * width + x] = frac > threshold ? hi : lo;
+            }
+        }
+
+        var texture = new Texture2D(graphicsDevice, width, height);
+        texture.SetData(data);
+        return texture;
+    }
+
+    /// <summary>
     /// Bruit de valeur fBm en niveaux de gris, <b>tuilable sans couture</b> (s'échantillonne
     /// en Wrap). Plusieurs octaves dont les fréquences divisent <paramref name="size"/> →
     /// le motif se raccorde bord à bord. Sert de support au défilement du shader d'eau.

@@ -51,7 +51,7 @@ public sealed class UnitCardRenderer
         _ctx.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
-        DrawTier(sb, c.Tier, new Rectangle(rect.X + (rect.Width - CardTierW) / 2, rect.Y + 2, CardTierW, CardTierH));
+        DrawTierAndDomaine(sb, c.Tier, domaine, rect);
 
         _ctx.Font.DrawCentered(sb, NameOf(c), new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
         y += 22;
@@ -178,6 +178,17 @@ public sealed class UnitCardRenderer
         Fill(sb, Inflate(area, 1), Palette.Black1);
         Fill(sb, area, Palette.Navy2);
         _ctx.Font.DrawCentered(sb, $"T{tier}", area, 1, Palette.White);
+    }
+
+    /// <summary>Marge haute : icône de TIER + NOM DU DOMAINE, l'ensemble centré (cf. carte de jeu).</summary>
+    private void DrawTierAndDomaine(SpriteBatch sb, int tier, Domaine domaine, Rectangle rect)
+    {
+        var name = Loc.TOr($"domaine.{domaine}".ToLowerInvariant(), domaine.ToString().ToUpperInvariant());
+        const int gap = 5;
+        var nameW = _ctx.Font.Measure(name, 1);
+        var startX = rect.X + (rect.Width - (CardTierW + gap + nameW)) / 2;
+        DrawTier(sb, tier, new Rectangle(startX, rect.Y + 2, CardTierW, CardTierH));
+        _ctx.Font.Draw(sb, name, new Vector2(startX + CardTierW + gap, rect.Y + 3), 1, Palette.Cyan1);
     }
 
     private void DrawDomaine(SpriteBatch sb, Domaine domaine, Rectangle area)

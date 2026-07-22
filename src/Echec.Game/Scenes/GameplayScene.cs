@@ -7833,11 +7833,10 @@ public sealed class GameplayScene : Scene
         Context.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
-        // Icône de TIER (23×9) AU-DESSUS du nom, dans la marge haute : ne décale rien dessous. Masquée tant
-        // que l'unité n'est pas découverte (on ne révèle pas son tier).
+        // Icône de TIER (23×9) + NOM DU DOMAINE, groupés et centrés AU-DESSUS du nom, dans la marge haute :
+        // ne décale rien dessous. Masqués tant que l'unité n'est pas découverte (on ne révèle pas son tier).
         if (revealed)
-            DrawTierIcon(sb, c.Tier,
-                new Rectangle(rect.X + (rect.Width - TierIconW) / 2, rect.Y + 2, TierIconW, TierIconH));
+            DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
 
         // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte. Échelle 2 par
         // défaut, repliée en 1 si le nom déborde de la carte (« ARBALETRIER MONTE » mesure 202 px pour une
@@ -8163,6 +8162,20 @@ public sealed class GameplayScene : Scene
         DrawRect(sb, Inflate(area, 1), Palette.Black1 * alpha);
         DrawRect(sb, area, Palette.Navy2 * alpha);
         Context.Font.DrawCentered(sb, $"T{tier}", area, 1, Palette.White * alpha);
+    }
+
+    /// <summary>
+    /// Marge haute de la carte : icône de TIER (chiffre romain) suivie du NOM DU DOMAINE, l'ensemble centré.
+    /// Le nom rappelle en toutes lettres le domaine dont l'icône de déplacement figure plus bas sur la carte.
+    /// </summary>
+    private void DrawCardTierAndDomaine(SpriteBatch sb, int tier, Domaine domaine, Rectangle rect)
+    {
+        var name = Loc.TOr($"domaine.{domaine}".ToLowerInvariant(), domaine.ToString().ToUpperInvariant());
+        const int gap = 5;
+        var nameW = Context.Font.Measure(name, 1);
+        var startX = rect.X + (rect.Width - (TierIconW + gap + nameW)) / 2;
+        DrawTierIcon(sb, tier, new Rectangle(startX, rect.Y + 2, TierIconW, TierIconH));
+        Context.Font.Draw(sb, name, new Vector2(startX + TierIconW + gap, rect.Y + 3), 1, Palette.Cyan1);
     }
 
     // ── Popups de mots-clés ──────────────────────────────────────────────────────

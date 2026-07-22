@@ -42,6 +42,9 @@ public sealed class CodexView
     // Cache unique de PNG par chemin relatif à Assets/ (unités, équipements, icônes de domaine). Disposé au Unload.
     private readonly Dictionary<string, Texture2D?> _textures = new();
 
+    /// <summary>Fond du panneau : dégradé vertical tramé BLEU (même style que le menu principal), régénéré au changement de taille.</summary>
+    private Texture2D? _background;
+
     private Tab _tab = Tab.Units;
     private int _domaineIndex;   // 0..Domaines.All.Count-1 (page de l'onglet Pions)
     private float _pulse;
@@ -75,6 +78,23 @@ public sealed class CodexView
         foreach (var tex in _textures.Values)
             tex?.Dispose();
         _textures.Clear();
+        _background?.Dispose();
+        _background = null;
+    }
+
+    /// <summary>
+    /// (Re)génère le fond dégradé si absent ou si sa taille a changé. MÊMES paliers que le fond du menu
+    /// principal (haut un peu plus clair → presque noir en bas).
+    /// </summary>
+    private void EnsureBackground(int w, int h)
+    {
+        if (w <= 0 || h <= 0)
+            return;
+        if (_background != null && _background.Width == w && _background.Height == h)
+            return;
+        _background?.Dispose();
+        _background = Textures.CreateVerticalDitherGradient(_ctx.GraphicsDevice, w, h,
+            Palette.Black4, Palette.Navy2, Palette.Black1);
     }
 
     // ── Mise en page ─────────────────────────────────────────────────────────────
@@ -84,6 +104,8 @@ public sealed class CodexView
     private const int TileFramePad = 6; // marge entre le sprite 64 et le cadre de la tuile
     private const int UnitTileW = 96;   // cadre 76 (sprite 64 + marge) + marges latérales
     private const int UnitTileH = 92;   // cadre 76 + nom dessous
+    private const int TreePitchMin = 96;   // pas vertical MIN entre deux tiers de l'arbre
+    private const int TreePitchMax = 150;  // pas vertical MAX (au-delà, on CENTRE l'arbre plutôt que de l'étirer)
     private const int EquipTile = 52; // côté d'une tuile d'équipement (icône 32 centrée)
     private const int EquipGap = 10;
 
@@ -115,23 +137,39 @@ public sealed class CodexView
         l.Close = new Rectangle(panel.Center.X - 60, panel.Bottom - 46, 120, 26);
         var footerTop = panel.Bottom - 52;
 
-        int contentTop;
+        int contentTop, contentH;
         if (_tab == Tab.Units)
         {
-            // Sélecteur de domaine (‹ NOM ›) sous les onglets.
-            var selY = tabsY + tabH + 6;
+            // Région disponible pour le bloc « sélecteur de domaine + arbre », entre le bas des onglets et le pied.
+            const int selH = 22, selGap = 8;
+            var regionTop = tabsY + tabH + 6;
+            var regionH = footerTop - regionTop;
+
+            // Hauteur NATURELLE du bloc : sélecteur + respiration + arbre à son pas MAX (jamais étiré au-delà).
+            var maxTier = MaxTier(Domaines.All[_domaineIndex].BaseClass);
+            var treeNaturalH = (maxTier > 1 ? (maxTier - 1) * TreePitchMax : 0) + UnitTileH;
+            var blockH = selH + selGap + treeNaturalH;
+
+            // Grand écran (région plus haute que le bloc) : on CENTRE le bloc verticalement ; sinon on cale en
+            // haut et l'arbre remplit ce qui reste (cas 1080p, inchangé).
+            var centered = regionH > blockH;
+            var selY = centered ? regionTop + (regionH - blockH) / 2 : regionTop;
+
             var selW = 190;
-            l.DomLabel = new Rectangle(panel.Center.X - selW / 2, selY, selW, 22);
-            l.DomPrev = new Rectangle(l.DomLabel.X - 30, selY, 26, 22);
-            l.DomNext = new Rectangle(l.DomLabel.Right + 4, selY, 26, 22);
-            contentTop = selY + 22 + 8;
+            l.DomLabel = new Rectangle(panel.Center.X - selW / 2, selY, selW, selH);
+            l.DomPrev = new Rectangle(l.DomLabel.X - 30, selY, 26, selH);
+            l.DomNext = new Rectangle(l.DomLabel.Right + 4, selY, 26, selH);
+
+            contentTop = selY + selH + selGap;
+            contentH = centered ? treeNaturalH : footerTop - contentTop;
         }
         else
         {
             contentTop = tabsY + tabH + 12;
+            contentH = footerTop - contentTop;
         }
 
-        l.Content = new Rectangle(panel.X + 10, contentTop, panel.Width - 20, footerTop - contentTop);
+        l.Content = new Rectangle(panel.X + 10, contentTop, panel.Width - 20, contentH);
 
         if (_tab == Tab.Units)
         {
@@ -163,7 +201,7 @@ public sealed class CodexView
             leafX[leaves[i]] = area.X + i * colW + colW / 2;
 
         var rowPitch = maxTier > 1
-            ? Math.Clamp((area.Height - UnitTileH) / (maxTier - 1), 96, 150)
+            ? Math.Clamp((area.Height - UnitTileH) / (maxTier - 1), TreePitchMin, TreePitchMax)
             : 0;
 
         var rectByClass = new Dictionary<UnitClass, Rectangle>();
@@ -401,10 +439,14 @@ public sealed class CodexView
         var gp = _ctx.Input.UsingGamepad;
         var mouse = _ctx.Input.MousePosition;
 
+        var inner = Inflate(lay.Panel, -3);
+        EnsureBackground(inner.Width, inner.Height);
+
         sb.Begin(samplerState: SamplerState.PointClamp);
         Fill(sb, new Rectangle(0, 0, vp.Width, vp.Height), Palette.Black1 * 0.72f);
         _ctx.Style.DrawPanel(sb, lay.Panel);
-        Fill(sb, Inflate(lay.Panel, -3), Palette.Navy1 * 0.5f);
+        if (_background != null)
+            sb.Draw(_background, inner, Color.White);   // fond dégradé bleu tramé
 
         // Kind sous le focus manette : pilote la surbrillance des onglets et des flèches (sans quoi le
         // « curseur » disparaît quand on quitte les tuiles pour un onglet — cf. retour joueur).
@@ -643,7 +685,7 @@ public sealed class CodexView
         _ctx.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
 
-        DrawCardTier(sb, c.Tier, new Rectangle(rect.X + (rect.Width - CardTierW) / 2, rect.Y + 2, CardTierW, CardTierH));
+        DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
 
         _ctx.Font.DrawCentered(sb, UnitName(c), new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
         y += 22;
@@ -680,6 +722,17 @@ public sealed class CodexView
                 ty += 9;
             }
         }
+    }
+
+    /// <summary>Marge haute : icône de TIER + NOM DU DOMAINE, l'ensemble centré (cf. carte de jeu).</summary>
+    private void DrawCardTierAndDomaine(SpriteBatch sb, int tier, Domaine domaine, Rectangle rect)
+    {
+        var name = Loc.TOr($"domaine.{domaine}".ToLowerInvariant(), domaine.ToString().ToUpperInvariant());
+        const int gap = 5;
+        var nameW = _ctx.Font.Measure(name, 1);
+        var startX = rect.X + (rect.Width - (CardTierW + gap + nameW)) / 2;
+        DrawCardTier(sb, tier, new Rectangle(startX, rect.Y + 2, CardTierW, CardTierH));
+        _ctx.Font.Draw(sb, name, new Vector2(startX + CardTierW + gap, rect.Y + 3), 1, Palette.Cyan1);
     }
 
     private void DrawCardTier(SpriteBatch sb, int tier, Rectangle area)

@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Echec.Core.Battle;
 using Echec.Core.Campaign;
 using Echec.Engine;
 using Echec.Engine.Audio;
@@ -5,8 +9,10 @@ using Echec.Game.UI;
 using Echec.Engine.Input;
 using Echec.Engine.Localization;
 using Echec.Engine.Persistence;
+using Echec.Engine.Rendering;
 using Echec.Engine.Scenes;
 using Echec.Engine.UI;
+using Echec.Engine.UI.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -28,11 +34,39 @@ public sealed class MainMenuScene : Scene
     private const int Gap = 12;
     private const int DelW = 36;
 
+    // Décor : pions découverts posés autour du panneau, animés d'un léger va-et-vient vertical.
+    private const int DecorSlots = 5;       // au plus 5 emplacements (arc centré sur le panneau)
+    private const int DecorDrop = 30;       // descend toute la lignée de pions de ce nombre de px
+    private const float DecorBobAmp = 5f;   // amplitude du va-et-vient (px)
+    private const float DecorBobSpeed = 1.6f;
+
+    // Titre : plus imposant qu'avant, en dégradé jaune TRAMÉ (crème clair en haut → or ambré en bas).
+    private const int TitleScale = 6;
+    private static readonly Color[] TitleRamp = { Palette.Yellow2, Palette.Yellow1, Palette.Brown2 };
+
     private PauseMenu _menu = null!;
     private PauseMenuRenderer _menuRenderer = null!;
 
     /// <summary>Codex (bestiaire des pions + équipements), ouvert en overlay depuis le menu principal.</summary>
     private CodexView _codex = null!;
+
+    /// <summary>Rendu partagé des sprites de pions (cache de textures), pour le décor animé du fond.</summary>
+    private UnitCardRenderer _units = null!;
+
+    /// <summary>
+    /// Fond du menu : dégradé vertical tramé (dithering) régénéré si la taille du canevas change (le joueur
+    /// peut changer de résolution depuis les Options). Disposé au <see cref="Unload"/>.
+    /// </summary>
+    private Texture2D? _background;
+
+    /// <summary>
+    /// Pions du décor : tirés AU HASARD parmi ceux déjà découverts par le joueur (méta-progression), une
+    /// nouvelle sélection à chaque venue au menu. Vide tant que rien n'a été découvert (le fond reste nu).
+    /// </summary>
+    private readonly List<UnitClass> _decorUnits = new();
+
+    /// <summary>Horloge du va-et-vient du décor (avance en continu, même sous un overlay semi-transparent).</summary>
+    private float _decorTime;
 
     // État des 3 slots (null = vide), relu au chargement et après chaque effacement.
     private readonly RunSave?[] _slots = new RunSave?[SaveService.SlotCount];
@@ -55,11 +89,88 @@ public sealed class MainMenuScene : Scene
         _menu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
         _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         _codex = new CodexView(Context);
+        _units = new UnitCardRenderer(Context);
         RefreshSlots();
+        SelectDecor();
         Context.Music.Play(MusicScene.Calm);   // menu principal : piste « Relaxed » (continue dans le placement)
     }
 
-    public override void Unload() => _codex.Unload();
+    public override void Unload()
+    {
+        _codex.Unload();
+        _units.Unload();
+        _background?.Dispose();
+        _background = null;
+    }
+
+    /// <summary>
+    /// (Re)génère le fond dégradé si absent ou si le canevas a changé de taille. Paliers du HAUT vers le BAS :
+    /// vert-nuit un peu plus clair en haut (derrière la lignée de pions et le titre), fondu vers le presque
+    /// noir en bas pour asseoir le panneau.
+    /// </summary>
+    private void EnsureBackground(int w, int h)
+    {
+        if (_background != null && _background.Width == w && _background.Height == h)
+            return;
+        _background?.Dispose();
+        _background = Textures.CreateVerticalDitherGradient(Context.GraphicsDevice, w, h,
+            Palette.Black4, Palette.Navy2, Palette.Black1);
+    }
+
+    /// <summary>
+    /// Choisit les pions du décor, mélangés, au plus <see cref="DecorSlots"/> :
+    /// <list type="bullet">
+    /// <item>les classes de pions DÉCOUVERTES (tous domaines, tous tiers) ;</item>
+    /// <item>les COMMANDANTS jouables DÉBLOQUÉS (leur propre méta-progression, pas les « découvertes »).</item>
+    /// </list>
+    /// Le commandant de base étant toujours débloqué, la lignée n'est jamais vide — et un filet de sécurité le
+    /// garantit même sous une config exotique. Doublons d'asset écartés.
+    /// </summary>
+    private void SelectDecor()
+    {
+        _decorUnits.Clear();
+        var seen = new HashSet<string>();
+        var pool = new List<UnitClass>();
+
+        void TryAdd(UnitClass c)
+        {
+            if (seen.Add(c.Asset))
+                pool.Add(c);
+        }
+
+        // Pions découverts.
+        var classes = new List<UnitClass>();
+        foreach (var d in Domaines.All)
+            Flatten(d.BaseClass, classes);
+        foreach (var c in classes)
+            if (Context.Saves.IsUnitDiscovered(c.Asset))
+                TryAdd(c);
+
+        // Commandants jouables débloqués (le commandant de base l'est toujours via StartsUnlocked).
+        foreach (var cmd in Commandes.Playable)
+            if (cmd.StartsUnlocked || Context.Saves.IsCommanderUnlocked(cmd.Id))
+                TryAdd(cmd.BaseClass);
+
+        // Filet de sécurité : au moins le commandant de base, jamais un fond nu.
+        if (pool.Count == 0)
+            TryAdd(Commandes.Commander.BaseClass);
+
+        // Mélange de Fisher-Yates : une composition différente à chaque retour au menu.
+        var rng = new Random();
+        for (var i = pool.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+        }
+        _decorUnits.AddRange(pool.Take(DecorSlots));
+    }
+
+    private static void Flatten(UnitClass c, List<UnitClass> acc)
+    {
+        acc.Add(c);
+        foreach (var e in c.Evolutions)
+            Flatten(e, acc);
+    }
 
     private void RefreshSlots()
     {
@@ -70,6 +181,9 @@ public sealed class MainMenuScene : Scene
     // ── Mise à jour ─────────────────────────────────────────────────────────────
     public override void Update(GameTime gameTime)
     {
+        // Le va-et-vient du décor tourne en continu (même derrière un overlay semi-transparent).
+        _decorTime += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
         if (_codex.IsOpen)   // overlay par-dessus le menu : capte tout jusqu'à sa fermeture
         {
             _codex.Update(new Viewport(0, 0, Context.VirtualResolution.X, Context.VirtualResolution.Y),
@@ -287,11 +401,16 @@ public sealed class MainMenuScene : Scene
             : (gp ? FocusedRect(lay).Center : mouse);
         var bgDown = !overlay && !gp && mouseDown;
 
-        sb.Begin(samplerState: SamplerState.PointClamp);
-        sb.Draw(Context.Pixel, new Rectangle(0, 0, w, h), Palette.Navy2);
+        EnsureBackground(w, h);
 
-        var titleArea = new Rectangle(0, lay.Panel.Y - 64, w, 44);
-        Context.Font.DrawCentered(sb, Loc.T("game.title"), titleArea, 4, Palette.Yellow2);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(_background!, new Rectangle(0, 0, w, h), Color.White);   // EnsureBackground vient de le garantir
+
+        // Lignée de pions du décor, DERRIÈRE le titre et le panneau (posée sur le fond, non interactive).
+        DrawDecor(sb, lay.Panel);
+
+        var titleArea = new Rectangle(0, 20, w, PixelFont.GlyphH * TitleScale + 12);
+        Context.Font.DrawCenteredGradient(sb, Loc.T("game.title"), titleArea, TitleScale, TitleRamp);
 
         Context.Style.DrawPanel(sb, lay.Panel);
         for (var i = 0; i < _slots.Length; i++)
@@ -363,6 +482,44 @@ public sealed class MainMenuScene : Scene
         Context.Font.DrawCentered(sb, label, area, 1, Palette.White);
     }
 
+    /// <summary>
+    /// Décor animé : jusqu'à cinq pions découverts posés en arc autour du panneau (le central en haut et,
+    /// si le canevas le permet, agrandi ; puis les flancs ; puis deux dans les gouttières latérales), chacun
+    /// animé d'un léger va-et-vient vertical déphasé. Les emplacements sont dérivés de la géométrie du
+    /// panneau pour rester À L'ÉCART de l'UI — le titre et le panneau sont dessinés PAR-DESSUS. Rien de
+    /// découvert → rien à dessiner.
+    /// </summary>
+    private void DrawDecor(SpriteBatch sb, Rectangle panel)
+    {
+        if (_decorUnits.Count == 0)
+            return;
+
+        var w = Context.VirtualResolution.X;
+        var baseline = panel.Y;                        // haut du panneau : réf. pour l'échelle du central
+        var centerScale = baseline >= 224 ? 3 : 2;     // pion central agrandi seulement si le canevas le permet
+        var feet = baseline + DecorDrop;               // « sol » de l'arc, descendu d'un cran sous le panneau
+
+        // Emplacements en ordre de PRIORITÉ (centre d'abord) : une sélection réduite garnit d'abord le centre.
+        var slots = new[]
+        {
+            (X: w / 2,            FeetY: feet - 24, Scale: centerScale),  // centre (derrière le titre)
+            (X: (int)(w * 0.30f), FeetY: feet - 6,  Scale: 2),           // flanc gauche
+            (X: (int)(w * 0.70f), FeetY: feet - 6,  Scale: 2),           // flanc droit
+            (X: (int)(w * 0.12f), FeetY: feet + 70, Scale: 2),           // gouttière gauche
+            (X: (int)(w * 0.88f), FeetY: feet + 70, Scale: 2),           // gouttière droite
+        };
+
+        var count = Math.Min(_decorUnits.Count, slots.Length);
+        // Du plus extérieur vers le centre : le pion central est tracé EN DERNIER, donc devant les autres.
+        for (var i = count - 1; i >= 0; i--)
+        {
+            var s = slots[i];
+            var bob = (int)Math.Round(Math.Sin(_decorTime * DecorBobSpeed + i * 1.1f) * DecorBobAmp);
+            var center = new Point(s.X, s.FeetY - 32 * s.Scale + bob);
+            _units.DrawScaled(sb, _decorUnits[i], center, s.Scale);
+        }
+    }
+
     private void DrawConfirm(SpriteBatch sb, int w, int h, Point pointer, bool down)
     {
         var (panel, yes, no) = ConfirmLayout(w, h);
@@ -383,9 +540,12 @@ public sealed class MainMenuScene : Scene
     private MenuLayout BuildLayout(int w, int h)
     {
         var panelW = ColW + 2 * Pad;
-        var panelH = Pad + _slots.Length * (RowH + Gap) + 2 * (BtnH + Gap) + BtnH + Pad;
+        // Les trois actions tiennent désormais sur UNE rangée (Codex | Options | Quitter) sous les slots : le
+        // panneau y gagne en hauteur, dégageant le haut de l'écran pour la lignée de pions du décor.
+        var panelH = Pad + _slots.Length * (RowH + Gap) + BtnH + Pad;
         var panelX = (w - panelW) / 2;
-        var panelY = (h - panelH) / 2 + 28;   // décalé vers le bas pour laisser la place au titre
+        // Panneau dans la moitié basse : le titre et la lignée de pions occupent le haut (façon capture).
+        var panelY = (h - panelH) / 2 + 56;
 
         var lay = new MenuLayout
         {
@@ -405,9 +565,11 @@ public sealed class MainMenuScene : Scene
             y += RowH + Gap;
         }
 
-        lay.Codex = new Rectangle(x, y, ColW, BtnH); y += BtnH + Gap;
-        lay.Options = new Rectangle(x, y, ColW, BtnH); y += BtnH + Gap;
-        lay.Quit = new Rectangle(x, y, ColW, BtnH);
+        // Rangée de trois boutons de largeur égale ; le dernier absorbe l'arrondi pour coller à ColW.
+        var btnW = (ColW - 2 * Gap) / 3;
+        lay.Codex = new Rectangle(x, y, btnW, BtnH);
+        lay.Options = new Rectangle(x + btnW + Gap, y, btnW, BtnH);
+        lay.Quit = new Rectangle(x + 2 * (btnW + Gap), y, ColW - 2 * (btnW + Gap), BtnH);
         return lay;
     }
 
