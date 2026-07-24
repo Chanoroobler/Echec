@@ -7,7 +7,7 @@
   //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
   //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
   //                             Formation, Esquive, Embrochage, Drain de vie, Rempart, Soin, Duelliste,
-  //                             Rage, Bouclier divin, Bénédiction, Franchissement, Aura de rempart, Riposte…
+  //                             Rage, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte…
   //   "evolutions": [...]    => les sous-classes (arbre à 3 tiers : base → 2 branches → 2 feuilles).
   // NB : « Zone morte » pilote la portée d'attaque min (2, contact interdit en ligne droite) via le trait.
   "domaines": [
@@ -41,7 +41,7 @@
           {
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
-              { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Bouclier divin"] },
+              { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin parfait"] },
               { "name": "Oracle",     "asset": "oracle",     "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
             ]
           },

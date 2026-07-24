@@ -12,9 +12,10 @@ namespace Echec.Core.Battle;
 /// </summary>
 public static class Trait
 {
-    public const string Rempart = "Rempart";                 // -DamageReduction si attaque à portée >= 2
+    public const string Rempart = "Rempart";                 // -RempartReduction partout SAUF au contact direct (orthogonal)
     public const string TraverseAllie = "Traverse allié";    // tir au travers des alliés (= PiercesAllies)
-    public const string Soin = "Soin";                       // action : soigne un allié ciblé
+    public const string Soin = "Soin";                       // action : soigne un allié ciblé (MOITIÉ de la puissance)
+    public const string SoinParfait = "Soin parfait";        // idem Soin, mais soigne la puissance ENTIÈRE
     public const string DegatsDeZone = "Dégâts de zone";     // l'attaque éclabousse les cases autour de la cible
     public const string Franchissement = "Franchissement";   // se déplace au travers des unités
     public const string Transpercement = "Transpercement";   // touche aussi l'unité juste derrière la cible
@@ -25,8 +26,6 @@ public static class Trait
     public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
     public const string Rage = "Rage";                       // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
-    public const string BouclierDivin = "Bouclier divin";    // un allié adjacent ne peut pas mourir (PV >= 1)
-    public const string Benediction = "Bénédiction";         // +BenedictionBonus de puissance aux alliés adjacents
     public const string DrainDeVie = "Drain de vie";         // soigne l'attaquant de 50 % des dégâts infligés
     public const string ZoneMorte = "Zone morte";            // ne peut pas frapper au contact (portée min = 2)
     public const string Balistique = "Balistique";           // tir indirect : ignore les obstacles (montagne) sur la ligne
@@ -42,8 +41,8 @@ public static class Trait
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
-        Rempart, TraverseAllie, Soin, DegatsDeZone, Franchissement, Transpercement, Interception,
-        AuraDeRempart, AuraDePuissance, AuraDeSurpuissance, Riposte, Duelliste, Rage, BouclierDivin, Benediction,
+        Rempart, TraverseAllie, Soin, SoinParfait, DegatsDeZone, Franchissement, Transpercement, Interception,
+        AuraDeRempart, AuraDePuissance, AuraDeSurpuissance, Riposte, Duelliste, Rage,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete, AttaqueLibre,
         Statique,
     };

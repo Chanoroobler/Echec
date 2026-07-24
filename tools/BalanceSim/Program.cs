@@ -279,7 +279,7 @@ internal static class Program
         (Cell From, Cell To, double Ratio)? bestHeal = null;
         foreach (var (from, unit) in players)
         {
-            if (!unit.HasTrait(Trait.Soin)) continue;
+            if (!unit.HasTrait(Trait.Soin) && !unit.HasTrait(Trait.SoinParfait)) continue;
             foreach (var tgt in match.HealTargets(from))
             {
                 var ally = match.UnitAt(tgt)!;

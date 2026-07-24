@@ -29,7 +29,7 @@ public class TraitsTests
     // ── Rempart / Duelliste : réductions de dégâts ────────────────────────────────
 
     [Fact]
-    public void Rempart_ReducesRangedDamageByFour_NotMelee()
+    public void Rempart_ReducesEverywhere_ExceptOrthogonalContact()
     {
         // À distance (>= 2) : -4.
         var ranged = Board();
@@ -38,12 +38,30 @@ public class TraitsTests
         ranged.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(14, ranged.UnitAt(new Cell(0, 2))!.Hp);   // 20 - (10 - 4)
 
-        // Au corps à corps (distance 1) : Rempart n'agit pas.
+        // Collé EN LIGNE DROITE (contact direct) : Rempart n'agit pas.
         var melee = Board();
         melee.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
         melee.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
         melee.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(10, melee.UnitAt(new Cell(0, 1))!.Hp);    // 20 - 10
+    }
+
+    [Fact]
+    public void Rempart_StillReducesDiagonalContact()
+    {
+        // Collé en DIAGONALE : ce n'est pas un contact direct → la réduction s'applique quand même.
+        var diag = Board();
+        diag.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None, domaine: Domaine.Dame));
+        diag.Place(new Cell(1, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        diag.TryAttack(new Cell(0, 0), new Cell(1, 1));
+        Assert.Equal(14, diag.UnitAt(new Cell(1, 1))!.Hp);     // 20 - (10 - 4)
+
+        // Même attaquant collé ORTHOGONALEMENT : la garde saute.
+        var ortho = Board();
+        ortho.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None, domaine: Domaine.Dame));
+        ortho.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        ortho.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(10, ortho.UnitAt(new Cell(0, 1))!.Hp);    // 20 - 10
     }
 
     [Fact]
@@ -73,7 +91,7 @@ public class TraitsTests
         Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);        // -4 grâce à l'aura (distance 2)
     }
 
-    // ── Rage / Bénédiction : bonus de puissance ───────────────────────────────────
+    // ── Rage / auras de puissance : bonus de puissance ────────────────────────────
 
     [Fact]
     public void Rage_AddsOnePower_PerKill()
@@ -91,17 +109,6 @@ public class TraitsTests
         seasoned.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
         seasoned.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(17, seasoned.UnitAt(new Cell(0, 1))!.Hp); // 30 - (10 + 3)
-    }
-
-    [Fact]
-    public void Benediction_AdjacentAlly_AddsFivePower()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, new[] { Trait.Benediction })); // allié adjacent
-        m.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
-        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
-        Assert.Equal(15, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 5)
     }
 
     [Fact]
@@ -163,25 +170,6 @@ public class TraitsTests
         shielded.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
         shielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(0, weak.DamageDealt);   // 4 - 4 (rempart) = 0 infligé
-    }
-
-    // ── Bouclier divin : protège de la mort ───────────────────────────────────────
-
-    [Fact]
-    public void BouclierDivin_AdjacentAlly_PreventsFatalDamage()
-    {
-        var shielded = Board();
-        shielded.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        shielded.Place(new Cell(0, 2), Make(Faction.Enemy, 5, 5, None));                       // mourrait (10 >= 5)
-        shielded.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.BouclierDivin }));
-        shielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(1, shielded.UnitAt(new Cell(0, 2))!.Hp);  // PV bloqués à 1
-
-        var unshielded = Board();
-        unshielded.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        unshielded.Place(new Cell(0, 2), Make(Faction.Enemy, 5, 5, None));
-        unshielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Null(unshielded.UnitAt(new Cell(0, 2)));        // sans bouclier : mort, case vidée
     }
 
     // ── Formes d'attaque : Transpercement / Dégâts de zone ────────────────────────
@@ -334,6 +322,21 @@ public class TraitsTests
         Assert.Contains(new Cell(0, 2), m.HealTargets(new Cell(0, 0)));
         m.TryHeal(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 5 + (10 / 2)
+    }
+
+    [Fact]
+    public void SoinParfait_HealsWoundedAlly_ByFullPower()
+    {
+        // Même action que « Soin », mais le montant est la puissance ENTIÈRE au lieu de la moitié.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.SoinParfait }));   // puissance 10 → soin 10
+        var ally = Make(Faction.Player, 20, 5, None);
+        ally.TakeDamage(15);   // 5 PV
+        m.Place(new Cell(0, 2), ally);
+
+        Assert.Contains(new Cell(0, 2), m.HealTargets(new Cell(0, 0)));   // il cible comme un soigneur normal
+        m.TryHeal(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(15, m.UnitAt(new Cell(0, 2))!.Hp);   // 5 + 10 (et non 5 + 5)
     }
 
     [Fact]

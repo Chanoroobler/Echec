@@ -5065,7 +5065,7 @@ public sealed class GameplayScene : Scene
 
         var killed = kind == MoveKind.Killed;
         // Esquive : la victime a le trait, des dégâts étaient attendus mais ses PV n'ont pas bougé → coup esquivé.
-        // (Le trait évite de confondre avec un autre « 0 dégât » comme un Bouclier divin sur une cible à 1 PV.)
+        // (Le trait évite de confondre avec un autre « 0 dégât », par exemple une réduction qui absorbe tout.)
         _pendingDodge = !killed && victim is { IsAlive: true } && _pendingDamage > 0
             && victim.Hp == victimHpBefore && victim.HasTrait(Trait.Esquive);
         if (_tutorial is { Step: TutorialStep.Attack } && killed && victim is { Faction: Faction.Enemy })
@@ -5657,22 +5657,30 @@ public sealed class GameplayScene : Scene
     // Chaque palier a sa COULEUR, pas seulement son opacité : une teinte unique en alpha croissant est
     // illisible sur le terrain sauge. On monte une rampe sombre → vive qui se lit comme un mur : pied
     // assombri (contraste garanti quel que soit le sol) → corps teinté → crête éclairée.
-    // Rampe par FAMILLE d'effet : bleu = protection, chaud = puissance, doré = divin.
+    //
+    // CAMP : une aura ne profite QU'AUX unités du camp de son porteur (cf. HasAdjacentAlly dans Match) — il
+    // faut donc voir d'un coup d'œil à qui elle sert. C'est le camp qui donne la TEMPÉRATURE de la rampe,
+    // suivant le langage couleur du jeu (Palette : Cyan1 = camp joueur, Purple5 = ennemi) : froid/bleu pour
+    // le joueur, chaud/rouge pour l'ennemi. La famille d'effet ne fait plus varier que la nuance à
+    // l'intérieur de cette température — le camp reste le signal dominant.
     private static readonly float[] AuraRampAlpha = { 0.42f, 0.66f, 0.84f, 0.94f };
 
-    // Une FAMILLE = les traits qui partagent la même enceinte (même rampe) : leurs porteurs fusionnent.
-    private static readonly (string[] Traits, Color[] Ramp)[] AuraFamilies =
+    // Une FAMILLE = les traits qui partagent la même enceinte : leurs porteurs fusionnent — mais seulement
+    // À CAMP ÉGAL (cf. DrawAuraHalos). Ally = rampe du joueur, Foe = rampe de l'ennemi.
+    private static readonly (string[] Traits, Color[] Ally, Color[] Foe)[] AuraFamilies =
     {
         // -dégâts à distance sur les alliés adjacents
         (new[] { Trait.AuraDeRempart },
-            new[] { Palette.Black5, Palette.WaterMid2, Palette.Cyan1, Palette.White }),
-        // +puissance / bénédiction
-        (new[] { Trait.AuraDePuissance, Trait.AuraDeSurpuissance, Trait.Benediction },
-            new[] { Palette.Brown1, Palette.Brown2, Palette.Brown3, Palette.Brown4 }),
-        // l'allié adjacent ne peut pas mourir
-        (new[] { Trait.BouclierDivin },
-            new[] { Palette.Brown1, Palette.Brown4, Palette.White, Palette.White }),
+            new[] { Palette.Black5, Palette.WaterMid2, Palette.Cyan1, Palette.White },
+            new[] { Palette.Purple1, Palette.Purple2, Palette.Purple3, Palette.Purple5 }),
+        // +puissance (crête chaude = « buff », sur un corps à la température du camp)
+        (new[] { Trait.AuraDePuissance, Trait.AuraDeSurpuissance },
+            new[] { Palette.Black4, Palette.Black5, Palette.Cyan2, Palette.Brown4 },
+            new[] { Palette.Purple1, Palette.Purple3, Palette.Purple5, Palette.Brown5 }),
     };
+
+    /// <summary>Camps balayés par <see cref="DrawAuraHalos"/> : une enceinte SÉPARÉE par camp.</summary>
+    private static readonly Faction[] AuraFactions = { Faction.Player, Faction.Enemy };
 
     private const int AuraBlock = 4;          // côté du « gros pixel » du tramage (px virtuels)
     private const int AuraLevels = 4;         // paliers de la rampe (quantification pixel-art)
@@ -5696,20 +5704,27 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawAuraHalos(SpriteBatch sb, GridLayout layout)
     {
-        foreach (var (traits, ramp) in AuraFamilies)
-        {
-            _auraCarriers.Clear();
-            foreach (var (cell, unit) in _match.Units())
-                foreach (var trait in traits)
-                    if (unit.HasTrait(trait))
-                    {
-                        _auraCarriers.Add(cell);
-                        break;
-                    }
+        // Une passe par FAMILLE **et par CAMP** : deux porteurs de camps opposés ne doivent jamais fusionner
+        // (leurs auras ne couvrent pas les mêmes unités), et chaque camp a sa propre rampe.
+        foreach (var (traits, ally, foe) in AuraFamilies)
+            foreach (var faction in AuraFactions)
+            {
+                _auraCarriers.Clear();
+                foreach (var (cell, unit) in _match.Units())
+                {
+                    if (unit.Faction != faction)
+                        continue;
+                    foreach (var trait in traits)
+                        if (unit.HasTrait(trait))
+                        {
+                            _auraCarriers.Add(cell);
+                            break;
+                        }
+                }
 
-            if (_auraCarriers.Count > 0)
-                DrawAuraBarrier(sb, layout, ramp);
-        }
+                if (_auraCarriers.Count > 0)
+                    DrawAuraBarrier(sb, layout, faction == Faction.Player ? ally : foe);
+            }
     }
 
     /// <summary>
@@ -7854,7 +7869,7 @@ public sealed class GameplayScene : Scene
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
             ownCard = ownRight ? RightCardRect(board) : LeftCardRect(board);
-            DrawUnitCard(sb, own, ownCard.Value, showKeywords: oc != _selected);
+            DrawUnitCard(sb, own, ownCard.Value, showKeywords: oc != _selected, cell: oc);
         }
 
         // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
@@ -7862,7 +7877,7 @@ public sealed class GameplayScene : Scene
         if (enemyCell is { } ec && _match.UnitAt(ec) is { } enemy)
         {
             var preview = _selected is { } sel && _attackTargets.Contains(ec) ? _match.PreviewDamage(sel, ec) : 0;
-            DrawUnitCard(sb, enemy, enemyRight ? RightCardRect(board) : LeftCardRect(board), preview);
+            DrawUnitCard(sb, enemy, enemyRight ? RightCardRect(board) : LeftCardRect(board), preview, cell: ec);
         }
 
         // Tooltip d'environnement (buisson) de la case survolée.
@@ -7998,13 +8013,43 @@ public sealed class GameplayScene : Scene
     /// dessinés que si <paramref name="showKeywords"/> (cf. <see cref="DrawCombatCards"/>).
     /// </summary>
     private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect, int hpPreviewDamage = 0,
-        bool showKeywords = true)
+        bool showKeywords = true, Cell? cell = null)
     {
         var c = unit.Class;
+        var granted = GrantedTraitsFor(unit, cell);
+        // Les auras de puissance agissent sur la PUISSANCE elle-même : afficher le mot-clé sans le chiffre
+        // laisserait la carte en contradiction avec les dégâts réellement infligés.
+        var auraDmg = cell is { } pc ? _match.AuraPowerBonus(pc) : 0;
         DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
-            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit), kills: unit.Kills);
+            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit), kills: unit.Kills,
+            granted: granted, auraDmgBonus: auraDmg);
         if (showKeywords)
-            DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs);
+            DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs, granted);
+    }
+
+    /// <summary>Auras dont l'effet se lit sur le BÉNÉFICIAIRE : le pion adjacent en profite sans porter le trait.</summary>
+    private static readonly (string Aura, string Shown)[] GrantedAuras =
+    {
+        (Trait.AuraDeRempart, Trait.Rempart),                  // l'aura confère l'effet « Rempart »
+        (Trait.AuraDePuissance, Trait.AuraDePuissance),        // pas de trait dédié : on montre l'aura elle-même
+        (Trait.AuraDeSurpuissance, Trait.AuraDeSurpuissance),
+    };
+
+    /// <summary>
+    /// Traits que le pion tient de son PLACEMENT et non de sa fiche : ceux offerts par une aura alliée adjacente.
+    /// Comme ils ne figurent ni sur la classe, ni sur l'équipement, ni sur l'arbre, la carte ne les montrerait
+    /// jamais — d'où ce recalcul à chaque frame depuis le plateau. Rien n'est ajouté si le pion porte déjà le
+    /// trait par lui-même (il ne s'agirait plus d'un apport de l'aura).
+    /// </summary>
+    private IReadOnlyList<string>? GrantedTraitsFor(Unit unit, Cell? cell)
+    {
+        if (cell is not { } c)
+            return null;
+        List<string>? granted = null;
+        foreach (var (aura, shown) in GrantedAuras)
+            if (!unit.HasTrait(shown) && _match.BenefitsFromAura(c, aura))
+                (granted ??= new List<string>()).Add(shown);
+        return granted;
     }
 
     // ── Mise en forme commune des cartes (combat + recrutement) ──────────────────
@@ -8017,7 +8062,8 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
         Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
-        CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0)
+        CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
+        IReadOnlyList<string>? granted = null, int auraDmgBonus = 0)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -8028,6 +8074,7 @@ public sealed class GameplayScene : Scene
         // on l'intègre au « +N » de la puissance pour que la carte montre la vraie valeur de combat.
         if (kills > 0 && CardHasTrait(c, equip, b, Trait.Rage))
             dmgBonus += kills;
+        dmgBonus += auraDmgBonus;   // auras de puissance des alliés adjacents (contextuel, cf. DrawUnitCard)
         var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
         var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
@@ -8121,20 +8168,8 @@ public sealed class GameplayScene : Scene
         // Bas de carte ancré EN BAS et empilé vers le HAUT (jamais de chevauchement avec les stats ni entre
         // eux, quel que soit le nombre de traits) : la liste des mots-clés (traits séparés par « | », détaillés
         // en popups) tout en bas, puis « TUÉS : N » juste au-dessus (palmarès à vie, seulement si > 0).
-        var keywords = KeywordsFor(c, equip, b);
-        var bottomY = rect.Bottom - CardPad;
-        if (keywords.Count > 0)
-        {
-            var joined = string.Join(" | ", keywords.Select(k => k.Label));
-            var lines = WrapText(joined, rect.Width - 2 * CardPad, 1);
-            var ty = bottomY - lines.Count * 9;
-            foreach (var line in lines)
-            {
-                Context.Font.DrawCentered(sb, line, new Rectangle(rect.X, ty, rect.Width, 8), 1, Palette.Cyan1);
-                ty += 9;
-            }
-            bottomY -= lines.Count * 9;
-        }
+        var keywords = KeywordsFor(c, equip, b, granted);
+        var bottomY = DrawKeywordList(sb, keywords, GrantedLabels(granted), rect, rect.Bottom - CardPad);
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
                 new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
@@ -8387,13 +8422,85 @@ public sealed class GameplayScene : Scene
     /// <paramref name="equip"/> de TRAIT et les <paramref name="buffs"/> de l'arbre de commandement
     /// ajoutent leurs traits (comme des traits natifs), sauf doublon.
     /// </summary>
+    /// <summary>
+    /// Couleur des mots-clés tenus d'une AURA voisine et non de la fiche du pion : ils s'éteignent dès qu'il
+    /// sort de la zone, il ne faut donc pas les lire comme des traits natifs (ceux-ci restent en Cyan1).
+    /// </summary>
+    private static readonly Color GrantedKeywordColor = Palette.Yellow2;
+
+    /// <summary>Libellés des mots-clés issus d'une aura, pour les repérer au moment de les peindre.</summary>
+    private static HashSet<string>? GrantedLabels(IReadOnlyList<string>? granted)
+    {
+        if (granted == null || granted.Count == 0)
+            return null;
+        var set = new HashSet<string>();
+        foreach (var t in granted)
+            set.Add(UnitKeywords.For(t).Label);
+        return set;
+    }
+
+    /// <summary>
+    /// Liste des mots-clés en bas de carte, empilée vers le HAUT depuis <paramref name="bottomY"/> et centrée
+    /// ligne par ligne. Chaque libellé est peint SÉPARÉMENT pour que ceux venus d'une aura ressortent (cf.
+    /// <see cref="GrantedKeywordColor"/>) — d'où le rendu segment par segment plutôt qu'une chaîne jointe.
+    /// Le repli se fait au mot-clé près (jamais au milieu d'un libellé), la police étant à chasse fixe.
+    /// Renvoie l'ordonnée du haut de la liste (le contenu suivant s'empile au-dessus).
+    /// </summary>
+    private int DrawKeywordList(SpriteBatch sb, List<UnitKeywords.Keyword> keywords,
+        HashSet<string>? grantedLabels, Rectangle rect, int bottomY)
+    {
+        if (keywords.Count == 0)
+            return bottomY;
+
+        const string sep = " | ";
+        var font = Context.Font;
+        var maxW = rect.Width - 2 * CardPad;
+        var sepW = font.Measure(sep, 1);
+
+        var lines = new List<List<(string Text, Color Color)>>();
+        var line = new List<(string Text, Color Color)>();
+        var lineW = 0;
+        foreach (var kw in keywords)
+        {
+            var w = font.Measure(kw.Label, 1);
+            if (line.Count > 0 && lineW + sepW + w > maxW)
+            {
+                lines.Add(line);
+                line = new List<(string Text, Color Color)>();
+                lineW = 0;
+            }
+            if (line.Count > 0)
+            {
+                line.Add((sep, Palette.Cyan1));
+                lineW += sepW;
+            }
+            line.Add((kw.Label,
+                grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1));
+            lineW += w;
+        }
+        lines.Add(line);
+
+        var ty = bottomY - lines.Count * 9;
+        foreach (var l in lines)
+        {
+            var x = rect.X + (rect.Width - l.Sum(t => font.Measure(t.Text, 1))) / 2;
+            foreach (var (text, color) in l)
+            {
+                font.Draw(sb, text, new Vector2(x, ty), 1, color);
+                x += font.Measure(text, 1);
+            }
+            ty += 9;
+        }
+        return bottomY - lines.Count * 9;
+    }
+
     /// <summary>Vrai si la carte porte ce trait, toutes sources confondues (classe, équipement, arbre) —
     /// pendant côté UI de <see cref="Unit.HasTrait"/>, sans instance de pion.</summary>
     private static bool CardHasTrait(UnitClass c, Equipment? equip, CommandBuffs b, string trait) =>
         (equip?.GrantsTrait(trait) ?? false) || b.GrantsTrait(trait) || c.Traits.Contains(trait);
 
     private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, Equipment? equip = null,
-        CommandBuffs? buffs = null)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
     {
         var list = new List<UnitKeywords.Keyword>();
         var seen = new HashSet<string>(c.Traits);
@@ -8413,6 +8520,12 @@ public sealed class GameplayScene : Scene
         foreach (var bt in (buffs ?? CommandBuffs.None).Traits)
             if (seen.Add(bt))
                 list.Add(UnitKeywords.For(bt));
+        // Traits tenus du PLACEMENT (ex. « Rempart » offert par une aura adjacente) : ils n'existent ni sur la
+        // classe ni sur l'équipement, la carte ne les montrerait donc jamais sans ça.
+        if (granted != null)
+            foreach (var gt in granted)
+                if (seen.Add(gt))
+                    list.Add(UnitKeywords.For(gt));
         return list;
     }
 
@@ -8427,16 +8540,16 @@ public sealed class GameplayScene : Scene
     /// carte (330) + pile (200) = toute la hauteur du canvas.
     /// </summary>
     private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null,
-        CommandBuffs? buffs = null)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
     {
-        var h = KeywordStackHeight(c, card.Width, equip, buffs);
+        var h = KeywordStackHeight(c, card.Width, equip, buffs, granted);
         if (h == 0)
             return;
 
         // Ordonnée qu'aurait la pile une fois remontée : si elle mord sur la carte, on passe à côté.
         if (VirtualViewport.Height - KwScreenMargin - h >= card.Bottom)
         {
-            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs);
+            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs, granted);
             return;
         }
 
@@ -8445,7 +8558,7 @@ public sealed class GameplayScene : Scene
         var x = card.X - CombatCardGap - card.Width;
         if (x < KwScreenMargin)
             x = card.Right + CombatCardGap;
-        DrawKeywordPopupStack(sb, c, new Point(x, card.Y), card.Width, equip, buffs);
+        DrawKeywordPopupStack(sb, c, new Point(x, card.Y), card.Width, equip, buffs, granted);
     }
 
     /// <summary>
@@ -8457,10 +8570,10 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
     private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H)> KeywordBoxes(UnitClass c, int width,
-        Equipment? equip, CommandBuffs? buffs)
+        Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null)
     {
         var boxes = new List<(UnitKeywords.Keyword, List<string>, int)>();
-        foreach (var kw in KeywordsFor(c, equip, buffs))
+        foreach (var kw in KeywordsFor(c, equip, buffs, granted))
         {
             var lines = WrapText(SentenceCase(kw.Description), width - 2 * KwPad, 1);
             boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad));   // titre + lignes
@@ -8469,16 +8582,17 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Hauteur totale de la pile de popups d'une classe (0 si elle n'a aucun mot-clé).</summary>
-    private int KeywordStackHeight(UnitClass c, int width, Equipment? equip = null, CommandBuffs? buffs = null)
+    private int KeywordStackHeight(UnitClass c, int width, Equipment? equip = null, CommandBuffs? buffs = null,
+        IReadOnlyList<string>? granted = null)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted);
         return boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
     }
 
     private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null,
-        CommandBuffs? buffs = null)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted);
         if (boxes.Count == 0)
             return;
         var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
@@ -8489,12 +8603,14 @@ public sealed class GameplayScene : Scene
         if (y + total > VirtualViewport.Height - KwScreenMargin)
             y = System.Math.Max(KwScreenMargin, VirtualViewport.Height - KwScreenMargin - total);
 
+        var grantedLabels = GrantedLabels(granted);
         foreach (var (kw, lines, h) in boxes)
         {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
-            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, Palette.Cyan1);
+            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1,
+                grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1);
             var ly = box.Y + KwPad + 11;
             foreach (var line in lines)
             {

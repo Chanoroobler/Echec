@@ -22,6 +22,7 @@ public static class UnitKeywords
         ["Rempart"] = "kw.rempart",
         ["Traverse allié"] = "kw.pierce_allies",   // porté par la CLASSE via PiercesAllies, mais octroyable par un équipement (Lance)
         ["Soin"] = "kw.soin",
+        ["Soin parfait"] = "kw.soin_parfait",
         ["Dégâts de zone"] = "kw.zone",
         ["Franchissement"] = "kw.franchissement",
         ["Transpercement"] = "kw.transpercement",
@@ -32,8 +33,6 @@ public static class UnitKeywords
         ["Riposte"] = "kw.riposte",
         ["Duelliste"] = "kw.duelliste",
         ["Rage"] = "kw.rage",
-        ["Bouclier divin"] = "kw.bouclier_divin",
-        ["Bénédiction"] = "kw.benediction",
         ["Drain de vie"] = "kw.drain_vie",
         ["Zone morte"] = "kw.dead_zone",
         ["Balistique"] = "kw.balistique",

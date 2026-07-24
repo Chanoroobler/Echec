@@ -177,8 +177,8 @@ sur une case mortelle. C'est un adversaire *cohérent*, pas *optimal*.
 1. **Maladresse IA** (`--blunder`) : l'IA saute parfois le kill parfait. Levier le plus
    puissant, déjà simulable dans le harnais.
 2. **Règle anti-one-shot** (à coder dans `Match.ApplyDamage`) : une attaque d'un ennemi
-   **non-boss** ne peut pas amener une unité de PV pleins à 0 (plafond `Hp-1`). Même patron
-   que « Bouclier divin », ~3 lignes. **Non simulé par le harnais** (nécessite le hook cœur) —
+   **non-boss** ne peut pas amener une unité de PV pleins à 0 (plafond `Hp-1`). ~3 lignes dans
+   `ApplyDamage`. **Non simulé par le harnais** (nécessite le hook cœur) —
    c'est le meilleur candidat d'implémentation ensuite.
 3. **Dégâts ennemis** (`--enemy-dmg`) : multiplicateur global. Réduit directement les
    one-shots. Alternative douce : +PV joueur.

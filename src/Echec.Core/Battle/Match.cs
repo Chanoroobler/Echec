@@ -350,7 +350,7 @@ public sealed class Match
 
         var victim = _units[target.Column, target.Row]!;
         var victimHpBefore = victim.Hp;
-        ApplyDamage(target, victim, EffectiveDamage(unit, from, victim, target), unit);
+        ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
 
         // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (esquive/bouclier inclus).
         if (unit.HasTrait(Trait.DrainDeVie))
@@ -390,7 +390,7 @@ public sealed class Match
                 && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit)
                 && CanStrike(target, victim, from))
             {
-                ApplyDamage(from, attacker, EffectiveDamage(victim, target, attacker, from), victim);
+                ApplyDamage(attacker, EffectiveDamage(victim, target, attacker, from), victim);
                 RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
             }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
@@ -405,7 +405,6 @@ public sealed class Match
     private const int BushReduction = 4;         // -4 dégâts quand la cible est sur un buisson (couvert)
     private const int RempartReduction = 4;     // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
-    private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
     private const int AuraSurpuissanceBonus = 5; // +5 puissance offerte par un allié « Aura de surpuissance » adjacent
     private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
@@ -425,6 +424,13 @@ public sealed class Match
     private static int ChebyshevDistance(Cell a, Cell b) =>
         System.Math.Max(System.Math.Abs(a.Column - b.Column), System.Math.Abs(a.Row - b.Row));
 
+    /// <summary>
+    /// Contact DIRECT : cases orthogonalement adjacentes (haut/bas/gauche/droite). Les diagonales n'en
+    /// font PAS partie — c'est ce qui laisse « Rempart » agir même sur un assaillant collé en diagonale.
+    /// </summary>
+    private static bool IsDirectContact(Cell a, Cell b) =>
+        System.Math.Abs(a.Column - b.Column) + System.Math.Abs(a.Row - b.Row) == 1;
+
     /// <summary>Vrai si une case adjacente porte un allié de <paramref name="faction"/> avec ce trait.</summary>
     private bool HasAdjacentAlly(Cell cell, Faction faction, string trait)
     {
@@ -433,6 +439,31 @@ public sealed class Match
                 && u.Faction == faction && u.HasTrait(trait))
                 return true;
         return false;
+    }
+
+    /// <summary>
+    /// Vrai si l'unité de <paramref name="cell"/> bénéficie de <paramref name="auraTrait"/> grâce à un allié
+    /// ADJACENT qui le porte. Effet CONTEXTUEL : il tient au placement, pas à la fiche du pion (ni classe, ni
+    /// équipement, ni arbre) — l'UI ne peut donc pas le déduire seule et doit le demander ici.
+    /// </summary>
+    public bool BenefitsFromAura(Cell cell, string auraTrait) =>
+        UnitAt(cell) is { } u && HasAdjacentAlly(cell, u.Faction, auraTrait);
+
+    /// <summary>
+    /// Puissance que l'unité de <paramref name="cell"/> tient des AURAS de ses alliés adjacents. Les deux
+    /// auras se CUMULENT, exactement comme dans <see cref="EffectiveDamage"/> — la carte doit afficher la
+    /// même valeur que celle réellement infligée.
+    /// </summary>
+    public int AuraPowerBonus(Cell cell)
+    {
+        if (UnitAt(cell) is not { } u)
+            return 0;
+        var bonus = 0;
+        if (HasAdjacentAlly(cell, u.Faction, Trait.AuraDePuissance))
+            bonus += AuraPuissanceBonus;
+        if (HasAdjacentAlly(cell, u.Faction, Trait.AuraDeSurpuissance))
+            bonus += AuraSurpuissanceBonus;
+        return bonus;
     }
 
     /// <summary>Nombre d'unités alliées (même <paramref name="faction"/>) adjacentes à <paramref name="cell"/> (trait « Formation »).</summary>
@@ -446,17 +477,15 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Bénédiction / Aura de puissance / Aura de
-    /// surpuissance (offensifs), Rempart / Aura de rempart (à distance ≥ 2) et Duelliste (corps à corps) en
-    /// réduction. Borné à 0.
+    /// Dégâts EFFECTIFS d'une attaque, traits inclus : Rage / Aura de puissance / Aura de surpuissance
+    /// (offensifs), Rempart / Aura de rempart (partout SAUF au contact direct orthogonal) et Duelliste
+    /// (corps à corps) en réduction. Borné à 0.
     /// </summary>
     private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
     {
         var dmg = attacker.Damage;
         if (attacker.HasTrait(Trait.Rage))
             dmg += attacker.Kills;   // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
-        if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.Benediction))
-            dmg += BenedictionBonus;
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.AuraDePuissance))
             dmg += AuraPuissanceBonus;
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.AuraDeSurpuissance))
@@ -467,7 +496,10 @@ public sealed class Match
         var distance = ChebyshevDistance(attackerCell, victimCell);
         var shielded = victim.HasTrait(Trait.Rempart)
             || HasAdjacentAlly(victimCell, victim.Faction, Trait.AuraDeRempart);
-        if (distance >= 2 && shielded)
+        // Rempart protège PARTOUT, sauf quand l'assaillant est collé EN LIGNE DROITE (contact direct).
+        // Une attaque en diagonale, même à une case, reste réduite : seul le corps à corps orthogonal
+        // passe la garde.
+        if (shielded && !IsDirectContact(attackerCell, victimCell))
             dmg -= RempartReduction;
         if (distance == 1 && victim.HasTrait(Trait.Duelliste))
             dmg -= DuellisteReduction;
@@ -478,23 +510,17 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Applique des dégâts. « Esquive » peut annuler entièrement l'attaque (25 %). Un allié adjacent
-    /// « Bouclier divin » empêche la mort (PV ≥ 1).
+    /// Applique des dégâts. « Esquive » peut annuler entièrement l'attaque (25 %).
     /// </summary>
-    private void ApplyDamage(Cell cell, Unit unit, int amount, Unit? attacker)
+    private void ApplyDamage(Unit unit, int amount, Unit? attacker)
     {
         if (amount <= 0)
             return;
         if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChance)
             return;   // attaque esquivée : aucun dégât
-        if (amount >= unit.Hp && HasAdjacentAlly(cell, unit.Faction, Trait.BouclierDivin))
-            amount = unit.Hp - 1;   // laisse 1 PV : l'attaque n'est jamais mortelle
-        if (amount > 0)
-        {
-            unit.TakeDamage(amount);
-            unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
-            attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
-        }
+        unit.TakeDamage(amount);
+        unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
+        attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
     }
 
     /// <summary>Dégâts EFFECTIFS qu'infligerait l'attaque de <paramref name="from"/> sur
@@ -516,7 +542,7 @@ public sealed class Match
             var c = new Cell(center.Column + dc, center.Row + dr);
             if (UnitAt(c) is not { } u || u.Faction == attacker.Faction)
                 continue;
-            ApplyDamage(c, u, EffectiveDamage(attacker, attackerCell, u, c), attacker);
+            ApplyDamage(u, EffectiveDamage(attacker, attackerCell, u, c), attacker);
             RemoveDeadAt(c, attacker);
         }
     }
@@ -528,7 +554,7 @@ public sealed class Match
     /// « Orage » / « Tempête » : à l'attaque, la foudre frappe jusqu'à <see cref="StormMaxTargets"/> ennemis du
     /// porteur TIRÉS AU HASARD (parmi tous, SAUF la cible directe <paramref name="target"/>), chacun pour un
     /// dégât FIXE (<paramref name="amount"/>, ni réduit par Rempart/couvert ni majoré par les traits offensifs —
-    /// mais Esquive/Bouclier divin s'appliquent via <see cref="ApplyDamage"/>). Tirage via <see cref="_rng"/>.
+    /// mais Esquive s'applique via <see cref="ApplyDamage"/>). Tirage via <see cref="_rng"/>.
     /// Les cibles sont figées avant application (la grille change en cours).
     /// </summary>
     private void StormStrike(Unit attacker, Cell target, int amount)
@@ -550,7 +576,7 @@ public sealed class Match
         {
             if (UnitAt(victims[i]) is not { } u)
                 continue;
-            ApplyDamage(victims[i], u, amount, attacker);
+            ApplyDamage(u, amount, attacker);
             RemoveDeadAt(victims[i], attacker);
         }
     }
@@ -563,7 +589,7 @@ public sealed class Match
         var behind = new Cell(target.Column + dc, target.Row + dr);
         if (UnitAt(behind) is not { } u || u.Faction == attacker.Faction)
             return;
-        ApplyDamage(behind, u, EffectiveDamage(attacker, from, u, behind), attacker);
+        ApplyDamage(u, EffectiveDamage(attacker, from, u, behind), attacker);
         RemoveDeadAt(behind, attacker);
     }
 
@@ -576,7 +602,7 @@ public sealed class Match
                 continue;
             if (!ThreatenedCells(cell).Contains(movedTo))
                 continue;
-            ApplyDamage(movedTo, mover, EffectiveDamage(unit, cell, mover, movedTo), unit);
+            ApplyDamage(mover, EffectiveDamage(unit, cell, mover, movedTo), unit);
             if (!mover.IsAlive)
             {
                 RemoveDeadAt(movedTo, unit);   // l'intercepteur abat le mobile : kill crédité
@@ -599,7 +625,16 @@ public sealed class Match
         _units[cell.Column, cell.Row] = null;
     }
 
-    /// <summary>Alliés BLESSÉS à portée qu'un soigneur (trait « Soin ») peut cibler.</summary>
+    /// <summary>Vrai si l'unité sait soigner : « Soin » (moitié de la puissance) ou « Soin parfait » (totalité).</summary>
+    private static bool IsHealer(Unit unit) =>
+        unit.HasTrait(Trait.Soin) || unit.HasTrait(Trait.SoinParfait);
+
+    /// <summary>Montant soigné par <paramref name="healer"/> : sa puissance ENTIÈRE avec « Soin parfait »,
+    /// sinon la MOITIÉ (arrondie vers le bas). « Soin parfait » prime s'il porte les deux.</summary>
+    private static int HealAmount(Unit healer) =>
+        healer.HasTrait(Trait.SoinParfait) ? healer.Damage : healer.Damage / 2;
+
+    /// <summary>Alliés BLESSÉS à portée qu'un soigneur (« Soin » ou « Soin parfait ») peut cibler.</summary>
     public List<Cell> HealTargets(Cell from)
     {
         var result = new List<Cell>();
@@ -612,7 +647,7 @@ public sealed class Match
     {
         result.Clear();
         var unit = ActiveUnitAt(from);
-        if (unit == null || !unit.HasTrait(Trait.Soin))
+        if (unit == null || !IsHealer(unit))
             return;
 
         var attackDomaine = unit.AttackDomaine;   // le soin suit aussi le pattern d'attaque
@@ -643,15 +678,16 @@ public sealed class Match
             }
     }
 
-    /// <summary>« Soin » : soigne un allié ciblé (montant = MOITIÉ de la puissance du soigneur, arrondie
-    /// vers le bas). Fonctionne pour n'importe quel porteur du trait, commandant compris. Passe le tour.</summary>
+    /// <summary>« Soin » / « Soin parfait » : soigne un allié ciblé (cf. <see cref="HealAmount"/> — moitié de
+    /// la puissance, ou totalité). Fonctionne pour n'importe quel porteur du trait, commandant compris.
+    /// Passe le tour.</summary>
     public MoveKind TryHeal(Cell from, Cell target)
     {
         var unit = ActiveUnitAt(from);
         if (unit == null || !HealTargets(from).Contains(target))
             return MoveKind.Invalid;
 
-        UnitAt(target)!.Heal(unit.Damage / 2);
+        UnitAt(target)!.Heal(HealAmount(unit));
         EndTurn();
         return MoveKind.Moved;   // action de soutien : tour consommé
     }
