@@ -37,12 +37,12 @@
     },
     {
       "missions": [
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 3, 3, 3] },        // m1 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 3, 3, 3, 3] },     // m2 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 3, 3, 3, 3, 3, 3] },  // m3 Speciale (gabarit)
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 3, 3, 3, 3, 3, 3] },  // m4 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3] },   // m5 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3] } // m6 Boss final (gabarit des escortes)
+        { "mapSize": 8, "enemies": [1, 1, 1, 2, 2, 2, 2, 3, 3] },        // m1 Escarmouche
+        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 2, 2, 3, 3] },     // m2 Escarmouche
+        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3] },  // m3 Speciale (gabarit)
+        { "mapSize": 8, "enemies": [2,2, 2, 2, 2, 2, 2, 3, 3, 3, 3] },  // m4 Escarmouche
+        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3] },   // m5 Escarmouche
+        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3] } // m6 Boss final (gabarit des escortes)
       ]
     }
   ]

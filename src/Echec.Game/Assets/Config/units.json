@@ -27,7 +27,7 @@
             "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1,
             "evolutions": [
               { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"] },
-              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
+              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
             ]
           }
         ]

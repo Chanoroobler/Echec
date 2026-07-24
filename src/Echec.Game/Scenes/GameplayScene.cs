@@ -403,6 +403,8 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _healTargets = new();     // trait « Soin » : alliés blessés à portée, ciblables pour soigner
     private readonly List<Cell> _threatCells = new();
     private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
+    private readonly List<Cell> _auraCarriers = new();        // porteurs d'une même famille d'aura (barrière fusionnée)
+    private readonly HashSet<Cell> _auraCells = new();        // union des cases couvertes par la famille (contour partagé)
     // Aperçu au SURVOL d'un pion joueur (rien de sélectionné) : buffers distincts de la sélection.
     private readonly List<Cell> _hoverMoves = new();
     private readonly List<Cell> _hoverAttackTargets = new();
@@ -5239,6 +5241,7 @@ public sealed class GameplayScene : Scene
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, board);
                 if (BoardAssembled) DrawEnemyThreat(sb, board);
+                if (BoardAssembled) DrawAuraHalos(sb, board);   // halos d'aura : c'est au placement qu'on s'y range
                 DrawChests(sb, board);                   // coffres (sous les unités : un allié peut être dessus)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
@@ -5303,6 +5306,7 @@ public sealed class GameplayScene : Scene
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawHighlights(sb, board);
                 DrawEnemyThreat(sb, board);
+                DrawAuraHalos(sb, board);                // halos d'aura, par-dessus les zones mais sous les pions
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
@@ -5630,6 +5634,192 @@ public sealed class GameplayScene : Scene
         foreach (var threat in _threatCells)               // quadrillage de la portée de l'ennemi survolé
             DrawZoneBorder(sb, layout, threat, Palette.Purple5 * 0.6f, 1);
         DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);
+    }
+
+    // ── Barrière d'aura ──────────────────────────────────────────────────────────
+    // Les traits d'« aura » agissent sur les 8 cases ADJACENTES au porteur (cf. HasAdjacentAlly dans
+    // Match) : sans marque au sol, se placer DANS une aura oblige à compter les cases à la main. On la
+    // matérialise donc en permanence, joueur comme ennemi (savoir qu'une cible est couverte fait partie
+    // de la lecture du plateau).
+    //
+    // Rendu : PAS un halo plein (trop voyant, il noyait le plateau), mais une petite ENCEINTE le long du
+    // CONTOUR de la zone — un rempart d'énergie. On ne peint que les ARÊTES de cases qui bordent l'union :
+    // un liseré vif POSÉ sur l'arête (il épouse exactement la grille), doublé d'une ombre de contact pour
+    // le contraste, et — sur les bords HORIZONTAUX seulement — d'une courte lueur qui MONTE au-dessus
+    // (fausse hauteur : le mur « se dresse » ; les bords verticaux sont vus de profil → simple ourlet).
+    // L'intérieur reste vide, les pions restent lisibles.
+    //
+    // FUSION : on ne dresse un mur que là où la case VOISINE n'appartient pas à l'union des porteurs d'une
+    // même famille. Les arêtes internes (entre deux cases couvertes, y compris de deux porteurs distincts)
+    // sont donc ignorées : deux auras voisines ne donnent qu'un seul contour continu, sans couture ni
+    // double épaisseur à l'intersection.
+    //
+    // Chaque palier a sa COULEUR, pas seulement son opacité : une teinte unique en alpha croissant est
+    // illisible sur le terrain sauge. On monte une rampe sombre → vive qui se lit comme un mur : pied
+    // assombri (contraste garanti quel que soit le sol) → corps teinté → crête éclairée.
+    // Rampe par FAMILLE d'effet : bleu = protection, chaud = puissance, doré = divin.
+    private static readonly float[] AuraRampAlpha = { 0.42f, 0.66f, 0.84f, 0.94f };
+
+    // Une FAMILLE = les traits qui partagent la même enceinte (même rampe) : leurs porteurs fusionnent.
+    private static readonly (string[] Traits, Color[] Ramp)[] AuraFamilies =
+    {
+        // -dégâts à distance sur les alliés adjacents
+        (new[] { Trait.AuraDeRempart },
+            new[] { Palette.Black5, Palette.WaterMid2, Palette.Cyan1, Palette.White }),
+        // +puissance / bénédiction
+        (new[] { Trait.AuraDePuissance, Trait.AuraDeSurpuissance, Trait.Benediction },
+            new[] { Palette.Brown1, Palette.Brown2, Palette.Brown3, Palette.Brown4 }),
+        // l'allié adjacent ne peut pas mourir
+        (new[] { Trait.BouclierDivin },
+            new[] { Palette.Brown1, Palette.Brown4, Palette.White, Palette.White }),
+    };
+
+    private const int AuraBlock = 4;          // côté du « gros pixel » du tramage (px virtuels)
+    private const int AuraLevels = 4;         // paliers de la rampe (quantification pixel-art)
+    private const int AuraLinePx = 2;         // épaisseur du liseré vif posé SUR l'arête de contour
+    private const int AuraGlowH = 6;          // hauteur (px) de la lueur qui monte au-dessus d'un mur horizontal
+    private const int AuraSideGlow = 4;       // largeur (px) de l'ourlet extérieur d'un mur vertical
+
+    /// <summary>Matrice de Bayer 4×4 normalisée : seuil de tramage ordonné entre deux paliers.</summary>
+    private static readonly float[,] AuraBayer =
+    {
+        { 0.5f / 16, 8.5f / 16, 2.5f / 16, 10.5f / 16 },
+        { 12.5f / 16, 4.5f / 16, 14.5f / 16, 6.5f / 16 },
+        { 3.5f / 16, 11.5f / 16, 1.5f / 16, 9.5f / 16 },
+        { 15.5f / 16, 7.5f / 16, 13.5f / 16, 5.5f / 16 },
+    };
+
+    /// <summary>
+    /// Barrières d'aura au sol. À dessiner APRÈS les remplissages de zones (elles les couvriraient) et
+    /// AVANT les unités : l'enceinte reste sous les pions. Une passe par famille pour fusionner les
+    /// porteurs voisins en une seule enceinte continue.
+    /// </summary>
+    private void DrawAuraHalos(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var (traits, ramp) in AuraFamilies)
+        {
+            _auraCarriers.Clear();
+            foreach (var (cell, unit) in _match.Units())
+                foreach (var trait in traits)
+                    if (unit.HasTrait(trait))
+                    {
+                        _auraCarriers.Add(cell);
+                        break;
+                    }
+
+            if (_auraCarriers.Count > 0)
+                DrawAuraBarrier(sb, layout, ramp);
+        }
+    }
+
+    /// <summary>
+    /// Enceinte le long du contour de l'UNION des blocs 3×3 des porteurs (<see cref="_auraCarriers"/>). On
+    /// dresse un mur uniquement sur les ARÊTES de cases dont la voisine n'est PAS dans l'union : les arêtes
+    /// internes disparaissent, donc les auras voisines fusionnent en un seul tracé (cf. en-tête).
+    /// </summary>
+    private void DrawAuraBarrier(SpriteBatch sb, GridLayout layout, Color[] ramp)
+    {
+        var tile = layout.TileSize;
+        var breath = 0.85f + 0.15f * MathF.Sin(_time * 1.7f);   // pulsation lente de l'enceinte
+
+        // Union des 3×3 (bornée au plateau) : une case hors bord n'y entre pas, donc l'arête du bord la ferme.
+        _auraCells.Clear();
+        foreach (var c in _auraCarriers)
+            for (var dr = -1; dr <= 1; dr++)
+                for (var dc = -1; dc <= 1; dc++)
+                {
+                    var cell = new Cell(c.Column + dc, c.Row + dr);
+                    if (_match.InBounds(cell))
+                        _auraCells.Add(cell);
+                }
+
+        foreach (var cell in _auraCells)
+        {
+            var tl = layout.CellToScreen(cell.Column, cell.Row);
+            var x0 = (int)tl.X;
+            var y0 = (int)tl.Y;
+
+            if (!_auraCells.Contains(new Cell(cell.Column, cell.Row - 1)))
+                DrawWallH(sb, ramp, x0, y0, tile, breath);           // bord HAUT
+            if (!_auraCells.Contains(new Cell(cell.Column, cell.Row + 1)))
+                DrawWallH(sb, ramp, x0, y0 + tile, tile, breath);    // bord BAS
+            if (!_auraCells.Contains(new Cell(cell.Column - 1, cell.Row)))
+                DrawWallV(sb, ramp, x0, y0, tile, breath, -1);       // bord GAUCHE (ourlet vers -X)
+            if (!_auraCells.Contains(new Cell(cell.Column + 1, cell.Row)))
+                DrawWallV(sb, ramp, x0 + tile, y0, tile, breath, +1); // bord DROIT (ourlet vers +X)
+        }
+    }
+
+    /// <summary>
+    /// Mur HORIZONTAL le long de la ligne d'écran <paramref name="lineY"/> : liseré vif posé sur l'arête +
+    /// ombre de contact dessous + lueur qui monte vers le HAUT (fausse hauteur).
+    /// </summary>
+    private void DrawWallH(SpriteBatch sb, Color[] ramp, int x0, int lineY, int len, float breath)
+    {
+        var top = lineY - AuraLinePx / 2;
+        for (var x = 0; x < len; x += AuraBlock)
+        {
+            var sx = x0 + x;
+            var shim = 0.80f + 0.20f * MathF.Sin(sx * 0.20f - _time * 3.0f);
+
+            // Lueur montante (grain Bayer, extinction vers le haut).
+            for (var h = 0; h < AuraGlowH; h += AuraBlock)
+            {
+                var up = 1f - (float)h / AuraGlowH;
+                var stp = QuantizeAura(0.42f * up * breath * shim, x, h);
+                if (stp > 0)
+                    DrawRect(sb, new Rectangle(sx, top - h - AuraBlock, AuraBlock, AuraBlock),
+                        ramp[stp - 1] * AuraRampAlpha[stp - 1]);
+            }
+
+            // Liseré vif SUR l'arête + ombre de contact juste dessous (contraste sur n'importe quel sol).
+            var la = System.Math.Clamp(0.9f * (0.78f + 0.22f * shim) * breath, 0f, 1f);
+            DrawRect(sb, new Rectangle(sx, top, AuraBlock, AuraLinePx), ramp[3] * la);
+            DrawRect(sb, new Rectangle(sx, top + AuraLinePx, AuraBlock, 1), ramp[0] * 0.55f);
+        }
+    }
+
+    /// <summary>
+    /// Mur VERTICAL le long de la colonne d'écran <paramref name="lineX"/> : vu de profil, donc pas de
+    /// hauteur — juste le liseré vif sur l'arête, une ombre de contact côté intérieur et un léger ourlet
+    /// vers l'extérieur (<paramref name="outDir"/> = +1 vers +X, -1 vers -X).
+    /// </summary>
+    private void DrawWallV(SpriteBatch sb, Color[] ramp, int lineX, int y0, int len, float breath, int outDir)
+    {
+        var leftEdge = lineX - AuraLinePx / 2;
+        for (var y = 0; y < len; y += AuraBlock)
+        {
+            var sy = y0 + y;
+            var shim = 0.80f + 0.20f * MathF.Sin(sy * 0.20f - _time * 3.0f);
+
+            // Ourlet extérieur (extinction vers l'extérieur).
+            for (var g = 0; g < AuraSideGlow; g += AuraBlock)
+            {
+                var up = 1f - (float)g / AuraSideGlow;
+                var stp = QuantizeAura(0.34f * up * breath * shim, g, y);
+                if (stp > 0)
+                {
+                    var gx = outDir > 0 ? leftEdge + AuraLinePx + g : leftEdge - g - AuraBlock;
+                    DrawRect(sb, new Rectangle(gx, sy, AuraBlock, AuraBlock),
+                        ramp[stp - 1] * AuraRampAlpha[stp - 1]);
+                }
+            }
+
+            var la = System.Math.Clamp(0.9f * (0.78f + 0.22f * shim) * breath, 0f, 1f);
+            DrawRect(sb, new Rectangle(leftEdge, sy, AuraLinePx, AuraBlock), ramp[3] * la);
+            var ix = outDir > 0 ? leftEdge - 1 : leftEdge + AuraLinePx;
+            DrawRect(sb, new Rectangle(ix, sy, 1, AuraBlock), ramp[0] * 0.55f);
+        }
+    }
+
+    /// <summary>Quantifie une intensité [0,1] en palier de rampe (1..AuraLevels), 0 = rien, avec tramage Bayer.</summary>
+    private static int QuantizeAura(float a, int bx, int by)
+    {
+        var scaled = System.Math.Clamp(a, 0f, 1f) * AuraLevels;
+        var step = (int)scaled;
+        if (step < AuraLevels && AuraBayer[(by / AuraBlock) & 3, (bx / AuraBlock) & 3] < scaled - step)
+            step++;
+        return step;
     }
 
     /// <summary>
@@ -7629,6 +7819,11 @@ public sealed class GameplayScene : Scene
     /// <summary>
     /// Cartes flottantes du combat : l'unité SÉLECTIONNÉE s'affiche à droite du plateau, l'ennemi
     /// SURVOLÉ à gauche. Les deux peuvent coexister (sélection + survol d'un ennemi).
+    ///
+    /// Les popups de mots-clés ne sont dessinés qu'au SURVOL, jamais pour le pion « en main » (même
+    /// curseur posé sur sa case) : passé ~2 traits la pile bascule À CÔTÉ de la carte (cf.
+    /// <see cref="DrawKeywordPopupsBelow"/>) et mangeait le plateau pendant toute la visée. Le pion
+    /// tenu garde sa carte (stats + PV) et récupère ses popups dès qu'il est désélectionné.
     /// </summary>
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
@@ -7659,7 +7854,7 @@ public sealed class GameplayScene : Scene
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
             ownCard = ownRight ? RightCardRect(board) : LeftCardRect(board);
-            DrawUnitCard(sb, own, ownCard.Value);
+            DrawUnitCard(sb, own, ownCard.Value, showKeywords: oc != _selected);
         }
 
         // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
@@ -7799,14 +7994,17 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Carte d'une unité du plateau, dans son ÉTAT COURANT (PV actuels). Les popups de mots-clés
-    /// descendent SOUS la carte (à droite de l'écran ils seraient coupés par le bord).
+    /// descendent SOUS la carte (à droite de l'écran ils seraient coupés par le bord) et ne sont
+    /// dessinés que si <paramref name="showKeywords"/> (cf. <see cref="DrawCombatCards"/>).
     /// </summary>
-    private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect, int hpPreviewDamage = 0)
+    private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect, int hpPreviewDamage = 0,
+        bool showKeywords = true)
     {
         var c = unit.Class;
         DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
             hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit), kills: unit.Kills);
-        DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs);
+        if (showKeywords)
+            DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs);
     }
 
     // ── Mise en forme commune des cartes (combat + recrutement) ──────────────────
@@ -7826,6 +8024,10 @@ public sealed class GameplayScene : Scene
         var b = buffs ?? CommandBuffs.None;
         var hpBonus = (equip?.BonusFor(EquipStat.Hp) ?? 0) + b.BonusFor(EquipStat.Hp);
         var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
+        // Rage : +1 puissance par ennemi tué (bonus intrinsèque TOUJOURS actif, cf. Match.EffectiveDamage) —
+        // on l'intègre au « +N » de la puissance pour que la carte montre la vraie valeur de combat.
+        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Rage))
+            dmgBonus += kills;
         var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
         var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
@@ -8185,6 +8387,11 @@ public sealed class GameplayScene : Scene
     /// <paramref name="equip"/> de TRAIT et les <paramref name="buffs"/> de l'arbre de commandement
     /// ajoutent leurs traits (comme des traits natifs), sauf doublon.
     /// </summary>
+    /// <summary>Vrai si la carte porte ce trait, toutes sources confondues (classe, équipement, arbre) —
+    /// pendant côté UI de <see cref="Unit.HasTrait"/>, sans instance de pion.</summary>
+    private static bool CardHasTrait(UnitClass c, Equipment? equip, CommandBuffs b, string trait) =>
+        (equip?.GrantsTrait(trait) ?? false) || b.GrantsTrait(trait) || c.Traits.Contains(trait);
+
     private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, Equipment? equip = null,
         CommandBuffs? buffs = null)
     {

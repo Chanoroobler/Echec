@@ -14,11 +14,12 @@ public class TraitsTests
 {
     // Unité de test : domaine TOUR (lignes droites) par défaut, portée de tir 3.
     private static Unit Make(Faction faction, int hp, int damage, string[] traits,
-        Domaine domaine = Domaine.Tour, int attackRange = 3, int moveRange = 1, bool pierces = false)
+        Domaine domaine = Domaine.Tour, int attackRange = 3, int moveRange = 1, bool pierces = false,
+        int kills = 0)
     {
         var cls = new UnitClass("T", "t", tier: 1, maxHp: hp, damage: damage,
             moveRange: moveRange, attackRange: attackRange, piercesAllies: pierces, traits: traits);
-        return new Unit(domaine, faction, cls);
+        return new Unit(domaine, faction, cls, kills: kills);
     }
 
     private static string[] None => System.Array.Empty<string>();
@@ -75,21 +76,21 @@ public class TraitsTests
     // ── Rage / Bénédiction : bonus de puissance ───────────────────────────────────
 
     [Fact]
-    public void Rage_AddsSixPower_WhenBelowThreshold()
+    public void Rage_AddsOnePower_PerKill()
     {
-        var low = Board();
-        var rager = Make(Faction.Player, 20, 10, new[] { Trait.Rage });
-        rager.TakeDamage(15);   // 5 PV (< 10)
-        low.Place(new Cell(0, 0), rager);
-        low.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
-        low.TryAttack(new Cell(0, 0), new Cell(0, 1));
-        Assert.Equal(14, low.UnitAt(new Cell(0, 1))!.Hp);      // 30 - (10 + 6)
+        // Sans kill : puissance brute, aucun bonus.
+        var fresh = Board();
+        fresh.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Rage }, kills: 0));
+        fresh.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
+        fresh.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(20, fresh.UnitAt(new Cell(0, 1))!.Hp);    // 30 - 10 (pas de bonus)
 
-        var high = Board();
-        high.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Rage }));   // 20 PV (>= 10)
-        high.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
-        high.TryAttack(new Cell(0, 0), new Cell(0, 1));
-        Assert.Equal(20, high.UnitAt(new Cell(0, 1))!.Hp);     // 30 - 10 (pas de bonus)
+        // Avec 3 kills accumulés sur la run : +3 puissance.
+        var seasoned = Board();
+        seasoned.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Rage }, kills: 3));
+        seasoned.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
+        seasoned.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(17, seasoned.UnitAt(new Cell(0, 1))!.Hp); // 30 - (10 + 3)
     }
 
     [Fact]

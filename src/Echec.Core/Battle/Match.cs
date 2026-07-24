@@ -405,8 +405,6 @@ public sealed class Match
     private const int BushReduction = 4;         // -4 dégâts quand la cible est sur un buisson (couvert)
     private const int RempartReduction = 4;     // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
-    private const int RageBonus = 6;             // +6 puissance quand l'attaquant est sous le seuil PV
-    private const int RageHpThreshold = 10;      // seuil de PV de Rage
     private const int BenedictionBonus = 5;      // +5 puissance offerte par un allié « Bénédiction » adjacent
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
     private const int AuraSurpuissanceBonus = 5; // +5 puissance offerte par un allié « Aura de surpuissance » adjacent
@@ -455,8 +453,8 @@ public sealed class Match
     private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
     {
         var dmg = attacker.Damage;
-        if (attacker.HasTrait(Trait.Rage) && attacker.Hp < RageHpThreshold)
-            dmg += RageBonus;
+        if (attacker.HasTrait(Trait.Rage))
+            dmg += attacker.Kills;   // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.Benediction))
             dmg += BenedictionBonus;
         if (HasAdjacentAlly(attackerCell, attacker.Faction, Trait.AuraDePuissance))

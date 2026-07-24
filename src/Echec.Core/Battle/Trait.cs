@@ -24,7 +24,7 @@ public static class Trait
     public const string AuraDeSurpuissance = "Aura de surpuissance"; // +AuraSurpuissanceBonus de puissance aux alliés adjacents
     public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
-    public const string Rage = "Rage";                       // +RageBonus de puissance sous RageHpThreshold PV
+    public const string Rage = "Rage";                       // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
     public const string BouclierDivin = "Bouclier divin";    // un allié adjacent ne peut pas mourir (PV >= 1)
     public const string Benediction = "Bénédiction";         // +BenedictionBonus de puissance aux alliés adjacents
     public const string DrainDeVie = "Drain de vie";         // soigne l'attaquant de 50 % des dégâts infligés
