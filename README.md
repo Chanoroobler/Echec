@@ -1,4 +1,4 @@
-# Echec
+# Chess Army
 
 Jeu vidéo en C# / [MonoGame](https://monogame.net) (DesktopGL, .NET 9).
 
@@ -8,16 +8,16 @@ Architecture en couches avec dépendances dirigées vers l'intérieur — le dom
 ne connaît pas le moteur, le moteur ne connaît pas le point d'entrée.
 
 ```
-Echec.Game  ──►  Echec.Engine  ──►  Echec.Core
+ChessArmy.Game  ──►  ChessArmy.Engine  ──►  ChessArmy.Core
 (MonoGame)       (MonoGame)         (C# pur, testable)
 ```
 
 | Projet | Rôle | Dépend de MonoGame ? |
 |--------|------|----------------------|
-| `src/Echec.Core`   | Domaine : règles, état, entités du jeu (échiquier, pièces). Pur C#, 100 % testable. | ❌ |
-| `src/Echec.Engine` | Briques réutilisables au-dessus de MonoGame : gestion de scènes, input, contexte de jeu. | ✅ |
-| `src/Echec.Game`   | Point d'entrée et *composition root* : crée la fenêtre, câble les services, héberge les scènes et le contenu. | ✅ |
-| `tests/Echec.Core.Tests` | Tests unitaires xUnit du domaine. | ❌ |
+| `src/ChessArmy.Core`   | Domaine : règles, état, entités du jeu (échiquier, pièces). Pur C#, 100 % testable. | ❌ |
+| `src/ChessArmy.Engine` | Briques réutilisables au-dessus de MonoGame : gestion de scènes, input, contexte de jeu. | ✅ |
+| `src/ChessArmy.Game`   | Point d'entrée et *composition root* : crée la fenêtre, câble les services, héberge les scènes et le contenu. | ✅ |
+| `tests/ChessArmy.Core.Tests` | Tests unitaires xUnit du domaine. | ❌ |
 
 ### Concepts clés (Engine)
 
@@ -32,17 +32,17 @@ Echec.Game  ──►  Echec.Engine  ──►  Echec.Core
 dotnet build
 
 # Lancer le jeu
-dotnet run --project src/Echec.Game
+dotnet run --project src/ChessArmy.Game
 
 # Tests
 dotnet test
 ```
 
 `Échap` ferme le jeu. La scène de jeu affiche l'échiquier dessiné à partir de
-l'état du domaine `Echec.Core`.
+l'état du domaine `ChessArmy.Core`.
 
 ## Pour aller plus loin
 
 - Ajouter une `MenuScene` et basculer via `Context.Scenes.Change(...)`.
 - Charger des sprites de pièces via le **MonoGame Content Pipeline** (`Content/Content.mgcb`).
-- Implémenter les règles de déplacement dans un service de `Echec.Core` (gardé hors du rendu).
+- Implémenter les règles de déplacement dans un service de `ChessArmy.Core` (gardé hors du rendu).

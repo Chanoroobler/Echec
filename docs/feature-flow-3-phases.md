@@ -1,8 +1,8 @@
 # Feature — Structure de run en 3 phases
 
 > Doc de design + prompt d'implémentation, à donner tel quel à un assistant de code.
-> Cible : `src/Echec.Core/Campaign/Run.cs`, `RunSave.cs`, `src/Echec.Core/Map/CombatType.cs`,
-> `src/Echec.Game/Scenes/GameplayScene.cs`, tests `tests/Echec.Core.Tests`.
+> Cible : `src/ChessArmy.Core/Campaign/Run.cs`, `RunSave.cs`, `src/ChessArmy.Core/Map/CombatType.cs`,
+> `src/ChessArmy.Game/Scenes/GameplayScene.cs`, tests `tests/ChessArmy.Core.Tests`.
 
 ## 1. Objectif
 
@@ -104,7 +104,7 @@ monotone. Garde toutefois la **table comme source de vérité** : c'est plus lis
 
 ## 5. Modèle de données
 
-Dans `src/Echec.Core/Map/CombatType.cs`, étendre l'enum (déjà `Escarmouche`, `Boss`) :
+Dans `src/ChessArmy.Core/Map/CombatType.cs`, étendre l'enum (déjà `Escarmouche`, `Boss`) :
 
 ```csharp
 public enum CombatType
@@ -207,7 +207,7 @@ Bumper `Version` (1 → 2) et invalider/migrer proprement les vieilles sauvegard
 - « Continuer » (reprise de sauvegarde) rejoue la même vague et le même terrain (déterminisme
   conservé).
 
-## 11. Tests (`tests/Echec.Core.Tests`)
+## 11. Tests (`tests/ChessArmy.Core.Tests`)
 
 - `BuildEnemyWave_Effectif_Et_Tiers(phase, mission)` : théorie couvrant les 18 missions, assert
   effectif total + comptes par tier == table du §4.
@@ -223,7 +223,7 @@ Bumper `Version` (1 → 2) et invalider/migrer proprement les vieilles sauvegard
 ## 12. Prompt prêt à coller
 
 > **Contexte** : jeu tactique C#/.NET 9 (`Echec`), roguelite au tour par tour. La progression d'une
-> run vit dans `src/Echec.Core/Campaign/Run.cs` (C# pur, testé). Les pions ont un `Tier` (1→3) porté
+> run vit dans `src/ChessArmy.Core/Campaign/Run.cs` (C# pur, testé). Les pions ont un `Tier` (1→3) porté
 > par `UnitClass`. Il existe un enum `CombatType { Escarmouche, Boss }` et un enum SANS RAPPORT
 > `RunPhase { Placement, Battle, ... }` (cycle interne d'un combat — **ne pas** le réutiliser pour ce
 > travail).
@@ -252,6 +252,6 @@ Bumper `Version` (1 → 2) et invalider/migrer proprement les vieilles sauvegard
 > 6. `RunSave` : bumper `Version` à 2 (aucun nouveau champ — `CombatNumber` 1..18 suffit).
 > 7. Ajouter les tests xUnit du §11.
 >
-> **Contraintes** : garder `Echec.Core` sans dépendance MonoGame ; déterminisme des vagues
+> **Contraintes** : garder `ChessArmy.Core` sans dépendance MonoGame ; déterminisme des vagues
 > préservé ; ne rien casser du cycle `RunPhase` interne. Compiler (`dotnet build`) et faire passer
 > `dotnet test`.

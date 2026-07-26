@@ -2,7 +2,7 @@
 
 Une run d'Echec = **3 phases de 6 missions** (18 combats au total), jouées dans un rythme fixe.
 Chaque mission a une **nature** portée par l'enum `CombatType`
-([src/Echec.Core/Map/CombatType.cs](../src/Echec.Core/Map/CombatType.cs)) :
+([src/ChessArmy.Core/Map/CombatType.cs](../src/ChessArmy.Core/Map/CombatType.cs)) :
 
 ```csharp
 public enum CombatType
@@ -119,8 +119,8 @@ fixe que **l'effectif et le tier**.
 
 | Élément | Fichier |
 |---------|---------|
-| Enum des natures | [CombatType.cs](../src/Echec.Core/Map/CombatType.cs) |
-| Rythme, table d'effectifs, génération des vagues, progression | [Run.cs](../src/Echec.Core/Campaign/Run.cs) (`PhaseLayout`, `WaveTiers`, `BuildEnemyWave`, `CompleteCombat`) |
-| Type porté par une map | [MapData.cs](../src/Echec.Core/Map/MapData.cs) (`Type`) |
-| Choix de la map (taille par phase + filtre par nature) | [GameplayScene.cs](../src/Echec.Game/Scenes/GameplayScene.cs) (`MapForCombat`) |
+| Enum des natures | [CombatType.cs](../src/ChessArmy.Core/Map/CombatType.cs) |
+| Rythme, table d'effectifs, génération des vagues, progression | [Run.cs](../src/ChessArmy.Core/Campaign/Run.cs) (`PhaseLayout`, `WaveTiers`, `BuildEnemyWave`, `CompleteCombat`) |
+| Type porté par une map | [MapData.cs](../src/ChessArmy.Core/Map/MapData.cs) (`Type`) |
+| Choix de la map (taille par phase + filtre par nature) | [GameplayScene.cs](../src/ChessArmy.Game/Scenes/GameplayScene.cs) (`MapForCombat`) |
 | Design d'ensemble des 3 phases | [feature-flow-3-phases.md](feature-flow-3-phases.md) |

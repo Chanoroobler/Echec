@@ -33,7 +33,7 @@ puisses réagir en t'approchant) :
 | Paladin | T3 | 18 | 3 | 22 / 29 | 76 % |
 | **Sorcier** | **T2** | **18** | **4** | **21 / 29** | **72 %** |
 | Cavalier griffon | T3 | 16 | 3 | 17 / 29 | 59 % |
-| Javelinier d'élite | T3 | 16 | 3 | 17 / 29 | 59 % |
+| Dragoon | T3 | 16 | 3 | 17 / 29 | 59 % |
 
 Le **Sorcier** est la ligne à retenir : c'est un **tier 2**, donc un ennemi **courant dès la
 phase 2** (les vagues de phase 2 comptent jusqu'à 8 T2). Il tue 72 % de ton roster **d'un
@@ -64,9 +64,14 @@ savoir pour quand tu rouvriras la phase 3.
 
 Les mécaniques capables de toucher plusieurs unités en **une** action :
 
-- **Dégâts de zone / Embrochage** : dégâts pleins sur les 8 cases autour de la cible. Dans le
-  catalogue codé, seul le **Javelinier d'élite** (Tour T3) porte Embrochage → si tes unités
-  sont groupées en phase 3, un tir en démolit plusieurs.
+- **Dégâts de zone** : dégâts **pleins** sur les 8 cases autour de la cible. Aucun porteur
+  dans le catalogue livré.
+- **Embrochage** (2026-07-24) : mêmes 8 cases, mais **puissance EFFECTIVE ÷ 3 arrondie au plus
+  bas**. Les bonus de puissance du tireur (Rage, auras, Formation) comptent ; les réductions
+  propres à chaque voisin (rempart, couvert, duelliste) non — le montant est le même pour tous
+  les embrochés, seule Esquive l'annule. Seul le **Dragoon** (Tour T3, puissance 16
+  → **5** par voisin, **6** sous une aura de puissance) le porte : le tir reste une menace de
+  groupe, mais n'efface plus une escouade entière.
 - **Orage / Tempête** : attaque normale **+** dégât fixe (3 / 6) sur **3 unités au hasard**,
   en **ignorant couvert et rempart**. ⚠️ **Aucune classe du catalogue codé ne les porte** :
   ces traits n'apparaissent que si ton `units.json` les donne à un boss. Si c'est le cas, un
@@ -189,7 +194,7 @@ sur une case mortelle. C'est un adversaire *cohérent*, pas *optimal*.
 ### État : maladresse IA implémentée
 
 `enum Difficulty` (Facile / Normal / Difficile) + `DifficultySettings` existent dans
-`src/Echec.Core/Battle/Difficulty.cs`. Un seul levier est branché pour l'instant, le plus
+`src/ChessArmy.Core/Battle/Difficulty.cs`. Un seul levier est branché pour l'instant, le plus
 puissant : **la maladresse** (`AiAccuracy` = probabilité de jouer le meilleur coup ;
 **0,50 / 0,75 / 1,00**). En pratique l'IA choisit par rangs de priorité et, quand elle rate son
 jet, **descend d'un cran** (renonce au kill parfait pour une attaque simple, etc.) plutôt que de

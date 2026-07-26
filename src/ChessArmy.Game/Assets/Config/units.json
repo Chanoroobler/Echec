@@ -1,0 +1,240 @@
+{
+  // Paramétrage des classes par domaine. Le motif de déplacement (Dame = 8 dir, Fou = diagonales,
+  // Cavalier = saut en L, Tour = lignes) est fixé en code par le domaine ; ici : nom (identifiant
+  // unique), asset (identité stable : sauvegarde/nom/découverte, ET nom du PNG dans
+  // Assets/Units/<asset>_*.png — un sprite par classe), PV (hp), dégâts (damage), portée de
+  // déplacement (moveRange) et portée d'attaque (attackRange).
+  //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
+  //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
+  //                             Formation, Esquive, Embrochage, Drain de vie, Rempart, Soin, Duelliste,
+  //                             Rage, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte…
+  //   "evolutions": [...]    => les sous-classes (arbre à 3 tiers : base → 2 branches → 2 feuilles).
+  // NB : « Zone morte » pilote la portée d'attaque min (2, contact interdit en ligne droite) via le trait.
+  "domaines": [
+    {
+      "domaine": "Dame",
+      "baseClass": {
+        "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
+        "evolutions": [
+          {
+            "name": "Archer", "asset": "archer", "hp": 12, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
+            "evolutions": [
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3 }
+            ]
+          },
+          {
+            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1,
+            "evolutions": [
+              { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"] },
+              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "domaine": "Fou",
+      "baseClass": {
+        "name": "Mage", "asset": "mage", "hp": 6, "damage": 14, "moveRange": 1, "attackRange": 3,
+        "evolutions": [
+          {
+            "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
+            "evolutions": [
+              { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin parfait"] },
+              { "name": "Barde",      "asset": "barde",      "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
+            ]
+          },
+          {
+            "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 3, "traits": ["Orage"],
+            "evolutions": [
+              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 3, "traits": ["Tempête"] },
+              { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 3, "traits": ["Drain de vie"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "domaine": "Cavalier",
+      "baseClass": {
+        "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+        "evolutions": [
+          {
+            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+            "evolutions": [
+              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
+              { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
+            ]
+          },
+          {
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
+            "evolutions": [
+              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Vol", "Attaque libre", "Balistique"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "domaine": "Tour",
+      "baseClass": {
+        "name": "Lancier", "asset": "lancier", "hp": 10, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true,
+        "evolutions": [
+          {
+            "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
+            "evolutions": [
+              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Formation"] },
+              { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
+            ]
+          },
+          {
+            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
+            "evolutions": [
+              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive","Embrochage"] },
+              { "name": "Voltigeur", "asset": "voltigeur", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+
+  // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
+  // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
+  //
+  // BOSS : un boss = une IDENTITE (name + asset/sprite + domaine de déplacement) et un PROFIL PAR PHASE dans
+  // "phases" ("1".."3" -> stats + traits). Un boss n'est eligible qu'aux phases qu'il declare. A chaque run,
+  // le jeu tire 3 boss DISTINCTS (un par phase, deterministe via la graine) et chacun combat avec le profil
+  // de SA phase. Il faut au moins 3 boss definis (avec leurs sprites) pour ne jamais repeter un boss ; avec
+  // moins, la repetition est autorisee. Champs d'un profil : hp, damage, moveRange, attackRange, et en option
+  // minAttackRange (X a Y), piercesAllies, attackDomaine, traits (liste, cf. traits de units.json).
+  //
+  // Un COMMANDANT porte en plus ses plafonds d'armée (deployments = pions posables COMMANDANT COMPRIS,
+  // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
+  // commander_trees.json) et sa source de points PROPRE : soit fusionPoints (points gagnés à chaque fusion),
+  // soit onHitPoints (points gagnés à chaque coup REÇU par le commandant, plafonné à onHitCap coups par combat).
+  "commandes": [
+    { "role": "Commander", "id": "commandant", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
+      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2,
+      "startingUnits": [ "Dame", "Dame" ] },
+    // PROVISOIRE : deuxieme commandant, la pour eprouver le carrousel de selection. Il reprend le sprite du
+    // boss Commandant_brute (les boss deviendront des commandants par la suite) et l'arbre du premier.
+    // Brute : plus resistant et plus fort, mais il se deplace moins loin, deploie moins de pions, et il
+    // commence avec TROIS pions plus varies au lieu de deux Soldats.
+    // "unlocked": false => VERROUILLE : silhouette noire dans le carrousel, partie impossible a lancer.
+    // La condition de deblocage reste a definir ; en attendant, basculer ce champ suffit a l'ouvrir.
+    {
+      "role": "Commander",
+      "id": "Commandant_lancier",
+      "domaine": "Tour",
+      "name": "Lancier",
+      "asset": "Commandant_lancier",
+      "hp": 40,
+      "damage": 10,
+      "moveRange": 1,
+      "attackRange": 1,
+      "deployments": 4,
+      "reserveSize": 8,
+      "tree": "commandantLancier",
+      "fusionPoints": 0,
+      "onHitPoints": 1,
+      "onHitCap": 2,
+      "startingUnits": [ "Tour", "Tour" ],
+      "unlocked": false
+    },
+
+    {
+      "role": "Boss",
+      "name": "Commandant_brute",
+      "asset": "Commandant_brute",
+      "domaine": "Dame",
+      "phases": {
+        "1": { 
+          "hp": 30,
+          "damage": 14,
+          "moveRange": 1,
+          "attackRange": 1
+        },
+        "2": {
+          "hp": 44,
+          "damage": 18,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Rage" ]
+        },
+        "3": {
+          "hp": 60,
+          "damage": 22,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Rage", "Transpercement"]
+        }
+      }
+    },
+    {
+      "role": "Boss",
+      "name": "Commandant_guerrier",
+      "asset": "Commandant_guerrier",
+      "domaine": "Dame",
+      "phases": {
+        "1": {
+          "hp": 35,
+          "damage": 12,
+          "moveRange": 1,
+          "attackRange": 1
+        },
+        "2": {
+          "hp": 50,
+          "damage": 16,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Esquive" ]
+        },
+        "3": {
+          "hp": 65,
+          "damage": 20,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Esquive", "Orage" ]
+        }
+      }
+    },
+    // Boss LANCIER : battu en dernière phase, il DÉBLOQUE le commandant "Commandant_lancier"
+    // (unlocksCommander). Boss normal (escortes aléatoires comme les autres). Domaine Tour + tir traversant,
+    // thème "rempart/aura" cohérent avec l'arbre du commandant. STATS PROVISOIRES, à équilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_lancier",
+      "asset": "Commandant_lancier",
+      "domaine": "Tour",
+      "unlocksCommander": "Commandant_lancier",
+      "phases": {
+        "1": {
+          "hp": 34,
+          "damage": 12,
+          "moveRange": 2,
+          "attackRange": 2,
+          "piercesAllies": true
+        },
+        "2": {
+          "hp": 48,
+          "damage": 16,
+          "moveRange": 2,
+          "attackRange": 2,
+          "piercesAllies": true,
+          "traits": [ "Rempart" ]
+        },
+        "3": {
+          "hp": 64,
+          "damage": 20,
+          "moveRange": 2,
+          "attackRange": 3,
+          "piercesAllies": true,
+          "traits": [ "Rempart", "Aura de rempart" ]
+        }
+      }
+    }
+  ]
+}

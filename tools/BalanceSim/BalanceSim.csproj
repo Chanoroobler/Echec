@@ -5,13 +5,13 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Echec.Tools.BalanceSim</RootNamespace>
+    <RootNamespace>ChessArmy.Tools.BalanceSim</RootNamespace>
     <AssemblyName>BalanceSim</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Le harnais rejoue le VRAI domaine : EnemyAi, Match, Domaines, Bosses, CampaignPlan. -->
-    <ProjectReference Include="..\..\src\Echec.Core\Echec.Core.csproj" />
+    <ProjectReference Include="..\..\src\ChessArmy.Core\ChessArmy.Core.csproj" />
   </ItemGroup>
 
 </Project>

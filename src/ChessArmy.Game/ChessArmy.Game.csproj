@@ -1,0 +1,96 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RollForward>Major</RollForward>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <TieredCompilation>false</TieredCompilation>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Icon.ico" />
+    <None Remove="Icon.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Icon.ico">
+      <LogicalName>Icon.ico</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Icon.bmp">
+      <LogicalName>Icon.bmp</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Assets bruts (PNG, JSON, CSV…) copiés tels quels à côté de l'exe, chargés via Texture2D.FromStream.
+         On EXCLUT Assets\Sounds\ : le pack de sons (~1 Go) reste dans le dépôt mais SEULS les .wav
+         réellement référencés par sounds.json / music.json sont embarqués (cf. cible CollectUsedAudio). -->
+    <None Include="Assets\**\*.*" Exclude="Assets\Sounds\**" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
+  <!-- N'embarque QUE les .wav cités dans sounds.json / music.json (SFX + musique). Auto-dérivé des deux
+       JSON : éditer un chemin dans un JSON suffit, aucune liste à maintenir ici, et rien d'inutilisé
+       (autres sons du pack, dossier __MACOSX, variantes de pistes…) ne part dans la build. -->
+  <UsingTask TaskName="CollectReferencedWavs" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ConfigFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <SoundsDir ParameterType="System.String" Required="true" />
+      <Wavs ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var seen = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        var items = new System.Collections.Generic.List<Microsoft.Build.Framework.ITaskItem>();
+        foreach (var cfg in ConfigFiles)
+        {
+            if (!System.IO.File.Exists(cfg.ItemSpec)) continue;
+            var text = System.IO.File.ReadAllText(cfg.ItemSpec);
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+                         text, "\"([^\"]+?\\.wav)\"", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                var rel = m.Groups[1].Value.Replace('/', System.IO.Path.DirectorySeparatorChar);
+                if (!seen.Add(rel)) continue;
+                var full = System.IO.Path.Combine(SoundsDir, rel);
+                if (!System.IO.File.Exists(full))
+                {
+                    Log.LogWarning("Son référencé mais introuvable (non embarqué) : " + rel);
+                    continue;
+                }
+                var item = new Microsoft.Build.Utilities.TaskItem(full);
+                item.SetMetadata("Link", System.IO.Path.Combine("Assets", "Sounds", rel));
+                items.Add(item);
+            }
+        }
+        Wavs = items.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="CollectUsedAudio" BeforeTargets="AssignTargetPaths">
+    <CollectReferencedWavs ConfigFiles="Assets\Config\sounds.json;Assets\Config\music.json"
+                           SoundsDir="$(MSBuildProjectDirectory)\Assets\Sounds">
+      <Output TaskParameter="Wavs" ItemName="_UsedAudio" />
+    </CollectReferencedWavs>
+    <ItemGroup>
+      <None Include="@(_UsedAudio)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+    <Message Importance="high" Text="Audio embarqué : @(_UsedAudio->Count()) fichier(s) .wav référencés par sounds.json/music.json." />
+  </Target>
+  <ItemGroup>
+    <!-- Shaders : compilés via le content pipeline MonoGame (HLSL -> .xnb), chargés au
+         runtime par Content.Load&lt;Effect&gt;. Voir Content/Content.mgcb. -->
+    <MonoGameContentReference Include="Content\Content.mgcb" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ChessArmy.Engine\ChessArmy.Engine.csproj" />
+    <ProjectReference Include="..\ChessArmy.Core\ChessArmy.Core.csproj" />
+  </ItemGroup>
+</Project>

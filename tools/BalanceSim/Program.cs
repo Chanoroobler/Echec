@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Echec.Core.Battle;
-using Echec.Core.Campaign;
-using Echec.Core.Map;
+using ChessArmy.Core.Battle;
+using ChessArmy.Core.Campaign;
+using ChessArmy.Core.Map;
 
-namespace Echec.Tools.BalanceSim;
+namespace ChessArmy.Tools.BalanceSim;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Harnais d'equilibrage — auto-joue des combats en rejouant le VRAI code du jeu
@@ -59,7 +59,7 @@ internal static class Program
 
         Console.WriteLine();
         Console.WriteLine("═══════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("  HARNAIS D'EQUILIBRAGE — Echec");
+        Console.WriteLine("  HARNAIS D'EQUILIBRAGE — Chess Army");
         Console.WriteLine("═══════════════════════════════════════════════════════════════════════");
         Console.WriteLine($"  Reglages : runs/mission={cfg.Runs}  degats ennemis x{cfg.EnemyDamage:0.00}  "
                           + $"maladresse IA={cfg.Blunder:0%}  graine={cfg.Seed}");

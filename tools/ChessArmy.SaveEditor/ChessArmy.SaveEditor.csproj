@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Outil de développement : éditeur de sauvegardes (slots de campagne + profil).
+    N'EST PAS référencé par ChessArmy.Game -> ne fait jamais partie du build/exe du jeu.
+    Réutilise ChessArmy.Core (pur) pour lire/écrire EXACTEMENT le format du jeu (RunSave) et pour
+    peupler les listes depuis les mêmes catalogues JSON (units / equipment / commander_trees).
+    ChessArmy.Engine n'est volontairement PAS référencé : il dépend de MonoGame, alors que la
+    sérialisation d'un slot ne tient qu'à System.Text.Json (cf. SaveIo).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ChessArmy.SaveEditor</RootNamespace>
+    <AssemblyName>ChessArmy.SaveEditor</AssemblyName>
+    <!-- Outil codé à la main, sans concepteur visuel : la règle de sérialisation designer ne s'applique pas. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ChessArmy.Core\ChessArmy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

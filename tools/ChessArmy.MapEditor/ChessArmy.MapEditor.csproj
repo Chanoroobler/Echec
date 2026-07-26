@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Outil de développement : éditeur de maps.
+    N'EST PAS référencé par ChessArmy.Game -> ne fait jamais partie du build/exe du jeu.
+    Réutilise ChessArmy.Core (pur) pour valider les maps au format exact du jeu.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ChessArmy.MapEditor</RootNamespace>
+    <AssemblyName>ChessArmy.MapEditor</AssemblyName>
+    <!-- Outil codé à la main, sans concepteur visuel : la règle de sérialisation designer ne s'applique pas. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ChessArmy.Core\ChessArmy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

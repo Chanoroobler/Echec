@@ -1,0 +1,1072 @@
+{
+  "tileSize": 64,
+  "thickness": 16,
+  "_comment": "Catalogue + LEGENDE GLOBALE. 'key' = caractere a utiliser dans les grilles 'tiles' des maps (escarmouche_*.json). blocksMove = ni s'arreter ni passer. blocksFire = coupe la ligne de tir. sheet/col/row = cellule dans un tileset (voir 'tilesets', 64x64). col/row PROVISOIRES (rendu a affiner). Une tuile peut lister plusieurs cellules via 'variants': [ {col,row}, ... ] au lieu de col/row : le rendu en tire une au hasard mais STABLE par case (meme motif a chaque partie). Voir 'herbe' pour un exemple.",
+  "tilesets": {
+    "herb": {
+      "file": "tiles_herb.png",
+      "cellW": 64,
+      "cellH": 80
+    },
+    "murs": {
+      "file": "TilesMurs.png",
+      "cellW": 64,
+      "cellH": 80
+    },
+    "eaux": {
+      "file": "TilesEaux.png",
+      "cellW": 64,
+      "cellH": 80
+    },
+    "escalier": {
+      "file": "tileEscalier.png",
+      "cellW": 64,
+      "cellH": 80
+    }
+  },
+  "tiles": [
+    {
+      "id": "herbe",
+      "key": "h",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 0,
+          "row": 0
+        },
+        {
+          "col": 1,
+          "row": 0
+        },
+        {
+          "col": 2,
+          "row": 0
+        }
+      ]
+    },
+    {
+      "id": "pierre",
+      "key": "p",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "herb",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "chemin_bas_v",
+      "key": "1",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "chemin_haut_v",
+      "key": "2",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "chemin_droite_h",
+      "key": "3",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "chemin_h",
+      "key": "4",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 2,
+          "row": 1
+        },
+        {
+          "col": 0,
+          "row": 2
+        },
+        {
+          "col": 1,
+          "row": 3
+        }
+      ]
+    },
+    {
+      "id": "chemin_gauche_h",
+      "key": "5",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "murs_20",
+      "key": "c",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "_comment": "--- Tileset 'murs' (TilesMurs.png) : 1 tuile par case, key unique. blocksMove/blocksFire a ajuster par tuile. ---",
+      "id": "murs_00",
+      "key": "a",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "murs_10",
+      "key": "b",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "murs_01",
+      "key": "j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "murs_60",
+      "key": "i",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "murs_11",
+      "key": "k",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "chemin_angle_hg",
+      "key": "6",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "chemin_angle_hd",
+      "key": "7",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "chemin_v",
+      "key": "8",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "variants": [
+        {
+          "col": 2,
+          "row": 2
+        },
+        {
+          "col": 4,
+          "row": 2
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "key": "e",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "chemin_angle_bg",
+      "key": "9",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "chemin_angle_bd",
+      "key": "0",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "herb",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "murs_30",
+      "key": "d",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "murs_40",
+      "key": "f",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "murs_50",
+      "key": "g",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "murs_21",
+      "key": "l",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "murs_31",
+      "key": "m",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "murs_41",
+      "key": "n",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "murs_51",
+      "key": "o",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "murs_61",
+      "key": "q",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 1
+    },
+    {
+      "id": "murs_02",
+      "key": "r",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "murs_12",
+      "key": "s",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "murs_22",
+      "key": "t",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "murs_32",
+      "key": "u",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "murs_42",
+      "key": "v",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "murs_52",
+      "key": "w",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 2
+    },
+    {
+      "id": "murs_62",
+      "key": "x",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 2
+    },
+    {
+      "id": "murs_03",
+      "key": "y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "murs_13",
+      "key": "z",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "murs_23",
+      "key": "A",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "murs_33",
+      "key": "B",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "murs_43",
+      "key": "C",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "murs_53",
+      "key": "D",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 3
+    },
+    {
+      "id": "murs_63",
+      "key": "E",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 3
+    },
+    {
+      "id": "murs_04",
+      "key": "F",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 0,
+      "row": 4
+    },
+    {
+      "id": "murs_14",
+      "key": "G",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 4
+    },
+    {
+      "id": "murs_24",
+      "key": "H",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 2,
+      "row": 4
+    },
+    {
+      "id": "murs_34",
+      "key": "I",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 4
+    },
+    {
+      "id": "murs_44",
+      "key": "J",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 4
+    },
+    {
+      "id": "murs_54",
+      "key": "K",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 4
+    },
+    {
+      "id": "murs_64",
+      "key": "L",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 6,
+      "row": 4
+    },
+    {
+      "id": "murs_05",
+      "key": "M",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 5
+    },
+    {
+      "id": "murs_15",
+      "key": "N",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 1,
+      "row": 5
+    },
+    {
+      "id": "murs_25",
+      "key": "O",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 2,
+      "row": 5
+    },
+    {
+      "id": "murs_35",
+      "key": "P",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 5
+    },
+    {
+      "id": "murs_45",
+      "key": "Q",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 5
+    },
+    {
+      "id": "murs_55",
+      "key": "R",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 5,
+      "row": 5
+    },
+    {
+      "id": "murs_65",
+      "key": "S",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 6,
+      "row": 5
+    },
+    {
+      "id": "murs_06",
+      "key": "T",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 6
+    },
+    {
+      "id": "murs_16",
+      "key": "U",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 1,
+      "row": 6
+    },
+    {
+      "id": "murs_26",
+      "key": "V",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 2,
+      "row": 6
+    },
+    {
+      "id": "murs_36",
+      "key": "W",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 3,
+      "row": 6
+    },
+    {
+      "id": "murs_46",
+      "key": "X",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "murs",
+      "col": 4,
+      "row": 6
+    },
+    {
+      "id": "damier_c",
+      "key": "Y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 6
+    },
+    {
+      "_comment": "--- Tileset 'eaux' (TilesEaux.png), grille 5x5 remplie sur 21 cases (l.0-3 completes + col0/l.4). Defaut = EAU : blocksMove=true, blocksFire=false (cf. tuile 'water'). Exceptions marchables : eau_10 (pont vertical) et eau_02 (ponton horizontal) = tout false. Rochers/blocs a passer en blocksFire=true a la main si voulu. ---",
+      "id": "eau_00",
+      "key": "Z",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "eau_10",
+      "key": "~",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "eau_20",
+      "key": "!",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "eau_30",
+      "key": "@",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "eau_40",
+      "key": "#",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "eau_01",
+      "key": "$",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "eau_11",
+      "key": "%",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "eau_21",
+      "key": "&",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "eau_31",
+      "key": "*",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "eau_41",
+      "key": "(",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "eau_02",
+      "key": ")",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "eau_12",
+      "key": "+",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "eau_22",
+      "key": "-",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "eau_32",
+      "key": "=",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "eau_42",
+      "key": "<",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "eau_03",
+      "key": ">",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "eau_13",
+      "key": "?",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "eau_23",
+      "key": ":",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "eau_33",
+      "key": ";",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "eau_43",
+      "key": ",",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "eau_04",
+      "key": "|",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux",
+      "col": 0,
+      "row": 4
+    },
+    {
+      "_comment": "--- Tileset 'escalier' (tileEscalier.png), grille 6x5 (donjon/interieur : murs briques, escalier, sol terre/mousse, bordures pierre). Les caracteres 1-car etant epuises, ces tuiles ont une CLE DE 2 CARACTERES prefixee par '_' (ex. '_a') : le parseur des grilles 'tiles' lit 2 caracteres quand il voit un '_'. Ligne 0 = faces de mur (bloquantes) ; le reste marchable par defaut (ajuster blocksMove/blocksFire par tuile dans l'editeur). ---",
+      "id": "escalier_00",
+      "key": "_a",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "escalier_10",
+      "key": "_b",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "escalier_20",
+      "key": "_c",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "escalier_30",
+      "key": "_d",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "escalier_40",
+      "key": "_e",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "escalier_50",
+      "key": "_f",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "escalier",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "escalier_01",
+      "key": "_g",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "escalier_11",
+      "key": "_h",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "escalier_21",
+      "key": "_i",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "escalier_31",
+      "key": "_j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "escalier_41",
+      "key": "_k",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "escalier_51",
+      "key": "_l",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "escalier_02",
+      "key": "_m",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "escalier_12",
+      "key": "_n",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "escalier_22",
+      "key": "_o",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "escalier_32",
+      "key": "_p",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "escalier_42",
+      "key": "_q",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "escalier_52",
+      "key": "_r",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 5,
+      "row": 2
+    },
+    {
+      "id": "escalier_03",
+      "key": "_s",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "escalier_13",
+      "key": "_t",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "escalier_23",
+      "key": "_u",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "escalier_33",
+      "key": "_v",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "escalier_43",
+      "key": "_w",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "escalier_53",
+      "key": "_x",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 5,
+      "row": 3
+    },
+    {
+      "id": "escalier_04",
+      "key": "_y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 0,
+      "row": 4
+    },
+    {
+      "id": "escalier_14",
+      "key": "_z",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 1,
+      "row": 4
+    },
+    {
+      "id": "escalier_24",
+      "key": "_0",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 2,
+      "row": 4
+    },
+    {
+      "id": "escalier_34",
+      "key": "_1",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 3,
+      "row": 4
+    },
+    {
+      "id": "escalier_44",
+      "key": "_2",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 4,
+      "row": 4
+    },
+    {
+      "id": "escalier_54",
+      "key": "_3",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "escalier",
+      "col": 5,
+      "row": 4
+    }
+  ]
+}
