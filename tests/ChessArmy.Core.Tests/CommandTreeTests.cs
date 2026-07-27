@@ -578,9 +578,14 @@ public class CommandTreeTests
         Assert.Equal(CommandEffectKind.EliteDeathRecruit, releve.Kind);
         Assert.Equal(Domaine.Tour, releve.Domaine);
 
-        // Bonus d'unité restreint au domaine de la tour + échelle par unité de ce domaine.
+        // Bonus d'unité restreint au domaine de la tour + échelle par unité de ce domaine (côté commandant).
         Assert.Equal(Domaine.Tour, Effect("lan_tour_pv").Domaine);
-        Assert.Equal(CommandScale.PerDomaineUnit, Effect("lan_tour_pv_tour").Scale);
-        Assert.Equal(Domaine.Tour, Effect("lan_cmd_pv_tour").Domaine);   // échelle par unité Tour côté commandant
+        Assert.Equal(Domaine.Tour, Effect("lan_cmd_pv_tour").Domaine);
+        Assert.Equal(CommandScale.PerDomaineUnit, Effect("lan_cmd_pv_tour").Scale);
+
+        // « Amalgame » du Bastion : la réduction de taille de fusion est restreinte au domaine de la tour.
+        var amalgame = Effect("lan_logi_reserve_2");
+        Assert.Equal(CommandEffectKind.FusionSizeReduction, amalgame.Kind);
+        Assert.Equal(Domaine.Tour, amalgame.Domaine);
     }
 }

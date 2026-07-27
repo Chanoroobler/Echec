@@ -40,7 +40,7 @@ mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOL
 mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED)
 # ── Selection du commandant (creation d'une nouvelle partie) ────────────────
 # Nom affiche d'un commandant : cle commander.<id> (repli sur le nom de units.json)
-commander.commandant,COMMANDANT,COMMANDER
+commander.commandant,LE FOUDROYEUR,THE THUNDERER
 commander.brute,BRUTE,BRUTE
 commander.Commandant_lancier,LE BASTION,THE BASTION
 commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER
@@ -352,6 +352,8 @@ kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM
 kw.attaque_libre.desc,TIRE AUSSI COMME UNE DAME (8 DIRECTIONS EN LIGNE) EN PLUS DE SON ATTAQUE NORMALE,ALSO SHOOTS LIKE A QUEEN (8 DIRECTIONS IN LINE) ON TOP OF ITS NORMAL ATTACK
 kw.statique.label,STATIQUE,STATIC
 kw.statique.desc,NE PREND JAMAIS LA PLACE DE SA CIBLE EN LA TUANT (RESTE SUR SA CASE),NEVER TAKES THE TARGET'S PLACE ON A KILL (STAYS PUT)
+kw.seisme.label,SÉISME,EARTHQUAKE
+kw.seisme.desc,À LA FIN DU TOUR ENNEMI FRAPPE LES ENNEMIS ADJACENTS POUR SA PUISSANCE,AT THE END OF THE ENEMY TURN STRIKES ADJACENT ENEMIES FOR ITS POWER
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE!
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
@@ -445,13 +447,13 @@ tree.logi_deploiement_1.desc,+1 unité déployable sur le plateau.,+1 unit deplo
 tree.logi_reserve_1,INTENDANCE,QUARTERMASTER
 tree.logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
 tree.logi_deploiement_2,RENFORTS,REINFORCEMENTS
-tree.logi_deploiement_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
+tree.logi_deploiement_2.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
 tree.logi_reserve_2,CONVOI,SUPPLY TRAIN
 tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.
-tree.logi_deploiement_3,BATAILLE RANGEE,PITCHED BATTLE
-tree.logi_deploiement_3.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
-tree.logi_reserve_3,GRANDE ARMEE,GRAND ARMY
-tree.logi_reserve_3.desc,+4 places en réserve.,+4 reserve slots.
+tree.logi_deploiement_3,GRANDE ARMEE,GRAND ARMY
+tree.logi_deploiement_3.desc,+4 places en réserve.,+4 reserve slots.
+tree.logi_reserve_3,AMALGAME,AMALGAM
+tree.logi_reserve_3.desc,une fusion ne demande plus que 2 pions au lieu de 3.,a fusion needs only 2 pawns instead of 3.
 # ── Arbre du commandant LANCIER (tree "commandantLancier") ──
 tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat)
 tree.commandantLancier.branch0,COMMANDANT,COMMANDER
@@ -468,21 +470,21 @@ tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA
 tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficient de rempart.,units adjacent to the commander gain bulwark.
 tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE
 tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.
-tree.lan_cmd_aura_surpuissance,AURA DE SURPUISSANCE,GREATER POWER AURA
-tree.lan_cmd_aura_surpuissance.desc,+5 puissance aux unités adjacentes au commandant.,+5 power to units adjacent to the commander.
+tree.lan_cmd_aura_surpuissance,SEISME,EARTHQUAKE
+tree.lan_cmd_aura_surpuissance.desc,à la fin du tour ennemi le commandant frappe les ennemis adjacents pour sa puissance.,at the end of the enemy turn the commander strikes adjacent enemies for its power.
 # Noeuds : branche LANCIERS (domaine de la tour)
 tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD
 tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.
-tree.lan_tour_pv_tour,MUR DE LANCES,SPEAR WALL
-tree.lan_tour_pv_tour.desc,+2 pv aux unités du domaine de la tour par unité du domaine de la tour en réserve ou en jeu.,+2 hp to rook-domain units for each rook-domain unit in reserve or in play.
+tree.lan_tour_pv_tour,REMPART RENFORCE,REINFORCED BULWARK
+tree.lan_tour_pv_tour.desc,la réduction de dégâts du trait rempart passe à 6.,the bulwark trait's damage reduction is raised to 6.
 tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA
 tree.lan_tour_aura_puissance.desc,les lanciers augmentent de 3 la puissance des alliés adjacents.,spearmen increase adjacent allies' power by 3.
 tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
 tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
-tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
-tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
-tree.lan_tour_portee,ALLONGE DES LANCIERS,SPEAR REACH
-tree.lan_tour_portee.desc,+1 portée aux unités du domaine de la tour.,+1 attack range to units of the rook domain.
+tree.lan_tour_pm,ESQUIVE RENFORCEE,REINFORCED DODGE
+tree.lan_tour_pm.desc,la chance du trait esquive passe à 40 pour cent.,the dodge trait's chance is raised to 40 percent.
+tree.lan_tour_portee,MARCHE DES LANCIERS,SPEAR MARCH
+tree.lan_tour_portee.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
 # Noeuds : branche LOGISTIQUE
 tree.lan_logi_deploy_1,AVANT-GARDE,VANGUARD
 tree.lan_logi_deploy_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
@@ -491,8 +493,8 @@ tree.lan_logi_fusion.desc,chaque fusion recrute en plus un lancier.,each fusion 
 tree.lan_logi_deploy_2,RENFORTS,REINFORCEMENTS
 tree.lan_logi_deploy_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.lan_logi_reserve_1,INTENDANCE,QUARTERMASTER
-tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
+tree.lan_logi_reserve_1.desc,+4 places en réserve.,+4 reserve slots.
 tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE
-tree.lan_logi_deploy_3.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
-tree.lan_logi_reserve_2,GRANDE ARMEE,GRAND ARMY
-tree.lan_logi_reserve_2.desc,+4 places en réserve.,+4 reserve slots.
+tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
+tree.lan_logi_reserve_2,AMALGAME,AMALGAM
+tree.lan_logi_reserve_2.desc,une fusion d'unité du domaine de la tour ne demande plus que 2 pions.,fusing a rook-domain unit needs only 2 pawns.

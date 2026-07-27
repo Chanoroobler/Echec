@@ -31,6 +31,16 @@ public enum CommandEffectKind
 
     /// <summary>Chaque unité de tier 2+ tombée au combat fait arriver en réserve une unité tier 1 (déjà vue, ou un domaine PRÉCIS).</summary>
     EliteDeathRecruit,
+
+    /// <summary>Réduit d'<see cref="CommandEffect.Amount"/> le nombre de pions requis pour une fusion (jamais moins de 2).
+    /// Optionnellement restreint à un <see cref="CommandEffect.Domaine"/> (sinon toutes les classes).</summary>
+    FusionSizeReduction,
+
+    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> la réduction de dégâts du trait « Rempart » (moteur : base 4).</summary>
+    RempartBonus,
+
+    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> points de POURCENTAGE la chance du trait « Esquive » (moteur : base 25).</summary>
+    EsquiveBonus,
 }
 
 /// <summary>
@@ -143,4 +153,13 @@ public sealed class CommandEffect
 
     public static CommandEffect EliteDeathRecruit(int amount = 1, Domaine? domaine = null) =>
         new(CommandEffectKind.EliteDeathRecruit, default, amount, null, CommandScale.Flat, domaine);
+
+    public static CommandEffect FusionSizeReduction(int amount = 1, Domaine? domaine = null) =>
+        new(CommandEffectKind.FusionSizeReduction, default, amount, null, CommandScale.Flat, domaine);
+
+    public static CommandEffect RempartBonus(int amount) =>
+        new(CommandEffectKind.RempartBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect EsquiveBonus(int amount) =>
+        new(CommandEffectKind.EsquiveBonus, default, amount, null, CommandScale.Flat, null);
 }

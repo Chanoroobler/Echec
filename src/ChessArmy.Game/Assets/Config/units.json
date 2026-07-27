@@ -133,7 +133,7 @@
       "asset": "Commandant_lancier",
       "hp": 40,
       "damage": 10,
-      "moveRange": 1,
+      "moveRange": 2,
       "attackRange": 1,
       "deployments": 4,
       "reserveSize": 8,

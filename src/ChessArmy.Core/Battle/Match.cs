@@ -48,7 +48,7 @@ public sealed class Match
 
     public Match(int width, int height, Battlefield? terrain = null,
         IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
-        IEnumerable<Cell>? playerBlockedCells = null)
+        IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0, int esquiveBonusPercent = 0)
     {
         Width = width;
         Height = height;
@@ -58,7 +58,16 @@ public sealed class Match
         _rng = rng ?? new System.Random();
         _eliminationEndsGame = eliminationEndsGame;
         _playerBlocked = playerBlockedCells is null ? new HashSet<Cell>() : new HashSet<Cell>(playerBlockedCells);
+        RempartReductionValue = BaseRempartReduction + rempartBonus;
+        EsquiveChanceValue = BaseEsquiveChance + esquiveBonusPercent / 100.0;
     }
+
+    /// <summary>Réduction de dégâts EFFECTIVE du trait « Rempart » (base <see cref="BaseRempartReduction"/> + bonus
+    /// d'arbre « Rempart renforcé »). Réglable par la scène si un nœud est acheté en cours de placement.</summary>
+    public int RempartReductionValue { get; set; }
+
+    /// <summary>Chance EFFECTIVE (0..1) du trait « Esquive » (base <see cref="BaseEsquiveChance"/> + bonus « Esquive renforcée »).</summary>
+    public double EsquiveChanceValue { get; set; }
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
     private bool IsCover(Cell cell) => _cover.Contains(cell);
@@ -417,12 +426,14 @@ public sealed class Match
     // ─── TRAITS : dégâts effectifs, formes d'attaque, réactions ───────────────────────────────────
 
     private const int BushReduction = 4;         // -4 dégâts quand la cible est sur un buisson (couvert)
-    private const int RempartReduction = 4;     // -4 dégâts d'une attaque à distance (>= 2)
+    /// <summary>Réduction de dégâts de BASE du trait « Rempart » (avant bonus d'arbre « Rempart renforcé »).</summary>
+    public const int BaseRempartReduction = 4;   // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
     private const int AuraSurpuissanceBonus = 5; // +5 puissance offerte par un allié « Aura de surpuissance » adjacent
     private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
-    private const double EsquiveChance = 0.25;   // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
+    /// <summary>Chance de BASE (0..1) du trait « Esquive » (avant bonus d'arbre « Esquive renforcée »).</summary>
+    public const double BaseEsquiveChance = 0.25; // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
     private const int TempeteDamage = 6;         // dégât fixe de la tempête (trait « Tempête »)
 
@@ -543,7 +554,7 @@ public sealed class Match
         // Une attaque en diagonale, même à une case, reste réduite : seul le corps à corps orthogonal
         // passe la garde.
         if (shielded && !IsDirectContact(attackerCell, victimCell))
-            dmg -= RempartReduction;
+            dmg -= RempartReductionValue;
         if (distance == 1 && victim.HasTrait(Trait.Duelliste))
             dmg -= DuellisteReduction;
         if (IsCover(victimCell))               // cible à couvert dans un buisson
@@ -559,7 +570,7 @@ public sealed class Match
     {
         if (amount <= 0)
             return;
-        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChance)
+        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChanceValue)
             return;   // attaque esquivée : aucun dégât
         unit.TakeDamage(amount);
         unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
@@ -592,6 +603,45 @@ public sealed class Match
             ApplyDamage(u, fixedDamage ?? EffectiveDamage(attacker, attackerCell, u, c), attacker);
             RemoveDeadAt(c, attacker);
         }
+    }
+
+    /// <summary>
+    /// « Séisme » : déclenché À LA FIN DU TOUR ADVERSE (appelé par la scène). Chaque unité de
+    /// <paramref name="actor"/> portant le trait <see cref="Trait.Seisme"/> frappe les ENNEMIS des 8 cases
+    /// autour d'elle pour ses dégâts EFFECTIFS (sa puissance, moins les défenses de chaque cible). Les morts
+    /// sont retirés et crédités au porteur. Renvoie les (case, dégâts réellement infligés) pour le feedback.
+    /// </summary>
+    public IReadOnlyList<(Cell Cell, int Damage)> ApplySeismes(Faction actor)
+    {
+        var hits = new List<(Cell, int)>();
+        if (IsOver)
+            return hits;
+
+        // On fige les porteurs AVANT : le splash retire des unités et invaliderait une itération sur Units().
+        var casterCells = Units()
+            .Where(cu => cu.Unit.Faction == actor && cu.Unit.HasTrait(Trait.Seisme))
+            .Select(cu => cu.Cell).ToList();
+
+        foreach (var casterCell in casterCells)
+        {
+            if (UnitAt(casterCell) is not { } caster || !caster.HasTrait(Trait.Seisme))
+                continue;   // porteur tombé entre-temps (cas de bord)
+            foreach (var (dc, dr) in Neighbors8)
+            {
+                var c = new Cell(casterCell.Column + dc, casterCell.Row + dr);
+                if (UnitAt(c) is not { } victim || victim.Faction == actor)
+                    continue;
+                var before = victim.Hp;
+                ApplyDamage(victim, EffectiveDamage(caster, casterCell, victim, c), caster);
+                var dealt = before - victim.Hp;   // 0 si esquivé
+                if (dealt > 0)
+                    hits.Add((c, dealt));
+                RemoveDeadAt(c, caster);
+            }
+        }
+
+        UpdateWinner();   // un séisme peut achever le dernier ennemi → victoire
+        return hits;
     }
 
     /// <summary>Diviseur d'« Embrochage » : les voisins de la cible prennent la puissance divisée par autant.</summary>

@@ -1183,8 +1183,23 @@ public sealed class Run
     // déjà au sommet de son arbre (feuille) ne peut pas fusionner — l'arbre étant récursif, un futur
     // tier 3 réactiverait automatiquement la fusion une fois les évolutions ajoutées au JSON.
 
-    /// <summary>Nombre d'exemplaires d'une même classe requis pour fusionner.</summary>
-    public const int FusionSize = 3;
+    /// <summary>
+    /// Nombre d'exemplaires d'une même classe requis pour fusionner une classe du <paramref name="domaine"/>
+    /// donné. Base 3, RAMENÉ au minimum de 2 par un nœud « Amalgame »
+    /// (<see cref="CommandEffectKind.FusionSizeReduction"/>) — GLOBAL, ou restreint à un domaine (ex. le Bastion :
+    /// uniquement le domaine de la Tour).
+    /// </summary>
+    public int FusionSizeFor(Domaine domaine) =>
+        System.Math.Max(2, BaseFusionSize - ActiveEffects
+            .Where(e => e.Kind == CommandEffectKind.FusionSizeReduction && (e.Domaine is null || e.Domaine == domaine))
+            .Sum(e => e.Amount));
+    private const int BaseFusionSize = 3;
+
+    /// <summary>Bonus de réduction du trait « Rempart » apporté par l'arbre (nœud « Rempart renforcé »). 0 = aucun.</summary>
+    public int RempartBonus => TotalOf(CommandEffectKind.RempartBonus);
+
+    /// <summary>Bonus (points de %) de chance du trait « Esquive » apporté par l'arbre (nœud « Esquive renforcée »). 0 = aucun.</summary>
+    public int EsquiveBonusPercent => TotalOf(CommandEffectKind.EsquiveBonus);
 
     /// <summary>
     /// Deux gabarits sont de la MÊME classe (donc fusionnables ensemble) s'ils partagent domaine et
@@ -1199,21 +1214,21 @@ public sealed class Run
 
     /// <summary>
     /// Vrai si <paramref name="spec"/> peut amorcer une fusion : en placement, non essentiel, classe
-    /// non-feuille (évolutions disponibles) et au moins <see cref="FusionSize"/> exemplaires en roster.
+    /// non-feuille (évolutions disponibles) et assez d'exemplaires en roster (cf. <see cref="FusionSizeFor"/>).
     /// </summary>
     public bool CanFuse(UnitSpec spec) =>
         Phase == RunPhase.Placement
         && !spec.Essential
         && !spec.UnitClass.IsLeaf
-        && CountFusable(spec) >= FusionSize;
+        && CountFusable(spec) >= FusionSizeFor(spec.Domaine);
 
     /// <summary>Les évolutions proposées au choix pour fusionner <paramref name="spec"/> (vide si impossible).</summary>
     public IReadOnlyList<UnitClass> FusionOptions(UnitSpec spec) =>
         CanFuse(spec) ? spec.UnitClass.Evolutions : System.Array.Empty<UnitClass>();
 
     /// <summary>
-    /// Réalise la fusion : retire <see cref="FusionSize"/> exemplaires de la classe de
-    /// <paramref name="spec"/> et ajoute 1 unité de la classe <paramref name="evolution"/> choisie.
+    /// Réalise la fusion : retire le nombre requis d'exemplaires de la classe de <paramref name="spec"/>
+    /// (cf. <see cref="FusionSizeFor"/>) et ajoute 1 unité de la classe <paramref name="evolution"/> choisie.
     /// Renvoie le nouveau gabarit, ou <c>null</c> si la fusion est invalide (mauvaise phase, classe
     /// feuille/essentielle, pas assez d'exemplaires, ou évolution étrangère à l'arbre de la classe).
     /// </summary>
@@ -1221,29 +1236,32 @@ public sealed class Run
     {
         if (!CanFuse(spec))
             return null;
-        // Retire FusionSize exemplaires (n'importe lesquels : ils sont identiques).
-        var group = _roster.Where(u => !u.Essential && SameClass(u, spec)).Take(FusionSize).ToList();
+        // Retire le nombre requis d'exemplaires (n'importe lesquels : ils sont identiques).
+        var group = _roster.Where(u => !u.Essential && SameClass(u, spec)).Take(FusionSizeFor(spec.Domaine)).ToList();
         return Fuse(group, evolution);
     }
 
     /// <summary>
-    /// Variante EXPLICITE : fusionne précisément les <see cref="FusionSize"/> gabarits donnés (instances
-    /// réellement présentes au roster, de même classe non-feuille/non-essentielle). Le caller choisit donc
-    /// quelles instances sont consommées — indispensable côté scène, où roster, réserve et pièces posées
-    /// partagent les mêmes instances <see cref="UnitSpec"/> : retirer les bonnes évite de désynchroniser
-    /// la vue. Renvoie le nouveau gabarit (ajouté au roster), ou <c>null</c> si le groupe est invalide.
+    /// Variante EXPLICITE : fusionne précisément le nombre requis de gabarits donnés (instances réellement
+    /// présentes au roster, de même classe non-feuille/non-essentielle ; cf. <see cref="FusionSizeFor"/>). Le
+    /// caller choisit donc quelles instances sont consommées — indispensable côté scène, où roster, réserve et
+    /// pièces posées partagent les mêmes instances <see cref="UnitSpec"/> : retirer les bonnes évite de
+    /// désynchroniser la vue. Renvoie le nouveau gabarit (ajouté au roster), ou <c>null</c> si le groupe est invalide.
     /// </summary>
     public UnitSpec? Fuse(IReadOnlyList<UnitSpec> group, UnitClass evolution)
     {
+        if (group.Count == 0)
+            return null;
+        var size = FusionSizeFor(group[0].Domaine);   // taille requise pour le domaine de la classe fusionnée
         // Autorisée au PLACEMENT (drag-stack habituel) ET au RECRUTEMENT (faire de la place sous le plafond
         // de réserve en fusionnant, cf. écrans draft/récompense).
-        if (Phase is not (RunPhase.Placement or RunPhase.Recruitment) || group.Count != FusionSize)
+        if (Phase is not (RunPhase.Placement or RunPhase.Recruitment) || group.Count != size)
             return null;
 
         var first = group[0];
         if (first.Essential || first.UnitClass.IsLeaf || !first.UnitClass.Evolutions.Contains(evolution))
             return null;
-        if (group.Distinct().Count() != FusionSize)                        // FusionSize instances DISTINCTES
+        if (group.Distinct().Count() != size)                             // instances DISTINCTES
             return null;
         if (group.Any(u => !SameClass(u, first) || !_roster.Contains(u)))  // même classe + réellement au roster
             return null;

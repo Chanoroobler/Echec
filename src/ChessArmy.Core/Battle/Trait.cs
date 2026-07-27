@@ -37,6 +37,7 @@ public static class Trait
     public const string Tempete = "Tempête";                 // idem Orage (3 ennemis au hasard), dégât fixe plus élevé
     public const string AttaqueLibre = "Attaque libre";      // AJOUTE le tir comme une Dame (8 directions en ligne) EN PLUS de l'attaque native (le cavalier garde son saut)
     public const string Statique = "Statique";               // ne prend JAMAIS la place de sa cible en la tuant : reste sur sa case
+    public const string Seisme = "Séisme";                   // à la FIN du tour adverse : frappe les ennemis adjacents pour sa puissance
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
@@ -44,6 +45,6 @@ public static class Trait
         Rempart, TraverseAllie, Soin, SoinParfait, DegatsDeZone, Franchissement, Transpercement, Interception,
         AuraDeRempart, AuraDePuissance, AuraDeSurpuissance, Riposte, Duelliste, Rage,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Embrochage, Orage, Tempete, AttaqueLibre,
-        Statique,
+        Statique, Seisme,
     };
 }

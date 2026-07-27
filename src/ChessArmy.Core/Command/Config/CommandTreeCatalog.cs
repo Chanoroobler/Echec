@@ -67,6 +67,9 @@ public static class CommandTreeCatalog
             "deployslots" => CommandEffect.DeploySlots(amount),
             "fusionrecruit" => CommandEffect.FusionRecruit(amount, DomaineOf(e, nodeId)),
             "elitedeathrecruit" => CommandEffect.EliteDeathRecruit(amount, DomaineOf(e, nodeId)),
+            "fusionsizereduction" => CommandEffect.FusionSizeReduction(amount, DomaineOf(e, nodeId)),
+            "rempartbonus" => CommandEffect.RempartBonus(amount),
+            "esquivebonus" => CommandEffect.EsquiveBonus(amount),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }

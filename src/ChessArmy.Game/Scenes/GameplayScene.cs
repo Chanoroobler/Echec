@@ -267,6 +267,12 @@ public sealed class GameplayScene : Scene
     private readonly MeleeStrikeFx _fx = new();
     // Particules poolées : ne servent plus que pour le feu d'artifice d'extinction des chiffres de dégâts.
     private readonly SparkBurst _sparks = new();
+
+    // « Séisme » : secousse de plateau (tremblement de terre) INDÉPENDANTE des FX d'attaque (cf. ShakeBoard),
+    // déclenchée à la fin du tour ennemi. Compte à rebours en secondes ; l'amplitude décroît avec lui.
+    private float _seismeShake;
+    private const float SeismeShakeDuration = 0.45f;
+    private const float SeismeShakeMagnitude = 5f;
     // Garde-fou « impact traité une seule fois par coup » (spawn du chiffre de dégâts au contact).
     private bool _impactHandled;
     // Chiffres de dégâts flottants (jaillis à l'impact, puis éclatent) + dégâts du coup en attente.
@@ -342,7 +348,13 @@ public sealed class GameplayScene : Scene
     private readonly List<UnitSpec> _fusionGroup = new();
     private Cell? _fusionCell;
     private int _fusionFocus;
-    private bool FusionOpen => _fusionGroup.Count == Run.FusionSize;
+    private bool FusionOpen => _fusionGroup.Count > 0 && _fusionGroup.Count == FusionGroupTarget;
+
+    /// <summary>Nombre de pions requis pour fusionner la classe de <paramref name="spec"/> (domaine inclus, cf. Amalgame).</summary>
+    private int FusionSizeOf(UnitSpec spec) => _run.FusionSizeFor(spec.Domaine);
+
+    /// <summary>Taille CIBLE de la pile de fusion en cours (selon le domaine de sa classe), ou 0 si aucune pile.</summary>
+    private int FusionGroupTarget => _fusionGroup.Count > 0 ? _run.FusionSizeFor(_fusionGroup[0].Domaine) : 0;
 
     // Portage de la pile ENTIÈRE (on attrape les 2 pièces d'un coup, pour la déplacer). _carryPileFrom
     // = ancre d'origine (null = réserve) pour restaurer sur un lâcher invalide.
@@ -991,8 +1003,10 @@ public sealed class GameplayScene : Scene
         // Mission « protéger » : le joueur ne peut pas se poser sur les cases paysan (il les défend, ne les
         // squatte pas) ; les ennemis, eux, y vont pour les capturer.
         var playerBlocked = IsProtectMission ? _recrueCells : null;
+        // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé » / « Esquive renforcée » (cf. Run + Match).
         _match = new Match(Columns, Rows, _battlefield, _bushCells,
-            eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
+            eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked,
+            rempartBonus: _run.RempartBonus, esquiveBonusPercent: _run.EsquiveBonusPercent);
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
         _specialBriefOpen = _specialMission;
@@ -1606,6 +1620,11 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void RespawnPlayerUnitsFromSpecs()
     {
+        // Un nœud acheté en placement peut régler le MOTEUR (Rempart renforcé / Esquive renforcée) : on
+        // resynchronise les valeurs effectives du Match en plus de réinstancier les pions (stats d'arbre).
+        // _run peut être null (tutoriel) → aucun bonus d'arbre.
+        _match.RempartReductionValue = Match.BaseRempartReduction + (_run?.RempartBonus ?? 0);
+        _match.EsquiveChanceValue = Match.BaseEsquiveChance + (_run?.EsquiveBonusPercent ?? 0) / 100.0;
         foreach (var (cell, unit) in _match.Units().Where(u => u.Unit.Faction == Faction.Player).ToList())
             RespawnAt(cell, unit);
     }
@@ -2944,10 +2963,10 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Vrai si ce portrait de réserve peut amorcer une fusion (classe non-feuille + 3 en réserve).</summary>
     private bool CanFuseFromReserve(UnitSpec spec) =>
-        !spec.Essential && !spec.UnitClass.IsLeaf && PendingSameClassCount(spec) >= Run.FusionSize;
+        !spec.Essential && !spec.UnitClass.IsLeaf && PendingSameClassCount(spec) >= FusionSizeOf(spec);
 
     /// <summary>Une pile de fusion est en cours d'assemblage (entre 1 et FusionSize-1 pièces).</summary>
-    private bool FusionStacking => _fusionGroup.Count > 0 && _fusionGroup.Count < Run.FusionSize;
+    private bool FusionStacking => _fusionGroup.Count > 0 && _fusionGroup.Count < FusionGroupTarget;
 
     /// <summary>Pile ancrée dans la RÉSERVE (par opposition à une pile sur le plateau).</summary>
     private bool FusionInReserve => _fusionCell is null;
@@ -3195,7 +3214,7 @@ public sealed class GameplayScene : Scene
             return;
         _fusionGroup.Clear();
         _fusionCell = null;
-        for (var i = _pending.Count - 1; i >= 0 && _fusionGroup.Count < Run.FusionSize; i--)
+        for (var i = _pending.Count - 1; i >= 0 && _fusionGroup.Count < FusionSizeOf(rep); i--)
             if (Run.SameClass(_pending[i], rep))
             {
                 _fusionGroup.Add(_pending[i]);
@@ -3437,6 +3456,8 @@ public sealed class GameplayScene : Scene
         }
 
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
+        if (_seismeShake > 0f)     // la secousse de séisme s'éteint (cf. ShakeBoard / SeismeShakeOffset)
+            _seismeShake = System.Math.Max(0f, _seismeShake - dt);
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
@@ -4561,11 +4582,37 @@ public sealed class GameplayScene : Scene
         return cells;
     }
 
-    /// <summary>Fin d'un tour ennemi (action jouée ou passée) = un round écoulé : décompte la limite spéciale.</summary>
+    /// <summary>Fin d'un tour ennemi (action jouée ou passée) = un round écoulé : décompte la limite spéciale
+    /// puis déclenche les « Séismes » des pions joueur (trait <see cref="Trait.Seisme"/>).</summary>
     private void OnEnemyTurnResolved()
     {
         if (_specialMission && _specialRoundsLeft > 0)
             _specialRoundsLeft--;
+        TriggerSeismes();
+    }
+
+    /// <summary>
+    /// « Séisme » : à la FIN du tour ennemi, chaque pion JOUEUR portant le trait frappe les ennemis adjacents
+    /// pour sa puissance (cf. <see cref="Match.ApplySeismes"/>). Feedback : un chiffre de dégâts par cible
+    /// touchée + le son de décharge (partagé avec l'orage). Les dégâts/kills sont déjà appliqués côté moteur.
+    /// </summary>
+    private void TriggerSeismes()
+    {
+        var hits = _match.ApplySeismes(Faction.Player);
+        if (hits.Count == 0)
+            return;
+        _seismeShake = SeismeShakeDuration;                 // tremblement de terre : le plateau tressaute
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var pixel = MathF.Max(2f, tile / 32f);
+        foreach (var (cell, dmg) in hits)
+        {
+            _damagePopups.Spawn(cell, dmg);
+            // Poussière/débris giclant du sol sous chaque ennemi frappé.
+            var ground = layout.CellToScreen(cell.Column, cell.Row) + new Vector2(tile / 2f, tile * 0.7f);
+            _sparks.EmitDust(ground, 10, pixel);
+        }
+        Context.Sounds.Play("seisme");
     }
 
     private void UpdateRecruitment(GameTime gameTime)
@@ -4884,9 +4931,9 @@ public sealed class GameplayScene : Scene
     /// exemplaires DANS le pool). Le pool borne les instances consommables : réserve non déployée en combat
     /// (pas de désync plateau), tout le roster hors combat.
     /// </summary>
-    private static bool CanFuseReserve(UnitSpec spec, List<UnitSpec> pool) =>
+    private bool CanFuseReserve(UnitSpec spec, List<UnitSpec> pool) =>
         !spec.UnitClass.IsLeaf
-        && pool.Count(u => !u.Essential && Run.SameClass(u, spec)) >= Run.FusionSize;
+        && pool.Count(u => !u.Essential && Run.SameClass(u, spec)) >= FusionSizeOf(spec);
 
     /// <summary>Indice de la carte de RÉSERVE (armée hors commandant) sous <paramref name="p"/>, ou null.</summary>
     private int? ArmyPanelCardAt(Point p, int armyCount)
@@ -5065,7 +5112,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void FuseReserve(UnitSpec rep, UnitClass evolution, List<UnitSpec> pool)
     {
-        var group = pool.Where(u => !u.Essential && Run.SameClass(u, rep)).Take(Run.FusionSize).ToList();
+        var group = pool.Where(u => !u.Essential && Run.SameClass(u, rep)).Take(FusionSizeOf(rep)).ToList();
         if (_run.Fuse(group, evolution) != null)
             GrantFusionRecruits();   // nœud « fusion » de l'arbre : recrues offertes en plus
         Context.Sounds.Play("recruit");
@@ -5818,7 +5865,7 @@ public sealed class GameplayScene : Scene
         {
             var r = new Rectangle(cx - InvIconSize / 2, cy - InvIconSize / 2, InvIconSize, InvIconSize);
             DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, r, front: true);
-            Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+            Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{FusionGroupTarget}",
                 new Rectangle(r.X, r.Bottom - 13, r.Width, 10), 1, Palette.Yellow2);
         }
         else if (hasDrag)
@@ -6738,13 +6785,26 @@ public sealed class GameplayScene : Scene
     /// <summary>Renvoie le layout décalé de la secousse d'écran si une attaque s'anime, sinon tel quel.</summary>
     private GridLayout ShakeBoard(GridLayout layout)
     {
-        if (!_fx.Active)
-            return layout;
-        var s = _fx.ShakeOffset(_fx.Killed ? 4f : 2f);     // secousse plus marquée sur un kill
+        // Priorité au FX d'attaque en cours ; sinon, la secousse de « Séisme » (tremblement de terre).
+        var s = _fx.Active ? _fx.ShakeOffset(_fx.Killed ? 4f : 2f)   // secousse plus marquée sur un kill
+              : SeismeShakeOffset();
         if (s == Point.Zero)
             return layout;
         return new GridLayout(layout.Origin + new Vector2(s.X, s.Y),
             layout.TileSize, layout.SpriteWidth, layout.SpriteHeight, layout.RowPitch);
+    }
+
+    /// <summary>Décalage de la secousse « Séisme » (px entiers), sinusoïde décroissante — comme les FX d'attaque.</summary>
+    private Point SeismeShakeOffset()
+    {
+        if (_seismeShake <= 0f)
+            return Point.Zero;
+        var elapsed = SeismeShakeDuration - _seismeShake;
+        var decay = _seismeShake / SeismeShakeDuration;
+        var phase = elapsed * 90f;
+        var x = MathF.Sin(phase) * SeismeShakeMagnitude * decay;
+        var y = MathF.Sin(phase * 1.7f + 1.1f) * SeismeShakeMagnitude * decay;
+        return new Point((int)MathF.Round(x), (int)MathF.Round(y));
     }
 
     /// <summary>
@@ -7257,7 +7317,7 @@ public sealed class GameplayScene : Scene
         DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, card, front: true);
 
         // Compteur « N/3 » sous la pile.
-        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{FusionGroupTarget}",
             new Rectangle(card.X - InvGapX / 2, card.Bottom + 2, card.Width + InvGapX, 10), 1, Palette.Yellow2);
         DrawFusionCancelButton(sb, FusionStackCancelRect());
     }
@@ -7296,7 +7356,7 @@ public sealed class GameplayScene : Scene
         DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, rect, front: false);
 
         // Compteur « N/3 » en bas de la case.
-        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{FusionGroupTarget}",
             new Rectangle(rect.X, rect.Bottom - 13, rect.Width, 10), 1, Palette.Yellow2);
         DrawFusionCancelButton(sb, FusionBoardCancelRect(layout));
     }
@@ -7319,7 +7379,7 @@ public sealed class GameplayScene : Scene
             rect = new Rectangle(m.X - InvIconSize / 2, m.Y - InvIconSize / 2, InvIconSize, InvIconSize);
         }
         DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, rect, front: true);
-        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+        Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{FusionGroupTarget}",
             new Rectangle(rect.X, rect.Bottom - 13, rect.Width, 10), 1, Palette.Yellow2);
     }
 

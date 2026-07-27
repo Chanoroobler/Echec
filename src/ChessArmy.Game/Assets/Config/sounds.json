@@ -18,6 +18,8 @@
   "unit_shoot":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
   "storm":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Magic G.wav",
   "dodge":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh A.wav",
+  // « Séisme » (trait du commandant Bastion) : impact lourd, distinct du zap magique de l'orage.
+  "seisme":       "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Hits and Swings/Heavy Swing D.wav",
 
   // ── Fin de combat / campagne ─────────────────────────────────
   "combat_won": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up A.wav",

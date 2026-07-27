@@ -44,6 +44,7 @@ public static class UnitKeywords
         ["Tempête"] = "kw.tempete",
         ["Attaque libre"] = "kw.attaque_libre",
         ["Statique"] = "kw.statique",
+        ["Séisme"] = "kw.seisme",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

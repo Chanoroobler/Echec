@@ -38,6 +38,12 @@ internal sealed class SparkBurst
         new(255, 210, 90), new(255, 140, 60), new(255, 70, 70), new(255, 240, 200),
     };
 
+    // Teintes TERREUSES (brun, terre, sable, gris) pour la poussière du « Séisme ».
+    private static readonly Color[] DustColors =
+    {
+        new(150, 120, 80), new(110, 90, 60), new(180, 160, 130), new(95, 85, 72),
+    };
+
     public bool HasActive => _active.Count > 0;
 
     /// <summary>Vide les particules en cours (au démarrage d'un nouveau combat) et les rend au pool.</summary>
@@ -66,6 +72,28 @@ internal sealed class SparkBurst
             s.Life = s.MaxLife;
             s.Size = _rng.Next(4) == 0 ? size * 2 : size;               // quelques grosses braises
             s.Color = FireworkColors[_rng.Next(FireworkColors.Length)];
+            _active.Add(s);
+        }
+    }
+
+    /// <summary>
+    /// Gerbe de POUSSIÈRE / débris terreux depuis <paramref name="origin"/> (au sol) : projetée surtout vers
+    /// le HAUT et les côtés, puis retombe sous la gravité (cf. <see cref="Update"/>). Sert au « Séisme ».
+    /// </summary>
+    public void EmitDust(Vector2 origin, int count, float pixel)
+    {
+        var size = Math.Max(2, (int)pixel);
+        for (var i = 0; i < count; i++)
+        {
+            var s = _pool.Get();
+            var ang = (float)(-Math.PI / 2 + (_rng.NextDouble() - 0.5) * Math.PI);   // vers le haut, ±90°
+            var speed = 70f + (float)_rng.NextDouble() * 150f;
+            s.Position = origin;
+            s.Velocity = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * speed;
+            s.MaxLife = 0.30f + (float)_rng.NextDouble() * 0.35f;
+            s.Life = s.MaxLife;
+            s.Size = size;
+            s.Color = DustColors[_rng.Next(DustColors.Length)];
             _active.Add(s);
         }
     }
