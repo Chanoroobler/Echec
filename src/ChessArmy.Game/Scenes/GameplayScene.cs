@@ -100,8 +100,8 @@ public sealed class GameplayScene : Scene
     private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
     // Looks du pion recrue : chaque paire <Nom>_front.png (+ <Nom>_back.png optionnel) de Assets/Objects/ =
-    // une variante ; une seule est tirée STABLE par case (cf. RecrueSpriteFor). En mission « Protéger », on
-    // prend le _back (le paysan fait face comme une unité alliée) ; sinon le _front (jeton face caméra).
+    // une variante ; une seule est tirée STABLE par case (cf. RecrueSpriteFor). L'orientation suit la MOITIÉ
+    // du plateau, comme les pions (moitié haute → _front, moitié basse → _back), cf. DefaultFacesDown.
     // Liste vide → placeholder « ? » dessiné.
     private readonly List<(Texture2D Front, Texture2D? Back)> _recrueLooks = new();
 
@@ -310,7 +310,7 @@ public sealed class GameplayScene : Scene
     private Match _match = null!;
 
     // Orientation visuelle par unité : true = regarde vers le bas (face caméra). Suit la dernière
-    // action verticale (déplacement/attaque) ; défaut = vers l'adversaire (cf. DefaultFacesDown).
+    // action verticale (déplacement/attaque) ; à défaut, selon la MOITIÉ du plateau (cf. DefaultFacesDown).
     private readonly Dictionary<Unit, bool> _facesDown = new();
 
     // Lien unité déployée → gabarit d'inventaire, pour calculer les pertes après combat.
@@ -529,7 +529,9 @@ public sealed class GameplayScene : Scene
         _water = LoadWater();
 
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
-        _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
+        // « Recommencer la mission » disparaît du menu pause si la difficulté l'interdit (Difficile : run sans filet).
+        _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height),
+            allowRestart: DifficultySettings.For(_chosenDifficulty).AllowRestart);
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
         _commandTree = new CommandTreeView(Context);
         _codex = new CodexView(Context);
@@ -549,6 +551,7 @@ public sealed class GameplayScene : Scene
         _waterNoise.Dispose();
         _water.Dispose();
         _boardTarget?.Dispose(); _uiTarget?.Dispose(); _ghostTarget?.Dispose();   // couches de dézoom
+        _hoverCardTarget?.Dispose();   // couche de fondu des cartes-tooltips de survol
         _commandTree.Unload();
         _codex.Unload();
         foreach (var sprite in _unitSprites.Values)
@@ -639,15 +642,15 @@ public sealed class GameplayScene : Scene
         ChessArmy.Core.Campaign.CampaignPlan.For(phaseIndex, missionInPhase).MapSize;
 
     /// <summary>
-    /// Map à utiliser pour le combat courant. ESCARMOUCHE : une map d'escarmouche à la taille
-    /// <paramref name="size"/> attendue par la phase (cf. <see cref="MapSizeFor"/>), sinon null = terrain
-    /// aléatoire de cette taille. BOSS : tirage par PHASE (cf. <see cref="BossMapFor"/>), sans tenir compte
-    /// de la taille — c'est la map qui impose la taille du plateau. MISSION SPÉCIALE : tirage ALÉATOIRE parmi
-    /// les maps <see cref="CombatType.Speciale"/> RÉSERVÉES À LA PHASE courante (<see cref="MapData.Phase"/> ==
-    /// phase) ou marquées « toutes phases » (Phase == 0), la TAILLE venant aussi de la map. Le tirage est
-    /// DÉTERMINISTE (stable si on reprend le combat) mais varie d'une run à l'autre.
+    /// Map à utiliser pour le combat courant. ESCARMOUCHE : cf. <see cref="EscarmoucheMapFor"/> (pool de la
+    /// taille de la phase, élargi aux 9×9/10×10 dès la phase 3, en évitant les répétitions dans la run), sinon
+    /// null = terrain aléatoire. BOSS : tirage par PHASE (cf. <see cref="BossMapFor"/>), sans tenir compte de la
+    /// taille — c'est la map qui impose la taille du plateau. MISSION SPÉCIALE : tirage ALÉATOIRE parmi les maps
+    /// <see cref="CombatType.Speciale"/> RÉSERVÉES À LA PHASE courante (<see cref="MapData.Phase"/> == phase) ou
+    /// marquées « toutes phases » (Phase == 0), la TAILLE venant aussi de la map. Tirage DÉTERMINISTE (stable si
+    /// on reprend le combat) mais qui varie d'une run à l'autre.
     /// </summary>
-    private MapData? MapForCombat(int size)
+    private MapData? MapForCombat()
     {
         if (_run.CurrentMission == CombatType.Speciale)
             return SpecialMapFor(_run.PhaseIndex, _run.MissionInPhase);
@@ -655,7 +658,54 @@ public sealed class GameplayScene : Scene
         if (_run.CurrentMission == CombatType.Boss)
             return BossMapFor(_run.PhaseIndex, _run.MissionInPhase);
 
-        return PickMap(MatchingMaps(CombatType.Escarmouche, size), size);
+        return EscarmoucheMapFor(_run.CombatNumber);
+    }
+
+    /// <summary>
+    /// Map d'un combat ESCARMOUCHE. Pool = maps carrées de type <see cref="CombatType.Escarmouche"/> à la
+    /// TAILLE attendue par la mission (cf. <see cref="MapSizeFor"/>), ÉLARGI aux 9×9 et 10×10 dès la PHASE 3.
+    /// On évite AU MAXIMUM de retomber sur une map déjà sortie dans la run : le tirage est REJOUÉ depuis le
+    /// 1er combat en accumulant les maps utilisées et en les sautant ; pool éligible épuisé → on autorise la
+    /// répétition. Pure fonction de (graine, <paramref name="combatNumber"/>) → stable si on reprend la partie.
+    /// Null (aucune map éligible) = terrain aléatoire (cf. l'appelant).
+    /// </summary>
+    private MapData? EscarmoucheMapFor(int combatNumber)
+    {
+        var used = new HashSet<MapData>();
+        MapData? chosen = null;
+        for (var n = 1; n <= combatNumber; n++)
+        {
+            var phase = (n - 1) / Run.MissionsPerPhase + 1;
+            var mission = (n - 1) % Run.MissionsPerPhase + 1;
+            if (Run.MissionKindAt(phase, mission) != CombatType.Escarmouche)
+                continue;
+            var pool = ShuffledEscarmouchePool(phase, mission);
+            chosen = pool.Count == 0
+                ? null
+                : pool.FirstOrDefault(m => !used.Contains(m)) ?? pool[(n - 1) % pool.Count];
+            if (chosen != null)
+                used.Add(chosen);
+        }
+        return chosen;
+    }
+
+    /// <summary>
+    /// Pool d'escarmouches éligibles pour un combat, mélangé de façon DÉTERMINISTE (graine de run) : maps
+    /// carrées de type <see cref="CombatType.Escarmouche"/> à la taille de la mission (cf.
+    /// <see cref="MapSizeFor"/>), plus 9×9 et 10×10 dès la phase 3.
+    /// </summary>
+    private List<MapData> ShuffledEscarmouchePool(int phaseIndex, int missionInPhase)
+    {
+        var size = MapSizeFor(phaseIndex, missionInPhase);
+        var pool = _maps.Where(m => m.Type == CombatType.Escarmouche && m.Width == m.Height
+            && (m.Width == size || (phaseIndex >= 3 && (m.Width == 9 || m.Width == 10)))).ToList();
+        var rng = new System.Random(unchecked(_run.Seed * 6151 + 4243));
+        for (var i = pool.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+        }
+        return pool;
     }
 
     /// <summary>
@@ -906,7 +956,7 @@ public sealed class GameplayScene : Scene
         // Taille du plateau selon (phase, mission) — cf. MapSizeFor : phase 1 = 6×6, sauf missions 4-5 = 7×7 ;
         // phase 2 = 7×7 ; phase 3 = 8×8. Map dessinée de cette taille si dispo, sinon terrain aléatoire de même taille.
         var size = MapSizeFor(_run.PhaseIndex, _run.MissionInPhase);
-        _map = MapForCombat(size);
+        _map = MapForCombat();
         if (_map is { } map)
         {
             Columns = map.Width;
@@ -1070,6 +1120,9 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void RestartMission()
     {
+        // Filet de sécurité : la difficulté peut interdire de recommencer (le bouton est alors absent du menu).
+        if (!DifficultySettings.For(_chosenDifficulty).AllowRestart)
+            return;
         if (_missionStart is not { } start)
             return;   // tutoriel : aucune phase de placement n'a eu lieu, rien à rejouer
         // Uniquement TANT QU'ON Y EST : en recrutement, la mission est déjà gagnée et « recommencer »
@@ -1756,6 +1809,9 @@ public sealed class GameplayScene : Scene
         }
 
         if (_pauseMenu.IsOpen) { UpdatePauseMenu(); return; }
+
+        // Survol d'un pion : alimente le fondu d'entrée de sa carte-tooltip (cf. TooltipHoverAlpha).
+        UpdateTooltipHover((float)gameTime.ElapsedGameTime.TotalSeconds);
 
         // Chronomètre de la run. Placé APRÈS les sorties anticipées ci-dessus, il ne compte donc QUE le
         // temps réellement joué : menu pause et codex sont exclus d'office, et l'écran de récap l'est par
@@ -3489,6 +3545,16 @@ public sealed class GameplayScene : Scene
             CheckBattleEnd();
             if (_run.Phase != RunPhase.Battle)
                 return;
+        }
+
+        // Bascule tooltip CONDENSÉ ↔ DÉTAILLÉ, valable sur les deux tours (avant l'aiguillage). X manette à
+        // tout moment ; clic droit SEULEMENT s'il n'annule pas une sélection/un glisser — sinon l'annulation
+        // prime (cf. UpdatePlayerTurn), le clic droit n'est donc pas volé.
+        if (Context.Input.WasTertiaryPressed
+            || (Context.Input.WasRightClicked && _selected is null && _combatDragFrom is null))
+        {
+            _detailedTooltip = !_detailedTooltip;
+            Context.Sounds.Play("menu_click");
         }
 
         if (_match.CurrentTurn == Faction.Enemy)
@@ -5418,6 +5484,8 @@ public sealed class GameplayScene : Scene
 
         _deferredCards.Clear();           // cartes flottantes + popups : remplis pendant la passe, dessinés APRÈS le HUD
         _deferredKeywordPopups.Clear();
+        _deferredHoverCards.Clear();
+        _deferredHoverKeywordPopups.Clear();
 
         switch (_run.Phase)
         {
@@ -5591,8 +5659,13 @@ public sealed class GameplayScene : Scene
     {
         if (rt != null && rt.Width == w && rt.Height == h) return;
         rt?.Dispose();
+        // PreserveContents (et non le DiscardContents par défaut) : on RE-sélectionne parfois ces cibles en
+        // cours de frame (ex. fondu des cartes-tooltips qui part sur _hoverCardTarget puis restaure _uiTarget) ;
+        // avec DiscardContents, ce retour EFFACERAIT tout le contenu déjà dessiné → écran noir en dézoom. Elles
+        // sont Clear() explicitement à chaque frame, donc préserver le contenu ne change rien au rendu.
         rt = new Microsoft.Xna.Framework.Graphics.RenderTarget2D(device, w, h, false,
-            Microsoft.Xna.Framework.Graphics.SurfaceFormat.Color, Microsoft.Xna.Framework.Graphics.DepthFormat.None);
+            Microsoft.Xna.Framework.Graphics.SurfaceFormat.Color, Microsoft.Xna.Framework.Graphics.DepthFormat.None,
+            0, Microsoft.Xna.Framework.Graphics.RenderTargetUsage.PreserveContents);
     }
 
     /// <summary>
@@ -5657,6 +5730,8 @@ public sealed class GameplayScene : Scene
         device.Clear(Microsoft.Xna.Framework.Color.Transparent);
         _deferredCards.Clear();
         _deferredKeywordPopups.Clear();
+        _deferredHoverCards.Clear();
+        _deferredHoverKeywordPopups.Clear();
         if (_run.Phase == RunPhase.Placement)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
@@ -7611,7 +7686,8 @@ public sealed class GameplayScene : Scene
         var layout = BuildLayout();
         var board = BoardRect(layout);
         // Décrit une case du plateau (survol) → carte JUXTE le pion ; sinon (aperçu réserve) → à droite du plateau.
-        var rect = subject is { } s ? CardRectNearCell(s, layout) : RightCardRect(board);
+        // Carte d'aperçu = toujours DÉTAILLÉE (révélations recrue/évolution), donc au gabarit de combat plein.
+        var rect = subject is { } s ? CardRectNearCell(s, layout, CombatCardW, CombatCardH) : RightCardRect(board);
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
         // la frise, le briefing et le panneau, dessinés après elle.
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
@@ -7699,16 +7775,16 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Look de l'objet recrue pour une case (variante tirée STABLE par case), ou null si aucun PNG. En
-    /// mission « Protéger les paysans », on prend le dos (<c>_back</c>) — le paysan fait face comme une unité
-    /// alliée ; sinon la face (<c>_front</c>, jeton tourné vers la caméra). Repli sur la face si pas de dos.
+    /// Look de l'objet recrue pour une case (variante tirée STABLE par case), ou null si aucun PNG. Même règle
+    /// d'orientation que les pions (cf. <see cref="DefaultFacesDown"/>) : moitié HAUTE du plateau → face caméra
+    /// (<c>_front</c>), moitié BASSE → dos (<c>_back</c>), quelle que soit la mission. Repli sur la face si pas de dos.
     /// </summary>
     private Texture2D? RecrueSpriteFor(Cell cell)
     {
         if (_recrueLooks.Count == 0)
             return null;
         var look = _recrueLooks[VariantIndex("recrue", cell, _recrueLooks.Count)];
-        return IsProtectMission ? look.Back ?? look.Front : look.Front;
+        return cell.Row < Rows / 2 ? look.Front : look.Back ?? look.Front;
     }
 
     /// <summary>
@@ -8316,6 +8392,21 @@ public sealed class GameplayScene : Scene
     private const int CombatCardH = 330;
     private const int CombatCardGap = 24;
 
+    // Carte CONDENSÉE de combat : icônes de stats (valeurs effectives, sans « +N »), PV en texte, traits
+    // (noms seuls) + kills. Bien plus petite que la carte détaillée. cf. DrawCondensedCardLayout.
+    // La HAUTEUR est DYNAMIQUE (cf. CondensedCardHeight) : bloc haut fixe + bloc bas variable selon le nombre
+    // de lignes de traits, pour que « TUÉS » ne repasse jamais derrière les traits.
+    private const int CondensedCardW = 152;
+    private const int CondensedPad = 10;
+    // Bloc HAUT depuis rect.Y : 15 (marge tier/domaine) + 18 (nom) + 20 (PV) + 48 (icône 32 + 2 + valeur 14).
+    private const int CondensedTopBlockH = 101;
+    private const int CondensedBottomGap = 6;   // respiration entre les stats et le bloc traits/kills du bas
+
+    // Combat : les cartes-tooltips sont CONDENSÉES par défaut ; clic droit (souris) / X (manette) montre le
+    // détaillé pour le pion COURANT. Remis à false dès qu'on arrive sur un autre pion (cf. UpdateTooltipHover) :
+    // on revient donc toujours au condensé en survolant un nouveau pion. Sans effet hors combat.
+    private bool _detailedTooltip;
+
     /// <summary>
     /// Cartes flottantes du combat : l'unité SÉLECTIONNÉE s'affiche à droite du plateau, l'ennemi
     /// SURVOLÉ à gauche. Les deux peuvent coexister (sélection + survol d'un ennemi).
@@ -8330,6 +8421,19 @@ public sealed class GameplayScene : Scene
     private readonly List<Action> _deferredCards = new();
     private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted)>
         _deferredKeywordPopups = new();
+
+    // Cartes de SURVOL (tooltip d'un pion pointé, non sélectionné) : mêmes différés, mais FONDUES en entrée
+    // (cf. UpdateTooltipHover / TooltipHoverAlpha). Rendues à part dans _hoverCardTarget puis recomposées avec
+    // un alpha, pour que carte + popups de mots-clés fondent D'UN SEUL BLOC.
+    private readonly List<Action> _deferredHoverCards = new();
+    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted)>
+        _deferredHoverKeywordPopups = new();
+    private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _hoverCardTarget;
+
+    // Durée du fondu d'entrée d'une carte-tooltip de pion (secondes) — pas de délai : elle démarre au survol.
+    private const float TooltipHoverFadeSec = 0.5f;
+    private Cell? _tooltipHoverCell;
+    private float _tooltipHoverSec;
 
     /// <summary>
     /// Dessine EN DERNIER (par-dessus tout le HUD de phase — frise, briefing, panneau) les cartes flottantes
@@ -8347,13 +8451,91 @@ public sealed class GameplayScene : Scene
             _deferredCards.Clear();
         }
 
-        if (_deferredKeywordPopups.Count == 0)
-            return;
+        if (_deferredKeywordPopups.Count > 0)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            foreach (var (c, card, equip, buffs, granted) in _deferredKeywordPopups)
+                DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted);
+            sb.End();
+            _deferredKeywordPopups.Clear();
+        }
+
+        DrawDeferredHoverCards(sb);
+    }
+
+    /// <summary>
+    /// Cartes-tooltips de SURVOL : fondent en entrée sur <see cref="TooltipHoverFadeSec"/> dès le début du survol
+    /// (cf. <see cref="UpdateTooltipHover"/>). Carte
+    /// et popups sont d'abord rendues à part dans <see cref="_hoverCardTarget"/> (taille du viewport, comme la
+    /// couche où atterrissent les cartes), puis recomposées d'un seul bloc avec un alpha — ainsi le fondu
+    /// s'applique à l'ENSEMBLE et non pion par pion. Le render target courant (canvas normal ou couche UI du
+    /// dézoom) est sauvegardé puis restauré.
+    /// </summary>
+    private void DrawDeferredHoverCards(SpriteBatch sb)
+    {
+        var hasContent = _deferredHoverCards.Count > 0 || _deferredHoverKeywordPopups.Count > 0;
+        var alpha = TooltipHoverAlpha();
+        if (alpha >= 1f && hasContent)
+        {
+            // Pleinement visible (état stable) : dessin DIRECT, sans round-trip render target — donc rendu
+            // strictement identique aux autres cartes une fois le fondu terminé.
+            DrawHoverCardContent(sb);
+        }
+        else if (alpha > 0f && hasContent)
+        {
+            // En cours de fondu : carte + popups rendues à part dans _hoverCardTarget (taille du viewport,
+            // comme la couche où atterrissent les cartes), puis recomposées d'un seul bloc avec l'alpha.
+            var device = Context.GraphicsDevice;
+            var prev = device.GetRenderTargets();
+            var vp = VirtualViewport;
+            EnsureTarget(device, ref _hoverCardTarget, vp.Width, vp.Height);
+            device.SetRenderTarget(_hoverCardTarget);
+            device.Clear(Microsoft.Xna.Framework.Color.Transparent);
+            DrawHoverCardContent(sb);
+            if (prev.Length > 0) device.SetRenderTargets(prev); else device.SetRenderTarget(null);
+            sb.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            sb.Draw(_hoverCardTarget, Vector2.Zero, Microsoft.Xna.Framework.Color.White * alpha);
+            sb.End();
+        }
+        _deferredHoverCards.Clear();
+        _deferredHoverKeywordPopups.Clear();
+    }
+
+    /// <summary>Dessine les cartes-tooltips de survol différées PUIS leurs popups de mots-clés (deux batchs).</summary>
+    private void DrawHoverCardContent(SpriteBatch sb)
+    {
         sb.Begin(samplerState: SamplerState.PointClamp);
-        foreach (var (c, card, equip, buffs, granted) in _deferredKeywordPopups)
+        foreach (var draw in _deferredHoverCards)
+            draw();
+        sb.End();
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        foreach (var (c, card, equip, buffs, granted) in _deferredHoverKeywordPopups)
             DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted);
         sb.End();
-        _deferredKeywordPopups.Clear();
+    }
+
+    /// <summary>Opacité de la carte-tooltip de survol : rampe 0→1 sur la durée du fondu, dès le début du survol.</summary>
+    private float TooltipHoverAlpha() => System.Math.Min(1f, _tooltipHoverSec / TooltipHoverFadeSec);
+
+    /// <summary>
+    /// Suit la durée de survol CONTINU d'un pion : souris (ou curseur manette) posée sur la MÊME case portant
+    /// une unité, hors glisser de combat (les cartes sont alors masquées). Changer de case ou quitter un pion
+    /// remet le compteur à zéro (fondu d'entrée, cf. TooltipHoverAlpha) ET repasse le tooltip en CONDENSÉ :
+    /// le détaillé (clic droit / X) ne vaut que pour le pion courant, on revient au condensé en arrivant sur
+    /// un autre pion.
+    /// </summary>
+    private void UpdateTooltipHover(float dt)
+    {
+        var hovered = Context.Input.UsingGamepad ? (Cell?)_cursor : CellUnderMouse();
+        var cell = hovered is { } h && _combatDragFrom is null && _match.UnitAt(h) is not null ? hovered : null;
+        if (cell != _tooltipHoverCell)
+        {
+            _tooltipHoverCell = cell;
+            _tooltipHoverSec = 0f;
+            _detailedTooltip = false;   // nouveau pion survolé → retour au condensé par défaut
+        }
+        else if (cell is not null)
+            _tooltipHoverSec += dt;
     }
 
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
@@ -8377,20 +8559,32 @@ public sealed class GameplayScene : Scene
         // Carte de l'ennemi SURVOLÉ (à gauche).
         Cell? enemyCell = hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } ? he : null;
 
-        // Chaque carte se cale JUXTE le pion qu'elle décrit (à sa droite, cf. CardRectNearCell).
+        // Combat : cartes CONDENSÉES par défaut (icônes de stats + PV + traits/kills) ; clic droit / X bascule
+        // vers le détaillé (cf. _detailedTooltip). Hors combat (placement/équipement), toujours détaillé.
+        var condensed = _run.Phase == RunPhase.Battle && !_detailedTooltip;
+
+        // Chaque carte se cale JUXTE le pion qu'elle décrit (à sa droite, cf. CardRectNearCell). En condensé,
+        // la HAUTEUR dépend de l'unité (nombre de traits, cf. CondensedCardHeight).
+        // La carte SÉLECTIONNÉE apparaît d'un coup ; celle d'un pion seulement SURVOLÉ fond en entrée.
         Rectangle? ownCard = null;
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
-            ownCard = CardRectNearCell(oc, layout);
-            DrawUnitCard(sb, own, ownCard.Value, showKeywords: oc != _selected, cell: oc);
+            ownCard = CardRectNearCell(oc, layout,
+                condensed ? CondensedCardW : CombatCardW,
+                condensed ? CondensedCardHeight(own, oc) : CombatCardH);
+            var ownHover = oc != _selected;
+            DrawUnitCard(sb, own, ownCard.Value, showKeywords: ownHover, cell: oc, hover: ownHover, condensed: condensed);
         }
 
         // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
-        // les PV menacés clignotent sur sa barre.
+        // les PV menacés clignotent sur sa barre. Carte ennemie = toujours du survol (fondue en entrée).
         if (enemyCell is { } ec && _match.UnitAt(ec) is { } enemy)
         {
             var preview = _selected is { } sel && _attackTargets.Contains(ec) ? _match.PreviewDamage(sel, ec) : 0;
-            DrawUnitCard(sb, enemy, CardRectNearCell(ec, layout), preview, cell: ec);
+            var enemyRect = CardRectNearCell(ec, layout,
+                condensed ? CondensedCardW : CombatCardW,
+                condensed ? CondensedCardHeight(enemy, ec) : CombatCardH);
+            DrawUnitCard(sb, enemy, enemyRect, preview, cell: ec, hover: true, condensed: condensed);
         }
 
         // Tooltip d'environnement (buisson) de la case survolée.
@@ -8493,7 +8687,7 @@ public sealed class GameplayScene : Scene
     /// coller au bord du plateau (lisible même dézoomé, petit plateau centré). En placement, la marge droite
     /// exclut le panneau réserve.
     /// </summary>
-    private Rectangle CardRectNearCell(Cell cell, GridLayout layout)
+    private Rectangle CardRectNearCell(Cell cell, GridLayout layout, int cardW, int cardH)
     {
         var vp = VirtualViewport;
         int rightLimit = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
@@ -8501,13 +8695,48 @@ public sealed class GameplayScene : Scene
         int tile = layout.TileSize;
 
         int x = (int)pos.X + tile + CombatCardGap;                 // à droite du pion
-        if (x + CombatCardW > rightLimit - CombatCardGap)
-            x = (int)pos.X - CombatCardGap - CombatCardW;          // pas la place → à gauche du pion
-        x = Math.Clamp(x, CombatCardGap, Math.Max(CombatCardGap, rightLimit - CombatCardGap - CombatCardW));
+        if (x + cardW > rightLimit - CombatCardGap)
+            x = (int)pos.X - CombatCardGap - cardW;                // pas la place → à gauche du pion
+        x = Math.Clamp(x, CombatCardGap, Math.Max(CombatCardGap, rightLimit - CombatCardGap - cardW));
 
-        int y = (int)pos.Y + tile / 2 - CombatCardH / 2;           // centrée verticalement sur la case
-        y = Math.Clamp(y, CombatCardGap, Math.Max(CombatCardGap, vp.Height - CombatCardGap - CombatCardH));
-        return new Rectangle(x, y, CombatCardW, CombatCardH);
+        int y = (int)pos.Y + tile / 2 - cardH / 2;                 // centrée verticalement sur la case
+        y = Math.Clamp(y, CombatCardGap, Math.Max(CombatCardGap, vp.Height - CombatCardGap - cardH));
+        return new Rectangle(x, y, cardW, cardH);
+    }
+
+    /// <summary>
+    /// Hauteur TOTALE de la carte condensée d'une unité : bloc haut fixe (<see cref="CondensedTopBlockH"/>) +
+    /// éventuel bloc bas (lignes de traits repliées + « TUÉS »). Ainsi la carte grandit avec le nombre de
+    /// traits et le « TUÉS » ne repasse jamais derrière eux.
+    /// </summary>
+    private int CondensedCardHeight(Unit unit, Cell? cell)
+    {
+        var b = unit.Buffs ?? CommandBuffs.None;
+        var keywords = KeywordsFor(unit.Class, unit.Equipment, b, GrantedTraitsFor(unit, cell));
+        var lines = KeywordLineCount(keywords, CondensedCardW);
+        var bottom = lines * 9 + (unit.Kills > 0 ? 9 : 0);
+        return CondensedTopBlockH + (bottom > 0 ? CondensedBottomGap + bottom : 0) + CondensedPad;
+    }
+
+    /// <summary>Nombre de lignes qu'occuperait la liste de mots-clés dans une carte de largeur donnée — MÊME
+    /// repli que <see cref="DrawKeywordList"/> (au mot-clé près, séparateur « | », police à chasse fixe).</summary>
+    private int KeywordLineCount(List<UnitKeywords.Keyword> keywords, int cardWidth)
+    {
+        if (keywords.Count == 0)
+            return 0;
+        var font = Context.Font;
+        var maxW = cardWidth - 2 * CardPad;
+        var sepW = font.Measure(" | ", 1);
+        int lines = 1, onLine = 0, lineW = 0;
+        foreach (var kw in keywords)
+        {
+            var w = font.Measure(kw.Label, 1);
+            if (onLine > 0 && lineW + sepW + w > maxW) { lines++; onLine = 0; lineW = 0; }
+            if (onLine > 0) lineW += sepW;
+            lineW += w;
+            onLine++;
+        }
+        return lines;
     }
 
     /// <summary>
@@ -8516,7 +8745,7 @@ public sealed class GameplayScene : Scene
     /// dessinés que si <paramref name="showKeywords"/> (cf. <see cref="DrawCombatCards"/>).
     /// </summary>
     private void DrawUnitCard(SpriteBatch sb, Unit unit, Rectangle rect, int hpPreviewDamage = 0,
-        bool showKeywords = true, Cell? cell = null)
+        bool showKeywords = true, Cell? cell = null, bool hover = false, bool condensed = false)
     {
         var c = unit.Class;
         var granted = GrantedTraitsFor(unit, cell);
@@ -8525,13 +8754,21 @@ public sealed class GameplayScene : Scene
         var contextualDmg = cell is { } pc ? _match.ContextualPowerBonus(pc) : 0;
         // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
+        // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
         var faction = unit.Faction; var domaine = unit.Domaine; var hp = unit.Hp; var maxHp = unit.MaxHp;
         var equip = unit.Equipment; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
-        _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
+        if (condensed)
+        {
+            // Version condensée (combat) : traits en NOMS inline, donc AUCUN popup de mots-clés à différer.
+            (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c,
+                domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage));
+            return;
+        }
+        (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
             hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
             granted: granted, contextualDmgBonus: contextualDmg));
         if (showKeywords)
-            _deferredKeywordPopups.Add((c, rect, equip, buffs, granted));
+            (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted));
     }
 
     /// <summary>Auras dont l'effet se lit sur le BÉNÉFICIAIRE : le pion adjacent en profite sans porter le trait.</summary>
@@ -8680,6 +8917,90 @@ public sealed class GameplayScene : Scene
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
                 new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
+    }
+
+    /// <summary>
+    /// Version CONDENSÉE de la carte (combat, par défaut) : nom, PV en texte « pv/max », les trois
+    /// caractéristiques réduites à ICÔNE + valeur EFFECTIVE (équipement/arbre/rage/contexte inclus, mais SANS
+    /// le détail « +N »), puis en bas les traits en NOMS seuls (aucun popup) et « TUÉS : N ». Toujours révélée
+    /// (les cartes de combat le sont). Le clic droit / X repasse au détaillé (cf. <see cref="DrawCardLayout"/>).
+    /// </summary>
+    private void DrawCondensedCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Domaine domaine, int hp, int maxHp,
+        Equipment? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
+        int hpPreviewDamage)
+    {
+        // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
+        var b = buffs ?? CommandBuffs.None;
+        var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
+        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Rage))
+            dmgBonus += kills;
+        dmgBonus += contextualDmgBonus;
+        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
+        var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
+
+        Context.Style.DrawPanel(sb, rect);
+
+        // Icône de TIER (taille native 23×9) + NOM DU DOMAINE, dans la marge haute (même rendu que le détaillé).
+        DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
+        var y = rect.Y + 15;   // sous l'en-tête tier/domaine
+
+        // Nom centré, échelle 2 par défaut, repliée en 1 s'il déborde (même règle que la carte détaillée).
+        var name = UnitName(c).ToUpperInvariant();
+        var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CondensedPad ? 2 : 1;
+        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, 14), nameScale, Palette.White);
+        y += 18;
+
+        // PV « pv/max » EN ROUGE (échelle 2, bien lisible) centré ; aperçu de dégâts éventuel accolé.
+        DrawCondensedHp(sb, rect, y, hp, maxHp, hpPreviewDamage);
+        y += 20;
+
+        // Trois stats réparties horizontalement : icône (taille NATIVE) + valeur effective, sans libellé ni « +N ».
+        DrawCondensedStats(sb, rect, y, c.Damage + dmgBonus, c.MoveRange + moveBonus, c.AttackRange + rangeBonus);
+
+        // Bas de carte (ancré en bas comme la carte détaillée) : traits en noms seuls, « TUÉS : N » au-dessus.
+        var keywords = KeywordsFor(c, equip, b, granted);
+        var bottomY = DrawKeywordList(sb, keywords, GrantedLabels(granted), rect, rect.Bottom - CondensedPad);
+        if (kills > 0)
+            Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
+                new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
+    }
+
+    /// <summary>PV condensés « pv/max » EN ROUGE (échelle 2) centrés ; si une attaque est visée, « -N » jaune accolé.</summary>
+    private void DrawCondensedHp(SpriteBatch sb, Rectangle rect, int y, int hp, int maxHp, int previewDamage)
+    {
+        var text = $"{hp}/{maxHp}";
+        if (previewDamage <= 0)
+        {
+            Context.Font.DrawCentered(sb, text, new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.Purple5);
+            return;
+        }
+        // Aperçu de dégâts (visée) : « -N » en jaune vif pour ressortir des PV rouges, même taille.
+        var tag = $" -{previewDamage}";
+        var wMain = Context.Font.Measure(text, 2);
+        var wTag = Context.Font.Measure(tag, 2);
+        var startX = rect.X + (rect.Width - (wMain + wTag)) / 2;
+        Context.Font.Draw(sb, text, new Vector2(startX, y), 2, Palette.Purple5);
+        Context.Font.Draw(sb, tag, new Vector2(startX + wMain, y), 2, Palette.Yellow2);
+    }
+
+    /// <summary>Les trois caractéristiques condensées (puissance / mouvement / portée) en trois colonnes égales.</summary>
+    private void DrawCondensedStats(SpriteBatch sb, Rectangle rect, int y, int power, int move, int range)
+    {
+        const int iconSize = 32;   // taille NATIVE de l'icône : dessinée 1:1, aucune mise à l'échelle (pixel-perfect)
+        var inner = new Rectangle(rect.X + CondensedPad, y, rect.Width - 2 * CondensedPad, iconSize);
+        var colW = inner.Width / 3;
+        DrawCondensedStat(sb, new Rectangle(inner.X, y, colW, iconSize), "deg", $"{power}", Palette.Brown3);
+        DrawCondensedStat(sb, new Rectangle(inner.X + colW, y, colW, iconSize), "dep", $"{move}", Palette.Cyan2);
+        DrawCondensedStat(sb, new Rectangle(inner.X + 2 * colW, y, colW, iconSize), "tir", $"{range}", Palette.Yellow2);
+    }
+
+    /// <summary>Une stat condensée : icône NATIVE 32×32 centrée dans sa colonne, valeur (échelle 2) centrée dessous.</summary>
+    private void DrawCondensedStat(SpriteBatch sb, Rectangle col, string iconKey, string value, Color color)
+    {
+        const int iconSize = 32;
+        var icon = new Rectangle(col.X + (col.Width - iconSize) / 2, col.Y, iconSize, iconSize);
+        DrawStatIcon(sb, iconKey, icon, color);
+        Context.Font.DrawCentered(sb, value, new Rectangle(col.X, icon.Bottom + 2, col.Width, 14), 2, color);
     }
 
     // Grille d'améliorations d'arbre, à gauche du sprite : cadres 34 (icône 32×32 native centrée),
@@ -10526,12 +10847,25 @@ public sealed class GameplayScene : Scene
         return SpriteFor(variant) ?? SpriteFor(cls.Asset);
     }
 
-    /// <summary>Orientation par défaut : le joueur regarde vers le haut (l'ennemi), l'ennemi vers le bas.</summary>
-    private static bool DefaultFacesDown(Faction faction) => faction == Faction.Enemy;
+    /// <summary>
+    /// Orientation par DÉFAUT d'un pion pas encore orienté par une action : selon la MOITIÉ du plateau où il
+    /// se trouve, QUEL QUE SOIT son camp — moitié HAUTE (rangées du haut) → regarde vers le bas (front/face
+    /// caméra), moitié BASSE → regarde vers le haut (back/dos). Repli sur l'orientation par camp (ennemi =
+    /// face) si la case est introuvable (unité hors plateau).
+    /// </summary>
+    private bool DefaultFacesDown(Unit unit)
+    {
+        // Missions SPÉCIALE / BOSS : la map peut FIXER l'orientation par défaut des ENNEMIS (cf.
+        // MapData.EnemyFacesDown), quel que soit l'endroit du plateau. Sinon, règle positionnelle habituelle.
+        if (unit.Faction == Faction.Enemy
+            && _map is { Type: CombatType.Speciale or CombatType.Boss, EnemyFacesDown: { } forced })
+            return forced;
+        return _match.CellOf(unit) is { } c ? c.Row < Rows / 2 : unit.Faction == Faction.Enemy;
+    }
 
-    /// <summary>Vrai si l'unité regarde vers le bas (face caméra) — état suivi, ou défaut selon le camp.</summary>
+    /// <summary>Vrai si l'unité regarde vers le bas (face caméra) — état suivi (action), ou défaut positionnel.</summary>
     private bool FacesDown(Unit unit) =>
-        _facesDown.TryGetValue(unit, out var f) ? f : DefaultFacesDown(unit.Faction);
+        _facesDown.TryGetValue(unit, out var f) ? f : DefaultFacesDown(unit);
 
     /// <summary>
     /// Oriente l'unité d'après une action <paramref name="from"/> → <paramref name="to"/>.

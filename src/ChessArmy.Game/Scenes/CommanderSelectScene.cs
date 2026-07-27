@@ -733,6 +733,9 @@ public sealed class CommanderSelectScene : Scene
         if (DemandsPaysans(level))
             lines.Add(Loc.T(DemandsPaysans(level - 1)
                 ? "difficulty.special_quota_again" : "difficulty.special_quota"));
+        // Run sans filet : « Recommencer la mission » est retiré du menu pause (cf. DifficultySettings.AllowRestart).
+        if (!DifficultySettings.For(difficulty).AllowRestart)
+            lines.Add(Loc.T("difficulty.no_restart"));
 
         var w = Context.Font.Measure(title, 2);
         foreach (var line in lines)

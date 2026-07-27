@@ -29,6 +29,10 @@ internal sealed class MapDocument
     /// <summary>Limite de tours d'une mission spéciale (0 = valeur par défaut du jeu).</summary>
     public int TurnLimit { get; set; }
 
+    /// <summary>Orientation ENNEMIE imposée (maps Speciale/Boss) : <c>"down"</c> / <c>"up"</c>, ou null = auto
+    /// (le jeu décide selon la moitié du plateau). Cf. Core MapData.EnemyFacesDown.</summary>
+    public string? EnemyFacing { get; set; }
+
     public int Width { get; private set; }
     public int Height { get; private set; }
 
@@ -84,6 +88,7 @@ internal sealed class MapDocument
             Objective = string.IsNullOrWhiteSpace(dto.Objective) ? "Aucun" : dto.Objective!,
             Phase = dto.Phase ?? 0,
             TurnLimit = dto.TurnLimit ?? 0,
+            EnemyFacing = string.IsNullOrWhiteSpace(dto.EnemyFacing) ? null : dto.EnemyFacing,
             FilePath = path,
         };
 
@@ -153,6 +158,7 @@ internal sealed class MapDocument
             Objective = string.IsNullOrWhiteSpace(Objective) || Objective == "Aucun" ? null : Objective,
             Phase = Phase == 0 ? null : Phase,   // 0 = toutes phases → champ omis
             TurnLimit = TurnLimit == 0 ? null : TurnLimit,   // 0 = défaut du jeu → champ omis
+            EnemyFacing = string.IsNullOrWhiteSpace(EnemyFacing) ? null : EnemyFacing,   // null = auto → champ omis
             Width = Width,
             Height = Height,
             Tiles = ToRowsTiles(Tiles),
@@ -212,6 +218,7 @@ internal sealed class MapDocument
         [JsonPropertyName("objective")] public string? Objective { get; set; }
         [JsonPropertyName("phase")] public int? Phase { get; set; }
         [JsonPropertyName("turnLimit")] public int? TurnLimit { get; set; }
+        [JsonPropertyName("enemyFacing")] public string? EnemyFacing { get; set; }
         [JsonPropertyName("width")] public int Width { get; set; }
         [JsonPropertyName("height")] public int Height { get; set; }
         [JsonPropertyName("tiles")] public List<string>? Tiles { get; set; }

@@ -73,7 +73,15 @@
       "id": "lance",
       "name": "Lance",
       "rarity": "Common",
-      "trait": "Traverse allié"
+      "effects": [
+        {
+          "stat": "Damage",
+          "amount": 1
+        },
+        {
+          "trait": "Traverse allié"
+        }
+      ]
     },
     {
       "id": "lanceRare",
@@ -82,7 +90,7 @@
       "effects": [
         {
           "stat": "Damage",
-          "amount": 2
+          "amount": 3
         },
         {
           "trait": "Traverse allié"

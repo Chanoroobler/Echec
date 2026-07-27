@@ -3,7 +3,7 @@
   "type": "Speciale",
   "objective": "ProtegerPaysans",
   "phase": 3,
-  "turnLimit": 35,
+  "turnLimit": 40,
   "width": 10,
   "height": 10,
   "tiles": [
@@ -39,8 +39,8 @@
     "..........",
     "..........",
     "..........",
-    "1223332221",
-    "1211111121"
+    "2223332222",
+    "1211331121"
   ],
   "objects": [
     ".R......R.",

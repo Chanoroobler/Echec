@@ -1,6 +1,7 @@
 {
   "name": "Boss3_02",
   "type": "Boss",
+  "phase": 3,
   "width": 12,
   "height": 12,
   "tiles": [

@@ -10,7 +10,7 @@ menu.pause,PAUSE,PAUSE
 menu.resume,REPRENDRE,RESUME
 menu.codex,CODEX,CODEX
 menu.options,OPTIONS,OPTIONS
-menu.restart,RECOMMENCER,RESTART
+menu.restart,RECOMMENCER LA MISSION,RESTART MISSION
 menu.main_menu,MENU PRINCIPAL,MAIN MENU
 menu.quit,QUITTER,QUIT
 # ── Options ─────────────────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ difficulty.equipped_again,Ennemis souvent équipés,Enemies often equipped
 # Quota de paysans des missions speciales : le rater fait PERDRE la run
 difficulty.special_quota,Objectif obligatoire en mission spéciale,Mandatory objective in special missions
 difficulty.special_quota_again,Objectif de mission spéciale plus exigeant,Harder objective in special missions
+# Run sans filet : « Recommencer la mission » est retire du menu pause
+difficulty.no_restart,Impossible de recommencer la mission,Cannot restart the mission
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}

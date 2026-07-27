@@ -93,6 +93,16 @@ public sealed class Match
 
     public Unit? UnitAt(Cell cell) => InBounds(cell) ? _units[cell.Column, cell.Row] : null;
 
+    /// <summary>Case occupée par <paramref name="unit"/> sur le plateau, ou <c>null</c> s'il n'y est pas.</summary>
+    public Cell? CellOf(Unit unit)
+    {
+        for (var row = 0; row < Height; row++)
+            for (var column = 0; column < Width; column++)
+                if (ReferenceEquals(_units[column, row], unit))
+                    return new Cell(column, row);
+        return null;
+    }
+
     public void Place(Cell cell, Unit unit)
     {
         _units[cell.Column, cell.Row] = unit;

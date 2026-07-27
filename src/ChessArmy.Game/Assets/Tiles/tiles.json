@@ -802,7 +802,7 @@
       "id": "escalier_00",
       "key": "_a",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 0,
       "row": 0
@@ -811,7 +811,7 @@
       "id": "escalier_10",
       "key": "_b",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 1,
       "row": 0
@@ -820,7 +820,7 @@
       "id": "escalier_20",
       "key": "_c",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 2,
       "row": 0
@@ -829,7 +829,7 @@
       "id": "escalier_30",
       "key": "_d",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 3,
       "row": 0
@@ -838,7 +838,7 @@
       "id": "escalier_40",
       "key": "_e",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 4,
       "row": 0
@@ -847,7 +847,7 @@
       "id": "escalier_50",
       "key": "_f",
       "blocksMove": true,
-      "blocksFire": true,
+      "blocksFire": false,
       "sheet": "escalier",
       "col": 5,
       "row": 0

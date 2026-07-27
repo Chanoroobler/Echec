@@ -75,14 +75,20 @@ public sealed class PauseMenu
 
     private readonly GameSettings _s;
     private readonly List<Point> _resolutions;
+    private readonly bool _allowRestart;
     private int _resIndex;
 
     public bool IsOpen { get; private set; }
     public MenuPanel Panel { get; private set; }
 
-    public PauseMenu(GameSettings settings, Point nativeRes)
+    /// <param name="allowRestart">
+    /// Affiche « Recommencer la mission » dans la racine. <c>false</c> (difficulté sans filet) retire
+    /// entièrement le bouton : la liste raccourcit et hauteur/focus/hit-test suivent automatiquement.
+    /// </param>
+    public PauseMenu(GameSettings settings, Point nativeRes, bool allowRestart = true)
     {
         _s = settings;
+        _allowRestart = allowRestart;
 
         var set = new SortedSet<(int w, int h)>();
         foreach (var r in BaseResolutions) set.Add((r.X, r.Y));
@@ -112,7 +118,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? RootButtons : 7;
+    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 7;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -124,10 +130,7 @@ public sealed class PauseMenu
     {
         var l = Layout(vpW, vpH);
         if (Panel == MenuPanel.Root)
-            return _focus switch
-            {
-                0 => l.Resume, 1 => l.Codex, 2 => l.Options, 3 => l.Restart, 4 => l.MainMenu, _ => l.Quit,
-            };
+            return RectFor(RootItems[_focus], l);
         return _focus switch
         {
             0 => l.ResRow, 1 => l.ModeRow,
@@ -135,17 +138,28 @@ public sealed class PauseMenu
         };
     }
 
+    /// <summary>Rectangle du bouton racine <paramref name="item"/> dans la mise en page <paramref name="l"/>.</summary>
+    private static Rectangle RectFor(PauseElement item, PauseLayout l) => item switch
+    {
+        PauseElement.Resume => l.Resume,
+        PauseElement.Codex => l.Codex,
+        PauseElement.Options => l.Options,
+        PauseElement.Restart => l.Restart,
+        PauseElement.MainMenu => l.MainMenu,
+        _ => l.Quit,
+    };
+
     /// <summary>Valide l'élément focus (bouton A). Équivaut au clic sur cet élément.</summary>
     public MenuAction ActivateFocused()
     {
         if (Panel == MenuPanel.Root)
-            return _focus switch
+            return RootItems[_focus] switch
             {
-                0 => CloseReturning(MenuAction.Resume),
-                1 => MenuAction.Codex,          // ouvre le codex par-dessus, sans fermer la pause
-                2 => OpenOptionsPanel(),
-                3 => CloseReturning(MenuAction.RestartMission),
-                4 => CloseReturning(MenuAction.MainMenu),
+                PauseElement.Resume => CloseReturning(MenuAction.Resume),
+                PauseElement.Codex => MenuAction.Codex,          // ouvre le codex par-dessus, sans fermer la pause
+                PauseElement.Options => OpenOptionsPanel(),
+                PauseElement.Restart => CloseReturning(MenuAction.RestartMission),
+                PauseElement.MainMenu => CloseReturning(MenuAction.MainMenu),
                 _ => MenuAction.Quit,
             };
         return _focus switch
@@ -202,12 +216,28 @@ public sealed class PauseMenu
     public PauseLayout Layout(int vpW, int vpH)
         => Panel == MenuPanel.Root ? RootLayout(vpW, vpH) : OptionsLayout(vpW, vpH);
 
-    /// <summary>Nombre de boutons de la racine — source unique pour la hauteur du panneau ET le focus.</summary>
-    private const int RootButtons = 6;
+    /// <summary>
+    /// Boutons de la racine, dans l'ordre d'affichage — source UNIQUE pour la hauteur du panneau, le focus,
+    /// la mise en page et le hit-test. « Recommencer la mission » disparaît quand la run l'interdit
+    /// (<see cref="_allowRestart"/> = false), et tout ce qui en dépend suit sans resynchronisation.
+    /// </summary>
+    private IReadOnlyList<PauseElement> RootItems => _allowRestart
+        ? new[]
+        {
+            PauseElement.Resume, PauseElement.Codex, PauseElement.Options,
+            PauseElement.Restart, PauseElement.MainMenu, PauseElement.Quit,
+        }
+        : new[]
+        {
+            PauseElement.Resume, PauseElement.Codex, PauseElement.Options,
+            PauseElement.MainMenu, PauseElement.Quit,
+        };
 
     private PauseLayout RootLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (RootButtons * BtnH + (RootButtons - 1) * Gap) + Pad;
+        var items = RootItems;
+        int n = items.Count;
+        int h = Pad + TitleH + Gap + (n * BtnH + (n - 1) * Gap) + Pad;
         var panel = Centered(vpW, vpH, RootW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -216,13 +246,21 @@ public sealed class PauseMenu
         int bx = panel.X + Pad;
         int bw = panel.Width - 2 * Pad;
         int y = panel.Y + Pad + TitleH + Gap;
-        l.Resume = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
-        l.Codex = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
-        l.Options = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
-        // Recommencer est groupé avec « Menu principal » : ce sont les deux sorties de la mission en cours.
-        l.Restart = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
-        l.MainMenu = new Rectangle(bx, y, bw, BtnH); y += BtnH + Gap;
-        l.Quit = new Rectangle(bx, y, bw, BtnH);
+        // Recommencer (quand présent) est groupé avec « Menu principal » : ce sont les sorties de la mission.
+        foreach (var item in items)
+        {
+            var r = new Rectangle(bx, y, bw, BtnH);
+            switch (item)
+            {
+                case PauseElement.Resume: l.Resume = r; break;
+                case PauseElement.Codex: l.Codex = r; break;
+                case PauseElement.Options: l.Options = r; break;
+                case PauseElement.Restart: l.Restart = r; break;
+                case PauseElement.MainMenu: l.MainMenu = r; break;
+                case PauseElement.Quit: l.Quit = r; break;
+            }
+            y += BtnH + Gap;
+        }
         return l;
     }
 

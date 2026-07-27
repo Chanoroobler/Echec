@@ -33,6 +33,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox _typeBox = new() { Width = 120, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _objectiveBox = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _phaseBox = new() { Width = 90, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _facingBox = new() { Width = 80, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown _turnsNum = new() { Minimum = 1, Maximum = 99, Value = 15, Width = 55 };
     private readonly NumericUpDown _widthNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly NumericUpDown _heightNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
@@ -175,6 +176,14 @@ internal sealed class MainForm : Form
         _phaseBox.SelectedIndex = 0;
         _phaseBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Phase = _phaseBox.SelectedIndex; MarkDirty(); } };
         bar.Controls.Add(_phaseBox);
+
+        // Sens des ENNEMIS par défaut (Speciale ET Boss) : Auto = le jeu décide selon la moitié du plateau ;
+        // Bas / Haut = imposé (cf. Core MapData.EnemyFacesDown).
+        bar.Controls.Add(Label("Sens ennemi :"));
+        _facingBox.Items.AddRange(new object[] { "Auto", "Bas", "Haut" });
+        _facingBox.SelectedIndex = 0;
+        _facingBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.EnemyFacing = FacingValue(_facingBox.Text); MarkDirty(); } };
+        bar.Controls.Add(_facingBox);
 
         // Limite de tours (rounds) de la mission spéciale — Speciale uniquement.
         bar.Controls.Add(Label("Tours :"));
@@ -552,6 +561,7 @@ internal sealed class MainForm : Form
         _doc.Type = _typeBox.Text;
         _objectiveBox.SelectedItem = _doc.Objective;
         _phaseBox.SelectedIndex = _doc.Phase;
+        _facingBox.SelectedItem = FacingLabel(_doc.EnemyFacing);
         _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
         SyncSpecialFields();
         _nameBox.Text = _doc.Name;
@@ -585,6 +595,7 @@ internal sealed class MainForm : Form
                 _typeBox.SelectedItem = _typeBox.Items.Contains(_doc.Type) ? _doc.Type : "Escarmouche";
                 _objectiveBox.SelectedItem = _objectiveBox.Items.Contains(_doc.Objective) ? _doc.Objective : "Aucun";
                 _phaseBox.SelectedIndex = Math.Clamp(_doc.Phase, 0, 3);
+                _facingBox.SelectedItem = FacingLabel(_doc.EnemyFacing);
                 _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
                 SyncSpecialFields();
                 SyncSizeFields();
@@ -611,6 +622,7 @@ internal sealed class MainForm : Form
         _doc.Type = _typeBox.Text;
         _doc.Objective = _objectiveBox.Text;
         _doc.Phase = _phaseBox.SelectedIndex;
+        _doc.EnemyFacing = _typeBox.Text is "Speciale" or "Boss" ? FacingValue(_facingBox.Text) : null;
         _doc.TurnLimit = _typeBox.Text == "Speciale" ? (int)_turnsNum.Value : 0;
 
         // Filet de sécurité : re-valider avec le MÊME code que le jeu avant d'écrire.
@@ -715,7 +727,13 @@ internal sealed class MainForm : Form
         var boss = _typeBox.Text == "Boss";
         _objectiveBox.Enabled = special;
         _phaseBox.Enabled = special || boss;   // la phase sert au tirage des maps Speciale ET Boss
+        _facingBox.Enabled = special || boss;  // le sens ennemi imposé ne s'applique qu'aux maps Speciale/Boss
         _turnsNum.Enabled = special;
+        if (!special && !boss)
+        {
+            _facingBox.SelectedItem = "Auto";   // hors Speciale/Boss : pas d'override → « Auto »
+            if (_doc is not null) _doc.EnemyFacing = null;
+        }
         if (!special)
         {
             _objectiveBox.SelectedItem = "Aucun";
@@ -732,6 +750,22 @@ internal sealed class MainForm : Form
         if (!special && !boss)
             _phaseBox.SelectedIndex = 0;   // Escarmouche : la phase ne s'applique pas → « Toutes »
     }
+
+    /// <summary>Libellé du combo « Sens ennemi » → valeur JSON : « Bas » → "down", « Haut » → "up", « Auto » → null.</summary>
+    private static string? FacingValue(string label) => label switch
+    {
+        "Bas" => "down",
+        "Haut" => "up",
+        _ => null,
+    };
+
+    /// <summary>Valeur (doc/JSON) → libellé du combo, tolérante aux variantes anglaises/françaises.</summary>
+    private static string FacingLabel(string? value) => (value ?? "").Trim().ToLowerInvariant() switch
+    {
+        "down" or "bas" => "Bas",
+        "up" or "haut" => "Haut",
+        _ => "Auto",
+    };
 
     // ---------------------------------------------------------------- Helpers
     private void SyncSizeFields()

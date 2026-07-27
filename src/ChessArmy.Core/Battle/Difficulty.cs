@@ -42,20 +42,25 @@ public enum Difficulty
 /// capture (mission « protéger ») pour que la mission compte. En dessous, la run est PERDUE, comme si le
 /// commandant était tombé. <c>0</c> = aucune exigence, la mission ne peut pas être ratée.
 /// </param>
+/// <param name="AllowRestart">
+/// Autorise « Recommencer la mission » dans le menu pause. <c>false</c> = run sans filet : le joueur assume
+/// ses erreurs, l'option est retirée du menu (couche Game). Sert aussi à afficher la mention dans
+/// l'infobulle de difficulté.
+/// </param>
 public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus,
-    int PaysansRequired)
+    int PaysansRequired, bool AllowRestart)
 {
-    /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé, aucun quota.</summary>
+    /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé, aucun quota ; recommencer autorisé.</summary>
     public static readonly DifficultySettings Facile =
-        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null, PaysansRequired: 0);
+        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null, PaysansRequired: 0, AllowRestart: true);
 
-    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base, 1 paysan exigé.</summary>
+    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base, 1 paysan exigé ; recommencer autorisé.</summary>
     public static readonly DifficultySettings Normal =
-        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0, PaysansRequired: 1);
+        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0, PaysansRequired: 1, AllowRestart: true);
 
-    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus, 2 paysans exigés.</summary>
+    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus, 2 paysans exigés ; run sans filet (pas de « recommencer »).</summary>
     public static readonly DifficultySettings Difficile =
-        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1, PaysansRequired: 2);
+        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1, PaysansRequired: 2, AllowRestart: false);
 
     /// <summary>Tous les niveaux, dans l'ordre croissant : c'est l'ordre du sélecteur de l'écran de sélection.</summary>
     public static readonly IReadOnlyList<Difficulty> AllLevels =

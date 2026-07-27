@@ -14,7 +14,8 @@ public sealed class MapData
         IReadOnlyList<Cell> playerSpawns, IReadOnlyList<Cell> enemySpawns, IReadOnlyList<Cell> bossSpawns,
         IReadOnlyList<MapObject>? objects = null, IReadOnlyList<Cell>? defensiveEnemySpawns = null,
         SpecialObjective objective = SpecialObjective.Aucun, int phase = 0, int turnLimit = 0,
-        IReadOnlyList<Cell>? offensiveEnemySpawns = null, IReadOnlyList<int>? enemyTiers = null)
+        IReadOnlyList<Cell>? offensiveEnemySpawns = null, IReadOnlyList<int>? enemyTiers = null,
+        bool? enemyFacesDown = null)
     {
         Name = name;
         Type = type;
@@ -31,6 +32,7 @@ public sealed class MapData
         Phase = phase;
         TurnLimit = turnLimit;
         EnemyTiers = enemyTiers ?? System.Array.Empty<int>();
+        EnemyFacesDown = enemyFacesDown;
     }
 
     public string Name { get; }
@@ -87,6 +89,14 @@ public sealed class MapData
 
     /// <summary>Objets posés sur le plateau (coffres, clés…), calque <c>objects</c> de la map. Vide si aucun.</summary>
     public IReadOnlyList<MapObject> Objects { get; }
+
+    /// <summary>
+    /// Orientation par DÉFAUT des unités ENNEMIES imposée par la map (missions SPÉCIALE / BOSS) :
+    /// <c>true</c> = elles regardent vers le bas, <c>false</c> = vers le haut, <c>null</c> = aucun override
+    /// (le jeu décide selon la moitié du plateau, comme partout ailleurs). Ne s'applique qu'aux ennemis, et
+    /// seulement AVANT leur première action (ensuite l'orientation suit le déplacement). Ignoré en escarmouche.
+    /// </summary>
+    public bool? EnemyFacesDown { get; }
 
     /// <summary>Tuile à une case (origine en haut à gauche, comme <see cref="Battlefield"/>).</summary>
     public TileDef TileAt(Cell cell) => _tiles[cell.Column, cell.Row];
