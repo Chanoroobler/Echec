@@ -237,6 +237,10 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         UpdateFrameStats();   // mesure la cadence réelle (chronomètre) même sous fixed timestep
 
         // 1. Les scènes dessinent dans la cible virtuelle (résolution logique fixe).
+        //    En dézoom, la scène de jeu remplit aussi ses couches plateau/UI (recomposées en 2b) : elle a
+        //    besoin du facteur d'agrandissement canvas→écran pour placer le plateau natif.
+        if (_scenes.Current is Scenes.GameplayScene gsPre)
+            gsPre.SetVirtualScaleHint(_virtualScale);
         GraphicsDevice.SetRenderTarget(_virtualTarget);
         GraphicsDevice.Clear(Color.Black);
         _scenes.Draw(gameTime);
@@ -265,7 +269,24 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
                 new Point(pp.BackBufferWidth, pp.BackBufferHeight), _virtualDest.Location, _virtualScale);
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);
+        _spriteBatch.Draw(_virtualTarget, _virtualDest, Color.White);   // eau (+ scène complète hors dézoom)
+
+        // 2b. DÉZOOM : par-dessus l'eau, recompose le PLATEAU natif à l'échelle ×1 (net, plus petit) puis l'UI
+        //     à l'échelle du canvas (taille normale). L'ordre eau → plateau → UI donne le bon empilement.
+        if (_scenes.Current is Scenes.GameplayScene gs
+            && gs.TryGetDezoomLayers(out var boardRt, out var boardDest, out var uiRt))
+        {
+            _spriteBatch.Draw(boardRt,
+                new Rectangle(_virtualDest.X + boardDest.X, _virtualDest.Y + boardDest.Y, boardDest.Width, boardDest.Height),
+                Color.White);
+            _spriteBatch.Draw(uiRt, _virtualDest, Color.White);
+            // Couche curseur : le pion attrapé, PAR-DESSUS l'UI, net (×1), visible partout (suit la souris).
+            if (gs.TryGetDezoomGhost(out var ghostRt, out var ghostDest))
+                _spriteBatch.Draw(ghostRt,
+                    new Rectangle(_virtualDest.X + ghostDest.X, _virtualDest.Y + ghostDest.Y, ghostDest.Width, ghostDest.Height),
+                    Color.White);
+        }
+
         DrawCursor(_spriteBatch);
         if (_showFps)
         {

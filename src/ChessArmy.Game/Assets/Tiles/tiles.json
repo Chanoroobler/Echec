@@ -113,6 +113,24 @@
       "row": 1
     },
     {
+      "id": "murs_01",
+      "key": "j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "damier_c",
+      "key": "Y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "sheet": "murs",
+      "col": 5,
+      "row": 6
+    },
+    {
       "id": "murs_20",
       "key": "c",
       "blocksMove": false,
@@ -139,15 +157,6 @@
       "sheet": "murs",
       "col": 1,
       "row": 0
-    },
-    {
-      "id": "murs_01",
-      "key": "j",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 0,
-      "row": 1
     },
     {
       "id": "murs_60",
@@ -596,15 +605,6 @@
       "blocksFire": true,
       "sheet": "murs",
       "col": 4,
-      "row": 6
-    },
-    {
-      "id": "damier_c",
-      "key": "Y",
-      "blocksMove": false,
-      "blocksFire": false,
-      "sheet": "murs",
-      "col": 5,
       "row": 6
     },
     {

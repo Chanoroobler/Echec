@@ -433,6 +433,22 @@ public sealed class GameplayScene : Scene
     // de pan (px canvas) ajouté à l'origine centrée. Le pan n'a d'effet que si le plateau déborde
     // la zone de jeu (terrain trop grand ou zoomé) ; sinon il reste verrouillé au centre.
     private bool _zoomedIn;
+    // DÉZOOM (un cran EN DESSOUS du cadrage) : symétrique du zoom avant, mais board-only comme lui — seule la
+    // CASE du plateau rétrécit (÷2 : 64→32 px), l'UI ne bouge pas. Sous la taille native, l'art perd la moitié
+    // de son détail. Exclusif avec _zoomedIn (3 niveaux : −1 dézoom / 0 cadrage / +1 zoom).
+    // Le dézoom n'affecte QUE la taille de case du plateau (LAYOUT) ; l'UI, l'input et le hit-test restent en
+    // coords NORMALES → tout fonctionne. Le RENDU du plateau, lui, passe par une couche NATIVE recomposée
+    // nette (cf. DrawDezoomLayers) pour ne PAS être « chunky ».
+    private bool _dezoomedOut;
+    // Couches de dézoom (allouées à la volée) : le plateau natif (net) + l'UI, recomposés par la couche Game
+    // par-dessus l'eau (cf. TryGetDezoomLayers / ChessArmyGame). Le rendu HORS dézoom ne les touche pas.
+    private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _boardTarget;
+    private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _uiTarget;
+    private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _ghostTarget;   // pion attrapé (couche curseur, PAR-DESSUS tout)
+    private Rectangle _boardTargetDest;   // où (écran) recomposer le plateau natif ×1
+    private Rectangle _ghostDest;         // où (écran, ×1) dessiner le pion attrapé — suit la souris
+    private bool _ghostReady;             // vrai si un pion est attrapé cette frame
+    private bool _dezoomLayersReady;      // vrai la frame où les couches viennent d'être remplies
     private Vector2 _camera;
     private const float CameraPanSpeed = 540f;   // px canvas / s au clavier
 
@@ -532,6 +548,7 @@ public sealed class GameplayScene : Scene
         _sheets.Clear();
         _waterNoise.Dispose();
         _water.Dispose();
+        _boardTarget?.Dispose(); _uiTarget?.Dispose(); _ghostTarget?.Dispose();   // couches de dézoom
         _commandTree.Unload();
         _codex.Unload();
         foreach (var sprite in _unitSprites.Values)
@@ -1756,6 +1773,14 @@ public sealed class GameplayScene : Scene
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0
             && !FusionOpen && !EvoPlaying && !_specialBriefOpen)
             UpdateCamera(gameTime);
+
+        // Le dézoom ne vaut que pendant le combat : hors phases plateau (recrutement, récap de fin), on
+        // revient au cadrage plein pour que les pions figés derrière ces écrans gardent leur taille normale.
+        if (_dezoomedOut && _run.Phase is not (RunPhase.Placement or RunPhase.Battle))
+        {
+            _dezoomedOut = false;
+            MarkLayoutDirty();
+        }
 
         switch (_run.Phase)
         {
@@ -5202,6 +5227,7 @@ public sealed class GameplayScene : Scene
     private void ResetCamera()
     {
         _zoomedIn = false;
+        _dezoomedOut = false;
         _camera = Vector2.Zero;
         _layoutDirty = true;
     }
@@ -5220,8 +5246,8 @@ public sealed class GameplayScene : Scene
             _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
             ClampInvScroll();
         }
-        else if (scroll > 0) SetZoom(true);
-        else if (scroll < 0) SetZoom(false);
+        else if (scroll > 0) ZoomStep(+1);
+        else if (scroll < 0) ZoomStep(-1);
 
         // Pan clavier : flèches + ZQSD (AZERTY). Aller « voir à droite » fait reculer l'origine.
         var input = Context.Input;
@@ -5241,6 +5267,31 @@ public sealed class GameplayScene : Scene
         {
             var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
             _camera += dir * CameraPanSpeed * dt;
+            MarkLayoutDirty();
+        }
+    }
+
+    /// <summary>
+    /// Un cran de molette entre trois niveaux, tous BOARD-ONLY (l'UI ne bouge jamais) : DÉZOOM (−1, case du
+    /// plateau rétrécie, cf. <see cref="BoardTileSize"/>) ↔ CADRAGE (0) ↔ ZOOM AVANT (+1, case agrandie d'un
+    /// cran entier). Le zoom avant garde le zoom-vers-curseur (<see cref="SetZoom"/>) ; le dézoom recentre.
+    /// </summary>
+    private void ZoomStep(int dir)
+    {
+        int level = _zoomedIn ? 1 : (_dezoomedOut ? -1 : 0);
+        int target = System.Math.Clamp(level + dir, -1, 1);   // −1 dézoom / 0 cadrage / +1 zoom avant
+        if (target == level)
+            return;
+
+        // Transition impliquant le zoom AVANT du plateau (0↔+1) : réutilise le zoom-vers-curseur.
+        if (level == 1 || target == 1)
+            SetZoom(target == 1);
+
+        // Entrée/sortie de dézoom (0↔−1) : le plateau passe/quitte sa couche de rendu réduite (cf. RenderBoardLayer).
+        if (level == -1 || target == -1)
+        {
+            _dezoomedOut = target == -1;
+            _camera = Vector2.Zero;
             MarkLayoutDirty();
         }
     }
@@ -5276,12 +5327,66 @@ public sealed class GameplayScene : Scene
         _camera = origin1 - center;
     }
 
+    /// <summary>Vrai quand le plateau est dézoomé (un cran sous le cadrage). Le dézoom N'AGIT QUE sur le rendu du
+    /// PLATEAU (dessiné NATIF sur sa propre couche puis recomposé plus petit ×1) — l'UI, l'input et le hit-test
+    /// restent en coordonnées NORMALES (layout ÷2), donc tout fonctionne comme d'habitude.</summary>
+    private bool Dezoomed => _dezoomedOut;
+
+    /// <summary>
+    /// Couches de dézoom pour la couche Game : le plateau NATIF (net) à recomposer ×1 en <paramref name="boardDest"/>,
+    /// et l'UI à recomposer ×2. Renvoie false hors dézoom (rendu normal du canvas). Rempli par <see cref="DrawDezoomLayers"/>.
+    /// </summary>
+    public bool TryGetDezoomLayers(out Microsoft.Xna.Framework.Graphics.RenderTarget2D board,
+        out Rectangle boardDest, out Microsoft.Xna.Framework.Graphics.RenderTarget2D ui)
+    {
+        board = _boardTarget!; boardDest = _boardTargetDest; ui = _uiTarget!;
+        return _dezoomLayersReady && _boardTarget != null && _uiTarget != null;
+    }
+
+    /// <summary>Couche « curseur » (pion attrapé) à recomposer ×1 PAR-DESSUS l'UI, à <paramref name="dest"/> (suit
+    /// la souris). false si rien n'est attrapé. Séparée pour être au premier plan quel que soit l'endroit survolé.</summary>
+    public bool TryGetDezoomGhost(out Microsoft.Xna.Framework.Graphics.RenderTarget2D ghost, out Rectangle dest)
+    {
+        ghost = _ghostTarget!; dest = _ghostDest;
+        return _ghostReady && _ghostTarget != null;
+    }
+
+    /// <summary>
+    /// Layout NATIF du plateau (case 64 px, origine adaptée à un target dédié) + destination ÉCRAN où le
+    /// recomposer ×1 pour qu'il tombe EXACTEMENT sur le plateau du layout de jeu (dézoomé, ÷2). On aligne le
+    /// coin haut-gauche du plateau natif sur la position écran du layout ÷2, marge comprise (débords de sprites).
+    /// </summary>
+    private GridLayout NativeBoardLayout(GridLayout hit, out Rectangle target, out Rectangle screenDest)
+    {
+        const int tile = 64;
+        int margin = tile;   // débord des sprites/barres/icônes au-dessus & autour
+        int spriteH = tile * GridLayout.DefaultSpriteHeight / GridLayout.DefaultTileSize;   // 80
+        int boardW = Columns * tile;
+        int boardH = (Rows - 1) * tile + spriteH;
+        target = new Rectangle(0, 0, boardW + 2 * margin, boardH + 2 * margin);
+        // Origine du plateau natif dans le target (après la marge).
+        var native = new GridLayout(new Vector2(margin, margin), tileSize: tile, spriteWidth: tile,
+            spriteHeight: spriteH, rowPitch: tile);
+        // Le coin (margin,margin) du target = coin du plateau du layout de jeu (÷2), en px ÉCRAN (canvas×2).
+        int scale = System.Math.Max(1, _virtualScaleHint);
+        int destX = (int)System.Math.Round(hit.Origin.X * scale) - margin;
+        int destY = (int)System.Math.Round(hit.Origin.Y * scale) - margin;
+        screenDest = new Rectangle(destX, destY, target.Width, target.Height);
+        return native;
+    }
+
+    // Facteur d'agrandissement canvas→écran, communiqué par la couche Game (cf. SetVirtualScaleHint). Sert à
+    // placer la couche plateau à l'ÉCRAN. 2 en 1080p/1440p typiques.
+    private int _virtualScaleHint = 2;
+    public void SetVirtualScaleHint(int scale) => _virtualScaleHint = System.Math.Max(1, scale);
+
     // ── Rendu ───────────────────────────────────────────────────────────────────
     public override void Draw(GameTime gameTime)
     {
         var sb = Context.SpriteBatch;
         var layout = BuildLayout();
         var viewport = VirtualViewport;
+        _dezoomLayersReady = false;
 
         // Fond : eau animée pixel-art derrière le plateau (passes shader dédiées, hors du
         // batch principal car elles changent d'état SpriteBatch et de render target).
@@ -5292,6 +5397,15 @@ public sealed class GameplayScene : Scene
         // hit-test souris reste sur le layout d'origine via BuildLayout).
         var board = ShakeBoard(layout);
 
+        // DÉZOOM : le plateau part sur une couche NATIVE nette (recomposée plus petit ×1 par la couche Game),
+        // l'UI sur sa couche à taille normale — l'eau reste dans ce canvas. Le rendu NORMAL ci-dessous est
+        // strictement inchangé (ce branchement n'existe qu'en dézoom).
+        if (Dezoomed && _run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0)
+        {
+            DrawDezoomLayers(sb, layout, viewport);
+            return;
+        }
+
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
         if (_showGrid && BoardAssembled && _run.Phase is RunPhase.Placement or RunPhase.Battle)
@@ -5301,6 +5415,9 @@ public sealed class GameplayScene : Scene
         // Passe d'ombres projetées (sur le terrain, sous les unités) — batchs cisaillés dédiés.
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle)
             DrawCastShadows(sb, board);
+
+        _deferredCards.Clear();           // cartes flottantes + popups : remplis pendant la passe, dessinés APRÈS le HUD
+        _deferredKeywordPopups.Clear();
 
         switch (_run.Phase)
         {
@@ -5352,6 +5469,9 @@ public sealed class GameplayScene : Scene
                     else if (_run.IsBossCombat)
                         DrawBossBriefing(sb, viewport);          // rappel de la condition de victoire (vaincre le boss)
                 }
+                // Cartes flottantes + popups : PAR-DESSUS tout le chrome, mais SOUS les modales (tuto, arbre
+                // de commandement, fusion, briefing modal) dessinées juste après.
+                DrawDeferredCards(sb);
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (CommandTreeOpen)
@@ -5412,6 +5532,9 @@ public sealed class GameplayScene : Scene
                 DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
                 if (_specialMission)
                     DrawSpecialObjective(sb, viewport);   // paysans X/N + tours restants (sous la frise)
+                // Cartes flottantes + popups : PAR-DESSUS le chrome, mais SOUS les révélations/overlays
+                // (tuto, recrue, coffre) dessinés juste après.
+                DrawDeferredCards(sb);
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
                 if (_recrueReveal != null)
@@ -5461,6 +5584,187 @@ public sealed class GameplayScene : Scene
         // Codex par-dessus le menu pause (dessine son propre voile + panneau).
         if (_codex.IsOpen)
             _codex.Draw(sb, viewport);
+    }
+
+    private static void EnsureTarget(Microsoft.Xna.Framework.Graphics.GraphicsDevice device,
+        ref Microsoft.Xna.Framework.Graphics.RenderTarget2D? rt, int w, int h)
+    {
+        if (rt != null && rt.Width == w && rt.Height == h) return;
+        rt?.Dispose();
+        rt = new Microsoft.Xna.Framework.Graphics.RenderTarget2D(device, w, h, false,
+            Microsoft.Xna.Framework.Graphics.SurfaceFormat.Color, Microsoft.Xna.Framework.Graphics.DepthFormat.None);
+    }
+
+    /// <summary>
+    /// DÉZOOM : remplit deux couches — le PLATEAU rendu NATIF (net) dans <see cref="_boardTarget"/>, et TOUTE
+    /// l'UI (à sa taille NORMALE, ancrée sur le layout ÷2 → tombe pile sur le petit plateau) dans
+    /// <see cref="_uiTarget"/>. L'eau reste dans le canvas courant. La couche Game recompose les trois
+    /// (eau ×facteur → plateau natif ×1 → UI ×facteur). Réutilise les MÊMES méthodes de dessin (seuls le
+    /// render target et le layout diffèrent) — les FX transitoires (dissolution/étincelles) sont omis ici.
+    /// </summary>
+    private void DrawDezoomLayers(SpriteBatch sb, GridLayout hit, Viewport viewport)
+    {
+        var device = Context.GraphicsDevice;
+        var mainRT = device.GetRenderTargets();   // = canvas (eau déjà peinte)
+
+        var nb = NativeBoardLayout(hit, out var targetRect, out var screenDest);
+        EnsureTarget(device, ref _boardTarget, targetRect.Width, targetRect.Height);
+        EnsureTarget(device, ref _uiTarget, viewport.Width, viewport.Height);
+
+        // ── Couche PLATEAU (native, nette) : même structure/ordre que le rendu normal (terrain → ombres →
+        //    unités → FX), avec le layout natif `nb`. ──
+        device.SetRenderTarget(_boardTarget);
+        device.Clear(Microsoft.Xna.Framework.Color.Transparent);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawTerrain(sb, nb);
+        if (_showGrid && BoardAssembled) DrawBoardGrid(sb, nb, Palette.Green4);
+        sb.End();
+        DrawCastShadows(sb, nb);   // ombres projetées (batchs cisaillés dédiés)
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        if (_run.Phase == RunPhase.Placement)
+        {
+            if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, nb);
+            if (BoardAssembled) DrawEnemyThreat(sb, nb);
+            if (BoardAssembled) DrawAuraHalos(sb, nb);
+            DrawChests(sb, nb); DrawRecrueObjects(sb, nb);
+            DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
+            if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
+            else DrawFusionBoardStack(sb, nb);   // le pion attrapé passe par la couche curseur (par-dessus tout)
+            sb.End();
+        }
+        else   // Battle
+        {
+            DrawHighlights(sb, nb); DrawEnemyThreat(sb, nb); DrawAuraHalos(sb, nb);
+            DrawChests(sb, nb); DrawRecrueObjects(sb, nb);
+            DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
+            DrawAllyThreatIcons(sb, nb);
+            DrawCarriedUnitNative(sb, nb);   // liseré de case cible (le pion soulevé = couche curseur)
+            sb.End();
+            // FX de combat (chacun gère son propre batch) — sur la couche plateau pour rester à la bonne échelle.
+            if (_fx.Active) DrawCombatFx(sb, nb);
+            if (_splash.Active) DrawSplashFx(sb, nb);
+            DrawEquipDissolves(sb, nb);
+            _sparks.Draw(sb, Context.Pixel);
+            if (_storm.Active) DrawStormFx(sb, nb);
+            _damagePopups.Draw(sb, Context.Font, nb);
+        }
+
+        // ── Couche UI (taille normale, ancrée sur le layout ÷2) ──
+        device.SetRenderTarget(_uiTarget);
+        device.Clear(Microsoft.Xna.Framework.Color.Transparent);
+        _deferredCards.Clear();
+        _deferredKeywordPopups.Clear();
+        if (_run.Phase == RunPhase.Placement)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            DrawPanelBackground(sb);
+            if (_equipPhase) { DrawEquipPanel(sb); DrawDraggedEquip(sb); }
+            else { DrawPlacementPanel(sb); DrawInventoryFocusHighlight(sb); DrawPlacementPreview(sb); }   // pion attrapé = couche curseur (par-dessus tout), cf. RenderGhostLayer
+            sb.End();
+            if (_equipPhase) { sb.Begin(samplerState: SamplerState.PointClamp); DrawCombatCards(sb, hit); sb.End(); }
+            DrawPhaseTimeline(sb, viewport);
+            if (!_equipPhase)
+            {
+                if (_specialMission) DrawSpecialBriefing(sb, viewport);
+                else if (_run.IsBossCombat) DrawBossBriefing(sb, viewport);
+            }
+            DrawDeferredCards(sb);
+            if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
+            if (CommandTreeOpen)
+            {
+                _commandTree.Draw(sb, viewport, CommandTreeArea(), _run);
+                if (_tutorial is { Step: TutorialStep.TreeDo }) DrawTutorialTreeHint(sb, viewport);
+            }
+            if (FusionOpen) DrawFusionPopup(sb, viewport);
+            if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
+            else if (_sparks.HasActive) _sparks.Draw(sb, Context.Pixel);
+            if (_specialBriefOpen) DrawSpecialBriefingModal(sb, viewport);
+        }
+        else   // Battle
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            DrawCombatCards(sb, hit);
+            sb.End();
+            DrawPhaseTimeline(sb, viewport);
+            if (_specialMission) DrawSpecialObjective(sb, viewport);
+            DrawDeferredCards(sb);
+            if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
+            if (_recrueReveal != null) DrawRecrueReveal(sb, viewport);
+            if (ChestRevealActive) DrawChestReveal(sb, viewport);
+        }
+        if (_pauseMenu.IsOpen)
+        {
+            var gp = Context.Input.UsingGamepad;
+            var focusRect = _pauseMenu.FocusedRect(viewport.Width, viewport.Height);
+            var pointer = gp ? focusRect.Center.ToVector2() : Context.Input.MousePosition.ToVector2();
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            _pauseRenderer.Draw(sb, _pauseMenu, viewport.Width, viewport.Height, pointer, gp ? false : Context.Input.IsLeftDown, gp ? focusRect : null);
+            if (_run.Phase is RunPhase.Placement or RunPhase.Battle) DrawControlsLegend(sb, viewport);
+            sb.End();
+        }
+        if (_codex.IsOpen) _codex.Draw(sb, viewport);
+
+        // ── Couche CURSEUR : le pion attrapé, dessiné NATIF à part et recomposé ×1 PAR-DESSUS l'UI (donc net,
+        //    à l'échelle du plateau, et visible PARTOUT — réserve, eau, plateau — sans être coupé). ──
+        RenderGhostLayer(sb, device);
+
+        device.SetRenderTargets(mainRT);   // retour au canvas
+        _boardTargetDest = screenDest;
+        _dezoomLayersReady = true;
+    }
+
+    /// <summary>
+    /// Rend le pion ATTRAPÉ (drag de placement ou pion combat porté) dans un petit target NATIF (net, 64 px),
+    /// recomposé ×1 par la couche Game au premier plan à la position souris. Ainsi il reste net, à l'échelle du
+    /// plateau, et n'est PAS coupé par les bords d'une couche (il suit le curseur partout). <see cref="_ghostReady"/>.
+    /// </summary>
+    private void RenderGhostLayer(SpriteBatch sb, Microsoft.Xna.Framework.Graphics.GraphicsDevice device)
+    {
+        _ghostReady = false;
+        if (Context.Input.UsingGamepad)
+            return;
+        bool hasDrag = _dragSpec != null;
+        bool hasPile = _carryPile && _fusionGroup.Count > 0;   // pile de fusion portée (2+ pions d'un coup)
+        bool hasCarry = _combatDragFrom is { } cf && _match.UnitAt(cf) != null;
+        if (!hasDrag && !hasPile && !hasCarry)
+            return;
+
+        const int box = 128;   // marge autour du sprite 64 (lift compris)
+        const int s = 64;
+        EnsureTarget(device, ref _ghostTarget, box, box);
+        device.SetRenderTarget(_ghostTarget);
+        device.Clear(Microsoft.Xna.Framework.Color.Transparent);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        int cx = box / 2, cy = box / 2;
+        if (hasPile)
+        {
+            var r = new Rectangle(cx - InvIconSize / 2, cy - InvIconSize / 2, InvIconSize, InvIconSize);
+            DrawFusionPileChip(sb, _fusionGroup[0].UnitClass, r, front: true);
+            Context.Font.DrawCentered(sb, $"{_fusionGroup.Count}/{Run.FusionSize}",
+                new Rectangle(r.X, r.Bottom - 13, r.Width, 10), 1, Palette.Yellow2);
+        }
+        else if (hasDrag)
+        {
+            DrawChip(sb, _dragSpec!.UnitClass, Faction.Player, new Rectangle(cx - s / 2, cy - s / 2, s, s));
+        }
+        else
+        {
+            var unit = _match.UnitAt(_combatDragFrom!.Value)!;
+            int lift = (int)(s * CarriedLiftFraction);
+            var rect = new Rectangle(cx - s / 2, cy - s / 2 - lift, s, s);
+            var sprite = UnitSprite(unit);
+            if (sprite != null) sb.Draw(sprite, rect, Color.White);
+            else DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, s - 18, s - 26));
+        }
+        sb.End();
+
+        // Destination écran (×1) centrée sur la souris — la couche Game ajoute l'offset du letterbox.
+        var m = Context.Input.MousePosition;
+        _ghostDest = new Rectangle(m.X * _virtualScaleHint - cx, m.Y * _virtualScaleHint - cy, box, box);
+        _ghostReady = true;
     }
 
     /// <summary>
@@ -6098,19 +6402,37 @@ public sealed class GameplayScene : Scene
     private void DrawUnitHpBars(SpriteBatch sb, GridLayout layout)
     {
         var size = layout.TileSize;
+
+        // Pendant qu'on PORTE un pion, on VISE la case sous le curseur : si c'est une cible d'attaque
+        // valide, on prévisualise les dégâts sur SA barre de vie (tranche menacée) — et on force la barre
+        // à s'afficher même à pleine vie. Remplace la carte-tooltip (masquée pendant le glisser).
+        Cell? aimed = null;
+        var aimedPreview = 0;
+        if (_combatDragFrom is { } dragFrom)
+        {
+            var over = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
+            if (over is { } target && _attackTargets.Contains(target))
+            {
+                aimed = target;
+                aimedPreview = _match.PreviewDamage(dragFrom, target);
+            }
+        }
+
         foreach (var (cell, unit) in _match.Units())
         {
             if (_combatDragFrom == cell)            // pion porté : pas de barre sur sa case
                 continue;
             if (_fx.Active && _fx.Attacker == cell) // attaquant animé : géré par la passe FX
                 continue;
-            if (unit.Hp >= unit.MaxHp)               // pleine vie : pas de barre
+            var isAimed = aimed == cell;
+            if (unit.Hp >= unit.MaxHp && !isAimed)   // pleine vie : pas de barre (sauf cible visée → aperçu)
                 continue;
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, _) = BoardIntroAnim(cell, layout);
             var animLift = UnitLift(cell, size);
             var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
-            DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp);
+            DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
+                isAimed ? aimedPreview : 0);
         }
     }
 
@@ -6119,8 +6441,10 @@ public sealed class GameplayScene : Scene
     /// Jauge PLEINE (pas de segments → aucun trait à désaligner, nette à tous les zooms) : le rouge
     /// remplit le bas en proportion des PV restants, le vert occupe le reste (PV manquants).
     /// Dimensions proportionnelles à la case pour garder les mêmes proportions quel que soit le zoom.
+    /// <paramref name="previewDamage"/> &gt; 0 (cible visée pendant un glisser) : la tranche de PV qui
+    /// serait perdue clignote plein↔vide en haut de la jauge restante — aperçu des dégâts.
     /// </summary>
-    private void DrawUnitHpBar(SpriteBatch sb, int zx, int zy, int size, int hp, int maxHp)
+    private void DrawUnitHpBar(SpriteBatch sb, int zx, int zy, int size, int hp, int maxHp, int previewDamage = 0)
     {
         if (maxHp <= 0)
             return;
@@ -6138,6 +6462,21 @@ public sealed class GameplayScene : Scene
 
         var fillH = (int)System.Math.Round((double)barH * hp / maxHp);
         DrawRect(sb, new Rectangle(x, y + barH - fillH, barW, fillH), Palette.Purple5);
+
+        // Aperçu des dégâts : la tranche menacée (du haut des PV restants) clignote plein↔vide. Les PV
+        // qui survivraient restent solides en bas ; un coup létal fait clignoter toute la jauge.
+        if (previewDamage > 0)
+        {
+            var doomed = System.Math.Min(hp, previewDamage);
+            var survivH = (int)System.Math.Round((double)barH * (hp - doomed) / maxHp);
+            var doomH = fillH - survivH;
+            if (doomH > 0)
+            {
+                var blink = 0.5f + 0.5f * MathF.Sin(_time * 12f);
+                var col = Color.Lerp(Palette.Green4, Palette.Purple5, blink);
+                DrawRect(sb, new Rectangle(x, y + barH - fillH, barW, doomH), col);
+            }
+        }
     }
 
     /// <summary>
@@ -6305,6 +6644,18 @@ public sealed class GameplayScene : Scene
             sb.Draw(sprite, rect, Color.White);
         else
             DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, size - 18, size - 26));
+    }
+
+    /// <summary>
+    /// Combat porté, version DÉZOOM : ne dessine que le LISERÉ de la case cible sur la couche plateau (le pion
+    /// soulevé lui-même est dessiné par la couche curseur <see cref="RenderGhostLayer"/>, au premier plan).
+    /// </summary>
+    private void DrawCarriedUnitNative(SpriteBatch sb, GridLayout nb)
+    {
+        if (_combatDragFrom is not { } from || _match.UnitAt(from) is null)
+            return;
+        if (CellUnderMouse() is { } target && (_legalMoves.Contains(target) || _attackTargets.Contains(target)))
+            DrawZoneBorder(sb, nb, target, Palette.White, 2);
     }
 
     // ── Effets de combat (estafilade / dissolution / flash) ───────────────────────
@@ -7248,11 +7599,10 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Carte d'aperçu, équipement inclus. Par défaut à DROITE, c'est-à-dire juste à gauche du panneau
-    /// d'inventaire (<see cref="RightCardRect"/> se borne à son bord en placement) : c'est la place
-    /// d'un aperçu de la réserve, qui ne décrit aucune case.
-    /// <paramref name="subject"/> = case du pion décrit, quand la carte vient du survol du PLATEAU :
-    /// la carte bascule alors à gauche si elle recouvrait ce pion (cf. <see cref="CardGoesRight"/>).
+    /// Carte d'aperçu, équipement inclus. Sans case décrite (aperçu RÉSERVE), à DROITE du plateau — juste à
+    /// gauche du panneau d'inventaire (<see cref="RightCardRect"/> se borne à son bord en placement).
+    /// <paramref name="subject"/> = case du pion décrit (survol du PLATEAU) : la carte se cale alors JUXTE le
+    /// pion (cf. <see cref="CardRectNearCell"/>).
     /// </summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
         Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
@@ -7260,10 +7610,13 @@ public sealed class GameplayScene : Scene
     {
         var layout = BuildLayout();
         var board = BoardRect(layout);
-        var right = subject is not { } s || CardGoesRight(s, layout, board, preferRight: true);
-        var rect = right ? RightCardRect(board) : LeftCardRect(board);
-        DrawCardLayout(sb, rect, c, faction, domaine, hp, maxHp, equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills);
-        DrawKeywordPopupsBelow(sb, c, rect, equip, buffs);
+        // Décrit une case du plateau (survol) → carte JUXTE le pion ; sinon (aperçu réserve) → à droite du plateau.
+        var rect = subject is { } s ? CardRectNearCell(s, layout) : RightCardRect(board);
+        // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
+        // la frise, le briefing et le panneau, dessinés après elle.
+        _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
+            equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills));
+        _deferredKeywordPopups.Add((c, rect, equip, buffs, null));
     }
 
     /// <summary>
@@ -7972,8 +8325,45 @@ public sealed class GameplayScene : Scene
     /// <see cref="DrawKeywordPopupsBelow"/>) et mangeait le plateau pendant toute la visée. Le pion
     /// tenu garde sa carte (stats + PV) et récupère ses popups dès qu'il est désélectionné.
     /// </summary>
+    // Cartes flottantes + leurs popups de mots-clés, mis de côté par DrawUnitCard/DrawPreviewCard et dessinés
+    // EN DERNIER (par-dessus frise, briefing, panneau) : la carte-tooltip qu'on lit doit rester au premier plan.
+    private readonly List<Action> _deferredCards = new();
+    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted)>
+        _deferredKeywordPopups = new();
+
+    /// <summary>
+    /// Dessine EN DERNIER (par-dessus tout le HUD de phase — frise, briefing, panneau) les cartes flottantes
+    /// PUIS leurs popups de mots-clés, empilés pendant la passe par <see cref="DrawUnitCard"/> /
+    /// <see cref="DrawPreviewCard"/>. Sans ce report, l'UI dessinée après les cartes les recouvrait. Vidé à chaque frame.
+    /// </summary>
+    private void DrawDeferredCards(SpriteBatch sb)
+    {
+        if (_deferredCards.Count > 0)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            foreach (var draw in _deferredCards)
+                draw();
+            sb.End();
+            _deferredCards.Clear();
+        }
+
+        if (_deferredKeywordPopups.Count == 0)
+            return;
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        foreach (var (c, card, equip, buffs, granted) in _deferredKeywordPopups)
+            DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted);
+        sb.End();
+        _deferredKeywordPopups.Clear();
+    }
+
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
+        // Pendant qu'on PORTE un pion (glisser de combat), les cartes-tooltips — amies comme ennemies —
+        // masqueraient le plateau juste au moment où on vise : on les efface pour garder la vision. La
+        // lecture des dégâts passe alors par la barre de vie de la cible visée (aperçu, cf. DrawUnitHpBars).
+        if (_combatDragFrom is not null)
+            return;
+
         var board = BoardRect(layout);
         // En manette, la « case survolée » est celle du curseur ; sinon celle sous la souris.
         var hovered = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
@@ -7987,20 +8377,11 @@ public sealed class GameplayScene : Scene
         // Carte de l'ennemi SURVOLÉ (à gauche).
         Cell? enemyCell = hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } ? he : null;
 
-        // Côté de chaque carte : elle bascule en face si elle recouvrait le pion qu'elle décrit.
-        var ownRight = ownCell is not { } o || CardGoesRight(o, layout, board, preferRight: true);
-        var enemyRight = enemyCell is { } e && CardGoesRight(e, layout, board, preferRight: false);
-
-        // Même côté = les deux cartes se recouvriraient (elles ont la même hauteur et le même Y). Celle
-        // de l'ennemi SURVOLÉ garde son côté : c'est LUI qu'on désigne. La nôtre prend l'autre — notre
-        // pion sélectionné reste repérable par son cadre et ses zones de déplacement sur le plateau.
-        if (ownCell is not null && enemyCell is not null && ownRight == enemyRight)
-            ownRight = !enemyRight;
-
+        // Chaque carte se cale JUXTE le pion qu'elle décrit (à sa droite, cf. CardRectNearCell).
         Rectangle? ownCard = null;
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
-            ownCard = ownRight ? RightCardRect(board) : LeftCardRect(board);
+            ownCard = CardRectNearCell(oc, layout);
             DrawUnitCard(sb, own, ownCard.Value, showKeywords: oc != _selected, cell: oc);
         }
 
@@ -8009,36 +8390,11 @@ public sealed class GameplayScene : Scene
         if (enemyCell is { } ec && _match.UnitAt(ec) is { } enemy)
         {
             var preview = _selected is { } sel && _attackTargets.Contains(ec) ? _match.PreviewDamage(sel, ec) : 0;
-            DrawUnitCard(sb, enemy, enemyRight ? RightCardRect(board) : LeftCardRect(board), preview, cell: ec);
+            DrawUnitCard(sb, enemy, CardRectNearCell(ec, layout), preview, cell: ec);
         }
 
         // Tooltip d'environnement (buisson) de la case survolée.
         DrawEnvironmentTooltip(sb, layout, hovered, ownCell, ownCard);
-    }
-
-    /// <summary>
-    /// Côté d'une carte flottante : le côté demandé, sauf s'il recouvre le pion que la carte décrit —
-    /// auquel cas elle passe en face, pour que le pion désigné reste toujours visible.
-    ///
-    /// En combat le plateau occupe TOUTE la largeur : <see cref="RightCardRect"/> et
-    /// <see cref="LeftCardRect"/> ne trouvent pas de marge libre et se font borner à l'écran, donc
-    /// posées PAR-DESSUS les colonnes du bord. Sans ça, survoler un pion d'une colonne de bord
-    /// affichait sa carte juste sur lui.
-    ///
-    /// Test en X UNIQUEMENT, volontairement : le côté ne doit pas dépendre de la rangée, sinon la
-    /// carte sauterait d'un bord à l'autre entre deux pions d'une même colonne. Ça couvre du même coup
-    /// la pile de popups de mots-clés, qui descend sous la carte dans la même bande verticale.
-    /// Si les DEUX côtés le recouvrent (plateau plus large que l'écran), on garde le côté demandé.
-    /// </summary>
-    private bool CardGoesRight(Cell cell, GridLayout layout, Rectangle board, bool preferRight)
-    {
-        int px = (int)layout.CellToScreen(cell.Column, cell.Row).X;
-        int pRight = px + layout.TileSize;
-        bool Hides(Rectangle card) => card.X < pRight && px < card.Right;
-
-        if (!Hides(preferRight ? RightCardRect(board) : LeftCardRect(board)))
-            return preferRight;
-        return Hides(preferRight ? LeftCardRect(board) : RightCardRect(board)) ? preferRight : !preferRight;
     }
 
     // ── Tooltip d'environnement (objets de plateau : buisson) ─────────────────────
@@ -8131,12 +8487,27 @@ public sealed class GameplayScene : Scene
         return new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
     }
 
-    /// <summary>Emplacement de la carte à GAUCHE du plateau (ennemi survolé), borné à l'écran.</summary>
-    private Rectangle LeftCardRect(Rectangle board)
+    /// <summary>
+    /// Emplacement de la carte JUXTE le pion décrit : à sa DROITE (à sa hauteur) par défaut, rabattue à sa
+    /// GAUCHE si elle déborderait le bord droit — puis bornée à l'écran. Elle SUIT le pion au lieu de se
+    /// coller au bord du plateau (lisible même dézoomé, petit plateau centré). En placement, la marge droite
+    /// exclut le panneau réserve.
+    /// </summary>
+    private Rectangle CardRectNearCell(Cell cell, GridLayout layout)
     {
         var vp = VirtualViewport;
-        var x = Math.Max(board.X - CombatCardGap - CombatCardW, CombatCardGap);
-        return new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+        int rightLimit = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
+        var pos = layout.CellToScreen(cell.Column, cell.Row);
+        int tile = layout.TileSize;
+
+        int x = (int)pos.X + tile + CombatCardGap;                 // à droite du pion
+        if (x + CombatCardW > rightLimit - CombatCardGap)
+            x = (int)pos.X - CombatCardGap - CombatCardW;          // pas la place → à gauche du pion
+        x = Math.Clamp(x, CombatCardGap, Math.Max(CombatCardGap, rightLimit - CombatCardGap - CombatCardW));
+
+        int y = (int)pos.Y + tile / 2 - CombatCardH / 2;           // centrée verticalement sur la case
+        y = Math.Clamp(y, CombatCardGap, Math.Max(CombatCardGap, vp.Height - CombatCardGap - CombatCardH));
+        return new Rectangle(x, y, CombatCardW, CombatCardH);
     }
 
     /// <summary>
@@ -8152,11 +8523,15 @@ public sealed class GameplayScene : Scene
         // Auras de puissance ET Formation agissent sur la PUISSANCE elle-même : afficher le mot-clé sans
         // faire bouger le chiffre laisserait la carte en contradiction avec les dégâts réellement infligés.
         var contextualDmg = cell is { } pc ? _match.ContextualPowerBonus(pc) : 0;
-        DrawCardLayout(sb, rect, c, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, equip: unit.Equipment,
-            hpPreviewDamage: hpPreviewDamage, buffs: unit.Buffs, treeNodes: TreeNodesFor(unit), kills: unit.Kills,
-            granted: granted, contextualDmgBonus: contextualDmg);
+        // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
+        // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
+        var faction = unit.Faction; var domaine = unit.Domaine; var hp = unit.Hp; var maxHp = unit.MaxHp;
+        var equip = unit.Equipment; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
+        _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
+            hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
+            granted: granted, contextualDmgBonus: contextualDmg));
         if (showKeywords)
-            DrawKeywordPopupsBelow(sb, c, rect, unit.Equipment, unit.Buffs, granted);
+            _deferredKeywordPopups.Add((c, rect, equip, buffs, granted));
     }
 
     /// <summary>Auras dont l'effet se lit sur le BÉNÉFICIAIRE : le pion adjacent en profite sans porter le trait.</summary>
@@ -10063,6 +10438,13 @@ public sealed class GameplayScene : Scene
     /// <summary>Zoom courant = cadrage, plus un cran (+1) quand le zoom rapproché est actif.</summary>
     private int CurrentZoom() => FitZoom() + (_zoomedIn ? 1 : 0);
 
+    /// <summary>Taille de case du plateau (px canvas) : cadrage×zoom, ou la MOITIÉ en dézoom (÷2). Gouverne TOUT
+    /// (rendu ET hit-test/input/ancrage des cartes) dans un SEUL espace de coordonnées → tout fonctionne. En
+    /// dézoom le plateau est donc dessiné à 32 px (net mais « chunky » : demi-détail, prix du dézoom).</summary>
+    private int BoardTileSize() => _dezoomedOut
+        ? System.Math.Max(GridLayout.DefaultTileSize / 2, (FitZoom() - 1) * GridLayout.DefaultTileSize)
+        : GridLayout.DefaultTileSize * CurrentZoom();
+
     /// <summary>
     /// Origine du plateau : centré dans la zone de jeu, décalé par le pan caméra puis BORNÉ par axe
     /// pour que le plateau couvre toujours la zone (aucune bande noire). Si le plateau rentre sur un
@@ -10075,9 +10457,10 @@ public sealed class GameplayScene : Scene
         // via CurrentZoom/FitZoom et reste stable → seul le glissement bouge, pas la taille des cases.
         var centerWidth = CenteringWidth();
 
-        int zoom = CurrentZoom();
-        var tile = GridLayout.DefaultTileSize * zoom;
-        var spriteHeight = GridLayout.DefaultSpriteHeight * zoom;
+        // Taille de case (board-only) : cadrage/zoom, ou ÷2 en dézoom. La hauteur de sprite garde la même
+        // proportion 80/64 que la case (le recouvrement 64×80 reste cohérent à toutes les tailles).
+        var tile = BoardTileSize();
+        var spriteHeight = tile * GridLayout.DefaultSpriteHeight / GridLayout.DefaultTileSize;
 
         var pxW = Columns * tile;
         var pxH = (Rows - 1) * tile + spriteHeight;

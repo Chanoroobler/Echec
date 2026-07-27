@@ -4,18 +4,18 @@
   "width": 12,
   "height": 12,
   "tiles": [
+    ">_u_r_r_r_r_r_r_r_r_z,",
     ">_s_x_x_x_x_x_x_x_x_0,",
-    ">_s_x_x_x_x_x_x_x_x_0,",
-    ">_s_y_y_x_y_y_y_y_y_0,",
     ">_s_x_x_x_y_y_y_y_y_0,",
+    ">_s_x_x_x_y_y_y_y_x_0,",
     ">_o_w_w_x_x_x_x_w_w_3,",
-    "?_c_c_a_g_i_i_k_e_f_f;",
+    "?_b_b_a_g_i_i_k_e_f_f;",
     "hxx_m_h_j_j_l_nxxh",
     "hhhhwxwwhhhh",
-    "hhhhhhhhhhhh",
-    "hhhhhhhhhhhh",
-    "hhhhhhhhhhhh",
-    "hhhhhhhhhhhh"
+    "447hhhhhhh64",
+    "hh97hhhh640h",
+    "=<h8hhhh8h-=",
+    "|>h8hhhh8h,|"
   ],
   "spawns": [
     "....EBEE....",
@@ -28,8 +28,8 @@
     "...E.EE.E...",
     "............",
     "............",
-    "PPPPPPPPPPPP",
-    "PPPPPPPPPPPP"
+    "..PPPPPPPP..",
+    "..PPPPPPPP.."
   ],
   "tiers": [
     "....3.33....",
