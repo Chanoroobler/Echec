@@ -6,8 +6,9 @@
   // déplacement (moveRange) et portée d'attaque (attackRange).
   //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
   //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
-  //                             Formation, Esquive, Embrochage, Drain de vie, Rempart, Soin, Duelliste,
-  //                             Rage, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte…
+  //                             Formation, Esquive, Drain de vie, Rempart, Soin, Duelliste,
+  //                             Rage, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte,
+  //                             Impact, Recule…
   //   "evolutions": [...]    => les sous-classes (arbre à 3 tiers : base → 2 branches → 2 feuilles).
   // NB : « Zone morte » pilote la portée d'attaque min (2, contact interdit en ligne droite) via le trait.
   "domaines": [
@@ -20,7 +21,7 @@
             "name": "Archer", "asset": "archer", "hp": 12, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
             "evolutions": [
               { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3 }
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3, "traits": ["Recule"] }
             ]
           },
           {
@@ -63,7 +64,7 @@
           {
             "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
-              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart"] },
+              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart", "Impact"] },
               { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
             ]
           },
@@ -85,14 +86,14 @@
           {
             "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
-              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Formation"] },
+              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Interception"] },
               { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
             ]
           },
           {
             "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
-              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive","Embrochage"] },
+              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Transpercement"] },
               { "name": "Voltigeur", "asset": "voltigeur", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
             ]
           }

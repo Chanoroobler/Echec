@@ -32,6 +32,11 @@ public sealed class Match
     // Buffer réutilisé par CanTakePlace (évite d'allouer une liste de coups à chaque kill).
     private readonly List<Cell> _placeBuffer = new();
 
+    // Résultats de la DERNIÈRE action (déplacement/attaque) du porteur, pour le feedback de la scène.
+    // Réinitialisés au début de chaque TryMove/TryAttack ; restent vides/null si le trait est absent.
+    private readonly List<(Cell Cell, int Damage)> _impactHits = new();   // « Impact » : ennemis touchés autour du porteur
+    private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
+
     // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
     private readonly System.Random _rng;
@@ -354,8 +359,13 @@ public sealed class Match
         if (unit == null || !LegalMoves(from).Contains(to))
             return MoveKind.Invalid;
 
+        ResetActionFx();
         MoveUnit(from, to);
         TriggerInterceptions(to, unit);   // ennemis avec « Interception » dont la portée couvre la case d'arrivée
+        // « Impact » : à son propre déplacement, le porteur frappe les ennemis autour de sa case d'arrivée
+        // (s'il a survécu à une éventuelle interception).
+        if (unit.IsAlive && unit.HasTrait(Trait.Impact))
+            ApplyImpact(unit, to);
         EndTurn();
         return MoveKind.Moved;
     }
@@ -367,6 +377,7 @@ public sealed class Match
         if (unit == null || !AttackTargets(from).Contains(target))
             return MoveKind.Invalid;
 
+        ResetActionFx();
         var victim = _units[target.Column, target.Row]!;
         var victimHpBefore = victim.Hp;
         ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
@@ -374,14 +385,6 @@ public sealed class Match
         // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (esquive/bouclier inclus).
         if (unit.HasTrait(Trait.DrainDeVie))
             unit.Heal((victimHpBefore - victim.Hp) / 2);
-
-        // Éclaboussure sur les ennemis autour de la cible. « Dégâts de zone » frappe à dégâts PLEINS ;
-        // « Embrochage » ne transmet qu'un TIERS de la puissance (cf. EmbrochageDamage). Un porteur des
-        // deux garde la version pleine — la plus forte prime.
-        if (unit.HasTrait(Trait.DegatsDeZone))
-            SplashAround(target, unit, from);
-        else if (unit.HasTrait(Trait.Embrochage))
-            SplashAround(target, unit, from, EmbrochageDamage(unit, from));
 
         // Transpercement : l'unité juste DERRIÈRE la cible (même direction) est aussi touchée.
         if (unit.HasTrait(Trait.Transpercement))
@@ -392,7 +395,13 @@ public sealed class Match
             StormStrike(unit, target, storm);
 
         MoveKind kind;
-        if (!victim.IsAlive)
+        if (!victim.IsAlive && TryReviveWithEquipment(victim))
+        {
+            // « Queue de phénix » : la cible tombée ressuscite à 1 PV (équipement brisé). Elle SURVIT donc :
+            // pas de kill, l'attaquant ne prend pas sa place. Traité comme un coup encaissé (survivant).
+            kind = MoveKind.Moved;
+        }
+        else if (!victim.IsAlive)
         {
             unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
@@ -419,6 +428,16 @@ public sealed class Match
             kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
 
+        // « Recule » : la cible SURVIVANTE est repoussée d'une case (dégât bonus si un obstacle l'arrête).
+        // Après une éventuelle riposte (qui se résout depuis la case d'origine de la cible).
+        if (unit.HasTrait(Trait.Recule))
+            ApplyRecule(from, target, unit);
+
+        // « Impact » : le porteur frappe les ennemis autour de sa position FINALE (from, ou la case prise sur
+        // un kill) — jamais si un contre l'a abattu (CellOf renvoie null). Déclenché par sa seule attaque.
+        if (unit.HasTrait(Trait.Impact) && CellOf(unit) is { } here)
+            ApplyImpact(unit, here);
+
         EndTurn();
         return kind;
     }
@@ -430,18 +449,26 @@ public sealed class Match
     public const int BaseRempartReduction = 4;   // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
-    private const int AuraSurpuissanceBonus = 5; // +5 puissance offerte par un allié « Aura de surpuissance » adjacent
     private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
     /// <summary>Chance de BASE (0..1) du trait « Esquive » (avant bonus d'arbre « Esquive renforcée »).</summary>
     public const double BaseEsquiveChance = 0.25; // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
     private const int TempeteDamage = 6;         // dégât fixe de la tempête (trait « Tempête »)
+    private const int ImpactDamage = 5;          // dégât fixe autour du porteur d'« Impact » (déplacement/attaque)
+    private const int ReculeSlamDamage = 5;      // dégât bonus quand « Recule » plaque la cible contre un obstacle
 
     /// <summary>Dégât fixe de foudre infligé par <paramref name="unit"/> à l'attaque (Tempête &gt; Orage &gt; 0 si aucun).</summary>
     public static int StormDamageFor(Unit unit) =>
         unit.HasTrait(Trait.Tempete) ? TempeteDamage
         : unit.HasTrait(Trait.Orage) ? OrageDamage
         : 0;
+
+    /// <summary>Ennemis touchés par l'« Impact » de la DERNIÈRE action (case + dégâts réels) — vide sinon. Pour le feedback.</summary>
+    public IReadOnlyList<(Cell Cell, int Damage)> LastImpactHits => _impactHits;
+
+    /// <summary>Résultat du « Recule » de la DERNIÈRE attaque : case d'arrivée de la cible + dégât de plaquage
+    /// (0 si elle a glissé librement) ; <c>null</c> si aucun recul n'a eu lieu. Pour le feedback.</summary>
+    public (Cell To, int SlamDamage)? LastRecule => _lastRecule;
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -475,20 +502,15 @@ public sealed class Match
         UnitAt(cell) is { } u && HasAdjacentAlly(cell, u.Faction, auraTrait);
 
     /// <summary>
-    /// Puissance que l'unité de <paramref name="cell"/> tient des AURAS de ses alliés adjacents. Les deux
-    /// auras se CUMULENT, exactement comme dans <see cref="EffectiveDamage"/> — la carte doit afficher la
-    /// même valeur que celle réellement infligée.
+    /// Puissance que l'unité de <paramref name="cell"/> tient de l'AURA de puissance d'un allié adjacent,
+    /// exactement comme dans <see cref="EffectiveDamage"/> — la carte doit afficher la même valeur que celle
+    /// réellement infligée.
     /// </summary>
     public int AuraPowerBonus(Cell cell)
     {
         if (UnitAt(cell) is not { } u)
             return 0;
-        var bonus = 0;
-        if (HasAdjacentAlly(cell, u.Faction, Trait.AuraDePuissance))
-            bonus += AuraPuissanceBonus;
-        if (HasAdjacentAlly(cell, u.Faction, Trait.AuraDeSurpuissance))
-            bonus += AuraSurpuissanceBonus;
-        return bonus;
+        return HasAdjacentAlly(cell, u.Faction, Trait.AuraDePuissance) ? AuraPuissanceBonus : 0;
     }
 
     /// <summary>
@@ -521,12 +543,11 @@ public sealed class Match
 
     /// <summary>
     /// PUISSANCE EFFECTIVE de l'unité posée sur <paramref name="cell"/> : sa puissance de base plus TOUS ses
-    /// bonus offensifs contextuels — Rage (+1 par ennemi tué à vie), Aura de puissance / de surpuissance d'un
-    /// allié adjacent (cumulables), Formation (+2 par allié adjacent). C'est la valeur affichée sur sa carte,
-    /// et la SEULE source de « puissance » du moteur : tout ce qui se dit « une fraction de la puissance »
-    /// (<see cref="HealAmount"/>, <see cref="EmbrochageDamage"/>) en dérive, pour que les bonus profitent
-    /// partout de la même façon. Les réductions de la CIBLE ne sont pas ici : elles s'appliquent à l'arrivée,
-    /// dans <see cref="EffectiveDamage"/>.
+    /// bonus offensifs contextuels — Rage (+1 par ennemi tué à vie), Aura de puissance d'un allié adjacent,
+    /// Formation (+2 par allié adjacent). C'est la valeur affichée sur sa carte, et la SEULE source de
+    /// « puissance » du moteur : tout ce qui se dit « une fraction de la puissance » (<see cref="HealAmount"/>)
+    /// en dérive, pour que les bonus profitent partout de la même façon. Les réductions de la CIBLE ne sont
+    /// pas ici : elles s'appliquent à l'arrivée, dans <see cref="EffectiveDamage"/>.
     /// </summary>
     private int EffectivePower(Unit unit, Cell cell)
     {
@@ -589,23 +610,6 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Touche les ennemis des 8 cases autour de la cible. Par défaut (« Dégâts de zone ») chacun encaisse
-    /// les dégâts EFFECTIFS de l'attaquant contre lui, traits inclus. <paramref name="fixedDamage"/> impose
-    /// au contraire un montant identique pour tous, hors modificateurs (« Embrochage »).
-    /// </summary>
-    private void SplashAround(Cell center, Unit attacker, Cell attackerCell, int? fixedDamage = null)
-    {
-        foreach (var (dc, dr) in Neighbors8)
-        {
-            var c = new Cell(center.Column + dc, center.Row + dr);
-            if (UnitAt(c) is not { } u || u.Faction == attacker.Faction)
-                continue;
-            ApplyDamage(u, fixedDamage ?? EffectiveDamage(attacker, attackerCell, u, c), attacker);
-            RemoveDeadAt(c, attacker);
-        }
-    }
-
-    /// <summary>
     /// « Séisme » : déclenché À LA FIN DU TOUR ADVERSE (appelé par la scène). Chaque unité de
     /// <paramref name="actor"/> portant le trait <see cref="Trait.Seisme"/> frappe les ENNEMIS des 8 cases
     /// autour d'elle pour ses dégâts EFFECTIFS (sa puissance, moins les défenses de chaque cible). Les morts
@@ -644,17 +648,6 @@ public sealed class Match
         return hits;
     }
 
-    /// <summary>Diviseur d'« Embrochage » : les voisins de la cible prennent la puissance divisée par autant.</summary>
-    private const int EmbrochageDivisor = 3;
-
-    /// <summary>
-    /// Dégâts d'« Embrochage » sur CHAQUE ennemi adjacent à la cible : le TIERS de la
-    /// <see cref="EffectivePower"/> du porteur, arrondi vers le BAS. Les bonus de puissance (Rage, auras,
-    /// Formation) comptent donc, exactement comme pour la cible directe. Les réductions propres à chaque
-    /// voisin (Rempart, buisson, Duelliste) ne s'appliquent PAS : le montant est le même pour tous les
-    /// embrochés. Seule « Esquive » peut encore l'annuler (cf. <see cref="ApplyDamage"/>).
-    /// </summary>
-    public int EmbrochageDamage(Unit unit, Cell cell) => EffectivePower(unit, cell) / EmbrochageDivisor;
 
     /// <summary>Nombre MAX d'ennemis foudroyés par Orage/Tempête (tirés au hasard s'il y en a davantage).</summary>
     private const int StormMaxTargets = 3;
@@ -702,6 +695,66 @@ public sealed class Match
         RemoveDeadAt(behind, attacker);
     }
 
+    /// <summary>Vide les résultats de feedback (« Impact »/« Recule ») avant de résoudre une nouvelle action.</summary>
+    private void ResetActionFx()
+    {
+        _impactHits.Clear();
+        _lastRecule = null;
+    }
+
+    /// <summary>
+    /// « Impact » : le porteur inflige un dégât FIXE (<see cref="ImpactDamage"/>) à TOUS les ennemis des 8 cases
+    /// autour de <paramref name="center"/> (sa position finale). Déclenché UNIQUEMENT par sa propre action
+    /// (déplacement / attaque), jamais relayé par un autre trait. Fixe : ni Rempart ni couvert ne le réduisent,
+    /// mais Esquive peut l'annuler (via <see cref="ApplyDamage"/>). Les coups réels sont notés dans
+    /// <see cref="_impactHits"/> pour le feedback ; l'appelant a réinitialisé la liste via <see cref="ResetActionFx"/>.
+    /// </summary>
+    private void ApplyImpact(Unit unit, Cell center)
+    {
+        foreach (var (dc, dr) in Neighbors8)
+        {
+            var c = new Cell(center.Column + dc, center.Row + dr);
+            if (UnitAt(c) is not { } victim || victim.Faction == unit.Faction)
+                continue;
+            var before = victim.Hp;
+            ApplyDamage(victim, ImpactDamage, unit);
+            if (before - victim.Hp is > 0 and var dealt)
+                _impactHits.Add((c, dealt));
+            RemoveDeadAt(c, unit);
+        }
+    }
+
+    /// <summary>
+    /// « Recule » : repousse la cible SURVIVANTE d'une case dans l'axe de l'attaque (attaquant → cible). Si la
+    /// case derrière est libre et franchissable, la cible y glisse ; sinon (bord du plateau, unité, obstacle de
+    /// terrain) elle est PLAQUÉE et encaisse <see cref="ReculeSlamDamage"/> en restant sur place. No-op si la
+    /// cible n'a pas survécu (déjà tuée, ou sa place a été prise par l'attaquant). Résultat noté dans
+    /// <see cref="_lastRecule"/> pour le feedback.
+    /// </summary>
+    private void ApplyRecule(Cell from, Cell target, Unit attacker)
+    {
+        if (UnitAt(target) is not { } victim || victim.Faction == attacker.Faction)
+            return;
+        var dc = System.Math.Sign(target.Column - from.Column);
+        var dr = System.Math.Sign(target.Row - from.Row);
+        if (dc == 0 && dr == 0)
+            return;   // pas de direction exploitable (ne devrait pas arriver pour une attaque valide)
+
+        var behind = new Cell(target.Column + dc, target.Row + dr);
+        if (InBounds(behind) && _units[behind.Column, behind.Row] == null && !BlocksMovement(behind))
+        {
+            MoveUnit(target, behind);       // la cible glisse d'une case, poussée hors de portée
+            _lastRecule = (behind, 0);
+        }
+        else
+        {
+            var before = victim.Hp;         // plaquée contre un obstacle (bord / unité / terrain) : dégât bonus
+            ApplyDamage(victim, ReculeSlamDamage, attacker);
+            RemoveDeadAt(target, attacker);
+            _lastRecule = (target, before - victim.Hp);
+        }
+    }
+
     /// <summary>« Interception » : chaque ennemi du mobile dont la portée couvre la case d'arrivée le frappe.</summary>
     private void TriggerInterceptions(Cell movedTo, Unit mover)
     {
@@ -729,9 +782,24 @@ public sealed class Match
     {
         if (UnitAt(cell) is not { IsAlive: false } dead)
             return;
+        if (TryReviveWithEquipment(dead))
+            return;   // « Queue de phénix » : reste sur sa case, vivant à 1 PV, équipement brisé (pas de kill)
         if (killer != null && dead.Faction != killer.Faction)
             killer.RecordKill();
         _units[cell.Column, cell.Row] = null;
+    }
+
+    /// <summary>
+    /// « Queue de phénix » : si l'unité TOMBÉE porte l'équipement de <see cref="Trait.Renaissance"/>, elle
+    /// ressuscite à 1 PV et l'équipement se brise (consommé). Renvoie vrai si une renaissance a eu lieu —
+    /// l'unité RESTE alors en jeu (aucun kill ne doit être crédité, aucune case libérée).
+    /// </summary>
+    private static bool TryReviveWithEquipment(Unit unit)
+    {
+        if (unit.IsAlive || unit.Equipment is not { } eq || !eq.GrantsTrait(Trait.Renaissance))
+            return false;
+        unit.ReviveConsumingEquipment();
+        return true;
     }
 
     /// <summary>Vrai si l'unité sait soigner : « Soin » (moitié de la puissance) ou « Soin parfait » (totalité).</summary>

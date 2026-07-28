@@ -64,14 +64,6 @@ savoir pour quand tu rouvriras la phase 3.
 
 Les mécaniques capables de toucher plusieurs unités en **une** action :
 
-- **Dégâts de zone** : dégâts **pleins** sur les 8 cases autour de la cible. Aucun porteur
-  dans le catalogue livré.
-- **Embrochage** (2026-07-24) : mêmes 8 cases, mais **puissance EFFECTIVE ÷ 3 arrondie au plus
-  bas**. Les bonus de puissance du tireur (Rage, auras, Formation) comptent ; les réductions
-  propres à chaque voisin (rempart, couvert, duelliste) non — le montant est le même pour tous
-  les embrochés, seule Esquive l'annule. Seul le **Dragoon** (Tour T3, puissance 16
-  → **5** par voisin, **6** sous une aura de puissance) le porte : le tir reste une menace de
-  groupe, mais n'efface plus une escouade entière.
 - **Orage / Tempête** : attaque normale **+** dégât fixe (3 / 6) sur **3 unités au hasard**,
   en **ignorant couvert et rempart**. ⚠️ **Aucune classe du catalogue codé ne les porte** :
   ces traits n'apparaissent que si ton `units.json` les donne à un boss. Si c'est le cas, un
@@ -187,7 +179,7 @@ sur une case mortelle. C'est un adversaire *cohérent*, pas *optimal*.
    c'est le meilleur candidat d'implémentation ensuite.
 3. **Dégâts ennemis** (`--enemy-dmg`) : multiplicateur global. Réduit directement les
    one-shots. Alternative douce : +PV joueur.
-4. **Dompter le burst** : `StormMaxTargets` = 1 en facile, retirer Embrochage/Tempête des
+4. **Dompter le burst** : `StormMaxTargets` = 1 en facile, retirer Tempête des
    profils faciles.
 5. **Effectifs / tiers** (`CampaignPlan`) : −1 pion par vague en phase 1, retarder T2/T3.
 

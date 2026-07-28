@@ -279,20 +279,16 @@ public sealed class GameplayScene : Scene
     private readonly DamagePopups _damagePopups = new();
     private int _pendingDamage;
     private bool _pendingDodge;   // l'attaque en cours a été ESQUIVÉE : feedback dédié à l'impact (popup + son)
+    private bool _pendingPhenix;  // la cible du coup a été RESSUSCITÉE (Queue de phénix) : callout dédié à l'impact
     // Orage / Tempête : éclairs sur tous les pions à l'attaque d'un porteur. Cases et chiffres figés
     // AVANT l'attaque (le domaine applique la foudre instantanément), déclenchés à l'impact.
     private readonly StormFx _storm = new();
     private List<Cell>? _pendingStormBolts;                    // pions à foudroyer (visuel)
     private List<(Cell Cell, int Damage)>? _pendingStormHits;  // ennemis touchés + dégâts (chiffres)
-    // Embrochage : sursaut + flash (+ dissolution des tués) sur les voisins éclaboussés de la cible.
-    // Voisins et chiffres figés AVANT l'attaque (le domaine applique l'éclaboussure instantanément),
-    // déclenchés à l'impact — même patron que l'Orage.
-    private readonly SplashFx _splash = new();
-    private List<SplashFx.Hit>? _pendingSplash;               // voisins embrochés (sursaut / flash / dissolution)
-    private List<(Cell Cell, int Damage)>? _pendingSplashHits; // voisins touchés + dégâts (chiffres)
-    private int _splashSeedCounter;                            // varie la graine de dissolution par voisin
-    private static readonly (int Dc, int Dr)[] SplashOffsets =
-        { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };  // 8 voisins (cf. Match.Neighbors8)
+    // Impact / Recule (traits d'action) : chiffres de dégâts figés APRÈS l'attaque, déclenchés à l'impact
+    // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
+    private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
+    private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
     // Tutoriel « combat zéro » : non-null pendant le combat scénarisé de début de campagne.
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
@@ -1056,9 +1052,8 @@ public sealed class GameplayScene : Scene
         _storm.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
-        _splash.Clear();
-        _pendingSplash = null;
-        _pendingSplashHits = null;
+        _pendingImpactHits = null;
+        _pendingReculeSlam = null;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1189,9 +1184,8 @@ public sealed class GameplayScene : Scene
         _storm.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
-        _splash.Clear();
-        _pendingSplash = null;
-        _pendingSplashHits = null;
+        _pendingImpactHits = null;
+        _pendingReculeSlam = null;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -3545,16 +3539,14 @@ public sealed class GameplayScene : Scene
             if (_fx.HasImpacted && !_impactHandled)
                 OnImpact();
             _storm.Update(dt);    // les éclairs avancent en parallèle de la fin de l'anim d'attaque
-            _splash.Update(dt);   // sursaut/flash/dissolution des voisins embrochés, en parallèle aussi
             return;
         }
 
-        // FX secondaires (orage, embrochage) : peuvent se prolonger après l'anim d'attaque ; on gèle
-        // jusqu'à leur extinction (mise à jour d'un FX inactif = sans effet).
-        if (_storm.Active || _splash.Active)
+        // FX secondaire (orage) : peut se prolonger après l'anim d'attaque ; on gèle
+        // jusqu'à son extinction (mise à jour d'un FX inactif = sans effet).
+        if (_storm.Active)
         {
             _storm.Update(dt);
-            _splash.Update(dt);
             return;
         }
 
@@ -3654,7 +3646,7 @@ public sealed class GameplayScene : Scene
 
         if (best != from)
         {
-            _match.TryMove(from, best);
+            TryMoveWithFx(from, best);
             if (_match.UnitAt(best) is { } moved) FaceToward(moved, from, best);
             TriggerLanding(best);
             Context.Sounds.Play("unit_move");
@@ -4216,7 +4208,13 @@ public sealed class GameplayScene : Scene
     {
         foreach (var (unit, spec) in _playerSpec)
             if (unit.IsAlive)
+            {
                 spec.Kills = unit.Kills;
+                // « Queue de phénix » BRISÉE en combat (renaissance) : l'équipement disparaît AUSSI du gabarit
+                // persistant — sinon le pion le récupérerait au combat suivant. cf. Unit.ReviveConsumingEquipment.
+                if (unit.Equipment == null && spec.Equipment != null)
+                    spec.Equipment = null;
+            }
     }
 
     /// <summary>
@@ -4326,7 +4324,7 @@ public sealed class GameplayScene : Scene
         }
         if (_selected is { } sel2 && _legalMoves.Contains(cell))
         {
-            _match.TryMove(sel2, cell);
+            TryMoveWithFx(sel2, cell);
             if (_match.UnitAt(cell) is { } moved) FaceToward(moved, sel2, cell);
             TriggerLanding(cell);
             Context.Sounds.Play("unit_move");
@@ -4452,7 +4450,7 @@ public sealed class GameplayScene : Scene
         if (_selected is not null && _legalMoves.Contains(cell))
         {
             var from = _selected.Value;
-            _match.TryMove(from, cell);
+            TryMoveWithFx(from, cell);
             if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
             TriggerLanding(cell);
             Context.Sounds.Play("unit_move");
@@ -4507,7 +4505,7 @@ public sealed class GameplayScene : Scene
         }
         else if (_legalMoves.Contains(cell))
         {
-            _match.TryMove(from, cell);
+            TryMoveWithFx(from, cell);
             if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
             TriggerLanding(cell);
             Context.Sounds.Play("unit_move");
@@ -4559,7 +4557,7 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            _match.TryMove(a.From, a.To);
+            TryMoveWithFx(a.From, a.To);
             if (_match.UnitAt(a.To) is { } moved) FaceToward(moved, a.From, a.To);
             TriggerLanding(a.To);
             Context.Sounds.Play("unit_move");
@@ -5168,6 +5166,19 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Déplace via le moteur PUIS déclenche le feedback d'« Impact » (dégâts fixes autour de la case
+    /// d'arrivée) si le pion le porte. Centralisé pour que TOUS les points de déplacement — joueur, IA,
+    /// tutoriel — montrent l'effet. Le déplacement est instantané : les chiffres jaillissent sur-le-champ.
+    /// </summary>
+    private MoveKind TryMoveWithFx(Cell from, Cell to)
+    {
+        var kind = _match.TryMove(from, to);
+        foreach (var (cell, dmg) in _match.LastImpactHits)
+            _damagePopups.Spawn(cell, dmg);
+        return kind;
+    }
+
+    /// <summary>
     /// Trait « Soin » : soigne l'allié ciblé (montant = moitié de la puissance du soigneur) et passe le tour. Feedback :
     /// son d'incantation + « +N » vert flottant sur le soigné. La cible est déjà bornée aux alliés blessés à
     /// portée par <see cref="Match.HealTargets"/>/<see cref="Match.TryHeal"/>.
@@ -5193,6 +5204,7 @@ public sealed class GameplayScene : Scene
     {
         var attacker = _match.UnitAt(from);
         var victim = _match.UnitAt(target);
+        var victimEquipBefore = victim?.Equipment;   // pour détecter une renaissance « Queue de phénix » après le coup
         // Dégâts EFFECTIFS à afficher (traits inclus : Rempart, Rage…), bornés aux PV de la cible.
         _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
         var victimHpBefore = victim?.Hp ?? 0;       // pour détecter l'esquive (PV inchangés malgré des dégâts attendus)
@@ -5211,20 +5223,6 @@ public sealed class GameplayScene : Scene
             foreach (var (cell, u) in _match.Units())
                 if (u.Faction != attacker.Faction && cell != target)
                     stormBefore.Add((cell, u, u.Hp));     // candidat : on saura après l'attaque s'il a été foudroyé
-        }
-
-        // Embrochage : on fige AVANT l'attaque les PV (et le sprite) des ENNEMIS voisins de la cible, car
-        // TryAttack applique l'éclaboussure instantanément et RETIRE aussitôt les voisins tués du plateau.
-        List<(Cell Cell, Unit Unit, int Hp, Texture2D? Sprite)>? splashBefore = null;
-        if (attacker != null && attacker.HasTrait(Trait.Embrochage))
-        {
-            splashBefore = new List<(Cell, Unit, int, Texture2D?)>();
-            foreach (var (dc, dr) in SplashOffsets)
-            {
-                var c = new Cell(target.Column + dc, target.Row + dr);
-                if (_match.UnitAt(c) is { } u && u.Faction != attacker.Faction)
-                    splashBefore.Add((c, u, u.Hp, UnitSprite(u)));   // candidat : on saura après l'attaque s'il a été embroché
-            }
         }
 
         var kind = _match.TryAttack(from, target);
@@ -5246,27 +5244,16 @@ public sealed class GameplayScene : Scene
                 }
         }
 
-        // Bilan de l'embrochage : sursaut/flash/dissolution + chiffre UNIQUEMENT sur les voisins ayant perdu des PV.
-        _pendingSplash = null;
-        _pendingSplashHits = null;
-        if (splashBefore != null)
-        {
-            _pendingSplash = new List<SplashFx.Hit>();
-            _pendingSplashHits = new List<(Cell, int)>();
-            foreach (var (cell, u, hp, sprite) in splashBefore)
-                if (hp - u.Hp is > 0 and var dmg)
-                {
-                    var dir = new Vector2(cell.Column - target.Column, cell.Row - target.Row);
-                    if (dir.LengthSquared() > 0f)
-                        dir.Normalize();
-                    var seed = new Vector2((_splashSeedCounter * 37) % 251, (_splashSeedCounter * 101) % 241);
-                    _splashSeedCounter++;
-                    _pendingSplash.Add(new SplashFx.Hit(cell, sprite, !u.IsAlive, dir, seed));
-                    _pendingSplashHits.Add((cell, dmg));
-                }
-        }
+        // Impact / Recule : chiffres reportés à l'impact (copie : la liste du moteur est réécrite à l'action suivante).
+        _pendingImpactHits = _match.LastImpactHits.Count > 0
+            ? new List<(Cell, int)>(_match.LastImpactHits)
+            : null;
+        _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
 
         RecordIfEnemyKilled(victim);
+
+        // « Queue de phénix » : la cible a encaissé un coup létal mais renaît à 1 PV (son équipement s'est brisé).
+        _pendingPhenix = victim is { IsAlive: true } && victimEquipBefore != null && victim.Equipment == null;
 
         var killed = kind == MoveKind.Killed;
         // Esquive : la victime a le trait, des dégâts étaient attendus mais ses PV n'ont pas bougé → coup esquivé.
@@ -5625,9 +5612,6 @@ public sealed class GameplayScene : Scene
                 if (_fx.Active)             // dissolution / attaquant animé / flash : passes dédiées
                     DrawCombatFx(sb, board);
 
-                if (_splash.Active)         // embrochage : sursaut/flash des voisins (+ dissolution des tués)
-                    DrawSplashFx(sb, board);
-
                 DrawEquipDissolves(sb, board);   // dissolution de l'équipement perdu (après celle du pion)
 
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
@@ -5765,7 +5749,6 @@ public sealed class GameplayScene : Scene
             sb.End();
             // FX de combat (chacun gère son propre batch) — sur la couche plateau pour rester à la bonne échelle.
             if (_fx.Active) DrawCombatFx(sb, nb);
-            if (_splash.Active) DrawSplashFx(sb, nb);
             DrawEquipDissolves(sb, nb);
             _sparks.Draw(sb, Context.Pixel);
             if (_storm.Active) DrawStormFx(sb, nb);
@@ -6170,7 +6153,7 @@ public sealed class GameplayScene : Scene
             new[] { Palette.Black5, Palette.WaterMid2, Palette.Cyan1, Palette.White },
             new[] { Palette.Purple1, Palette.Purple2, Palette.Purple3, Palette.Purple5 }),
         // +puissance (crête chaude = « buff », sur un corps à la température du camp)
-        (new[] { Trait.AuraDePuissance, Trait.AuraDeSurpuissance },
+        (new[] { Trait.AuraDePuissance },
             new[] { Palette.Black4, Palette.Black5, Palette.Cyan2, Palette.Brown4 },
             new[] { Palette.Purple1, Palette.Purple3, Palette.Purple5, Palette.Brown5 }),
     };
@@ -6484,7 +6467,7 @@ public sealed class GameplayScene : Scene
 
         // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU sursaut vers l'extérieur
         // d'un voisin embroché survivant : décalage en pixels.
-        var kb = IsFxVictim(cell) ? VictimKnockback(size) : SplashJolt(cell, size);
+        var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
         zx += kb.X;
         zy += kb.Y;
 
@@ -7016,56 +6999,6 @@ public sealed class GameplayScene : Scene
         return new Point((int)MathF.Round(dir.X * kmag), (int)MathF.Round(dir.Y * kmag));
     }
 
-    /// <summary>Amplitude du sursaut (fraction de case) d'un voisin embroché : un peu moins que le recul de la victime.</summary>
-    private const float SplashJoltFraction = 0.12f;
-
-    /// <summary>Décalage (px entiers) du SURSAUT vers l'extérieur d'un voisin embroché SURVIVANT sur cette case
-    /// (Point.Zero sinon) — pendant côté voisins de <see cref="VictimKnockback"/>.</summary>
-    private Point SplashJolt(Cell cell, int size)
-    {
-        if (!_splash.Active)
-            return Point.Zero;
-        var amt = _splash.JoltAmount;
-        if (amt <= 0f)
-            return Point.Zero;
-        foreach (var h in _splash.Hits)
-            if (!h.Killed && h.Cell == cell)
-            {
-                var mag = size * SplashJoltFraction * amt;
-                return new Point((int)MathF.Round(h.Dir.X * mag), (int)MathF.Round(h.Dir.Y * mag));
-            }
-        return Point.Zero;
-    }
-
-    /// <summary>
-    /// Passe de l'embrochage : sur chaque voisin éclaboussé, sursaut vers l'extérieur (le décalage des
-    /// SURVIVANTS est déjà appliqué dans <see cref="DrawUnit"/>) + flash « touché » additif ; les voisins
-    /// TUÉS, déjà retirés du plateau, sont redessinés ICI depuis leur sprite capturé, en dissolution.
-    /// </summary>
-    private void DrawSplashFx(SpriteBatch sb, GridLayout layout)
-    {
-        var size = layout.TileSize;
-        var spriteLift = (int)(size * SpriteLiftFraction);
-        var fxPixel = MathF.Max(2f, size / 32f);
-        var jolt = _splash.JoltAmount;
-        foreach (var h in _splash.Hits)
-        {
-            if (h.Sprite is not { } sprite)
-                continue;
-            var top = layout.CellToScreen(h.Cell.Column, h.Cell.Row) - new Vector2(0, spriteLift);
-            var animLift = UnitLift(h.Cell, size);   // même bob que DrawUnit → le flash reste calé sur le sprite
-            var mag = size * SplashJoltFraction * jolt;
-            var rect = new Rectangle(
-                (int)MathF.Round(top.X + h.Dir.X * mag),
-                (int)MathF.Round(top.Y + h.Dir.Y * mag) - animLift,
-                size, size);
-            if (h.Killed)
-                _combatFx.DrawDissolve(sb, sprite, rect, _splash.DissolveProgress, Palette.Purple5, h.Seed);
-            else
-                _combatFx.DrawFlash(sb, sprite, rect, _splash.FlashIntensity, Palette.White, fxPixel);
-        }
-    }
-
     /// <summary>Au contact (une fois par attaque) : fait jaillir le chiffre de dégâts, qui éclatera
     /// ensuite en feu d'artifice. Plus d'étincelles d'impact (le dev les trouvait trop chargées avec
     /// l'explosion du chiffre).</summary>
@@ -7081,6 +7014,8 @@ public sealed class GameplayScene : Scene
         else
         {
             _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+            if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
+                _damagePopups.SpawnText(_fx.To, Loc.T("fx.phenix"), Palette.Brown3);
         }
 
         // Orage / Tempête : au contact, les éclairs s'abattent sur les ennemis foudroyés et leurs chiffres
@@ -7095,15 +7030,19 @@ public sealed class GameplayScene : Scene
             _pendingStormHits = null;
         }
 
-        // Embrochage : au contact, les voisins éclaboussés sursautent / flashent (les tués se dissolvent) et
-        // leurs chiffres de dégâts jaillissent.
-        if (_pendingSplash != null)
+        // Impact (trait) : chiffres sur les ennemis frappés autour du porteur, au contact de l'attaque.
+        if (_pendingImpactHits != null)
         {
-            _splash.Begin(_pendingSplash);
-            foreach (var (cell, dmg) in _pendingSplashHits!)
+            foreach (var (cell, dmg) in _pendingImpactHits)
                 _damagePopups.Spawn(cell, dmg);
-            _pendingSplash = null;
-            _pendingSplashHits = null;
+            _pendingImpactHits = null;
+        }
+
+        // Recule (trait) : chiffre du dégât BONUS de plaquage sur la cible restée collée à l'obstacle.
+        if (_pendingReculeSlam is { } slam)
+        {
+            _damagePopups.Spawn(slam.Cell, slam.Damage);
+            _pendingReculeSlam = null;
         }
     }
 
@@ -8836,7 +8775,6 @@ public sealed class GameplayScene : Scene
     {
         (Trait.AuraDeRempart, Trait.Rempart),                  // l'aura confère l'effet « Rempart »
         (Trait.AuraDePuissance, Trait.AuraDePuissance),        // pas de trait dédié : on montre l'aura elle-même
-        (Trait.AuraDeSurpuissance, Trait.AuraDeSurpuissance),
     };
 
     /// <summary>

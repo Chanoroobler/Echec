@@ -37,8 +37,9 @@ public sealed class Unit
     /// </summary>
     public Domaine AttackDomaine => Class.AttackDomaine ?? Domaine;
 
-    /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant.</summary>
-    public Equipment? Equipment { get; }
+    /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant. Peut être
+    /// BRISÉ en combat (mis à null) par la « Queue de phénix » — cf. <see cref="ReviveConsumingEquipment"/>.</summary>
+    public Equipment? Equipment { get; private set; }
 
     /// <summary>
     /// Bonus de l'arbre de commandement applicables à CETTE unité (ceux du commandant, ou ceux des troupes).
@@ -116,6 +117,19 @@ public sealed class Unit
     public bool IsAlive => Hp > 0;
 
     public void TakeDamage(int amount) => Hp = System.Math.Max(0, Hp - amount);
+
+    /// <summary>
+    /// « Queue de phénix » : l'unité TOMBÉE (0 PV) ressuscite à 1 PV et son équipement se BRISE (consommé,
+    /// mis à null — une seule fois, puisque le trait <see cref="Battle.Trait.Renaissance"/> disparaît avec lui).
+    /// Renvoie l'équipement brisé (pour le feedback côté scène), ou null s'il n'y avait rien à consommer.
+    /// </summary>
+    public Equipment? ReviveConsumingEquipment()
+    {
+        var broken = Equipment;
+        Equipment = null;
+        Hp = 1;
+        return broken;
+    }
 
     /// <summary>Soigne l'unité (borné à ses PV max).</summary>
     public void Heal(int amount) => Hp = System.Math.Min(MaxHp, Hp + amount);

@@ -61,7 +61,7 @@ public sealed class UnitClass
     public int MinAttackRange { get; }
 
     /// <summary>
-    /// Traits/particularités de la classe (Rempart, Soin, Dégâts de zone, Franchissement,
+    /// Traits/particularités de la classe (Rempart, Soin, Franchissement,
     /// Transpercement, Interception…), HORS « Traverse allié » qui est porté par
     /// <see cref="PiercesAllies"/>. DONNÉE seule pour l'instant : les mécaniques ne sont pas encore
     /// implémentées (les unités concernées ne sont pas en jeu ; à faire avec les tiers 2).

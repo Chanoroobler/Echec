@@ -3,7 +3,7 @@
   // Un seul équipement par pion. Un équipement porte UN OU PLUSIEURS effets :
   //   • bonus de STAT : { "stat": "Hp" | "Damage" | "MoveRange" | "AttackRange", "amount": +N }
   //   • octroi de TRAIT : { "trait": "<nom canonique>" } (voir Trait.cs : Rempart, Riposte, Rage, Soin,
-  //                        Dégâts de zone, Transpercement, Interception, Balistique, …).
+  //                        Transpercement, Interception, Balistique, …).
   // Deux façons de les déclarer :
   //   A) effet UNIQUE : champs "stat"+"amount" OU "trait" au premier niveau (forme historique).
   //   B) effets MULTIPLES : tableau "effects" (chaque élément = un bonus de stat OU un trait). Ex. un
@@ -408,6 +408,13 @@
           "trait": "Statique"
         }
       ]
+    },
+    {
+      // Consommable : à la mort du pion, il ressuscite à 1 PV et la queue de phénix se BRISE (cf. Trait.Renaissance).
+      "id": "queuePhenix",
+      "name": "Queue de phénix",
+      "rarity": "Common",
+      "trait": "Renaissance"
     }
   ]
 }

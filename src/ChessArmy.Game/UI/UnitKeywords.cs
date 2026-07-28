@@ -23,13 +23,11 @@ public static class UnitKeywords
         ["Traverse allié"] = "kw.pierce_allies",   // porté par la CLASSE via PiercesAllies, mais octroyable par un équipement (Lance)
         ["Soin"] = "kw.soin",
         ["Soin parfait"] = "kw.soin_parfait",
-        ["Dégâts de zone"] = "kw.zone",
         ["Franchissement"] = "kw.franchissement",
         ["Transpercement"] = "kw.transpercement",
         ["Interception"] = "kw.interception",
         ["Aura de rempart"] = "kw.aura_rempart",
         ["Aura de puissance"] = "kw.aura_puissance",
-        ["Aura de surpuissance"] = "kw.aura_surpuissance",
         ["Riposte"] = "kw.riposte",
         ["Duelliste"] = "kw.duelliste",
         ["Rage"] = "kw.rage",
@@ -39,12 +37,14 @@ public static class UnitKeywords
         ["Vol"] = "kw.vol",
         ["Formation"] = "kw.formation",
         ["Esquive"] = "kw.esquive",
-        ["Embrochage"] = "kw.embrochage",
         ["Orage"] = "kw.orage",
         ["Tempête"] = "kw.tempete",
         ["Attaque libre"] = "kw.attaque_libre",
         ["Statique"] = "kw.statique",
         ["Séisme"] = "kw.seisme",
+        ["Impact"] = "kw.impact",
+        ["Recule"] = "kw.recule",
+        ["Renaissance"] = "kw.renaissance",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

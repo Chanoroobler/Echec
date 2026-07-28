@@ -122,17 +122,6 @@ public class TraitsTests
         Assert.Equal(17, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 3)
     }
 
-    [Fact]
-    public void AuraDeSurpuissance_AdjacentAlly_AddsFivePower()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, new[] { Trait.AuraDeSurpuissance })); // allié adjacent
-        m.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
-        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
-        Assert.Equal(15, m.UnitAt(new Cell(0, 1))!.Hp);        // 30 - (10 + 5)
-    }
-
     // ── Coups reçus (Unit.TimesHit) : source de points du commandant ───────────────
 
     [Fact]
@@ -172,7 +161,7 @@ public class TraitsTests
         Assert.Equal(0, weak.DamageDealt);   // 4 - 4 (rempart) = 0 infligé
     }
 
-    // ── Formes d'attaque : Transpercement / Dégâts de zone ────────────────────────
+    // ── Formes d'attaque : Transpercement ─────────────────────────────────────────
 
     [Fact]
     public void Transpercement_AlsoHitsUnitBehindTarget()
@@ -184,18 +173,6 @@ public class TraitsTests
         m.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(14, m.UnitAt(new Cell(0, 1))!.Hp);
         Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);             // touché par transpercement
-    }
-
-    [Fact]
-    public void DegatsDeZone_SplashesEnemiesAroundTarget()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.DegatsDeZone }));
-        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible
-        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));   // adjacent à la cible → éclaboussé
-        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);
-        Assert.Equal(14, m.UnitAt(new Cell(1, 2))!.Hp);
     }
 
     // ── Déplacement : Franchissement ──────────────────────────────────────────────
@@ -540,53 +517,6 @@ public class TraitsTests
         Assert.Equal(10, hit.UnitAt(new Cell(0, 2))!.Hp);      // 20 - 10
     }
 
-    // ── Embrochage : touche les ennemis adjacents à la cible pour puissance/3 ─────
-
-    [Fact]
-    public void Embrochage_HitsEnemyAdjacentToTarget_ForAThirdOfPower()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 7, new[] { Trait.Embrochage }));
-        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible
-        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));   // adjacent à la cible → embroché
-
-        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(13, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 7 (dégâts PLEINS)
-        Assert.Equal(18, m.UnitAt(new Cell(1, 2))!.Hp);   // voisin : 20 - (7/3 = 2, arrondi au plus bas)
-    }
-
-    /// <summary>Puissance &lt; 3 : le tiers tombe à 0, le voisin ne prend RIEN (pas de dégât plancher).</summary>
-    [Fact]
-    public void Embrochage_PowerBelowThree_LeavesNeighbourUntouched()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 2, new[] { Trait.Embrochage }));
-        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
-        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));
-
-        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(18, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 20 - 2
-        Assert.Equal(20, m.UnitAt(new Cell(1, 2))!.Hp);   // voisin : 2/3 = 0
-    }
-
-    /// <summary>
-    /// Le tiers se calcule sur la puissance EFFECTIVE : les bonus de puissance de l'attaquant (ici une aura
-    /// alliée, +3) profitent à l'embrochage comme à la cible directe.
-    /// </summary>
-    [Fact]
-    public void Embrochage_CountsAttackerPowerBonuses_OnTheSplash()
-    {
-        var m = Board();
-        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 9, new[] { Trait.Embrochage }));
-        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, new[] { Trait.AuraDePuissance }));   // +3 puissance
-        m.Place(new Cell(0, 2), Make(Faction.Enemy, 30, 5, None));   // cible
-        m.Place(new Cell(1, 2), Make(Faction.Enemy, 30, 5, None));   // embroché
-
-        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(18, m.UnitAt(new Cell(0, 2))!.Hp);   // cible : 30 - (9 + 3)
-        Assert.Equal(26, m.UnitAt(new Cell(1, 2))!.Hp);   // voisin : 30 - (12/3 = 4), et non 9/3 = 3
-    }
-
     // ── Drain de vie : soigne l'attaquant de 50 % des dégâts ──────────────────────
 
     [Fact]
@@ -781,6 +711,160 @@ public class TraitsTests
 
         Assert.Null(board.UnitAt(from));                            // a quitté sa case
         Assert.Equal(Faction.Player, board.UnitAt(target)!.Faction);   // a pris la place de la cible
+    }
+
+    // ── Queue de phénix (Renaissance) : renaissance à la mort + consommation de l'équipement ─────────
+
+    [Fact]
+    public void QueueDePhenix_RevivesAtOneHp_AndConsumesEquipment_WithoutCreditingAKill()
+    {
+        var board = Board();
+        var phenix = Equipment.OfTrait("phenix", "Queue de phénix", Trait.Renaissance);
+        var cls = new UnitClass("V", "v", tier: 1, maxHp: 10, damage: 0, moveRange: 1, attackRange: 1);
+        var victim = new Unit(Domaine.Tour, Faction.Enemy, cls, equipment: phenix);
+        board.Place(new Cell(0, 0), Make(Faction.Player, 20, 50, None));   // dégâts LÉTAUX (50 » 10 PV)
+        board.Place(new Cell(0, 1), victim);
+
+        board.TryAttack(new Cell(0, 0), new Cell(0, 1));
+
+        var after = board.UnitAt(new Cell(0, 1));
+        Assert.Same(victim, after);                        // toujours en jeu (ressuscité, pas retiré)
+        Assert.Equal(1, after!.Hp);                        // à 1 PV
+        Assert.Null(after.Equipment);                      // équipement brisé (consommé)
+        Assert.Equal(0, board.UnitAt(new Cell(0, 0))!.Kills);   // aucun kill crédité à l'attaquant
+    }
+
+    // ── Impact : 5 dégâts fixes aux ennemis autour du porteur, à son déplacement OU son attaque ────
+
+    [Fact]
+    public void Impact_OnMove_HitsEnemiesAroundDestination()
+    {
+        var m = Board();
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 6, new[] { Trait.Impact }, moveRange: 1));
+        m.Place(new Cell(4, 2), Make(Faction.Enemy, 20, 5, None));   // adjacent à la case d'arrivée (3,2)
+        m.Place(new Cell(3, 3), Make(Faction.Enemy, 20, 5, None));   // adjacent aussi
+
+        m.TryMove(new Cell(2, 2), new Cell(3, 2));
+
+        Assert.Equal(15, m.UnitAt(new Cell(4, 2))!.Hp);   // -5 (fixe)
+        Assert.Equal(15, m.UnitAt(new Cell(3, 3))!.Hp);   // -5 (fixe)
+        Assert.Equal(2, m.LastImpactHits.Count);
+    }
+
+    [Fact]
+    public void Impact_OnAttack_HitsEnemiesAroundAttacker_TargetSurvivesAtRange()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 6, new[] { Trait.Impact }));
+        m.Place(new Cell(1, 3), Make(Faction.Enemy, 20, 5, None));   // cible à distance 2 (survit)
+        m.Place(new Cell(2, 1), Make(Faction.Enemy, 20, 5, None));   // badaud adjacent à l'attaquant
+
+        m.TryAttack(new Cell(1, 1), new Cell(1, 3));
+
+        Assert.Equal(14, m.UnitAt(new Cell(1, 3))!.Hp);   // attaque (20-6), hors zone d'impact
+        Assert.Equal(15, m.UnitAt(new Cell(2, 1))!.Hp);   // impact -5
+        Assert.NotNull(m.UnitAt(new Cell(1, 1)));         // l'attaquant reste sur place (tir)
+    }
+
+    [Fact]
+    public void Impact_OnKill_CentersOnTheTakenCell()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 25, new[] { Trait.Impact }));
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));   // tuée au contact → l'attaquant prend sa place
+        var attacker = m.UnitAt(new Cell(1, 1));
+        m.Place(new Cell(2, 2), Make(Faction.Enemy, 20, 5, None));   // adjacent à la case PRISE (1,2), pas à (1,1)
+
+        m.TryAttack(new Cell(1, 1), new Cell(1, 2));
+
+        Assert.Same(attacker, m.UnitAt(new Cell(1, 2)));  // a bien pris la place
+        Assert.Null(m.UnitAt(new Cell(1, 1)));
+        Assert.Equal(15, m.UnitAt(new Cell(2, 2))!.Hp);   // impact centré sur (1,2) → -5
+    }
+
+    /// <summary>L'impact est un dégât FIXE : il ignore le Rempart (même en diagonale, où Rempart réduirait normalement).</summary>
+    [Fact]
+    public void Impact_FixedDamage_IgnoresRempart()
+    {
+        var m = Board();
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 6, new[] { Trait.Impact }, moveRange: 1));
+        m.Place(new Cell(4, 3), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));   // diagonale de la case d'arrivée (3,2)
+
+        m.TryMove(new Cell(2, 2), new Cell(3, 2));
+
+        Assert.Equal(15, m.UnitAt(new Cell(4, 3))!.Hp);   // -5 plein (et non -1 réduit par Rempart)
+    }
+
+    // ── Recule : repousse la cible survivante d'une case ; +5 si un obstacle l'arrête ─────────────
+
+    [Fact]
+    public void Recule_PushesSurvivingTargetBackOneCell()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 6, new[] { Trait.Recule }));
+        m.Place(new Cell(1, 3), Make(Faction.Enemy, 20, 5, None));
+
+        m.TryAttack(new Cell(1, 1), new Cell(1, 3));
+
+        Assert.Null(m.UnitAt(new Cell(1, 3)));            // la cible a quitté sa case
+        Assert.Equal(14, m.UnitAt(new Cell(1, 4))!.Hp);   // repoussée d'une case, 20-6, pas de bonus
+        Assert.Equal(new Cell(1, 4), m.LastRecule!.Value.To);
+        Assert.Equal(0, m.LastRecule!.Value.SlamDamage);
+    }
+
+    [Fact]
+    public void Recule_SlamAgainstBoardEdge_DealsBonusDamage()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 5), Make(Faction.Player, 20, 6, new[] { Trait.Recule }));
+        m.Place(new Cell(1, 7), Make(Faction.Enemy, 20, 5, None));   // dos au bord (case 8 hors plateau)
+
+        m.TryAttack(new Cell(1, 5), new Cell(1, 7));
+
+        Assert.Equal(9, m.UnitAt(new Cell(1, 7))!.Hp);    // reste sur place, 20 - 6 (attaque) - 5 (plaquage)
+        Assert.Equal(new Cell(1, 7), m.LastRecule!.Value.To);
+        Assert.Equal(5, m.LastRecule!.Value.SlamDamage);
+    }
+
+    [Fact]
+    public void Recule_SlamAgainstUnit_DealsBonusDamage_OnlyToPushed()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 6, new[] { Trait.Recule }));
+        m.Place(new Cell(1, 3), Make(Faction.Enemy, 20, 5, None));
+        m.Place(new Cell(1, 4), Make(Faction.Player, 20, 5, None));   // bloque la case derrière la cible
+
+        m.TryAttack(new Cell(1, 1), new Cell(1, 3));
+
+        Assert.Equal(9, m.UnitAt(new Cell(1, 3))!.Hp);    // plaquée : 20 - 6 - 5
+        Assert.Equal(20, m.UnitAt(new Cell(1, 4))!.Hp);   // l'obstacle n'encaisse rien
+    }
+
+    [Fact]
+    public void Recule_DeadTarget_NoKnockback()
+    {
+        var m = Board();
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 25, new[] { Trait.Recule }));
+        var attacker = m.UnitAt(new Cell(1, 1));
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));   // tuée : rien à repousser
+
+        m.TryAttack(new Cell(1, 1), new Cell(1, 2));
+
+        Assert.Same(attacker, m.UnitAt(new Cell(1, 2)));  // l'attaquant a pris la place
+        Assert.Null(m.LastRecule);
+    }
+
+    [Fact]
+    public void Recule_PushesAlongDiagonalAttackAxis()
+    {
+        var m = Board();
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 6, new[] { Trait.Recule }, domaine: Domaine.Dame));
+        m.Place(new Cell(4, 4), Make(Faction.Enemy, 20, 5, None));   // en diagonale, distance 2
+
+        m.TryAttack(new Cell(2, 2), new Cell(4, 4));
+
+        Assert.Null(m.UnitAt(new Cell(4, 4)));
+        Assert.Equal(14, m.UnitAt(new Cell(5, 5))!.Hp);   // repoussée en (5,5), dans l'axe du tir
     }
 
     /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>
