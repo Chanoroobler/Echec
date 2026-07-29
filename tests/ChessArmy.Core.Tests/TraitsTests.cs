@@ -285,6 +285,39 @@ public class TraitsTests
         Assert.Equal(20, m.UnitAt(new Cell(0, 0))!.Hp);
     }
 
+    /// <summary>« Recule » + « Riposte » : le recul est résolu AVANT la riposte ; poussé HORS de portée,
+    /// le riposteur ne rend plus le coup (il riposte depuis sa case d'ARRIVÉE, pas d'origine).</summary>
+    [Fact]
+    public void Recule_PushesRiposterOutOfReach_CancelsRiposte()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Recule }));                    // attaquant repousseur
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }, attackRange: 1));    // riposteur au contact
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
+
+        Assert.Null(m.UnitAt(new Cell(0, 1)));                 // repoussée hors de sa case
+        Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);        // glissée en (0,2), 20 - 6
+        Assert.Equal(20, m.UnitAt(new Cell(0, 0))!.Hp);        // portée 1 depuis (0,2) → hors d'atteinte → PAS de riposte
+        Assert.Null(m.LastRiposte);
+    }
+
+    /// <summary>« Recule » + « Riposte » : repoussée mais ENCORE à portée, la victime riposte DEPUIS sa nouvelle case.</summary>
+    [Fact]
+    public void Recule_RiposterStillInReach_RipostesFromNewCell()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, new[] { Trait.Recule }));
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 8, new[] { Trait.Riposte }, attackRange: 3));    // portée longue
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 1));
+
+        Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);        // repoussée en (0,2)
+        Assert.Equal(12, m.UnitAt(new Cell(0, 0))!.Hp);        // riposte DEPUIS (0,2) : 20 - 8
+        Assert.Equal(new Cell(0, 2), m.LastRiposte!.Value.From);
+        Assert.Equal(new Cell(0, 0), m.LastRiposte!.Value.To);
+    }
+
     // ── Soutien : Soin ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -515,6 +548,50 @@ public class TraitsTests
         hit.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
         hit.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(10, hit.UnitAt(new Cell(0, 2))!.Hp);      // 20 - 10
+    }
+
+    // ── Renforcement d'arbre (Rempart / Esquive) : réservé aux unités du JOUEUR ────
+
+    /// <summary>« Rempart renforcé » (bonus +2 → réduction 6) ne s'applique qu'aux pions du JOUEUR ; un Rempart
+    /// ENNEMI garde la réduction de base (4).</summary>
+    [Fact]
+    public void RempartReinforcement_AppliesToPlayerOnly()
+    {
+        // Victime JOUEUR : l'ennemi frappe à distance → réduction RENFORCÉE (6).
+        var pv = new Match(8, 8, rempartBonus: 2);
+        pv.Place(new Cell(0, 0), Make(Faction.Player, 20, 5, new[] { Trait.Rempart }));
+        pv.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 10, None));
+        pv.PassTurn();   // au tour de l'ennemi
+        pv.TryAttack(new Cell(0, 2), new Cell(0, 0));
+        Assert.Equal(16, pv.UnitAt(new Cell(0, 0))!.Hp);   // 20 - (10 - 6)
+
+        // Victime ENNEMIE : le joueur frappe à distance → réduction de BASE (4), pas de bonus.
+        var ev = new Match(8, 8, rempartBonus: 2);
+        ev.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        ev.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        ev.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(14, ev.UnitAt(new Cell(0, 2))!.Hp);   // 20 - (10 - 4), et non - 6
+    }
+
+    /// <summary>« Esquive renforcée » (bonus +15 → 40%) ne s'applique qu'au JOUEUR : RNG figé à 0.30 → le pion
+    /// joueur esquive (0.30 &lt; 0.40) mais un Esquive ENNEMI (0.25) encaisse.</summary>
+    [Fact]
+    public void EsquiveReinforcement_AppliesToPlayerOnly()
+    {
+        // Victime JOUEUR : l'ennemi frappe → le joueur ESQUIVE (0.30 < 0.40).
+        var pv = new Match(8, 8, rng: new FixedRng(0.30), esquiveBonusPercent: 15);
+        pv.Place(new Cell(0, 0), Make(Faction.Player, 20, 5, new[] { Trait.Esquive }));
+        pv.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 10, None));
+        pv.PassTurn();
+        pv.TryAttack(new Cell(0, 1), new Cell(0, 0));
+        Assert.Equal(20, pv.UnitAt(new Cell(0, 0))!.Hp);   // esquivé
+
+        // Victime ENNEMIE : le joueur frappe → l'ennemi N'esquive PAS (0.30 >= 0.25 base).
+        var ev = new Match(8, 8, rng: new FixedRng(0.30), esquiveBonusPercent: 15);
+        ev.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        ev.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
+        ev.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(10, ev.UnitAt(new Cell(0, 1))!.Hp);   // 20 - 10, encaissé
     }
 
     // ── Drain de vie : soigne l'attaquant de 50 % des dégâts ──────────────────────

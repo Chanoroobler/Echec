@@ -36,6 +36,7 @@ public sealed class Match
     // Réinitialisés au début de chaque TryMove/TryAttack ; restent vides/null si le trait est absent.
     private readonly List<(Cell Cell, int Damage)> _impactHits = new();   // « Impact » : ennemis touchés autour du porteur
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
+    private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
 
     // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
@@ -63,16 +64,28 @@ public sealed class Match
         _rng = rng ?? new System.Random();
         _eliminationEndsGame = eliminationEndsGame;
         _playerBlocked = playerBlockedCells is null ? new HashSet<Cell>() : new HashSet<Cell>(playerBlockedCells);
-        RempartReductionValue = BaseRempartReduction + rempartBonus;
-        EsquiveChanceValue = BaseEsquiveChance + esquiveBonusPercent / 100.0;
+        RempartBonus = rempartBonus;
+        EsquiveBonusPercent = esquiveBonusPercent;
     }
 
-    /// <summary>Réduction de dégâts EFFECTIVE du trait « Rempart » (base <see cref="BaseRempartReduction"/> + bonus
-    /// d'arbre « Rempart renforcé »). Réglable par la scène si un nœud est acheté en cours de placement.</summary>
-    public int RempartReductionValue { get; set; }
+    /// <summary>Bonus d'arbre « Rempart renforcé » (points de réduction en PLUS de <see cref="BaseRempartReduction"/>).
+    /// Appliqué UNIQUEMENT aux unités du JOUEUR — c'est SON arbre de commandement, l'ennemi n'en profite pas.
+    /// Réglable par la scène si un nœud est acheté en cours de placement. Cf. <see cref="RempartReductionFor"/>.</summary>
+    public int RempartBonus { get; set; }
 
-    /// <summary>Chance EFFECTIVE (0..1) du trait « Esquive » (base <see cref="BaseEsquiveChance"/> + bonus « Esquive renforcée »).</summary>
-    public double EsquiveChanceValue { get; set; }
+    /// <summary>Bonus d'arbre « Esquive renforcée » (points de %, en PLUS de <see cref="BaseEsquiveChance"/>).
+    /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="EsquiveChanceFor"/>.</summary>
+    public int EsquiveBonusPercent { get; set; }
+
+    /// <summary>Réduction EFFECTIVE du trait « Rempart » pour <paramref name="victim"/> : base, plus le bonus
+    /// d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
+    private int RempartReductionFor(Unit victim) =>
+        BaseRempartReduction + (victim.Faction == Faction.Player ? RempartBonus : 0);
+
+    /// <summary>Chance EFFECTIVE (0..1) du trait « Esquive » pour <paramref name="unit"/> : base, plus le bonus
+    /// d'arbre SEULEMENT si c'est une unité du joueur.</summary>
+    private double EsquiveChanceFor(Unit unit) =>
+        BaseEsquiveChance + (unit.Faction == Faction.Player ? EsquiveBonusPercent / 100.0 : 0);
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
     private bool IsCover(Cell cell) => _cover.Contains(cell);
@@ -399,6 +412,8 @@ public sealed class Match
         {
             // « Queue de phénix » : la cible tombée ressuscite à 1 PV (équipement brisé). Elle SURVIT donc :
             // pas de kill, l'attaquant ne prend pas sa place. Traité comme un coup encaissé (survivant).
+            if (unit.HasTrait(Trait.Recule))
+                ApplyRecule(from, target, unit);   // le ressuscité est repoussé (pas de riposte dans ce cas)
             kind = MoveKind.Moved;
         }
         else if (!victim.IsAlive)
@@ -413,25 +428,26 @@ public sealed class Match
         }
         else
         {
-            // Riposte : la victime SURVIVANTE contre-attaque, à condition de POUVOIR réellement frapper son
-            // assaillant — mêmes règles que son attaque normale (motif, portée, zone morte, ligne de tir,
-            // traverse-allié). Ce n'est donc plus réservé au corps à corps : un tireur riposte à distance,
-            // mais un assaillant hors de portée, en diagonale d'une unité « Tour » ou derrière un obstacle
-            // ne prend rien.
-            if (victim.HasTrait(Trait.Riposte)
+            // « Recule » d'ABORD : la cible est repoussée AVANT de pouvoir riposter (le plaquage peut même
+            // l'achever). C'est ce qui permet à un pion poussé HORS DE PORTÉE de ne plus riposter.
+            if (unit.HasTrait(Trait.Recule))
+                ApplyRecule(from, target, unit);
+
+            // Riposte : la victime SURVIVANTE (au plaquage éventuel) contre-attaque DEPUIS SA CASE ACTUELLE
+            // (elle a pu être repoussée), à condition de POUVOIR réellement frapper son assaillant — mêmes
+            // règles que son attaque (motif, portée, zone morte, ligne de tir, traverse-allié). Repoussée hors
+            // de portée, en diagonale d'une « Tour » ou derrière un obstacle → aucune riposte.
+            if (victim.IsAlive && victim.HasTrait(Trait.Riposte)
                 && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit)
-                && CanStrike(target, victim, from))
+                && CellOf(victim) is { } vc && CanStrike(vc, victim, from))
             {
-                ApplyDamage(attacker, EffectiveDamage(victim, target, attacker, from), victim);
+                var attackerHpBefore = attacker.Hp;
+                ApplyDamage(attacker, EffectiveDamage(victim, vc, attacker, from), victim);
+                _lastRiposte = (vc, from, attackerHpBefore - attacker.Hp, !attacker.IsAlive);   // report feedback
                 RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
             }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
-
-        // « Recule » : la cible SURVIVANTE est repoussée d'une case (dégât bonus si un obstacle l'arrête).
-        // Après une éventuelle riposte (qui se résout depuis la case d'origine de la cible).
-        if (unit.HasTrait(Trait.Recule))
-            ApplyRecule(from, target, unit);
 
         // « Impact » : le porteur frappe les ennemis autour de sa position FINALE (from, ou la case prise sur
         // un kill) — jamais si un contre l'a abattu (CellOf renvoie null). Déclenché par sa seule attaque.
@@ -469,6 +485,10 @@ public sealed class Match
     /// <summary>Résultat du « Recule » de la DERNIÈRE attaque : case d'arrivée de la cible + dégât de plaquage
     /// (0 si elle a glissé librement) ; <c>null</c> si aucun recul n'a eu lieu. Pour le feedback.</summary>
     public (Cell To, int SlamDamage)? LastRecule => _lastRecule;
+
+    /// <summary>Riposte de la DERNIÈRE attaque : case du riposteur (après un éventuel recul) → case de l'assaillant,
+    /// dégâts réellement infligés, et si l'assaillant en est mort. <c>null</c> si aucune riposte. Pour le feedback.</summary>
+    public (Cell From, Cell To, int Damage, bool Killed)? LastRiposte => _lastRiposte;
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -575,7 +595,7 @@ public sealed class Match
         // Une attaque en diagonale, même à une case, reste réduite : seul le corps à corps orthogonal
         // passe la garde.
         if (shielded && !IsDirectContact(attackerCell, victimCell))
-            dmg -= RempartReductionValue;
+            dmg -= RempartReductionFor(victim);
         if (distance == 1 && victim.HasTrait(Trait.Duelliste))
             dmg -= DuellisteReduction;
         if (IsCover(victimCell))               // cible à couvert dans un buisson
@@ -591,7 +611,7 @@ public sealed class Match
     {
         if (amount <= 0)
             return;
-        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChanceValue)
+        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChanceFor(unit))
             return;   // attaque esquivée : aucun dégât
         unit.TakeDamage(amount);
         unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
@@ -695,11 +715,12 @@ public sealed class Match
         RemoveDeadAt(behind, attacker);
     }
 
-    /// <summary>Vide les résultats de feedback (« Impact »/« Recule ») avant de résoudre une nouvelle action.</summary>
+    /// <summary>Vide les résultats de feedback (« Impact »/« Recule »/« Riposte ») avant de résoudre une nouvelle action.</summary>
     private void ResetActionFx()
     {
         _impactHits.Clear();
         _lastRecule = null;
+        _lastRiposte = null;
     }
 
     /// <summary>

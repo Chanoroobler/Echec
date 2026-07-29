@@ -44,6 +44,7 @@ public sealed class MeleeStrikeFx
     private const double RecoilDur   = 0.12; // retour sur sa case (pas d'avance)
     private const double ShakeDur    = 0.22; // secousse d'écran après l'impact
     private const double KnockbackDur = 0.18; // recul de la victime après le contact
+    private const double SlideDur    = 0.20; // glissement « Recule » de la victime sur une case (permanent)
 
     private const float LungeFraction = 0.42f; // amplitude de la fente, en fraction de case
     private const float LeapContactGap = 0.25f; // arrêt de la charge avant la case cible (fraction de case)
@@ -133,6 +134,21 @@ public sealed class MeleeStrikeFx
             if (t < 0 || t > KnockbackDur)
                 return 0f;
             return 1f - EaseInOut((float)(t / KnockbackDur));
+        }
+    }
+
+    /// <summary>
+    /// Avancement [0,1] du GLISSEMENT « Recule » de la victime : 0 avant le contact, monte (ease-out) jusqu'à 1
+    /// après le contact et Y RESTE (déplacement d'UNE case permanent — à l'inverse de <see cref="KnockbackAmount"/>
+    /// qui revient à 0). La scène l'utilise pour faire glisser le sprite (et sa barre / son flash) de la case
+    /// d'origine vers la case d'arrivée du recul.
+    /// </summary>
+    public float VictimSlide
+    {
+        get
+        {
+            var t = _elapsed - _approachDur;
+            return t <= 0 ? 0f : EaseOut((float)Math.Clamp(t / SlideDur, 0, 1));
         }
     }
 

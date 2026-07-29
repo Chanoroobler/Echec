@@ -372,6 +372,7 @@ kw.renaissance.label,RENAISSANCE,REBIRTH
 kw.renaissance.desc,À LA MORT RESSUSCITE À 1 PV ET BRISE L'ÉQUIPEMENT (UNE FOIS),ON DEATH REVIVES AT 1 HP AND BREAKS THE EQUIPMENT (ONCE)
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE!
+fx.riposte,RIPOSTE !,RIPOSTE!
 fx.phenix,PHÉNIX !,PHOENIX!
 fx.command_point,+{0} COMMANDEMENT,+{0} COMMAND
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
@@ -500,7 +501,7 @@ tree.lan_tour_aura_puissance.desc,les unités du domaine de la tour augmentent d
 tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
 tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
 tree.lan_esquive_renforce,ESQUIVE RENFORCEE,REINFORCED DODGE
-tree.lan_esquive_renforce.desc,la chance du trait esquive passe à 40 pour cent.,the dodge trait's chance is raised to 40 percent.
+tree.lan_esquive_renforce.desc,la chance du trait esquive passe à 40%.,the dodge trait's chance is raised to 40%.
 tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
 tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
 # Noeuds : branche LOGISTIQUE

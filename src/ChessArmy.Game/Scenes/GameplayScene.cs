@@ -289,6 +289,13 @@ public sealed class GameplayScene : Scene
     // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
+    // « Recule » qui a GLISSÉ (pas plaqué) : la victime a changé de case dans le moteur ; on l'anime en la
+    // faisant glisser de sa case d'origine (From) vers sa case d'arrivée (To) pendant l'anim d'attaque.
+    private (Cell From, Cell To)? _reculeSlide;
+    // « Riposte » : contre-attaque DÉJÀ résolue dans le moteur, rejouée en animation APRÈS l'attaque principale
+    // (le pion riposteur fente vers l'assaillant + mot « RIPOSTE »). Réutilise _fx une fois l'anim d'attaque finie.
+    // Le sprite de l'ASSAILLANT est figé ici (il peut mourir de la riposte) ; celui du riposteur est repris à vif.
+    private (Cell From, Cell To, Texture2D? AttackerSprite, bool Killed, AttackStyle Style, int Damage)? _pendingRiposte;
     // Points de commandement « sur coup reçu » (commandant Lancier) : coups DÉJÀ signalés au joueur ce combat.
     // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
     // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
@@ -1058,6 +1065,8 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingReculeSlam = null;
+        _reculeSlide = null;
+        _pendingRiposte = null;
         _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
@@ -1191,6 +1200,8 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingReculeSlam = null;
+        _reculeSlide = null;
+        _pendingRiposte = null;
         _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
@@ -1621,10 +1632,10 @@ public sealed class GameplayScene : Scene
     private void RespawnPlayerUnitsFromSpecs()
     {
         // Un nœud acheté en placement peut régler le MOTEUR (Rempart renforcé / Esquive renforcée) : on
-        // resynchronise les valeurs effectives du Match en plus de réinstancier les pions (stats d'arbre).
-        // _run peut être null (tutoriel) → aucun bonus d'arbre.
-        _match.RempartReductionValue = Match.BaseRempartReduction + (_run?.RempartBonus ?? 0);
-        _match.EsquiveChanceValue = Match.BaseEsquiveChance + (_run?.EsquiveBonusPercent ?? 0) / 100.0;
+        // resynchronise les bonus d'arbre du Match (appliqués aux seules unités du joueur) en plus de
+        // réinstancier les pions (stats d'arbre). _run peut être null (tutoriel) → aucun bonus d'arbre.
+        _match.RempartBonus = _run?.RempartBonus ?? 0;
+        _match.EsquiveBonusPercent = _run?.EsquiveBonusPercent ?? 0;
         foreach (var (cell, unit) in _match.Units().Where(u => u.Unit.Faction == Faction.Player).ToList())
             RespawnAt(cell, unit);
     }
@@ -3557,6 +3568,14 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // « Riposte » : l'anim d'attaque (et l'orage) terminée, on rejoue la contre-attaque comme SECONDE
+        // animation — AVANT que le combat ne se résolve ou que le camp adverse ne rejoue.
+        if (_pendingRiposte is { } rip)
+        {
+            StartRiposteFx(rip);
+            return;
+        }
+
         // Mission spéciale : dès que TOUS les paysans sont libérés (dernière révélation close), on clôt la
         // mission AVANT que l'ennemi ne rejoue — sinon sa dernière action pourrait tuer le commandant et
         // transformer une réussite en défaite.
@@ -5281,6 +5300,14 @@ public sealed class GameplayScene : Scene
             ? new List<(Cell, int)>(_match.LastImpactHits)
             : null;
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
+        // Glissement du recul : la victime a réellement changé de case (To != cible) → on l'anime en glissant.
+        _reculeSlide = _match.LastRecule is { } rc && rc.To != target ? (target, rc.To) : null;
+
+        // Riposte : contre-attaque DÉJÀ résolue par le moteur → on la rejoue en animation APRÈS l'anim d'attaque.
+        // On fige le sprite de l'ASSAILLANT (il peut mourir de la riposte) ; le riposteur, vivant, sera repris à vif.
+        _pendingRiposte = _match.LastRiposte is { } rp && victim != null
+            ? (rp.From, rp.To, attackerSprite, rp.Killed, AttackStyleFor(victim, rp.From, rp.To), rp.Damage)
+            : null;
 
         RecordIfEnemyKilled(victim);
 
@@ -5309,6 +5336,41 @@ public sealed class GameplayScene : Scene
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         return kind;
+    }
+
+    /// <summary>
+    /// Rejoue la RIPOSTE (déjà résolue dans le moteur) comme une SECONDE animation d'attaque : le riposteur
+    /// fente vers son assaillant, avec le mot « RIPOSTE » (au-dessus de lui) et le chiffre de dégâts à l'impact.
+    /// Réutilise <see cref="_fx"/> une fois l'anim d'attaque principale terminée — purement visuel, les PV ont
+    /// déjà bougé. Le riposteur (vivant) est réorienté et re-capturé ; l'assaillant peut, lui, être mort.
+    /// </summary>
+    private void StartRiposteFx((Cell From, Cell To, Texture2D? AttackerSprite, bool Killed, AttackStyle Style, int Damage) rip)
+    {
+        _pendingRiposte = null;
+        _reculeSlide = null;   // le glissement du recul est terminé : il ne doit pas se rejouer sur l'anim de riposte
+        Texture2D? riposterSprite = null;
+        if (_match.UnitAt(rip.From) is { } riposter)
+        {
+            FaceToward(riposter, rip.From, rip.To);   // le riposteur regarde l'assaillant
+            riposterSprite = UnitSprite(riposter);
+        }
+
+        _damagePopups.SpawnText(rip.From, Loc.T("fx.riposte"), Palette.Yellow2);   // « RIPOSTE » au-dessus du riposteur
+        Context.Sounds.Play(rip.Style switch
+        {
+            AttackStyle.Cast  => "unit_cast",
+            AttackStyle.Leap  => "unit_charge",
+            AttackStyle.Shoot => "unit_shoot",
+            _                 => "unit_attack",
+        });
+
+        // À l'impact de cette 2e anim : le chiffre de la riposte (les autres reports ont été consommés à
+        // l'impact principal, donc _pending* sont déjà nuls) ; ni esquive ni phénix ici.
+        _pendingDamage = rip.Damage;
+        _pendingDodge = false;
+        _pendingPhenix = false;
+        _fx.Begin(rip.From, rip.To, rip.From, riposterSprite, rip.AttackerSprite, rip.Killed, advanced: false, rip.Style);
+        _impactHandled = false;
     }
 
     /// <summary>Style d'animation d'attaque selon l'unité ET la case ciblée : un cavalier (monté compris) qui
@@ -6497,9 +6559,9 @@ public sealed class GameplayScene : Scene
         var animLift = UnitLift(cell, size);
         var spriteLift = (int)(size * SpriteLiftFraction);
 
-        // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU sursaut vers l'extérieur
-        // d'un voisin embroché survivant : décalage en pixels.
-        var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
+        // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU — si elle a été REPOUSSÉE
+        // d'une case (« Recule ») — le GLISSEMENT vers sa case d'arrivée : décalage en pixels.
+        var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
         zx += kb.X;
         zy += kb.Y;
 
@@ -6567,7 +6629,7 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, _) = BoardIntroAnim(cell, layout);
             var animLift = UnitLift(cell, size);
-            var kb = IsFxVictim(cell) ? VictimKnockback(size) : Point.Zero;
+            var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
                 isAimed ? aimedPreview : 0);
         }
@@ -6837,8 +6899,19 @@ public sealed class GameplayScene : Scene
         // Ancrages écran (coin haut-gauche du sprite, lift de socle compris) des cases en jeu.
         var fromTop = layout.CellToScreen(_fx.From.Column, _fx.From.Row) - new Vector2(0, spriteLift);
         var toTop = layout.CellToScreen(_fx.To.Column, _fx.To.Row) - new Vector2(0, spriteLift);
+        // Victime : normalement sur sa case (léger recul kb) ; si elle a été REPOUSSÉE d'une case (« Recule »),
+        // elle GLISSE de sa case d'origine vers sa case d'arrivée — le glissement remplace le petit recul.
         var kb = VictimKnockback(size);
-        var victimRect = new Rectangle((int)toTop.X + kb.X, (int)toTop.Y + kb.Y, size, size);
+        var victimTop = toTop;
+        if (_reculeSlide is { } rs)
+        {
+            victimTop = Vector2.Lerp(
+                layout.CellToScreen(rs.From.Column, rs.From.Row) - new Vector2(0, spriteLift),
+                layout.CellToScreen(rs.To.Column, rs.To.Row) - new Vector2(0, spriteLift),
+                _fx.VictimSlide);
+            kb = Point.Zero;
+        }
+        var victimRect = new Rectangle((int)victimTop.X + kb.X, (int)victimTop.Y + kb.Y, size, size);
 
         // 1. Victime qui meurt : dissolution sur sa case (reculée), sous l'attaquant qui prendra la place.
         if (_fx.Killed && _fx.VictimSprite is { } deadSprite)
@@ -7000,6 +7073,22 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
     private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To;
+
+    /// <summary>
+    /// Décalage (px entiers) du GLISSEMENT « Recule » pour la case <paramref name="cell"/> : la victime, déjà
+    /// posée par le moteur sur sa case d'ARRIVÉE, est dessinée partant de sa case d'ORIGINE puis rejoignant
+    /// l'arrivée au fil de <see cref="MeleeStrikeFx.VictimSlide"/>. Point.Zero hors recul-glissé (ou FX inactif).
+    /// Ancré sur la case RÉELLE (arrivée) : l'offset part de (origine − arrivée) et s'annule à la fin.
+    /// </summary>
+    private Point ReculeSlideOffset(Cell cell, GridLayout layout)
+    {
+        if (_reculeSlide is not { } rs || !_fx.Active || cell != rs.To)
+            return Point.Zero;
+        var from = layout.CellToScreen(rs.From.Column, rs.From.Row);
+        var to = layout.CellToScreen(rs.To.Column, rs.To.Row);
+        var off = (from - to) * (1f - _fx.VictimSlide);
+        return new Point((int)MathF.Round(off.X), (int)MathF.Round(off.Y));
+    }
 
     /// <summary>
     /// Décalage (px entiers) de la victime pendant l'anim : recul à l'opposé de l'attaquant au contact, OU —
@@ -7723,7 +7812,7 @@ public sealed class GameplayScene : Scene
         // la frise, le briefing et le panneau, dessinés après elle.
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
             equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills));
-        _deferredKeywordPopups.Add((c, rect, equip, buffs, null));
+        _deferredKeywordPopups.Add((c, rect, equip, buffs, null, faction));
     }
 
     /// <summary>
@@ -8451,14 +8540,14 @@ public sealed class GameplayScene : Scene
     // Cartes flottantes + leurs popups de mots-clés, mis de côté par DrawUnitCard/DrawPreviewCard et dessinés
     // EN DERNIER (par-dessus frise, briefing, panneau) : la carte-tooltip qu'on lit doit rester au premier plan.
     private readonly List<Action> _deferredCards = new();
-    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted)>
+    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
         _deferredKeywordPopups = new();
 
     // Cartes de SURVOL (tooltip d'un pion pointé, non sélectionné) : mêmes différés, mais FONDUES en entrée
     // (cf. UpdateTooltipHover / TooltipHoverAlpha). Rendues à part dans _hoverCardTarget puis recomposées avec
     // un alpha, pour que carte + popups de mots-clés fondent D'UN SEUL BLOC.
     private readonly List<Action> _deferredHoverCards = new();
-    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted)>
+    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
         _deferredHoverKeywordPopups = new();
     private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _hoverCardTarget;
 
@@ -8486,8 +8575,8 @@ public sealed class GameplayScene : Scene
         if (_deferredKeywordPopups.Count > 0)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            foreach (var (c, card, equip, buffs, granted) in _deferredKeywordPopups)
-                DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted);
+            foreach (var (c, card, equip, buffs, granted, faction) in _deferredKeywordPopups)
+                DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted, faction);
             sb.End();
             _deferredKeywordPopups.Clear();
         }
@@ -8541,8 +8630,8 @@ public sealed class GameplayScene : Scene
             draw();
         sb.End();
         sb.Begin(samplerState: SamplerState.PointClamp);
-        foreach (var (c, card, equip, buffs, granted) in _deferredHoverKeywordPopups)
-            DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted);
+        foreach (var (c, card, equip, buffs, granted, faction) in _deferredHoverKeywordPopups)
+            DrawKeywordPopupsBelow(sb, c, card, equip, buffs, granted, faction);
         sb.End();
     }
 
@@ -8800,7 +8889,7 @@ public sealed class GameplayScene : Scene
             hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
             granted: granted, contextualDmgBonus: contextualDmg));
         if (showKeywords)
-            (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted));
+            (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted, faction));
     }
 
     /// <summary>Auras dont l'effet se lit sur le BÉNÉFICIAIRE : le pion adjacent en profite sans porter le trait.</summary>
@@ -9296,13 +9385,18 @@ public sealed class GameplayScene : Scene
     /// (base + bonus d'arbre de la run courante). Renvoie AUSSI le token à peindre en ROUGE (la valeur montée)
     /// et un drapeau « renforcé » (nom du trait en rouge) — nuls/faux si non renforcé (bonus 0) ou non
     /// renforçable. TOUT rendu de description passe par ici : garantit qu'aucun « {0} » ne fuite à l'écran.
+    /// <paramref name="reinforcedApplies"/> = false (unité ENNEMIE) ignore le bonus d'arbre : le renforcement
+    /// ne vaut que pour les pions du JOUEUR (cf. <see cref="Match.RempartReductionFor"/>), donc l'ennemi affiche
+    /// la valeur de BASE, sans rouge.
     /// </summary>
-    private (string Desc, string? Highlight, bool Reinforced) KeywordDisplay(UnitKeywords.Keyword kw)
+    private (string Desc, string? Highlight, bool Reinforced) KeywordDisplay(UnitKeywords.Keyword kw, bool reinforcedApplies = true)
     {
+        var rempartBonus = reinforcedApplies ? _run?.RempartBonus ?? 0 : 0;
+        var esquiveBonus = reinforcedApplies ? _run?.EsquiveBonusPercent ?? 0 : 0;
         if (kw.Label == UnitKeywords.For(Trait.Rempart).Label)
-            return ResolveReinforced(kw.Description, Match.BaseRempartReduction, _run?.RempartBonus ?? 0);
+            return ResolveReinforced(kw.Description, Match.BaseRempartReduction, rempartBonus);
         if (kw.Label == UnitKeywords.For(Trait.Esquive).Label)
-            return ResolveReinforced(kw.Description, (int)System.Math.Round(Match.BaseEsquiveChance * 100), _run?.EsquiveBonusPercent ?? 0);
+            return ResolveReinforced(kw.Description, (int)System.Math.Round(Match.BaseEsquiveChance * 100), esquiveBonus);
         return (kw.Description, null, false);
     }
 
@@ -9445,16 +9539,16 @@ public sealed class GameplayScene : Scene
     /// carte (330) + pile (200) = toute la hauteur du canvas.
     /// </summary>
     private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null,
-        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
-        var h = KeywordStackHeight(c, card.Width, equip, buffs, granted);
+        var h = KeywordStackHeight(c, card.Width, equip, buffs, granted, faction);
         if (h == 0)
             return;
 
         // Ordonnée qu'aurait la pile une fois remontée : si elle mord sur la carte, on passe à côté.
         if (VirtualViewport.Height - KwScreenMargin - h >= card.Bottom)
         {
-            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs, granted);
+            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs, granted, faction);
             return;
         }
 
@@ -9463,7 +9557,7 @@ public sealed class GameplayScene : Scene
         var x = card.X - CombatCardGap - card.Width;
         if (x < KwScreenMargin)
             x = card.Right + CombatCardGap;
-        DrawKeywordPopupStack(sb, c, new Point(x, card.Y), card.Width, equip, buffs, granted);
+        DrawKeywordPopupStack(sb, c, new Point(x, card.Y), card.Width, equip, buffs, granted, faction);
     }
 
     /// <summary>
@@ -9475,12 +9569,14 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
     private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight)> KeywordBoxes(
-        UnitClass c, int width, Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null)
+        UnitClass c, int width, Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null,
+        Faction faction = Faction.Player)
     {
         var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?)>();
         foreach (var kw in KeywordsFor(c, equip, buffs, granted))
         {
-            var (desc, highlight, reinforced) = KeywordDisplay(kw);
+            // Le renforcement d'arbre ne s'affiche que pour les unités du JOUEUR (l'ennemi n'en profite pas).
+            var (desc, highlight, reinforced) = KeywordDisplay(kw, faction == Faction.Player);
             var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);
             boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad, reinforced, highlight));   // titre + lignes
         }
@@ -9489,16 +9585,16 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Hauteur totale de la pile de popups d'une classe (0 si elle n'a aucun mot-clé).</summary>
     private int KeywordStackHeight(UnitClass c, int width, Equipment? equip = null, CommandBuffs? buffs = null,
-        IReadOnlyList<string>? granted = null)
+        IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs, granted);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
         return boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
     }
 
     private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null,
-        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs, granted);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
         if (boxes.Count == 0)
             return;
         var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
