@@ -25,9 +25,9 @@
             ]
           },
           {
-            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1,
+            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
             "evolutions": [
-              { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"] },
+              { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
               { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
             ]
           }
@@ -64,7 +64,7 @@
           {
             "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
-              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Aura de rempart", "Impact"] },
+              { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Impact"] },
               { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
             ]
           },
@@ -86,14 +86,14 @@
           {
             "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
-              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Interception"] },
+              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Transpercement"] },
               { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
             ]
           },
           {
             "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
-              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Transpercement"] },
+              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Formation"] },
               { "name": "Voltigeur", "asset": "voltigeur", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
             ]
           }
@@ -141,7 +141,7 @@
       "tree": "commandantLancier",
       "fusionPoints": 0,
       "onHitPoints": 1,
-      "onHitCap": 2,
+      "onHitCap": 1,
       "startingUnits": [ "Tour", "Tour" ],
       "unlocked": false
     },

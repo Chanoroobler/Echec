@@ -175,6 +175,22 @@ equip.orage,ORAGE,STORM
 equip.armure,ARMURE,ARMOR
 equip.hache,HACHE,AXE
 equip.static,AMULETTE DE RAHAN,RAHAN'S AMULET
+# Equipements ajoutes (cle = id sans suffixe de rarete, partagee par les variantes commune/rare/legendaire)
+equip.auraPuissance,TOTEM DE PUISSANCE,POWER TOTEM
+equip.auraRempart,TOTEM DE REMPART,BULWARK TOTEM
+equip.Balistique,LUNETTE DU CANONNIER,GUNNER'S SCOPE
+equip.duelliste,EPEES DU DUELLISTE,DUELIST'S SWORDS
+equip.formation,BANNIERE DU REGIMENT,REGIMENT BANNER
+equip.Impact,MASSE D'IMPACT,IMPACT MACE
+equip.Interception,VIGILANCE,VIGILANCE
+equip.rage,CRANE DU BERSERKER,BERSERKER'S SKULL
+equip.Recule,ATTAQUE LOURDE,HEAVY BLOW
+equip.riposte,FLEURET DE RIPOSTE,RIPOSTE FOIL
+equip.seisme,MARTEAU TELLURIQUE,TELLURIC HAMMER
+equip.Tempete,SCEPTRE DE TEMPETE,TEMPEST SCEPTER
+equip.Transpercer,EPIEU PERFORANT,PIERCING PIKE
+equip.vol,BOTTE DE PEGASSE,PEGASUS BOOT
+equip.volVie,LE DENTIER DE FURIOUS,FURIOUS'S DENTURES
 # ── Caracteristiques d'unite ────────────────────────────────────────────────
 stat.power,PUISSANCE,POWER
 stat.movement,MOUVEMENT,MOVEMENT
@@ -303,7 +319,7 @@ recap.run_back,CLIC POUR REVENIR AU MENU,CLICK TO RETURN TO MENU
 recap.run_back_gp,A : MENU,A: MENU
 # ── Mots-cles d'unite (label + description) ─────────────────────────────────
 kw.rempart.label,REMPART,BULWARK
-kw.rempart.desc,RÉDUIT DE 4 LES DÉGÂTS SAUF AU CONTACT DIRECT,REDUCES DAMAGE BY 4 EXCEPT FROM DIRECT CONTACT
+kw.rempart.desc,RÉDUIT DE {0} LES DÉGÂTS SAUF AU CONTACT DIRECT,REDUCES DAMAGE BY {0} EXCEPT FROM DIRECT CONTACT
 kw.soin.label,SOIN,HEAL
 kw.soin.desc,SOIGNE L'ALLIÉ CIBLE DE LA MOITIÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR HALF ITS POWER
 kw.franchissement.label,FRANCHISSEMENT,VAULTING
@@ -337,7 +353,7 @@ kw.vol.desc,SE DÉPLACE EN IGNORANT LES OBSTACLES DE TERRAIN,MOVES IGNORING TERR
 kw.formation.label,FORMATION,FORMATION
 kw.formation.desc,AUGMENTE LA PUISSANCE DE 2 PAR ALLIÉ ADJACENT,INCREASES POWER BY 2 PER ADJACENT ALLY
 kw.esquive.label,ESQUIVE,DODGE
-kw.esquive.desc,25 POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE,25 PERCENT CHANCE TO DODGE AN ATTACK
+kw.esquive.desc,{0} POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE,{0} PERCENT CHANCE TO DODGE AN ATTACK
 kw.orage.label,ORAGE,STORM
 kw.orage.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 3,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 3
 kw.tempete.label,TEMPETE,TEMPEST
@@ -357,6 +373,7 @@ kw.renaissance.desc,À LA MORT RESSUSCITE À 1 PV ET BRISE L'ÉQUIPEMENT (UNE FO
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE!
 fx.phenix,PHÉNIX !,PHOENIX!
+fx.command_point,+{0} COMMANDEMENT,+{0} COMMAND
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
 # Les TITRES restent en capitales (libelles d'UI) ; les consignes et les corps de texte sont des PHRASES,
 # rendues telles quelles (preserveCase) : minuscules accentuees, majuscule en debut de phrase.
@@ -453,8 +470,8 @@ tree.logi_reserve_2,CONVOI,SUPPLY TRAIN
 tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.
 tree.logi_deploiement_3,GRANDE ARMEE,GRAND ARMY
 tree.logi_deploiement_3.desc,+4 places en réserve.,+4 reserve slots.
-tree.logi_reserve_3,AMALGAME,AMALGAM
-tree.logi_reserve_3.desc,une fusion ne demande plus que 2 pions au lieu de 3.,a fusion needs only 2 pawns instead of 3.
+tree.amalgame,AMALGAME,AMALGAM
+tree.amalgame.desc,une fusion ne demande plus que 2 pions au lieu de 3.,a fusion needs only 2 pawns instead of 3.
 # ── Arbre du commandant LANCIER (tree "commandantLancier") ──
 tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat)
 tree.commandantLancier.branch0,COMMANDANT,COMMANDER
@@ -471,21 +488,21 @@ tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA
 tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficient de rempart.,units adjacent to the commander gain bulwark.
 tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE
 tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.
-tree.lan_cmd_aura_surpuissance,SEISME,EARTHQUAKE
-tree.lan_cmd_aura_surpuissance.desc,à la fin du tour ennemi le commandant frappe les ennemis adjacents pour sa puissance.,at the end of the enemy turn the commander strikes adjacent enemies for its power.
+tree.lan_cmd_seisme,SEISME,EARTHQUAKE
+tree.lan_cmd_seisme.desc,à la fin du tour ennemi le commandant frappe les ennemis adjacents pour sa puissance.,at the end of the enemy turn the commander strikes adjacent enemies for its power.
 # Noeuds : branche LANCIERS (domaine de la tour)
 tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD
 tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.
 tree.lan_tour_pv_tour,REMPART RENFORCE,REINFORCED BULWARK
 tree.lan_tour_pv_tour.desc,la réduction de dégâts du trait rempart passe à 6.,the bulwark trait's damage reduction is raised to 6.
 tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA
-tree.lan_tour_aura_puissance.desc,les lanciers augmentent de 3 la puissance des alliés adjacents.,spearmen increase adjacent allies' power by 3.
+tree.lan_tour_aura_puissance.desc,les unités du domaine de la tour augmentent de 3 la puissance des alliés adjacents.,units of the rook domain increase adjacent allies' power by 3.
 tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
 tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
-tree.lan_tour_pm,ESQUIVE RENFORCEE,REINFORCED DODGE
-tree.lan_tour_pm.desc,la chance du trait esquive passe à 40 pour cent.,the dodge trait's chance is raised to 40 percent.
-tree.lan_tour_portee,MARCHE DES LANCIERS,SPEAR MARCH
-tree.lan_tour_portee.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
+tree.lan_esquive_renforce,ESQUIVE RENFORCEE,REINFORCED DODGE
+tree.lan_esquive_renforce.desc,la chance du trait esquive passe à 40 pour cent.,the dodge trait's chance is raised to 40 percent.
+tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
+tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
 # Noeuds : branche LOGISTIQUE
 tree.lan_logi_deploy_1,AVANT-GARDE,VANGUARD
 tree.lan_logi_deploy_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.

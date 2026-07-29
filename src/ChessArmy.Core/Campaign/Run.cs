@@ -522,9 +522,9 @@ public sealed class Run
     private static readonly int[] LegendaryChanceByPhase = { 2, 5, 10 };
     private static readonly int[] RareChanceByPhase = { 15, 25, 40 };
     /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de légendaire (cf. <see cref="LegendaryPity"/>).</summary>
-    private const int LegendaryPityStep = 1;
+    private const int LegendaryPityStep = 2;
     /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de rare (cf. <see cref="RarePity"/>).</summary>
-    private const int RarePityStep = 2;
+    private const int RarePityStep = 3;
 
     /// <summary>Nombre d'exemplaires d'un même équipement à partir duquel il devient RARE au coffre (anti-doublon).</summary>
     private const int DuplicateThreshold = 2;

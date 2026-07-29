@@ -52,8 +52,8 @@
         { "id": "logi_deploiement_2", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots", "amount": 2 } ] },
         // logi_deploiement_3 : REPURPOSÉ en « Grande Armée » (+4 réserve) — cf. strings.csv tree.logi_deploiement_3.
         { "id": "logi_deploiement_3", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
-        // logi_reserve_3 : REPURPOSÉ en « Amalgame » — la fusion ne demande plus que 2 pions (au lieu de 3).
-        { "id": "logi_reserve_3",     "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1 } ] }
+        // amalgame : la fusion ne demande plus que 2 pions (au lieu de 3). Icône : Assets/CommandTree/amalgame.png.
+        { "id": "amalgame",           "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1 } ] }
       ]
     },
 
@@ -72,23 +72,23 @@
         { "id": "lan_cmd_aura_rempart",      "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Aura de rempart" } ] },
         { "id": "lan_cmd_riposte",           "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },
         // Repurposé « Séisme » : à la fin du tour ennemi, le commandant frappe les ennemis adjacents pour sa puissance.
-        { "id": "lan_cmd_aura_surpuissance", "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Séisme" } ] },
+        { "id": "lan_cmd_seisme", "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Séisme" } ] },
 
         // ── Branche 1 : les UNITÉS du domaine TOUR (Lanciers) ───────────────────────────────────
         { "id": "lan_tour_pv",             "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 4, "domaine": "Tour" } ] },
         // Repurposé « Rempart renforcé » : la réduction du trait Rempart passe de 4 à 6 (bonus +2).
-        { "id": "lan_tour_pv_tour",        "branch": 1, "level": 2, "effects": [ { "kind": "rempartBonus", "amount": 2 } ] },
+        { "id": "lan_tour_pv_tour",        "branch": 1, "level": 3, "effects": [ { "kind": "rempartBonus", "amount": 2 } ] },
         { "id": "lan_tour_aura_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Aura de puissance", "domaine": "Tour" } ] },
-        { "id": "lan_tour_releve",         "branch": 1, "level": 3, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Tour" } ] },
+        { "id": "lan_tour_releve",         "branch": 1, "level": 2, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Tour" } ] },
         // Repurposé « Esquive renforcée » : la chance du trait Esquive passe de 25 % à 40 % (bonus +15 points).
-        { "id": "lan_tour_pm",             "branch": 1, "level": 3, "effects": [ { "kind": "esquiveBonus", "amount": 15 } ] },
+        { "id": "lan_esquive_renforce",    "branch": 1, "level": 3, "effects": [ { "kind": "esquiveBonus", "amount": 15 } ] },
         // « Marche des lanciers » descend ici (déplacement +1 aux unités Tour), à la place de l'allonge.
-        { "id": "lan_tour_portee",         "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1, "domaine": "Tour" } ] },
+        { "id": "lan_tour_pm",             "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1, "domaine": "Tour" } ] },
 
         // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + fusion) ───────────────────────────
         { "id": "lan_logi_deploy_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "lan_logi_fusion",   "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Tour" } ] },
-        { "id": "lan_logi_deploy_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        //{ "id": "lan_logi_deploy_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "lan_logi_reserve_1","branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
         { "id": "lan_logi_deploy_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
         // Repurposé « Amalgame » (Tour) : une fusion d'une classe du domaine de la TOUR ne demande que 2 pions.

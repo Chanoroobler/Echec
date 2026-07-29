@@ -289,6 +289,10 @@ public sealed class GameplayScene : Scene
     // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
+    // Points de commandement « sur coup reçu » (commandant Lancier) : coups DÉJÀ signalés au joueur ce combat.
+    // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
+    // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
+    private int _commanderPtHitsShown;
     // Tutoriel « combat zéro » : non-null pendant le combat scénarisé de début de campagne.
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
@@ -1054,6 +1058,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingReculeSlam = null;
+        _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1186,6 +1191,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingReculeSlam = null;
+        _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -3454,6 +3460,7 @@ public sealed class GameplayScene : Scene
             _seismeShake = System.Math.Max(0f, _seismeShake - dt);
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
+        SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point de commandement sur un coup reçu
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
         // Paysans (tuiles recrue) : en mission « protéger », ce sont les ENNEMIS qui les capturent (le joueur
@@ -4197,6 +4204,31 @@ public sealed class GameplayScene : Scene
         var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential);
         if (commander != null)
             _run.GrantCommanderHitPoints(commander.TimesHit);
+    }
+
+    /// <summary>
+    /// Feedback « pendant le combat » de la source de points « sur coup reçu » (commandant Lancier) : à chaque
+    /// coup encaissé par le commandant qui RAPPORTE vraiment un point (sous le plafond <c>OnHitCap</c>), fait
+    /// jaillir un « +N » doré sur sa case + un son. Idempotent (ne resignale jamais un coup déjà montré) : le
+    /// CRÉDIT effectif reste groupé à la clôture (cf. <see cref="GrantCommanderHitPoints"/>) — ce n'est QUE de
+    /// l'affichage. Sans effet pour un commandant dont ce n'est pas la source (<c>OnHitPoints = 0</c>). Appelé
+    /// chaque frame de combat : détecte l'augmentation de <see cref="ChessArmy.Core.Battle.Unit.TimesHit"/>.
+    /// </summary>
+    private void SpawnCommanderPointFeedback()
+    {
+        if (_run is null || _run.CommanderDef.OnHitPoints <= 0)
+            return;
+        var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential && u.IsAlive);
+        if (commander is null || _match.CellOf(commander) is not { } cell)
+            return;
+
+        var earned = System.Math.Min(commander.TimesHit, _run.CommanderDef.OnHitCap);   // coups qui rapportent (plafonnés)
+        while (_commanderPtHitsShown < earned)
+        {
+            _commanderPtHitsShown++;
+            _damagePopups.SpawnText(cell, Loc.T("fx.command_point", _run.CommanderDef.OnHitPoints), Palette.Yellow1);
+            Context.Sounds.Play("command_point");
+        }
     }
 
     /// <summary>
@@ -8273,9 +8305,10 @@ public sealed class GameplayScene : Scene
             if (e.Trait is { } t)
             {
                 var kw = UnitKeywords.For(t);
-                lines.Add((kw.Label, Palette.Cyan1));               // nom du trait, en bleu (MAJUSCULES)
-                foreach (var line in WrapText(SentenceCase(kw.Description), innerWidth, 1))
-                    lines.Add((line, Palette.White));               // description en casse de phrase
+                var (desc, _, reinforced) = KeywordDisplay(kw);
+                lines.Add((kw.Label, reinforced ? ReinforcedTraitColor : Palette.Cyan1));   // nom du trait (rouge si renforcé)
+                foreach (var line in WrapText(SentenceCase(desc), innerWidth, 1))
+                    lines.Add((line, Palette.White));               // description : valeur effective substituée (jamais « {0} »)
             }
             else
             {
@@ -9254,6 +9287,52 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private static readonly Color GrantedKeywordColor = Palette.Yellow2;
 
+    /// <summary>Rouge signalant qu'un trait est RENFORCÉ par l'arbre de commandement (nom + valeur montée en surbrillance).</summary>
+    private static readonly Color ReinforcedTraitColor = Palette.Purple5;
+
+    /// <summary>
+    /// Résout la description d'un mot-clé pour l'affichage. Les traits « renforçables » par l'arbre (Rempart,
+    /// Esquive) portent un marqueur <c>{0}</c> dans <c>strings.csv</c> : on y substitue leur valeur EFFECTIVE
+    /// (base + bonus d'arbre de la run courante). Renvoie AUSSI le token à peindre en ROUGE (la valeur montée)
+    /// et un drapeau « renforcé » (nom du trait en rouge) — nuls/faux si non renforcé (bonus 0) ou non
+    /// renforçable. TOUT rendu de description passe par ici : garantit qu'aucun « {0} » ne fuite à l'écran.
+    /// </summary>
+    private (string Desc, string? Highlight, bool Reinforced) KeywordDisplay(UnitKeywords.Keyword kw)
+    {
+        if (kw.Label == UnitKeywords.For(Trait.Rempart).Label)
+            return ResolveReinforced(kw.Description, Match.BaseRempartReduction, _run?.RempartBonus ?? 0);
+        if (kw.Label == UnitKeywords.For(Trait.Esquive).Label)
+            return ResolveReinforced(kw.Description, (int)System.Math.Round(Match.BaseEsquiveChance * 100), _run?.EsquiveBonusPercent ?? 0);
+        return (kw.Description, null, false);
+    }
+
+    /// <summary>Substitue <c>base + bonus</c> au marqueur <c>{0}</c> ; le token surligné et le drapeau ne sont
+    /// posés que si <paramref name="bonus"/> &gt; 0 (trait effectivement renforcé).</summary>
+    private static (string, string?, bool) ResolveReinforced(string template, int baseValue, int bonus)
+    {
+        var value = baseValue + bonus;
+        var desc = template.Contains("{0}") ? string.Format(template, value) : template;
+        return bonus > 0 ? (desc, value.ToString(), true) : (desc, null, false);
+    }
+
+    /// <summary>Dessine une ligne de description MOT À MOT, en peignant en rouge la PREMIÈRE occurrence de
+    /// <paramref name="highlight"/> (sautée si <paramref name="alreadyDrawn"/>). Renvoie l'état « surbrillance posée ».
+    /// Police à chasse fixe → l'avance par mot reconstruit exactement la mise en page d'un rendu d'un seul tenant.</summary>
+    private bool DrawHighlightedLine(SpriteBatch sb, string line, int x, int y, string highlight, bool alreadyDrawn)
+    {
+        var font = Context.Font;
+        var adv = font.Measure("mm", 1) - font.Measure("m", 1);   // avance d'UN caractère (police à chasse fixe)
+        var col = 0;                                              // colonne caractère depuis le début de la ligne (comme Draw)
+        foreach (var word in line.Split(' '))
+        {
+            var hl = !alreadyDrawn && word == highlight;
+            if (hl) alreadyDrawn = true;
+            font.Draw(sb, word, new Vector2(x + col * adv, y), 1, hl ? ReinforcedTraitColor : Palette.White, preserveCase: true);
+            col += word.Length + 1;                              // longueur du mot + l'espace séparateur
+        }
+        return alreadyDrawn;
+    }
+
     /// <summary>Libellés des mots-clés issus d'une aura, pour les repérer au moment de les peindre.</summary>
     private static HashSet<string>? GrantedLabels(IReadOnlyList<string>? granted)
     {
@@ -9395,14 +9474,15 @@ public sealed class GameplayScene : Scene
     private const int KwPad = 8, KwLineH = 9, KwGap = 8, KwScreenMargin = 8;
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
-    private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H)> KeywordBoxes(UnitClass c, int width,
-        Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null)
+    private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight)> KeywordBoxes(
+        UnitClass c, int width, Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null)
     {
-        var boxes = new List<(UnitKeywords.Keyword, List<string>, int)>();
+        var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?)>();
         foreach (var kw in KeywordsFor(c, equip, buffs, granted))
         {
-            var lines = WrapText(SentenceCase(kw.Description), width - 2 * KwPad, 1);
-            boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad));   // titre + lignes
+            var (desc, highlight, reinforced) = KeywordDisplay(kw);
+            var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);
+            boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad, reinforced, highlight));   // titre + lignes
         }
         return boxes;
     }
@@ -9430,17 +9510,24 @@ public sealed class GameplayScene : Scene
             y = System.Math.Max(KwScreenMargin, VirtualViewport.Height - KwScreenMargin - total);
 
         var grantedLabels = GrantedLabels(granted);
-        foreach (var (kw, lines, h) in boxes)
+        foreach (var (kw, lines, h, reinforced, highlight) in boxes)
         {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
-            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1,
-                grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1);
+            // Nom du trait : ROUGE si renforcé par l'arbre, sinon jaune (venu d'une aura) ou bleu (natif).
+            var labelColor = reinforced ? ReinforcedTraitColor
+                : grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1;
+            Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, labelColor);
             var ly = box.Y + KwPad + 11;
+            var highlightDrawn = false;
             foreach (var line in lines)
             {
-                Context.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                // Description : la valeur MONTÉE (highlight) ressort en rouge quand le trait est renforcé.
+                if (highlight == null)
+                    Context.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                else
+                    highlightDrawn = DrawHighlightedLine(sb, line, box.X + KwPad, ly, highlight, highlightDrawn);
                 ly += KwLineH;
             }
             y += h + KwGap;
