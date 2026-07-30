@@ -23,6 +23,10 @@ public sealed class EquipmentEntry
     /// <summary>Nom du PNG d'icône 32×32 (Assets/Equipment/&lt;icon&gt;.png). Absent → défaut = <see cref="Id"/>.</summary>
     public string? Icon { get; set; }
 
+    /// <summary>Autorise l'attribution de cet équipement à un pion ENNEMI (tirage de vague). Défaut <c>true</c> ;
+    /// <c>false</c> = réservé au joueur, jamais donné à l'IA (sans effet sur les coffres). Cf. Equipment.EnemyAllowed.</summary>
+    public bool EnemyAllowed { get; set; } = true;
+
     /// <summary>Effets multiples (prioritaire s'il est présent). Chaque effet = stat+amount OU trait.</summary>
     public List<EquipEffectEntry>? Effects { get; set; }
 

@@ -41,14 +41,19 @@ public static class Equipments
         _all.Where(e => e.Rarity == rarity).ToList();
 
     /// <summary>
-    /// Tire un équipement dans le pool d'une rareté (null si le pool est vide). <paramref name="weight"/>
-    /// optionnel pondère chaque candidat (poids relatif ≥ 0) — sert à réduire la chance d'un item déjà possédé
-    /// en double (cf. <see cref="Campaign.Run.RollChestEquipment"/>). Sans pondération (ou tous poids nuls),
-    /// tirage UNIFORME. Ne renvoie jamais null tant que le pool n'est pas vide.
+    /// Tire un équipement dans le pool d'une rareté (null si le pool est vide). <paramref name="filter"/>
+    /// optionnel EXCLUT durement les candidats qui ne le passent pas AVANT le tirage (ex. équipements interdits
+    /// à l'IA, cf. <see cref="Campaign.Run.RollEnemyEquipment"/>) : un pool vidé par le filtre renvoie null.
+    /// <paramref name="weight"/> optionnel pondère chaque candidat restant (poids relatif ≥ 0) — sert à réduire
+    /// la chance d'un item déjà possédé en double (cf. <see cref="Campaign.Run.RollChestEquipment"/>). Sans
+    /// pondération (ou tous poids nuls), tirage UNIFORME. Ne renvoie jamais null tant que le pool filtré n'est pas vide.
     /// </summary>
-    public static Equipment? Roll(EquipmentRarity rarity, Random rng, Func<Equipment, double>? weight = null)
+    public static Equipment? Roll(EquipmentRarity rarity, Random rng,
+        Func<Equipment, double>? weight = null, Func<Equipment, bool>? filter = null)
     {
         var pool = OfRarity(rarity);
+        if (filter is not null)
+            pool = pool.Where(filter).ToList();
         if (pool.Count == 0)
             return null;
         if (weight is null)

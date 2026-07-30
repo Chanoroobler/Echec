@@ -33,13 +33,13 @@ internal sealed class MainForm : Form
     private readonly ComboBox _typeBox = new() { Width = 120, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _objectiveBox = new() { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _phaseBox = new() { Width = 90, DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _facingBox = new() { Width = 80, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown _turnsNum = new() { Minimum = 1, Maximum = 99, Value = 15, Width = 55 };
     private readonly NumericUpDown _widthNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly NumericUpDown _heightNum = new() { Minimum = 1, Maximum = 30, Value = 6, Width = 50 };
     private readonly ToolStripStatusLabel _status = new("Prêt.");
     private Button? _selectedPaletteButton;
     private Button? _selectedTierButton;
+    private Button? _selectedFacingButton;
 
     // Réorganisation de la palette de terrain par GLISSER-DÉPOSER au clic DROIT : clé de la tuile en cours
     // de déplacement (null = aucun). Le clic gauche reste le choix du pinceau. Voir TilePaletteButton.
@@ -164,7 +164,7 @@ internal sealed class MainForm : Form
 
         // Sous-type d'objectif : pertinent UNIQUEMENT pour le type Speciale (grisé sinon → forcé « Aucun »).
         bar.Controls.Add(Label("Objectif :"));
-        _objectiveBox.Items.AddRange(new object[] { "Aucun", "LibererPaysans", "ProtegerPaysans" });
+        _objectiveBox.Items.AddRange(new object[] { "Aucun", "LibererPaysans", "ProtegerPaysans", "SauverPaysans" });
         _objectiveBox.SelectedIndex = 0;
         _objectiveBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Objective = _objectiveBox.Text; MarkDirty(); } };
         bar.Controls.Add(_objectiveBox);
@@ -176,14 +176,6 @@ internal sealed class MainForm : Form
         _phaseBox.SelectedIndex = 0;
         _phaseBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.Phase = _phaseBox.SelectedIndex; MarkDirty(); } };
         bar.Controls.Add(_phaseBox);
-
-        // Sens des ENNEMIS par défaut (Speciale ET Boss) : Auto = le jeu décide selon la moitié du plateau ;
-        // Bas / Haut = imposé (cf. Core MapData.EnemyFacesDown).
-        bar.Controls.Add(Label("Sens ennemi :"));
-        _facingBox.Items.AddRange(new object[] { "Auto", "Bas", "Haut" });
-        _facingBox.SelectedIndex = 0;
-        _facingBox.SelectedIndexChanged += (_, _) => { if (_loading) return; if (_doc is not null) { _doc.EnemyFacing = FacingValue(_facingBox.Text); MarkDirty(); } };
-        bar.Controls.Add(_facingBox);
 
         // Limite de tours (rounds) de la mission spéciale — Speciale uniquement.
         bar.Controls.Add(Label("Tours :"));
@@ -242,6 +234,7 @@ internal sealed class MainForm : Form
         _palette.Controls.Clear();
         _selectedPaletteButton = null;
         _selectedTierButton = null;
+        _selectedFacingButton = null;
 
         // Outil « main » (aucune tuile), commun à tous les calques : le clic n'écrit rien. Auto-sélectionné
         // à l'ouverture d'une map pour ne pas peindre par erreur au premier clic (cf. Open).
@@ -267,6 +260,12 @@ internal sealed class MainForm : Form
                 AddTierButton('1', Color.FromArgb(90, 200, 120));
                 AddTierButton('2', Color.FromArgb(235, 205, 90));
                 AddTierButton('3', Color.FromArgb(230, 110, 90));
+                // Orientation posée AVEC les ennemis (E/D/O) — calque facing (cf. Core MapData.EnemyFacing).
+                // « Auto » = pas d'override (le jeu décide selon la moitié du plateau).
+                _palette.Controls.Add(Label("Sens ennemi :"));
+                AddFacingButton(MapDocument.EmptyFacing, "Auto", Color.FromArgb(120, 122, 130));
+                AddFacingButton('v', "Bas", Color.FromArgb(80, 170, 235));
+                AddFacingButton('^', "Haut", Color.FromArgb(235, 150, 70));
                 break;
             case EditLayer.Objects:
                 AddBrushButton('C', "Coffre", Color.FromArgb(230, 190, 60));
@@ -293,6 +292,14 @@ internal sealed class MainForm : Form
             if (c is Button b && b.Tag is char ch && ch is '1' or '2' or '3' && ch == _canvas.Tier)
             {
                 SelectTierButton(b);
+                break;
+            }
+
+        // Sélectionne l'orientation courante (boutons Auto/Bas/Haut du calque Spawns).
+        foreach (Control c in _palette.Controls)
+            if (c is Button b && b.Tag is char ch && ch is 'v' or '^' or MapDocument.EmptyFacing && ch == _canvas.Facing)
+            {
+                SelectFacingButton(b);
                 break;
             }
 
@@ -420,6 +427,33 @@ internal sealed class MainForm : Form
         if (_selectedTierButton is not null)
             _selectedTierButton.FlatAppearance.BorderSize = 1;
         _selectedTierButton = btn;
+        btn.FlatAppearance.BorderColor = Color.Gold;
+        btn.FlatAppearance.BorderSize = 3;
+    }
+
+    /// <summary>Bouton d'ORIENTATION (Auto/Bas/Haut) posé avec les spawns ennemis (E/D/O). Sélection indépendante du pinceau.</summary>
+    private void AddFacingButton(char facing, string label, Color color)
+    {
+        var sens = facing == 'v' ? "vers le bas (face caméra)"
+                 : facing == '^' ? "vers le haut (dos)"
+                 : "selon la moitié du plateau (auto)";
+        var btn = new Button
+        {
+            Size = new Size(44, 44), Margin = new Padding(4), Tag = facing, FlatStyle = FlatStyle.Flat,
+            BackColor = color, ForeColor = Color.Black,
+            Text = facing == 'v' ? "▼" : facing == '^' ? "▲" : "—", TextAlign = ContentAlignment.MiddleCenter,
+        };
+        btn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
+        _tips.SetToolTip(btn, $"Sens « {label} » : les ennemis (E/D/O) peints regardent {sens}.");
+        btn.Click += (_, _) => { _canvas.Facing = facing; SelectFacingButton(btn); };
+        _palette.Controls.Add(btn);
+    }
+
+    private void SelectFacingButton(Button btn)
+    {
+        if (_selectedFacingButton is not null)
+            _selectedFacingButton.FlatAppearance.BorderSize = 1;
+        _selectedFacingButton = btn;
         btn.FlatAppearance.BorderColor = Color.Gold;
         btn.FlatAppearance.BorderSize = 3;
     }
@@ -561,7 +595,6 @@ internal sealed class MainForm : Form
         _doc.Type = _typeBox.Text;
         _objectiveBox.SelectedItem = _doc.Objective;
         _phaseBox.SelectedIndex = _doc.Phase;
-        _facingBox.SelectedItem = FacingLabel(_doc.EnemyFacing);
         _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
         SyncSpecialFields();
         _nameBox.Text = _doc.Name;
@@ -595,7 +628,6 @@ internal sealed class MainForm : Form
                 _typeBox.SelectedItem = _typeBox.Items.Contains(_doc.Type) ? _doc.Type : "Escarmouche";
                 _objectiveBox.SelectedItem = _objectiveBox.Items.Contains(_doc.Objective) ? _doc.Objective : "Aucun";
                 _phaseBox.SelectedIndex = Math.Clamp(_doc.Phase, 0, 3);
-                _facingBox.SelectedItem = FacingLabel(_doc.EnemyFacing);
                 _turnsNum.Value = _doc.TurnLimit > 0 ? Math.Clamp(_doc.TurnLimit, 1, 99) : 15;
                 SyncSpecialFields();
                 SyncSizeFields();
@@ -622,7 +654,6 @@ internal sealed class MainForm : Form
         _doc.Type = _typeBox.Text;
         _doc.Objective = _objectiveBox.Text;
         _doc.Phase = _phaseBox.SelectedIndex;
-        _doc.EnemyFacing = _typeBox.Text is "Speciale" or "Boss" ? FacingValue(_facingBox.Text) : null;
         _doc.TurnLimit = _typeBox.Text == "Speciale" ? (int)_turnsNum.Value : 0;
 
         // Filet de sécurité : re-valider avec le MÊME code que le jeu avant d'écrire.
@@ -727,13 +758,7 @@ internal sealed class MainForm : Form
         var boss = _typeBox.Text == "Boss";
         _objectiveBox.Enabled = special;
         _phaseBox.Enabled = special || boss;   // la phase sert au tirage des maps Speciale ET Boss
-        _facingBox.Enabled = special || boss;  // le sens ennemi imposé ne s'applique qu'aux maps Speciale/Boss
         _turnsNum.Enabled = special;
-        if (!special && !boss)
-        {
-            _facingBox.SelectedItem = "Auto";   // hors Speciale/Boss : pas d'override → « Auto »
-            if (_doc is not null) _doc.EnemyFacing = null;
-        }
         if (!special)
         {
             _objectiveBox.SelectedItem = "Aucun";
@@ -750,22 +775,6 @@ internal sealed class MainForm : Form
         if (!special && !boss)
             _phaseBox.SelectedIndex = 0;   // Escarmouche : la phase ne s'applique pas → « Toutes »
     }
-
-    /// <summary>Libellé du combo « Sens ennemi » → valeur JSON : « Bas » → "down", « Haut » → "up", « Auto » → null.</summary>
-    private static string? FacingValue(string label) => label switch
-    {
-        "Bas" => "down",
-        "Haut" => "up",
-        _ => null,
-    };
-
-    /// <summary>Valeur (doc/JSON) → libellé du combo, tolérante aux variantes anglaises/françaises.</summary>
-    private static string FacingLabel(string? value) => (value ?? "").Trim().ToLowerInvariant() switch
-    {
-        "down" or "bas" => "Bas",
-        "up" or "haut" => "Haut",
-        _ => "Auto",
-    };
 
     // ---------------------------------------------------------------- Helpers
     private void SyncSizeFields()

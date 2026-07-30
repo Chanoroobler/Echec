@@ -392,8 +392,28 @@ public class CommanderSelectionTests
     [InlineData(Difficulty.Difficile, 2)]
     public void SpecialMissions_PaysanQuotaPerDifficulty(Difficulty difficulty, int required)
     {
-        // Contrat lu par GameplayScene pour décider si la mission spéciale est perdue (= fin de run).
+        // Contrat lu par GameplayScene pour décider si la mission « libérer » est perdue (= fin de run).
         Assert.Equal(required, DifficultySettings.For(difficulty).PaysansRequired);
+    }
+
+    [Theory]
+    [InlineData(Difficulty.Facile, 0)]      // aucune exigence : la mission spéciale ne peut pas être ratée
+    [InlineData(Difficulty.Normal, 2)]
+    [InlineData(Difficulty.Difficile, 3)]
+    public void ProtectMissions_PaysanQuotaPerDifficulty(Difficulty difficulty, int required)
+    {
+        // Barème DISTINCT (plus exigeant) des missions « protéger », lu par GameplayScene.PaysansRequired.
+        Assert.Equal(required, DifficultySettings.For(difficulty).PaysansRequiredProtect);
+    }
+
+    [Theory]
+    [InlineData(Difficulty.Facile, 0)]      // aucune exigence : la course ne peut pas être perdue sur le quota
+    [InlineData(Difficulty.Normal, 2)]
+    [InlineData(Difficulty.Difficile, 3)]
+    public void SaveMissions_PaysanQuotaPerDifficulty(Difficulty difficulty, int required)
+    {
+        // Barème des missions « sauver » (course contre l'IA), lu par GameplayScene.PaysansRequired.
+        Assert.Equal(required, DifficultySettings.For(difficulty).PaysansRequiredSave);
     }
 
     [Fact]

@@ -12,6 +12,8 @@
   //           bonus de « pitié », cf. Run.ResolveChestRarity). "id" = clé stable (sauvegarde).
   // "icon" (optionnel) = nom du PNG d'icône 32×32 dans Assets/Equipment/<icon>.png ; absent => défaut = "id".
   //                      Placeholder coloré dessiné tant que le PNG n'existe pas.
+  // "enemyAllowed" (optionnel, défaut true) = false pour INTERDIRE que l'IA ennemie reçoive cet équipement
+  //                 (réservé au joueur). Sans effet sur les coffres. Cf. Equipment.EnemyAllowed / RollEnemyEquipment.
   // NB : équipements de test ; à compléter au fil des besoins. Un équipement = une ligne (garder ce format
   //      compact ; ne pas lancer « Format Document » qui ré-éclate chaque propriété sur sa ligne).
   "equipments": [

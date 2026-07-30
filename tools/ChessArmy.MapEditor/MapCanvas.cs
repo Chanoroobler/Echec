@@ -38,6 +38,10 @@ internal sealed class MapCanvas : Panel
     /// <summary>Tier courant (1..3) posé AVEC les spawns ENNEMIS (E/D/O) dans le calque tiers.</summary>
     public char Tier { get; set; } = '1';
 
+    /// <summary>Orientation courante posée AVEC les spawns ENNEMIS dans le calque facing : <c>'v'</c> = bas,
+    /// <c>'^'</c> = haut, <see cref="MapDocument.EmptyFacing"/> = auto (le jeu décide selon la moitié du plateau).</summary>
+    public char Facing { get; set; } = MapDocument.EmptyFacing;
+
     private static bool IsEnemySpawn(char c) => c is 'E' or 'D' or 'O';
 
     private Point _hover = new(-1, -1);
@@ -163,6 +167,8 @@ internal sealed class MapCanvas : Panel
                     DrawSpawn(g, x, y, surface, _doc.Spawns[r, c]);
                 if (_doc.Tiers[r, c] != MapDocument.EmptyTier)
                     DrawTier(g, x, y, surface, _doc.Tiers[r, c], active: Layer == EditLayer.Spawns);
+                if (_doc.Facing[r, c] != MapDocument.EmptyFacing)
+                    DrawFacing(g, x, y, surface, _doc.Facing[r, c], active: Layer == EditLayer.Spawns);
                 if (Layer != EditLayer.Terrain || _doc.Objects[r, c] != MapDocument.EmptyObject)
                     DrawObject(g, x, y, surface, _doc.Objects[r, c]);
             }
@@ -231,6 +237,21 @@ internal sealed class MapCanvas : Panel
         DrawCentered(g, ch.ToString(), bx, by, badge, badge, badge * 0.62f);
     }
 
+    /// <summary>Badge d'ORIENTATION en BAS-GAUCHE d'une case de spawn ennemi : ▼ = regarde vers le bas
+    /// (bleu), ▲ = vers le haut (orange). Grisé si le calque Spawns n'est pas actif.</summary>
+    private void DrawFacing(Graphics g, float x, float y, float s, char ch, bool active)
+    {
+        var (glyph, col) = ch == 'v'
+            ? ("▼", Color.FromArgb(80, 170, 235))
+            : ("▲", Color.FromArgb(235, 150, 70));
+        int alpha = active ? 235 : 90;
+        float badge = s * 0.4f;
+        float bx = x + 2, by = y + s - badge - 2;
+        using var b = new SolidBrush(Color.FromArgb(alpha, col));
+        g.FillEllipse(b, bx, by, badge, badge);
+        DrawCentered(g, glyph, bx, by, badge, badge, badge * 0.62f);
+    }
+
     private static void DrawPlaceholder(Graphics g, float x, float y, float s, string key)
     {
         if (string.IsNullOrWhiteSpace(key)) return;   // case vide : rien à dessiner
@@ -275,17 +296,20 @@ internal sealed class MapCanvas : Panel
 
         bool erase = e.Button == MouseButtons.Right;
 
-        // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier courant dans le calque tiers ;
-        // poser joueur/boss ou effacer efface le tier. Répercuté même si le spawn ne change pas, pour
-        // permettre de ne changer QUE le tier (re-cliquer un ennemi après avoir changé T1/T2/T3).
+        // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier ET l'orientation courants (calques tiers
+        // et facing) ; poser joueur/boss ou effacer les efface. Répercuté même si le spawn ne change pas, pour
+        // permettre de ne changer QUE le tier ou l'orientation (re-cliquer un ennemi après avoir changé la sélection).
         if (Layer == EditLayer.Spawns)
         {
             // Pinceau spawn = 1 caractère (P/E/D/O/B) ; le mode main est déjà écarté ci-dessus.
             var spawn = erase ? MapDocument.EmptySpawn : Brush[0];
             var tier = IsEnemySpawn(spawn) ? Tier : MapDocument.EmptyTier;
-            if (_doc.Spawns[cell.Y, cell.X] == spawn && _doc.Tiers[cell.Y, cell.X] == tier) return;
+            var facing = IsEnemySpawn(spawn) ? Facing : MapDocument.EmptyFacing;
+            if (_doc.Spawns[cell.Y, cell.X] == spawn && _doc.Tiers[cell.Y, cell.X] == tier
+                && _doc.Facing[cell.Y, cell.X] == facing) return;
             _doc.Spawns[cell.Y, cell.X] = spawn;
             _doc.Tiers[cell.Y, cell.X] = tier;
+            _doc.Facing[cell.Y, cell.X] = facing;
         }
         else if (Layer == EditLayer.Objects)
         {

@@ -1,0 +1,49 @@
+{
+  "name": "sauver_1_01",
+  "type": "Speciale",
+  "objective": "SauverPaysans",
+  "phase": 1,
+  "turnLimit": 15,
+  "width": 8,
+  "height": 8,
+  "tiles": [
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh",
+    "hhhhhhhh"
+  ],
+  "spawns": [
+    "OOOOOOOO",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "PPPPPPPP"
+  ],
+  "tiers": [
+    "11111111",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........"
+  ],
+  "objects": [
+    "........",
+    "........",
+    "........",
+    "..R....R",
+    "R..R.R..",
+    "........",
+    "........",
+    "........"
+  ]
+}

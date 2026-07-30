@@ -21,7 +21,6 @@ public static class MapLoader
         var objective = ParseObjective(dto.Objective);
         var phase = ParsePhase(dto.Phase);
         var turnLimit = ParseTurnLimit(dto.TurnLimit);
-        var enemyFacesDown = ParseEnemyFacing(dto.EnemyFacing);
         var width = dto.Width;
         var height = dto.Height;
         if (width <= 0 || height <= 0)
@@ -119,6 +118,24 @@ public static class MapLoader
             }
         }
 
+        // Calque `facing` (optionnel) : orientation par DÉFAUT imposée PAR CASE de spawn ennemi — 'v' = regarde
+        // vers le bas (face caméra), '^' = vers le haut, '.'/' ' = auto (règle par moitié de plateau). Une case
+        // absente du dictionnaire = aucun override (cf. MapData.EnemyFacing).
+        var enemyFacing = new Dictionary<Cell, bool>();
+        if (dto.Facing is not null)
+        {
+            RequireGrid(dto.Facing, width, height, "facing");
+            foreach (var cell in enemy)
+            {
+                var ch = dto.Facing[cell.Row][cell.Column];
+                if (ch == 'v') enemyFacing[cell] = true;
+                else if (ch == '^') enemyFacing[cell] = false;
+                else if (ch is not ('.' or ' '))
+                    throw new FormatException(
+                        $"Caractère d'orientation '{ch}' invalide en ({cell.Column},{cell.Row}). Attendu 'v', '^' ou '.'.");
+            }
+        }
+
         var objects = new List<MapObject>();
         if (dto.Objects is not null)
         {
@@ -146,7 +163,7 @@ public static class MapLoader
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, enemyFacesDown);
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, enemyFacing);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)
@@ -172,7 +189,7 @@ public static class MapLoader
             return SpecialObjective.Aucun;
         return Enum.TryParse<SpecialObjective>(objective, ignoreCase: true, out var o)
             ? o
-            : throw new FormatException($"Objectif spécial inconnu : '{objective}'. Attendu Aucun, LibererPaysans ou ProtegerPaysans.");
+            : throw new FormatException($"Objectif spécial inconnu : '{objective}'. Attendu Aucun, LibererPaysans, ProtegerPaysans ou SauverPaysans.");
     }
 
     /// <summary>Phase réservée (0 = toutes, 1..3 = phase précise). Absent = 0. Lève hors de 0..3.</summary>
@@ -193,23 +210,6 @@ public static class MapLoader
         return t;
     }
 
-    /// <summary>
-    /// Orientation ennemie imposée par la map (missions spéciale/boss) : <c>down</c>/<c>bas</c> → regardent
-    /// vers le bas (true), <c>up</c>/<c>haut</c> → vers le haut (false), absent/vide → null (pas d'override).
-    /// Lève sur une valeur inconnue.
-    /// </summary>
-    private static bool? ParseEnemyFacing(string? facing)
-    {
-        if (string.IsNullOrWhiteSpace(facing))
-            return null;
-        return facing.Trim().ToLowerInvariant() switch
-        {
-            "down" or "bas" => true,
-            "up" or "haut" => false,
-            _ => throw new FormatException($"Orientation ennemie inconnue : '{facing}'. Attendu 'down'/'bas' ou 'up'/'haut'."),
-        };
-    }
-
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -224,13 +224,13 @@ public static class MapLoader
         public string? Objective { get; set; }
         public int? Phase { get; set; }
         public int? TurnLimit { get; set; }
-        public string? EnemyFacing { get; set; }
         public int Width { get; set; }
         public int Height { get; set; }
         public Dictionary<string, string>? Legend { get; set; }
         public List<string>? Tiles { get; set; }
         public List<string>? Spawns { get; set; }
         public List<string>? Tiers { get; set; }
+        public List<string>? Facing { get; set; }
         public List<string>? Objects { get; set; }
     }
 }

@@ -38,9 +38,18 @@ public enum Difficulty
 /// <c>Essential</c>, comme le commandant du joueur).
 /// </param>
 /// <param name="PaysansRequired">
-/// MISSIONS SPÉCIALES : nombre MINIMUM de paysans à sauver (mission « libérer ») ou à préserver de la
-/// capture (mission « protéger ») pour que la mission compte. En dessous, la run est PERDUE, comme si le
-/// commandant était tombé. <c>0</c> = aucune exigence, la mission ne peut pas être ratée.
+/// MISSION « LIBÉRER » : nombre MINIMUM de paysans à libérer pour que la mission compte. En dessous, la run
+/// est PERDUE, comme si le commandant était tombé. <c>0</c> = aucune exigence, la mission ne peut pas être
+/// ratée. Le quota des missions « protéger » est distinct (cf. <see cref="PaysansRequiredProtect"/>).
+/// </param>
+/// <param name="PaysansRequiredProtect">
+/// MISSION « PROTÉGER » : nombre MINIMUM de paysans à préserver de la capture. Même sanction et même
+/// convention que <see cref="PaysansRequired"/> (<c>0</c> = aucune exigence), mais un barème plus exigeant.
+/// </param>
+/// <param name="PaysansRequiredSave">
+/// MISSION « SAUVER » (course contre l'IA) : nombre MINIMUM de paysans à récupérer avant que l'ennemi ne les
+/// capture. Même convention que les autres (<c>0</c> = aucune exigence). Dès qu'il devient impossible de tenir
+/// ce quota (trop de captures), la run est PERDUE sans attendre la fin de la mission.
 /// </param>
 /// <param name="AllowRestart">
 /// Autorise « Recommencer la mission » dans le menu pause. <c>false</c> = run sans filet : le joueur assume
@@ -48,19 +57,22 @@ public enum Difficulty
 /// l'infobulle de difficulté.
 /// </param>
 public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus,
-    int PaysansRequired, bool AllowRestart)
+    int PaysansRequired, int PaysansRequiredProtect, int PaysansRequiredSave, bool AllowRestart)
 {
     /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé, aucun quota ; recommencer autorisé.</summary>
     public static readonly DifficultySettings Facile =
-        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null, PaysansRequired: 0, AllowRestart: true);
+        new(AiAccuracy: 0.50, TierShift: -1, EnemyEquipBonus: null,
+            PaysansRequired: 0, PaysansRequiredProtect: 0, PaysansRequiredSave: 0, AllowRestart: true);
 
-    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base, 1 paysan exigé ; recommencer autorisé.</summary>
+    /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base ; 1 paysan à libérer, 2 à protéger, 2 à sauver ; recommencer autorisé.</summary>
     public static readonly DifficultySettings Normal =
-        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0, PaysansRequired: 1, AllowRestart: true);
+        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0,
+            PaysansRequired: 1, PaysansRequiredProtect: 2, PaysansRequiredSave: 2, AllowRestart: true);
 
-    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus, 2 paysans exigés ; run sans filet (pas de « recommencer »).</summary>
+    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus ; 2 paysans à libérer, 3 à protéger, 3 à sauver ; run sans filet (pas de « recommencer »).</summary>
     public static readonly DifficultySettings Difficile =
-        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1, PaysansRequired: 2, AllowRestart: false);
+        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1,
+            PaysansRequired: 2, PaysansRequiredProtect: 3, PaysansRequiredSave: 3, AllowRestart: false);
 
     /// <summary>Tous les niveaux, dans l'ordre croissant : c'est l'ordre du sélecteur de l'écran de sélection.</summary>
     public static readonly IReadOnlyList<Difficulty> AllLevels =

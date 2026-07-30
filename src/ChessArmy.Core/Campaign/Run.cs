@@ -604,7 +604,8 @@ public sealed class Run
     /// monte avec la campagne. Deux différences avec <see cref="RollChestEquipment"/> : la « PITIÉ » n'est
     /// ni lue ni modifiée (elle appartient aux coffres du joueur — la toucher ici fausserait ses drops), et
     /// l'anti-doublon ne s'applique pas (il compte ce que le JOUEUR possède). Repli sur le commun si le pool
-    /// rare est vide.
+    /// rare est vide. Les équipements marqués <see cref="Equipment.EnemyAllowed"/> = false sont EXCLUS du tirage
+    /// (réservés au joueur) ; si le filtre vide une rareté, on retombe sur celle du dessous, puis rien.
     /// </summary>
     private Equipment? RollEnemyEquipment(Random rng)
     {
@@ -614,7 +615,7 @@ public sealed class Run
             : EquipmentRarity.Common;
 
         for (var r = (int)rarity; r >= 0; r--)
-            if (Equipments.Roll((EquipmentRarity)r, rng) is { } item)
+            if (Equipments.Roll((EquipmentRarity)r, rng, filter: e => e.EnemyAllowed) is { } item)
                 return item;
         return null;
     }

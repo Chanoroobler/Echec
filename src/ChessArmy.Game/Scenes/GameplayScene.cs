@@ -93,7 +93,8 @@ public sealed class GameplayScene : Scene
     // qui ENTRE dessus en combat gagne un pion (tier 1) en réserve, puis l'objet est consommé (usage
     // unique). Détection par transition (absent→présent). Rendu : PNG, repli sur un pion « ? » placeholder.
     private readonly List<Cell> _recrueCells = new();        // cases recrue du combat courant
-    private readonly HashSet<Cell> _recrueConsumed = new();  // déjà déclenchées
+    private readonly HashSet<Cell> _recrueConsumed = new();  // déjà déclenchées (libérées OU capturées)
+    private readonly HashSet<Cell> _recrueCaptured = new();  // sous-ensemble CAPTURÉ par l'IA (mission « sauver » : distingue libéré du perdu)
     private readonly HashSet<Cell> _recruePrev = new();      // cases recrue occupées par un allié à la frame précédente
     private UnitSpec? _recrueReveal;                         // unité gagnée en attente de révélation (carte modale, fige le combat)
     private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
@@ -121,7 +122,7 @@ public sealed class GameplayScene : Scene
     /// roster), affichés par la modale de bilan avant l'écran de récupération des pions.
     /// </summary>
     private readonly record struct SpecialRecap(
-        bool Protect, int Paysans, int PaysansTotal, int Turns, int TurnBudget, int Losses, int Required);
+        SpecialObjective Objective, int Paysans, int PaysansTotal, int Turns, int TurnBudget, int Losses, int Required);
 
     private SpecialRecap? _specialRecap;       // bilan à valider ; non-null = modale ouverte (gèle le recrutement)
 
@@ -145,8 +146,26 @@ public sealed class GameplayScene : Scene
     /// <summary>Vrai si la mission courante est « protéger les paysans » (ennemis offensifs les capturent).</summary>
     private bool IsProtectMission => _specialObjective == SpecialObjective.ProtegerPaysans;
 
-    /// <summary>Paysans RÉSOLUS (tuiles recrue consommées) : libérés (Liberer) ou capturés (Proteger).</summary>
+    /// <summary>
+    /// Vrai si la mission courante est « sauver les paysans » : COURSE — le joueur les récupère (comme Liberer)
+    /// pendant que l'IA offensive tente de les capturer (comme Proteger). Sans limite de tours.
+    /// </summary>
+    private bool IsSauverMission => _specialObjective == SpecialObjective.SauverPaysans;
+
+    /// <summary>Vrai si l'IA offensive peut CAPTURER des paysans dans la mission courante (« protéger » ou « sauver »).</summary>
+    private bool AiCapturesPaysans => IsProtectMission || IsSauverMission;
+
+    /// <summary>Vrai si la mission courante impose une limite de tours (toutes sauf « sauver », qui est une course).</summary>
+    private bool HasSpecialTurnLimit => _specialMission && !IsSauverMission;
+
+    /// <summary>Paysans RÉSOLUS (tuiles recrue consommées) : libérés (Liberer/Sauver) ou capturés (Proteger/Sauver).</summary>
     private int PaysansResolved => _recrueConsumed.Count;
+
+    /// <summary>Paysans CAPTURÉS par l'IA (sous-ensemble des résolus). Nul hors mission où l'IA capture.</summary>
+    private int PaysansCaptured => _recrueCaptured.Count;
+
+    /// <summary>Paysans RÉCUPÉRÉS par le joueur (résolus moins capturés). En Liberer, tous les résolus sont libérés.</summary>
+    private int PaysansFreed => PaysansResolved - PaysansCaptured;
 
     /// <summary>Paysans encore protégés (mission Proteger) : total moins ceux capturés.</summary>
     private int PaysansProtected => PaysansTotal - PaysansResolved;
@@ -155,18 +174,29 @@ public sealed class GameplayScene : Scene
     private int PaysansTotal => _recrueCells.Count;
 
     /// <summary>
-    /// Paysans portés à l'actif du joueur : ceux qu'il a LIBÉRÉS en mission « libérer », ceux qu'il a
-    /// EMPÊCHÉ de capturer en mission « protéger ». C'est ce chiffre que le quota de difficulté compare.
+    /// Paysans portés à l'actif du joueur : ceux qu'il a EMPÊCHÉ de capturer en « protéger », ceux qu'il a
+    /// RÉCUPÉRÉS en « libérer »/« sauver ». C'est ce chiffre que le quota de difficulté compare.
     /// </summary>
-    private int PaysansSaved => IsProtectMission ? PaysansProtected : PaysansResolved;
+    private int PaysansSaved => IsProtectMission ? PaysansProtected : PaysansFreed;
 
     /// <summary>
-    /// Quota de paysans imposé par la difficulté (0 = aucun). PLAFONNÉ au nombre de paysans réellement
+    /// Quota de paysans imposé par la difficulté (0 = aucun). Barème DISTINCT par type de mission :
+    /// « protéger » et « sauver » sont plus exigeants que « libérer ». PLAFONNÉ au nombre de paysans réellement
     /// présents sur la map : une exigence impossible à tenir serait une défaite garantie.
     /// </summary>
-    private int PaysansRequired => _run == null
-        ? 0
-        : System.Math.Min(DifficultySettings.For(_run.Difficulty).PaysansRequired, PaysansTotal);
+    private int PaysansRequired
+    {
+        get
+        {
+            if (_run == null)
+                return 0;
+            var s = DifficultySettings.For(_run.Difficulty);
+            var quota = IsProtectMission ? s.PaysansRequiredProtect
+                      : IsSauverMission ? s.PaysansRequiredSave
+                      : s.PaysansRequired;
+            return System.Math.Min(quota, PaysansTotal);
+        }
+    }
 
     /// <summary>Limite de tours effective de la mission spéciale : celle de la map si fixée, sinon le défaut.</summary>
     private int SpecialTurnBudget() => _map is { TurnLimit: > 0 } m ? m.TurnLimit : SpecialTurnLimit;
@@ -325,6 +355,11 @@ public sealed class GameplayScene : Scene
     // Orientation visuelle par unité : true = regarde vers le bas (face caméra). Suit la dernière
     // action verticale (déplacement/attaque) ; à défaut, selon la MOITIÉ du plateau (cf. DefaultFacesDown).
     private readonly Dictionary<Unit, bool> _facesDown = new();
+
+    // Orientation par DÉFAUT imposée à un ENNEMI par la case de spawn où il est apparu (calque `facing` de la
+    // map, cf. MapData.EnemyFacing) : true = vers le bas, false = vers le haut. Capturée au spawn car l'ennemi
+    // se déplace ensuite ; sert de défaut à DefaultFacesDown jusqu'à sa première action (comme _facesDown).
+    private readonly Dictionary<Unit, bool> _enemyForcedFacing = new();
 
     // Lien unité déployée → gabarit d'inventaire, pour calculer les pertes après combat.
     private readonly Dictionary<Unit, UnitSpec> _playerSpec = new();
@@ -1024,6 +1059,7 @@ public sealed class GameplayScene : Scene
 
         // Réinitialise l'état déclencheur des objets recrue / coffre (détection « entre dessus »).
         _recrueConsumed.Clear();
+        _recrueCaptured.Clear();
         _recruePrev.Clear();
         _recrueReveal = null;
         _recrueAdded = false;
@@ -1045,6 +1081,7 @@ public sealed class GameplayScene : Scene
         _dragEquipFrom = null;
         _equipFocus = 0;
         _facesDown.Clear();
+        _enemyForcedFacing.Clear();
         _playerSpec.Clear();
         _enemySpec.Clear();
         _enemyKillOrder.Clear();
@@ -1188,6 +1225,7 @@ public sealed class GameplayScene : Scene
                 _chestCells.Add(o.Cell);
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
+        _enemyForcedFacing.Clear();
         _playerSpec.Clear();
         _enemySpec.Clear();
         _enemyKillOrder.Clear();
@@ -1365,7 +1403,8 @@ public sealed class GameplayScene : Scene
                 continue;
             if (_match.UnitAt(c) is { Faction: Faction.Enemy })
             {
-                _recrueConsumed.Add(c);          // paysan capturé
+                _recrueConsumed.Add(c);          // paysan résolu…
+                _recrueCaptured.Add(c);          // …et PERDU (capturé par l'IA) — distingue le libéré du perdu en « sauver »
                 _match.UnblockPlayerCell(c);     // le paysan n'est plus là → sa case redevient accessible au joueur
                 Context.Sounds.Play("unit_place");   // repère sonore léger de capture
             }
@@ -1703,15 +1742,15 @@ public sealed class GameplayScene : Scene
                 i++;
             if (i >= cells.Count) break;
             // IA selon la case de spawn (mission spéciale) : « D » = garde défensif, « O » = assaillant
-            // offensif ; sinon IA normale. L'assaut/capture de paysans (« O ») n'a de sens QU'en mission
-            // « protéger » : hors de ce mode, un marqueur « O » retombe sur l'IA normale (fonce sur le joueur),
-            // pour que la capture de paysan par l'IA reste STRICTEMENT réservée à « protéger les paysans ».
+            // offensif ; sinon IA normale. L'assaut/capture de paysans (« O ») n'a de sens QUE lorsque l'IA peut
+            // capturer (missions « protéger » ET « sauver ») : hors de ces modes, un marqueur « O » retombe sur
+            // l'IA normale (fonce sur le joueur), pour que la capture par l'IA reste réservée à ces missions.
             var ai = AiKind.Normal;
             if (_map is { } dm)
             {
                 if (dm.DefensiveEnemySpawns.Contains(cells[i]))
                     ai = AiKind.Defensif;
-                else if (IsProtectMission && dm.OffensiveEnemySpawns.Contains(cells[i]))
+                else if (AiCapturesPaysans && dm.OffensiveEnemySpawns.Contains(cells[i]))
                     ai = AiKind.Offensif;
             }
             SpawnEnemyOn(spec, cells[i], ai);
@@ -1754,6 +1793,8 @@ public sealed class GameplayScene : Scene
         unit.AiKind = ai;
         _match.Place(cell, unit);
         _enemySpec[unit] = spec;   // pour retrouver le gabarit à la mort (recrutement)
+        if (_map is { } m && m.EnemyFacing.TryGetValue(cell, out var forced))
+            _enemyForcedFacing[unit] = forced;   // orientation par défaut imposée par la case de spawn (calque `facing`)
     }
 
     // Colonnes du centre vers les bords (déploiement groupé au milieu), pour la largeur courante.
@@ -2621,6 +2662,11 @@ public sealed class GameplayScene : Scene
     {
         CancelDrag();
         DisbandFusionToOrigin();   // une pile de fusion non terminée est défaite avant d'équiper
+        // Les pions restés EN RÉSERVE (non posés sur le plateau) ne portent pas de slot dans cette
+        // sous-phase : leur équipement serait figé et inutilisable. On le rend donc à l'inventaire pour
+        // qu'il puisse aller sur un pion déployé. _pending contient exactement les pions non placés.
+        foreach (var spec in _pending)
+            _run.Unequip(spec);
         _equipPhase = true;
         _dragEquip = null;
         _dragEquipFrom = null;
@@ -3474,12 +3520,14 @@ public sealed class GameplayScene : Scene
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point de commandement sur un coup reçu
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
-        // Paysans (tuiles recrue) : en mission « protéger », ce sont les ENNEMIS qui les capturent (le joueur
-        // les défend, il ne les ramasse pas) ; partout ailleurs, un ALLIÉ qui entre dessus recrute (Liberer /
-        // escarmouche normale).
-        if (IsProtectMission)
+        // Paysans (tuiles recrue) :
+        //   • « protéger » : seuls les ENNEMIS agissent (capture) — le joueur défend, il ne ramasse pas.
+        //   • « sauver » : COURSE — les deux camps agissent (l'IA capture, l'allié récupère) sur les mêmes tuiles.
+        //   • partout ailleurs (Liberer / escarmouche) : seul un ALLIÉ qui entre dessus recrute.
+        // Chaque détection sort tôt sur _recrueConsumed → la première à résoudre une tuile gagne la course dessus.
+        if (AiCapturesPaysans)
             CheckPaysanCapture();
-        else
+        if (!IsProtectMission)
             CheckRecrueObjects();
         CheckChests();             // ouverture d'un coffre si un allié vient d'entrer dessus
 
@@ -4099,10 +4147,24 @@ public sealed class GameplayScene : Scene
         // OU quand la limite de tours est atteinte (« trop tard » — jamais une défaite hors commandant).
         if (_specialMission)
         {
-            // « Protéger » : dès qu'il n'y a PLUS d'adversaire, les paysans restants sont sauvés → victoire
-            // IMMÉDIATE (inutile d'attendre la fin des tours ; l'élimination ne clôt pas seule une mission spéciale).
-            var noEnemiesLeft = IsProtectMission && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy);
-            var done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0 || noEnemiesLeft;
+            bool done;
+            if (IsSauverMission)
+            {
+                // « Sauver » : COURSE sans limite de tours. La mission se clôt quand CHAQUE paysan est décidé
+                // (récupéré par le joueur OU capturé par l'IA), OU dès que le quota devient IMPOSSIBLE — trop de
+                // captures pour encore l'atteindre : max récupérable = total − capturés. La défaite anticipée est
+                // alors prononcée juste en dessous (PaysansSaved, = récupérés, sera forcément < quota).
+                var allResolved = PaysansTotal > 0 && PaysansResolved >= PaysansTotal;
+                var quotaImpossible = PaysansTotal - PaysansCaptured < PaysansRequired;
+                done = allResolved || quotaImpossible;
+            }
+            else
+            {
+                // « Protéger » : dès qu'il n'y a PLUS d'adversaire, les paysans restants sont sauvés → victoire
+                // IMMÉDIATE (inutile d'attendre la fin des tours ; l'élimination ne clôt pas seule une mission).
+                var noEnemiesLeft = IsProtectMission && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy);
+                done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0 || noEnemiesLeft;
+            }
             if (!done)
                 return;
 
@@ -4125,7 +4187,7 @@ public sealed class GameplayScene : Scene
             // Bilan FIGÉ ici : la complétion va retirer les pertes du roster (permadeath) et remettre le
             // compteur de tours à zéro au combat suivant. Modale à valider avant la récupération des pions.
             var casualties = PlayerCasualties();
-            _specialRecap = new SpecialRecap(IsProtectMission, PaysansSaved, PaysansTotal,
+            _specialRecap = new SpecialRecap(_specialObjective, PaysansSaved, PaysansTotal,
                 SpecialTurnBudget() - System.Math.Max(0, _specialRoundsLeft), SpecialTurnBudget(),
                 casualties.Count, PaysansRequired);
 
@@ -4635,7 +4697,7 @@ public sealed class GameplayScene : Scene
     /// puis déclenche les « Séismes » des pions joueur (trait <see cref="Trait.Seisme"/>).</summary>
     private void OnEnemyTurnResolved()
     {
-        if (_specialMission && _specialRoundsLeft > 0)
+        if (HasSpecialTurnLimit && _specialRoundsLeft > 0)   // « sauver » est une course : pas de décompte
             _specialRoundsLeft--;
         TriggerSeismes();
     }
@@ -10476,11 +10538,24 @@ public sealed class GameplayScene : Scene
     private void DrawSpecialObjective(SpriteBatch sb, Viewport viewport)
     {
         var railW = (int)CenteringWidth();   // même centrage que le plateau/la frise (suit le départ du panneau)
-        // Proteger : paysans encore PROTÉGÉS X/N ; Liberer : paysans LIBÉRÉS X/N.
-        var line1 = IsProtectMission
-            ? Loc.T("special.protected", PaysansProtected, PaysansTotal)
-            : Loc.T("special.paysans", PaysansResolved, PaysansTotal);
-        var line2 = Loc.T("special.rounds", System.Math.Max(0, _specialRoundsLeft));
+        string line1, line2;
+        Color line2Color;
+        if (IsSauverMission)
+        {
+            // COURSE : récupérés (haut, positif) vs capturés par l'IA (bas, danger). Aucun compteur de tours.
+            line1 = Loc.T("special.saved", PaysansFreed, PaysansTotal);
+            line2 = Loc.T("special.captured", PaysansCaptured, PaysansTotal);
+            line2Color = PaysansCaptured > 0 ? Palette.Purple5 : Palette.Yellow1;
+        }
+        else
+        {
+            // Proteger : paysans encore PROTÉGÉS X/N ; Liberer : paysans LIBÉRÉS X/N ; ligne 2 = tours restants.
+            line1 = IsProtectMission
+                ? Loc.T("special.protected", PaysansProtected, PaysansTotal)
+                : Loc.T("special.paysans", PaysansResolved, PaysansTotal);
+            line2 = Loc.T("special.rounds", System.Math.Max(0, _specialRoundsLeft));
+            line2Color = _specialRoundsLeft <= 3 ? Palette.Purple5 : Palette.Yellow1;   // alerte fin de temps
+        }
         var textW = System.Math.Max(Context.Font.Measure(line1, 1), Context.Font.Measure(line2, 1));
         var box = new Rectangle((railW - ((int)textW + 28)) / 2, 78, (int)textW + 28, 40);
 
@@ -10488,8 +10563,7 @@ public sealed class GameplayScene : Scene
         Context.Style.FillDither(sb, box);
         DrawRectBorder(sb, box, Palette.Navy1, 2);
         Context.Font.DrawCentered(sb, line1, new Rectangle(box.X, box.Y + 6, box.Width, 12), 1, Palette.Cyan1);
-        var timeColor = _specialRoundsLeft <= 3 ? Palette.Purple5 : Palette.Yellow1;   // alerte fin de temps
-        Context.Font.DrawCentered(sb, line2, new Rectangle(box.X, box.Y + 22, box.Width, 12), 1, timeColor);
+        Context.Font.DrawCentered(sb, line2, new Rectangle(box.X, box.Y + 22, box.Width, 12), 1, line2Color);
         sb.End();
     }
 
@@ -10501,7 +10575,9 @@ public sealed class GameplayScene : Scene
     private void DrawSpecialBriefing(SpriteBatch sb, Viewport viewport)
     {
         const int innerW = 360;   // largeur cible du texte (le rail 1280-240 est bien plus large)
-        var goalKey = IsProtectMission ? "special.brief_protect" : "special.brief_goal";
+        var goalKey = IsProtectMission ? "special.brief_protect"
+                    : IsSauverMission ? "special.brief_save"   // course, sans référence au nombre de tours
+                    : "special.brief_goal";
         var body = WrapText(Loc.T(goalKey, SpecialTurnBudget()), innerW, 1);
         DrawBriefingBox(sb, Loc.T("mission.speciale"), body);
     }
@@ -10564,27 +10640,46 @@ public sealed class GameplayScene : Scene
     private void DrawSpecialBriefingModal(SpriteBatch sb, Viewport viewport)
     {
         const int innerW = 420;   // largeur cible du texte replié
-        var protect = IsProtectMission;
-        var title = Loc.T(protect ? "special.title_protect" : "special.title_liberate");
-        var body = WrapText(Loc.T(protect ? "special.desc_protect" : "special.desc_liberate"), innerW, 1);
+        var title = Loc.T(IsProtectMission ? "special.title_protect"
+                        : IsSauverMission ? "special.title_save"
+                        : "special.title_liberate");
+        var body = WrapText(Loc.T(IsProtectMission ? "special.desc_protect"
+                                : IsSauverMission ? "special.desc_save"
+                                : "special.desc_liberate"), innerW, 1);
         // Le QUOTA change la nature de la mission : sans lui le temps écoulé ne fait que clore, avec lui il
-        // peut faire perdre. Les deux dernières règles sont donc formulées différemment selon qu'il existe —
-        // et en ROUGE, la couleur du danger dans tout le jeu, parce que ce sont elles qui font perdre la run.
+        // peut faire perdre. Les règles finales sont donc formulées différemment selon qu'il existe — et en
+        // ROUGE, la couleur du danger dans tout le jeu, parce que ce sont elles qui font perdre la run.
         var quota = PaysansRequired;
-        var rules = new List<(string Text, Color Color)>
+        var rules = new List<(string Text, Color Color)>();
+        if (IsSauverMission)
         {
-            ("- " + Loc.T("special.rule_turns", SpecialTurnBudget()), Palette.Cyan1),
-        };
-        if (quota > 0)
-        {
-            rules.Add(("- " + Loc.T(IsProtectMission ? "special.rule_quota_protect" : "special.rule_quota", quota),
-                Palette.Purple5));
-            rules.Add(("- " + Loc.T("special.rule_defeat_quota"), Palette.Purple5));
+            // COURSE sans limite de tours : on annonce la course, l'absence de limite, puis le quota.
+            rules.Add(("- " + Loc.T("special.rule_race"), Palette.Cyan1));
+            rules.Add(("- " + Loc.T("special.rule_no_limit"), Palette.Cyan1));
+            if (quota > 0)
+            {
+                rules.Add(("- " + Loc.T("special.rule_quota_save", quota), Palette.Purple5));
+                rules.Add(("- " + Loc.T("special.rule_defeat_save"), Palette.Purple5));
+            }
+            else
+            {
+                rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
+            }
         }
         else
         {
-            rules.Add(("- " + Loc.T("special.rule_timeout"), Palette.Cyan1));
-            rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
+            rules.Add(("- " + Loc.T("special.rule_turns", SpecialTurnBudget()), Palette.Cyan1));
+            if (quota > 0)
+            {
+                rules.Add(("- " + Loc.T(IsProtectMission ? "special.rule_quota_protect" : "special.rule_quota", quota),
+                    Palette.Purple5));
+                rules.Add(("- " + Loc.T("special.rule_defeat_quota"), Palette.Purple5));
+            }
+            else
+            {
+                rules.Add(("- " + Loc.T("special.rule_timeout"), Palette.Cyan1));
+                rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
+            }
         }
         var prompt = Loc.T(Context.Input.UsingGamepad ? "special.brief_continue_gp" : "special.brief_continue");
 
@@ -10636,17 +10731,24 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawSpecialRecap(SpriteBatch sb, Viewport viewport, SpecialRecap recap)
     {
+        var protect = recap.Objective == SpecialObjective.ProtegerPaysans;
+        var sauver = recap.Objective == SpecialObjective.SauverPaysans;
         var title = Loc.T("recap.title");
-        var sub = Loc.T(recap.Protect ? "special.title_protect" : "special.title_liberate");
+        var sub = Loc.T(protect ? "special.title_protect"
+                      : sauver ? "special.title_save"
+                      : "special.title_liberate");
         var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.continue_gp" : "recap.continue");
         var rows = new List<(string Label, string Value)>
         {
-            (Loc.T(recap.Protect ? "recap.paysans_saved" : "recap.paysans_freed"), $"{recap.Paysans} / {recap.PaysansTotal}"),
+            (Loc.T(protect ? "recap.paysans_saved"
+                 : sauver ? "recap.paysans_rescued"
+                 : "recap.paysans_freed"), $"{recap.Paysans} / {recap.PaysansTotal}"),
         };
         // Quota de difficulté : rappelé seulement s'il y en a un (aucun en facile).
         if (recap.Required > 0)
             rows.Add((Loc.T("recap.required"), recap.Required.ToString()));
-        rows.Add((Loc.T("recap.turns"), $"{recap.Turns} / {recap.TurnBudget}"));
+        if (!sauver)   // « sauver » = course sans limite de tours : pas de ligne « tours utilisés »
+            rows.Add((Loc.T("recap.turns"), $"{recap.Turns} / {recap.TurnBudget}"));
         rows.Add((Loc.T("recap.losses"), recap.Losses.ToString()));
 
         const int colGap = 40;   // écart mini entre le libellé et sa valeur (colonnes label/valeur)
@@ -11036,10 +11138,9 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool DefaultFacesDown(Unit unit)
     {
-        // Missions SPÉCIALE / BOSS : la map peut FIXER l'orientation par défaut des ENNEMIS (cf.
-        // MapData.EnemyFacesDown), quel que soit l'endroit du plateau. Sinon, règle positionnelle habituelle.
-        if (unit.Faction == Faction.Enemy
-            && _map is { Type: CombatType.Speciale or CombatType.Boss, EnemyFacesDown: { } forced })
+        // La map peut FIXER l'orientation par défaut d'un ENNEMI, PAR CASE de spawn (calque `facing`, capté au
+        // spawn dans _enemyForcedFacing), quel que soit l'endroit du plateau. Sinon, règle positionnelle habituelle.
+        if (unit.Faction == Faction.Enemy && _enemyForcedFacing.TryGetValue(unit, out var forced))
             return forced;
         return _match.CellOf(unit) is { } c ? c.Row < Rows / 2 : unit.Faction == Faction.Enemy;
     }

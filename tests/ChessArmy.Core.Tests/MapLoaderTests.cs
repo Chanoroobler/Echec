@@ -197,6 +197,34 @@ public class MapLoaderTests
     }
 
     [Fact]
+    public void Parse_ReadsEnemyFacingLayer()
+    {
+        // 'v' = regarde vers le bas (true), '^' = vers le haut (false) ; PAR CASE de spawn ennemi.
+        var json = Map2x2.Replace("\"spawns\": [ \"E.\", \".P\" ]",
+            "\"spawns\": [ \"EE\", \".P\" ], \"facing\": [ \"v^\", \"..\" ]");
+        var map = MapLoader.Parse(json, Catalog());
+
+        Assert.True(map.EnemyFacing[new Cell(0, 0)]);    // 'v' → bas
+        Assert.False(map.EnemyFacing[new Cell(1, 0)]);   // '^' → haut
+        Assert.Equal(2, map.EnemyFacing.Count);
+    }
+
+    [Fact]
+    public void Parse_NoFacingLayer_EmptyFacing()
+    {
+        var map = MapLoader.Parse(Map2x2, Catalog());
+        Assert.Empty(map.EnemyFacing);
+    }
+
+    [Fact]
+    public void Parse_UnknownFacingChar_Throws()
+    {
+        var json = Map2x2.Replace("\"spawns\": [ \"E.\", \".P\" ]",
+            "\"spawns\": [ \"E.\", \".P\" ], \"facing\": [ \"x.\", \"..\" ]");
+        Assert.Throws<FormatException>(() => MapLoader.Parse(json, Catalog()));
+    }
+
+    [Fact]
     public void Parse_ReadsProtegerObjective()
     {
         var json = Map2x2.Replace("\"type\": \"Escarmouche\",",
@@ -214,6 +242,15 @@ public class MapLoaderTests
 
         Assert.Equal(CombatType.Speciale, map.Type);
         Assert.Equal(SpecialObjective.LibererPaysans, map.Objective);
+    }
+
+    [Fact]
+    public void Parse_ReadsSauverObjective()
+    {
+        var json = Map2x2.Replace("\"type\": \"Escarmouche\",",
+            "\"type\": \"Speciale\", \"objective\": \"SauverPaysans\",");
+        var map = MapLoader.Parse(json, Catalog());
+        Assert.Equal(SpecialObjective.SauverPaysans, map.Objective);
     }
 
     [Fact]

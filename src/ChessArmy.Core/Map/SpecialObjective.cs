@@ -15,4 +15,12 @@ public enum SpecialObjective
 
     /// <summary>Protéger les paysans : les ennemis (IA offensive) tentent de les capturer ; garder le maximum vivants.</summary>
     ProtegerPaysans,
+
+    /// <summary>
+    /// Sauver les paysans : COURSE. Le joueur les récupère en marchant dessus (comme <see cref="LibererPaysans"/>)
+    /// tandis que l'IA offensive tente de les capturer (comme <see cref="ProtegerPaysans"/>). Premier arrivé sur
+    /// une tuile la résout. Aucune limite de tours ; il faut en sauver un minimum (quota de difficulté), sinon —
+    /// ou dès que le quota devient impossible — c'est la défaite.
+    /// </summary>
+    SauverPaysans,
 }

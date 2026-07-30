@@ -167,6 +167,21 @@ public class EquipmentTests
     }
 
     [Fact]
+    public void Catalog_FromJson_EnemyAllowed_DefaultsTrue_AndReadsFalse()
+    {
+        const string json = """
+        { "equipments": [
+            { "id": "libre",   "name": "Libre",   "rarity": "Common", "stat": "Hp", "amount": 5 },
+            { "id": "reserve", "name": "Réservé", "rarity": "Common", "stat": "Hp", "amount": 5, "enemyAllowed": false }
+        ] }
+        """;
+
+        var list = EquipmentCatalog.FromJson(json);
+        Assert.True(list[0].EnemyAllowed);    // champ absent → défaut true
+        Assert.False(list[1].EnemyAllowed);   // explicitement interdit à l'IA
+    }
+
+    [Fact]
     public void Catalog_Icon_DefaultsToId_OrUsesExplicitField()
     {
         const string json = """
@@ -191,6 +206,23 @@ public class EquipmentTests
         Assert.All(Equipments.OfRarity(EquipmentRarity.Common), e => Assert.Equal(EquipmentRarity.Common, e.Rarity));
         Assert.NotEmpty(Equipments.OfRarity(EquipmentRarity.Common));
         Assert.NotNull(Equipments.Roll(EquipmentRarity.Common, new Random(1)));
+    }
+
+    [Fact]
+    public void Roll_Filter_HardExcludesDisallowedEquipment()
+    {
+        // Filtre = celui que RollEnemyEquipment applique (e => e.EnemyAllowed). Un pool réduit à des items
+        // interdits à l'IA renvoie null (jamais donné à l'ennemi), alors que le tirage NON filtré le sort.
+        try
+        {
+            Equipments.Load(new[]
+            {
+                Equipment.OfStat("reserve", "Réservé", EquipStat.Hp, 5, enemyAllowed: false),
+            });
+            Assert.NotNull(Equipments.Roll(EquipmentRarity.Common, new Random(1)));                              // sans filtre : dispo
+            Assert.Null(Equipments.Roll(EquipmentRarity.Common, new Random(1), filter: e => e.EnemyAllowed));    // filtré : exclu
+        }
+        finally { Equipments.ResetToDefaults(); }
     }
 
     [Fact]

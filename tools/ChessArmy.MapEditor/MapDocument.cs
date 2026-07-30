@@ -16,6 +16,7 @@ internal sealed class MapDocument
     public const char EmptySpawn = '.';
     public const char EmptyObject = '.';
     public const char EmptyTier = '.';
+    public const char EmptyFacing = '.';
 
     public string Name { get; set; } = "nouvelle_map";
     public string Type { get; set; } = "Escarmouche";
@@ -28,10 +29,6 @@ internal sealed class MapDocument
 
     /// <summary>Limite de tours d'une mission spéciale (0 = valeur par défaut du jeu).</summary>
     public int TurnLimit { get; set; }
-
-    /// <summary>Orientation ENNEMIE imposée (maps Speciale/Boss) : <c>"down"</c> / <c>"up"</c>, ou null = auto
-    /// (le jeu décide selon la moitié du plateau). Cf. Core MapData.EnemyFacesDown.</summary>
-    public string? EnemyFacing { get; set; }
 
     public int Width { get; private set; }
     public int Height { get; private set; }
@@ -46,6 +43,10 @@ internal sealed class MapDocument
     /// de la map — fixe la composition des vagues spéciale/boss (cf. Core MapData.EnemyTiers).</summary>
     public char[,] Tiers { get; private set; }
 
+    /// <summary>Orientation par case de spawn ENNEMI : <c>'v'</c> = vers le bas, <c>'^'</c> = vers le haut,
+    /// <see cref="EmptyFacing"/> = auto. Calque « facing » de la map (cf. Core MapData.EnemyFacing).</summary>
+    public char[,] Facing { get; private set; }
+
     public string? FilePath { get; set; }
 
     private MapDocument(int width, int height)
@@ -56,6 +57,7 @@ internal sealed class MapDocument
         Spawns = new char[height, width];
         Objects = new char[height, width];
         Tiers = new char[height, width];
+        Facing = new char[height, width];
     }
 
     public static MapDocument NewMap(int width, int height, string defaultTileKey)
@@ -68,6 +70,7 @@ internal sealed class MapDocument
                 doc.Spawns[r, c] = EmptySpawn;
                 doc.Objects[r, c] = EmptyObject;
                 doc.Tiers[r, c] = EmptyTier;
+                doc.Facing[r, c] = EmptyFacing;
             }
         return doc;
     }
@@ -88,7 +91,6 @@ internal sealed class MapDocument
             Objective = string.IsNullOrWhiteSpace(dto.Objective) ? "Aucun" : dto.Objective!,
             Phase = dto.Phase ?? 0,
             TurnLimit = dto.TurnLimit ?? 0,
-            EnemyFacing = string.IsNullOrWhiteSpace(dto.EnemyFacing) ? null : dto.EnemyFacing,
             FilePath = path,
         };
 
@@ -96,6 +98,7 @@ internal sealed class MapDocument
         Fill(doc.Spawns, dto.Spawns, dto.Width, dto.Height, EmptySpawn);
         Fill(doc.Objects, dto.Objects, dto.Width, dto.Height, EmptyObject);
         Fill(doc.Tiers, dto.Tiers, dto.Width, dto.Height, EmptyTier);
+        Fill(doc.Facing, dto.Facing, dto.Width, dto.Height, EmptyFacing);
         return doc;
     }
 
@@ -135,6 +138,7 @@ internal sealed class MapDocument
         var s = new char[newHeight, newWidth];
         var o = new char[newHeight, newWidth];
         var ti = new char[newHeight, newWidth];
+        var fa = new char[newHeight, newWidth];
         for (var r = 0; r < newHeight; r++)
             for (var c = 0; c < newWidth; c++)
             {
@@ -143,8 +147,9 @@ internal sealed class MapDocument
                 s[r, c] = inside ? Spawns[r, c] : EmptySpawn;
                 o[r, c] = inside ? Objects[r, c] : EmptyObject;
                 ti[r, c] = inside ? Tiers[r, c] : EmptyTier;
+                fa[r, c] = inside ? Facing[r, c] : EmptyFacing;
             }
-        Tiles = t; Spawns = s; Objects = o; Tiers = ti;
+        Tiles = t; Spawns = s; Objects = o; Tiers = ti; Facing = fa;
         Width = newWidth; Height = newHeight;
     }
 
@@ -158,15 +163,25 @@ internal sealed class MapDocument
             Objective = string.IsNullOrWhiteSpace(Objective) || Objective == "Aucun" ? null : Objective,
             Phase = Phase == 0 ? null : Phase,   // 0 = toutes phases → champ omis
             TurnLimit = TurnLimit == 0 ? null : TurnLimit,   // 0 = défaut du jeu → champ omis
-            EnemyFacing = string.IsNullOrWhiteSpace(EnemyFacing) ? null : EnemyFacing,   // null = auto → champ omis
             Width = Width,
             Height = Height,
             Tiles = ToRowsTiles(Tiles),
             Spawns = ToRows(Spawns),
             Tiers = ToRows(Tiers),
+            Facing = HasAnyFacing() ? ToRows(Facing) : null,   // calque omis si aucune orientation posée
             Objects = ToRows(Objects),
         };
         return JsonSerializer.Serialize(dto, WriteOpts);
+    }
+
+    /// <summary>Vrai si au moins une case porte une orientation (sinon le calque « facing » est omis du JSON).</summary>
+    private bool HasAnyFacing()
+    {
+        for (var r = 0; r < Height; r++)
+            for (var c = 0; c < Width; c++)
+                if (Facing[r, c] != EmptyFacing)
+                    return true;
+        return false;
     }
 
     private List<string> ToRows(char[,] grid)
@@ -218,12 +233,12 @@ internal sealed class MapDocument
         [JsonPropertyName("objective")] public string? Objective { get; set; }
         [JsonPropertyName("phase")] public int? Phase { get; set; }
         [JsonPropertyName("turnLimit")] public int? TurnLimit { get; set; }
-        [JsonPropertyName("enemyFacing")] public string? EnemyFacing { get; set; }
         [JsonPropertyName("width")] public int Width { get; set; }
         [JsonPropertyName("height")] public int Height { get; set; }
         [JsonPropertyName("tiles")] public List<string>? Tiles { get; set; }
         [JsonPropertyName("spawns")] public List<string>? Spawns { get; set; }
         [JsonPropertyName("tiers")] public List<string>? Tiers { get; set; }
+        [JsonPropertyName("facing")] public List<string>? Facing { get; set; }
         [JsonPropertyName("objects")] public List<string>? Objects { get; set; }
     }
 }

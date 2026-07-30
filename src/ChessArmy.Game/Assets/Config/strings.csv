@@ -98,20 +98,29 @@ mission.speciale,MISSION SPECIALE,SPECIAL MISSION
 mission.boss,BOSS,BOSS
 special.paysans,PAYSANS {0}/{1},PEASANTS {0}/{1}
 special.protected,PAYSANS PROTEGES {0}/{1},PEASANTS SAFE {0}/{1}
+special.saved,SAUVES {0}/{1},SAVED {0}/{1}
+special.captured,CAPTURES {0}/{1},CAPTURED {0}/{1}
 special.rounds,TOURS RESTANTS : {0},ROUNDS LEFT: {0}
 special.brief_goal,LIBERER LE MAXIMUM DE PAYSANS EN {0} TOURS,FREE AS MANY PEASANTS AS POSSIBLE IN {0} ROUNDS
 special.brief_protect,PROTEGER LE MAXIMUM DE PAYSANS EN {0} TOURS,PROTECT AS MANY PEASANTS AS POSSIBLE FOR {0} ROUNDS
+special.brief_save,SAUVE LES PAYSANS AVANT QUE L'ENNEMI NE LES CAPTURE,SAVE THE PEASANTS BEFORE THE ENEMY CAPTURES THEM
 # Modale de briefing ouverte au debut du placement d'une mission speciale
 special.title_liberate,LIBERER LES PAYSANS,FREE THE PEASANTS
 special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS
+special.title_save,SAUVER LES PAYSANS,SAVE THE PEASANTS
 special.desc_liberate,Des paysans sont retenus par l'ennemi sur le champ de bataille. Amène un pion sur un paysan pour le libérer. Il rejoint aussitôt ta réserve.,Peasants are held by the enemy across the battlefield. Move a piece onto a peasant to free them. They join your reserve at once.
 special.desc_protect,L'ennemi veut capturer les paysans. Tu ne peux pas te poser sur eux. Barre-lui la route. Chaque paysan encore libre à la fin devient une nouvelle recrue.,The enemy wants to capture the peasants. You cannot stand on them. Block the way. Each peasant still free at the end becomes a new recruit.
+special.desc_save,Des paysans sont pris dans une course. Amène un pion sur un paysan pour le sauver. Il rejoint aussitôt ta réserve. Mais l'ennemi fonce pour les capturer : atteins-les avant lui.,Peasants are caught in a race. Move a piece onto a peasant to save them. They join your reserve at once. But the enemy is rushing to capture them: reach them first.
 special.rule_turns,Limite de {0} tours,Limit of {0} rounds
 # Regles annoncees au briefing. Les deux dernieres dependent du QUOTA de difficulte : sans quota le temps
 # ecoule ne fait que clore la mission, avec quota il peut la faire PERDRE.
 special.rule_quota,Sauver au moins {0} paysan(s),Free at least {0} peasant(s)
 special.rule_quota_protect,Protéger au moins {0} paysan(s),Keep at least {0} peasant(s) safe
+special.rule_quota_save,Récupérer au moins {0} paysan(s),Save at least {0} peasant(s)
 special.rule_defeat_quota,Échouer ou perdre le commandant fait perdre,Failing or losing the commander ends the run
+special.rule_defeat_save,Échouer à en sauver assez ou perdre le commandant fait perdre,Failing to save enough or losing the commander ends the run
+special.rule_race,L'ennemi fonce sur les paysans : atteins-les avant lui,The enemy rushes the peasants: reach them first
+special.rule_no_limit,Aucune limite de tours,No round limit
 special.rule_timeout,Le temps écoulé clôt la mission sans défaite,Running out of time ends the mission without defeat
 special.rule_defeat,Seule la chute du commandant fait perdre,Only the commander falling means defeat
 special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
@@ -120,6 +129,7 @@ special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT
 recap.title,BILAN DE MISSION,MISSION REPORT
 recap.paysans_freed,PAYSANS LIBERES,PEASANTS FREED
 recap.paysans_saved,PAYSANS PROTEGES,PEASANTS SAFE
+recap.paysans_rescued,PAYSANS SAUVES,PEASANTS SAVED
 recap.turns,TOURS UTILISES,ROUNDS USED
 recap.required,MINIMUM EXIGE,REQUIRED MINIMUM
 recap.losses,PERTES,LOSSES
