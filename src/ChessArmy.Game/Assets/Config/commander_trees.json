@@ -89,7 +89,7 @@
         { "id": "lan_logi_deploy_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "lan_logi_fusion",   "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Tour" } ] },
         //{ "id": "lan_logi_deploy_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
-        { "id": "lan_logi_reserve_1","branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
+        { "id": "lan_logi_reserve_1","branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
         { "id": "lan_logi_deploy_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
         // Repurposé « Amalgame » (Tour) : une fusion d'une classe du domaine de la TOUR ne demande que 2 pions.
         { "id": "lan_logi_reserve_2","branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Tour" } ] }

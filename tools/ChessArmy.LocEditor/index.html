@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChessArmy — Traductions</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --text:#1e2430; --muted:#6b7280; --border:#e4e7ec;
+    --accent:#5b61e6; --accent-weak:#edeeff; --accent-text:#fff;
+    --err:#e5484d; --err-bg:#fdeaea; --warn:#d97706; --warn-bg:#fdf1df;
+    --dup:#ca8a04; --dup-bg:#fbf5da; --empty-bg:#fbfbe6;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.1);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#101219; --panel:#181b23; --text:#e7e9ef; --muted:#9aa1ad; --border:#2a2f3a;
+      --accent:#7c83f7; --accent-weak:#242a49; --accent-text:#fff;
+      --err:#f4676b; --err-bg:#3a1d1e; --warn:#f0a53a; --warn-bg:#382a15;
+      --dup:#e8c24b; --dup-bg:#332d10; --empty-bg:#26260f;
+      --shadow:0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text); display:flex; flex-direction:column; height:100vh;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; padding:12px 18px;
+    background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  header h1{font-size:15px; font-weight:600; margin:0}
+  header .path{color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1}
+  .btn{
+    border:1px solid var(--border); background:var(--panel); color:var(--text);
+    padding:7px 13px; border-radius:8px; font:inherit; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
+  .btn.primary[disabled]{opacity:.5; cursor:default}
+  .btn.ghost{box-shadow:none; background:transparent}
+
+  .toolbar{display:flex; align-items:center; gap:10px; padding:10px 18px; flex-wrap:wrap; background:var(--panel); border-bottom:1px solid var(--border)}
+  .search{flex:0 0 260px; padding:8px 11px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:inherit}
+  .search:focus{outline:2px solid var(--accent); outline-offset:-1px}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; flex:1}
+  .chip{
+    border:1px solid var(--border); background:var(--panel); color:var(--text);
+    padding:5px 11px; border-radius:999px; font-size:12.5px; cursor:pointer; white-space:nowrap;
+  }
+  .chip:hover{border-color:var(--accent)}
+  .chip.active{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
+  .chip .n{opacity:.6; margin-left:5px; font-variant-numeric:tabular-nums}
+  .toggle{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12.5px; cursor:pointer; user-select:none}
+
+  .gridhead,.row{
+    display:grid; grid-template-columns:260px 1fr 1fr 36px; gap:10px; align-items:start;
+    padding:7px 18px;
+  }
+  .gridhead{
+    position:sticky; top:0; z-index:2; background:var(--bg); border-bottom:1px solid var(--border);
+    font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600;
+    padding-top:9px; padding-bottom:9px;
+  }
+  #rows{flex:1; overflow:auto}
+  .row{border-bottom:1px solid var(--border)}
+  .row:hover{background:var(--accent-weak)}
+  .row input,.row textarea{
+    width:100%; font:inherit; color:var(--text); background:var(--panel);
+    border:1px solid var(--border); border-radius:7px; padding:6px 8px; resize:none; field-sizing:content; min-height:32px;
+  }
+  .row input:focus,.row textarea:focus{outline:2px solid var(--accent); outline-offset:-1px; background:var(--panel)}
+  .row input.key{font-family:ui-monospace,"Cascadia Code",Consolas,monospace; font-size:12.5px}
+  .cell.err input,.cell.err textarea{border-color:var(--err); background:var(--err-bg)}
+  .cell.warn input,.cell.warn textarea{border-color:var(--warn); background:var(--warn-bg)}
+  .cell.dup input{border-color:var(--dup); background:var(--dup-bg)}
+  .cell.empty textarea{background:var(--empty-bg)}
+  .cell .flag{font-size:11px; margin-top:3px}
+  .cell.err .flag{color:var(--err)}
+  .cell.warn .flag{color:var(--warn)}
+  .del{border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:6px; border-radius:6px}
+  .del:hover{color:var(--err); background:var(--err-bg)}
+
+  .divider{grid-column:1 / -1; color:var(--muted); font-size:12.5px; font-family:ui-monospace,Consolas,monospace;
+    padding:12px 0 4px; border-bottom:none; opacity:.85}
+  .row.divider:hover{background:transparent}
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:#1e2430; color:#fff; padding:11px 18px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.25);
+    opacity:0; transition:.25s; pointer-events:none; max-width:80vw;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .toast.err{background:var(--err)}
+  .count{color:var(--muted); font-size:12.5px; white-space:nowrap; font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Traductions</h1>
+    <span class="path" id="path"></span>
+    <span class="count" id="count"></span>
+    <button class="btn ghost" id="reload">Recharger</button>
+    <button class="btn primary" id="save" disabled>Enregistrer</button>
+  </header>
+
+  <div class="toolbar">
+    <input class="search" id="search" type="search" placeholder="Rechercher (clé, FR, EN)…">
+    <div class="chips" id="chips"></div>
+    <label class="toggle"><input type="checkbox" id="untranslated"> Non traduits</label>
+    <button class="btn" id="add">+ Ligne</button>
+  </div>
+
+  <div class="gridhead">
+    <div>Clé</div><div>Français</div><div>Anglais</div><div></div>
+  </div>
+  <div id="rows"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const EM_DASH = "—";
+const LABELS = {
+  tree:"Arbre de commandement", kw:"Traits / mots-clés", equip:"Équipement", tuto:"Tutoriel",
+  unit:"Unités", special:"Missions spéciales", recap:"Récap de run", commander:"Commandants",
+  difficulty:"Difficulté", placement:"Placement", mainmenu:"Menu principal", reserve:"Réserve",
+  env:"Terrain / environnement", options:"Options", codex:"Codex", menu:"Menus", stat:"Statistiques",
+  relance:"Relance", recruit:"Recrutement", fusion:"Fusion", hud:"HUD", fx:"Effets", end:"Fin de partie",
+  domaine:"Domaines", reward:"Récompenses", mission:"Missions", display:"Affichage", defeat:"Défaite",
+  combat:"Combat", recrue:"Recrue", lang:"Langues", common:"Commun", game:"Jeu", boss:"Boss",
+};
+const label = c => LABELS[c] || (c ? c[0].toUpperCase()+c.slice(1) : "?");
+const catOf = r => (r.key.split(".")[0] || "");
+
+let rows = [];
+let activeCat = null;
+let dirty = false;
+
+const $ = id => document.getElementById(id);
+
+async function load(){
+  const res = await fetch("/api/rows");
+  const data = await res.json();
+  rows = data.rows;
+  $("path").textContent = data.path;
+  setDirty(false);
+  buildChips();
+  render();
+}
+
+function buildChips(){
+  const counts = {};
+  for(const r of rows) if(r.kind==="entry"){ const c=catOf(r); counts[c]=(counts[c]||0)+1; }
+  const cats = Object.keys(counts).sort((a,b)=>counts[b]-counts[a] || a.localeCompare(b));
+  if(activeCat && !counts[activeCat]) activeCat = null;
+  const box = $("chips"); box.innerHTML = "";
+  const total = rows.filter(r=>r.kind==="entry").length;
+  box.appendChild(chip(null, "Tout", total));
+  for(const c of cats) box.appendChild(chip(c, label(c), counts[c]));
+}
+function chip(cat, text, n){
+  const el = document.createElement("button");
+  el.className = "chip" + (activeCat===cat ? " active":"");
+  el.innerHTML = text + ` <span class="n">${n}</span>`;
+  el.onclick = () => { activeCat = cat; buildChips(); render(); };
+  return el;
+}
+
+function dupSet(){
+  const seen={}, dup=new Set();
+  for(const r of rows) if(r.kind==="entry" && r.key){ seen[r.key]=(seen[r.key]||0)+1; if(seen[r.key]>1) dup.add(r.key); }
+  return dup;
+}
+
+function visible(r, q, only){
+  if(r.kind!=="entry"){
+    // Dividers de section : seulement en vue non filtrée.
+    return r.kind==="comment" && !activeCat && !q && !only;
+  }
+  if(activeCat && catOf(r)!==activeCat) return false;
+  if(only && (r.en||"").length>0) return false;
+  if(q){
+    const s=(r.key+" "+r.fr+" "+r.en).toLowerCase();
+    if(!s.includes(q)) return false;
+  }
+  return true;
+}
+
+function render(){
+  const q = $("search").value.trim().toLowerCase();
+  const only = $("untranslated").checked;
+  const dups = dupSet();
+  const host = $("rows");
+  host.replaceChildren();
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+
+  for(const r of rows){
+    if(!visible(r, q, only)) continue;
+    if(r.kind==="comment"){
+      const d = document.createElement("div");
+      d.className = "row divider";
+      d.textContent = r.raw;
+      frag.appendChild(d);
+      continue;
+    }
+    shown++;
+    frag.appendChild(entryRow(r, dups));
+  }
+  host.appendChild(frag);
+  host.querySelectorAll("textarea").forEach(grow);
+
+  const total = rows.filter(r=>r.kind==="entry").length;
+  $("count").textContent = (q||only||activeCat) ? `${shown} / ${total}` : `${total} entrées`;
+}
+
+function entryRow(r, dups){
+  const row = document.createElement("div");
+  row.className = "row";
+
+  const key = mkCell("input", r.key, v => { r.key=v.trim(); markEdit(); }, "key");
+  const fr  = mkCell("textarea", r.fr, v => { r.fr=v; markEdit(); }, null, () => recolor(row, r, dups));
+  const en  = mkCell("textarea", r.en, v => { r.en=v; markEdit(); }, null, () => recolor(row, r, dups));
+
+  const delWrap = document.createElement("div");
+  const del = document.createElement("button");
+  del.className="del"; del.title="Supprimer"; del.textContent="×";
+  del.onclick = () => { rows.splice(rows.indexOf(r),1); markEdit(); buildChips(); render(); };
+  delWrap.appendChild(del);
+
+  row.append(key.cell, fr.cell, en.cell, delWrap);
+  row._recolor = () => recolor(row, r, dups);
+  recolor(row, r, dups);
+  return row;
+}
+
+function mkCell(tag, value, onInput, cls, onInputExtra){
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  const field = document.createElement(tag);
+  if(cls) field.className = cls;
+  if(tag==="textarea"){ field.rows=1; }
+  field.value = value || "";
+  field.addEventListener("input", () => {
+    onInput(field.value);
+    if(tag==="textarea") grow(field);
+    if(onInputExtra) onInputExtra(); else recolorParent(cell);
+  });
+  cell.appendChild(field);
+  const flag = document.createElement("div"); flag.className="flag";
+  cell.appendChild(flag);
+  return { cell, field };
+}
+
+function recolorParent(cell){ let el=cell.closest(".row"); if(el&&el._recolor) el._recolor(); }
+
+// Recolore les 3 cellules d'une ligne selon la validation.
+function recolor(row, r, dups){
+  const [kc, fc, ec] = row.querySelectorAll(".cell");
+  flag(kc, r.key, "key", dups.has(r.key));
+  flag(fc, r.fr, "fr", false);
+  flag(ec, r.en, "en", false);
+}
+function flag(cell, val, which, isDup){
+  cell.classList.remove("err","warn","dup","empty");
+  const msg = cell.querySelector(".flag");
+  msg.textContent = "";
+  const comma = val.includes(",");
+  const dash  = (which!=="key") && val.includes(EM_DASH);
+  if(comma){ cell.classList.add("err"); msg.textContent="virgule interdite"; }
+  else if(dash){ cell.classList.add("warn"); msg.textContent="tiret cadratin interdit"; }
+  else if(which==="key" && val.length===0){ cell.classList.add("err"); msg.textContent="clé vide"; }
+  else if(which==="key" && isDup){ cell.classList.add("dup"); msg.textContent="clé en double"; }
+  else if(which==="en" && val.length===0){ cell.classList.add("empty"); }
+}
+
+function grow(t){ t.style.height="auto"; t.style.height = Math.max(32, t.scrollHeight)+"px"; }
+
+function markEdit(){ setDirty(true); }
+function setDirty(v){ dirty=v; $("save").disabled=!v; document.title=(v?"* ":"")+"ChessArmy — Traductions"; }
+
+function addRow(){
+  const row = { kind:"entry", key:"", fr:"", en:"", raw:"" };
+  let at = rows.length;
+  if(activeCat){
+    for(let i=0;i<rows.length;i++) if(rows[i].kind==="entry" && catOf(rows[i])===activeCat) at=i+1;
+  }
+  rows.splice(at,0,row);
+  markEdit(); buildChips(); render();
+  // focus la nouvelle clé
+  const inputs=[...$("rows").querySelectorAll(".row")];
+  // rendu re-créé : on retrouve la ligne via son objet impossible directement, on cible la 1re clé vide.
+  for(const el of inputs){ const k=el.querySelector("input.key"); if(k&&k.value===""){ k.focus(); break; } }
+}
+
+async function save(){
+  const payload = rows.map(r => ({ kind:r.kind, key:r.key, fr:r.fr, en:r.en, raw:r.raw }));
+  const res = await fetch("/api/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+  if(res.ok){ setDirty(false); toast("Enregistré ✓"); }
+  else{
+    const err = await res.json().catch(()=>({}));
+    if(err.error==="comma") toast("Virgule interdite dans : "+(err.keys||[]).slice(0,5).join(", "), true);
+    else toast("Échec de l'enregistrement", true);
+  }
+}
+
+let toastTimer;
+function toast(msg, isErr){
+  const t=$("toast"); t.textContent=msg; t.className="toast show"+(isErr?" err":"");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.className="toast",2200);
+}
+
+$("search").addEventListener("input", render);
+$("untranslated").addEventListener("change", render);
+$("save").addEventListener("click", save);
+$("reload").addEventListener("click", async ()=>{
+  if(dirty && !confirm("Abandonner les modifications non enregistrées ?")) return;
+  await load();
+});
+$("add").addEventListener("click", addRow);
+document.addEventListener("keydown", e => {
+  if((e.ctrlKey||e.metaKey) && e.key==="s"){ e.preventDefault(); if(dirty) save(); }
+  if((e.ctrlKey||e.metaKey) && e.key==="f"){ e.preventDefault(); $("search").focus(); }
+});
+window.addEventListener("beforeunload", e => { if(dirty){ e.preventDefault(); e.returnValue=""; } });
+
+load();
+</script>
+</body>
+</html>

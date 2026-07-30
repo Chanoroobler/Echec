@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Outil de développement : éditeur du fichier de traduction (Assets/Config/strings.csv).
+    N'EST PAS référencé par ChessArmy.Game -> ne fait jamais partie du build/exe du jeu.
+    Interface WEB moderne : un mini-serveur local (HttpListener, aucune dépendance externe) sert une page
+    HTML/JS et lit/écrit strings.csv en préservant sa structure (en-tête, commentaires #, ordre) et les
+    contraintes du chargeur du jeu (pas de virgule dans une valeur, pas d'em dash dans un texte affiché).
+    Au lancement, le navigateur par défaut s'ouvre sur l'éditeur, fichier déjà chargé.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ChessArmy.LocEditor</RootNamespace>
+    <AssemblyName>ChessArmy.LocEditor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- La page est embarquée dans l'exe : aucun fichier à copier à côté, l'outil reste autonome. -->
+    <EmbeddedResource Include="index.html" />
+  </ItemGroup>
+
+</Project>

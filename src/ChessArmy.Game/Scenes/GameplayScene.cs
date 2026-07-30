@@ -4149,28 +4149,32 @@ public sealed class GameplayScene : Scene
             bool done;
             if (IsSauverMission)
             {
-                // « Sauver » : COURSE sans limite de tours. Elle se clôt quand :
+                // « Sauver » : COURSE sans limite de tours. La mission CONTINUE tant qu'il reste des ennemis ;
+                // résoudre toutes les tuiles paysan (récupérées OU capturées) ne la clôt PLUS à soi seul. Elle
+                // se termine seulement quand :
                 //  • le quota devient IMPOSSIBLE (trop de captures : max récupérable = total − capturés < requis)
                 //    → défaite prononcée par le quota gate juste en dessous ;
-                //  • OU tous les ennemis sont vaincus → plus aucune menace : on RÉCUPÈRE automatiquement les
-                //    paysans restants, un par un, via la même révélation/réserve que si on marchait dessus ;
-                //  • OU chaque paysan est décidé (récupéré par le joueur ou capturé par l'IA).
+                //  • OU tous les ennemis sont vaincus → plus aucune menace : on RÉCUPÈRE d'abord automatiquement
+                //    les paysans restants, un par un (même révélation/réserve que si on marchait dessus), puis on
+                //    clôt (victoire, le quota étant alors forcément tenu).
+                var noEnemiesLeft = !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy);
                 if (PaysansTotal - PaysansCaptured < PaysansRequired)
                 {
                     done = true;   // quota hors d'atteinte : clôture (la défaite est prononcée au quota gate)
                 }
-                else if (!_match.Units().Any(u => u.Unit.Faction == Faction.Enemy)
-                         && PaysanCells() is { Count: > 0 } remaining)
+                else if (noEnemiesLeft && PaysanCells() is { Count: > 0 } remaining)
                 {
                     // Menace éliminée : on déclenche la récupération d'UN paysan restant puis on laisse la
                     // révélation se jouer (le combat est figé pendant ce temps). Rappelée chaque frame tant qu'il
-                    // en reste, jusqu'à ce que tous soient résolus → clôture normale ci-dessous.
+                    // en reste, jusqu'à ce que tous soient résolus → clôture ci-dessous.
                     TriggerRecrue(remaining[0]);
                     return;
                 }
                 else
                 {
-                    done = PaysansTotal > 0 && PaysansResolved >= PaysansTotal;
+                    // Ne se clôt qu'à l'élimination de TOUS les ennemis (les paysans restants ayant alors été
+                    // récupérés juste au-dessus). Sinon la mission continue, même toutes les tuiles résolues.
+                    done = noEnemiesLeft;
                 }
             }
             else

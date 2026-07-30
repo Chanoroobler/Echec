@@ -19,8 +19,10 @@ public enum SpecialObjective
     /// <summary>
     /// Sauver les paysans : COURSE. Le joueur les récupère en marchant dessus (comme <see cref="LibererPaysans"/>)
     /// tandis que l'IA offensive tente de les capturer (comme <see cref="ProtegerPaysans"/>). Premier arrivé sur
-    /// une tuile la résout. Aucune limite de tours ; il faut en sauver un minimum (quota de difficulté), sinon —
-    /// ou dès que le quota devient impossible — c'est la défaite.
+    /// une tuile la résout. Aucune limite de tours. Résoudre TOUTES les tuiles paysan (récupérées ou capturées) ne
+    /// clôt PAS la mission : elle continue tant qu'il reste des ennemis. Elle se termine seulement quand le quota de
+    /// difficulté devient impossible (trop de captures → défaite) ou quand tous les ennemis sont vaincus (les paysans
+    /// restants sont alors récupérés automatiquement → victoire, le quota étant forcément tenu).
     /// </summary>
     SauverPaysans,
 }
