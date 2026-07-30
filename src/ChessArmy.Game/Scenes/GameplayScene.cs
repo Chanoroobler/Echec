@@ -1127,15 +1127,9 @@ public sealed class GameplayScene : Scene
         // La vague ennemie est posée dès le placement : le joueur voit le déploiement
         // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur). MISSION SPÉCIALE :
         // l'effectif = EXACTEMENT le nombre de spawns dessinés sur la map (pas l'effectif fixe de la table).
-        // Méta-progression TIER 3, AVANT de composer la vague (DiscoverUnit met son set à jour de façon
-        // synchrone, donc BuildEnemyWave voit tout de suite le socle). Tant que le joueur connaît moins de
-        // Run.MinSeenTier3 classes T3, on lui en révèle au hasard de quoi atteindre ce seuil : sinon la
-        // vague piocherait dans TOUT le catalogue T3 (aucune découverte) ou se verrouillerait sur l'unique
-        // classe connue. Sans effet tant qu'aucun T3 n'est aligné, et idempotent une fois le socle atteint.
-        var mapTiers = _specialMission || _run.IsBossCombat ? _map?.EnemyTiers : null;
-        foreach (var asset in _run.SeedTier3Assets(Context.Saves.IsUnitDiscovered, mapTiers))
-            Context.Saves.DiscoverUnit(asset);
-
+        // La vague pioche ses T2/T3 UNIQUEMENT parmi les classes ÉLIGIBLES à l'IA (découvertes + nouveauté de
+        // la run, cf. Run.PickEnemy / AiFreshFor). Rien n'est découvert AVANT le combat : la découverte se fait
+        // à l'APPARITION, une fois la vague posée (plus bas).
         List<UnitSpec> wave;
         if (_specialMission && _map is { } spMap)
             // Tiers FIXÉS par la map (calque « tiers » de l'éditeur) s'ils existent, sinon gabarit campaign.json.
@@ -1144,12 +1138,17 @@ public sealed class GameplayScene : Scene
             // Boss sur map dessinée : le boss + une escorte par case de spawn restante → toutes occupées.
             wave = _run.BuildBossEnemyWave(BossEscortCount(bossMap), Context.Saves.IsUnitDiscovered, bossMap.EnemyTiers);
         else
-            wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);   // T2/T3 : priorité aux unités déjà découvertes
+            wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);
         PlaceEnemies(wave);
 
-        // Méta-progression : les tier 1 débloqués (donc visibles dans la vague qu'on affiche) sont désormais
-        // « vus ». Dès lors la tuile recrue peut les proposer à tout moment, y compris dans les runs suivantes
-        // (cf. RollSeenTier1). Idempotent : DiscoverUnit n'écrit sur disque que sur une vraie nouveauté.
+        // Découverte À L'APPARITION (méta-progression) : tout pion ennemi RÉELLEMENT placé — vague, escortes
+        // ET boss — passe au codex. C'est la SEULE voie de découverte des T2/T3 côté IA : une classe rendue
+        // éligible « nouveauté » mais jamais alignée reste inconnue. Idempotent (écrit sur disque à la 1re fois).
+        foreach (var spec in wave)
+            Context.Saves.DiscoverUnit(spec.UnitClass.Asset);
+
+        // Les tier 1 débloqués (même absents de CETTE vague) restent « vus » pour que la tuile recrue puisse
+        // les proposer à tout moment, y compris dans les runs suivantes (cf. RollSeenTier1). Idempotent.
         foreach (var asset in _run.UnlockedTier1Assets())
             Context.Saves.DiscoverUnit(asset);
 
@@ -4150,13 +4149,29 @@ public sealed class GameplayScene : Scene
             bool done;
             if (IsSauverMission)
             {
-                // « Sauver » : COURSE sans limite de tours. La mission se clôt quand CHAQUE paysan est décidé
-                // (récupéré par le joueur OU capturé par l'IA), OU dès que le quota devient IMPOSSIBLE — trop de
-                // captures pour encore l'atteindre : max récupérable = total − capturés. La défaite anticipée est
-                // alors prononcée juste en dessous (PaysansSaved, = récupérés, sera forcément < quota).
-                var allResolved = PaysansTotal > 0 && PaysansResolved >= PaysansTotal;
-                var quotaImpossible = PaysansTotal - PaysansCaptured < PaysansRequired;
-                done = allResolved || quotaImpossible;
+                // « Sauver » : COURSE sans limite de tours. Elle se clôt quand :
+                //  • le quota devient IMPOSSIBLE (trop de captures : max récupérable = total − capturés < requis)
+                //    → défaite prononcée par le quota gate juste en dessous ;
+                //  • OU tous les ennemis sont vaincus → plus aucune menace : on RÉCUPÈRE automatiquement les
+                //    paysans restants, un par un, via la même révélation/réserve que si on marchait dessus ;
+                //  • OU chaque paysan est décidé (récupéré par le joueur ou capturé par l'IA).
+                if (PaysansTotal - PaysansCaptured < PaysansRequired)
+                {
+                    done = true;   // quota hors d'atteinte : clôture (la défaite est prononcée au quota gate)
+                }
+                else if (!_match.Units().Any(u => u.Unit.Faction == Faction.Enemy)
+                         && PaysanCells() is { Count: > 0 } remaining)
+                {
+                    // Menace éliminée : on déclenche la récupération d'UN paysan restant puis on laisse la
+                    // révélation se jouer (le combat est figé pendant ce temps). Rappelée chaque frame tant qu'il
+                    // en reste, jusqu'à ce que tous soient résolus → clôture normale ci-dessous.
+                    TriggerRecrue(remaining[0]);
+                    return;
+                }
+                else
+                {
+                    done = PaysansTotal > 0 && PaysansResolved >= PaysansTotal;
+                }
             }
             else
             {
@@ -5505,12 +5520,14 @@ public sealed class GameplayScene : Scene
         else if (scroll > 0) ZoomStep(+1);
         else if (scroll < 0) ZoomStep(-1);
 
-        // Pan clavier : flèches + ZQSD (AZERTY). Aller « voir à droite » fait reculer l'origine.
+        // Pan clavier : flèches + ZQSD (AZERTY) ET WASD (QWERTY) — les deux dispositions partagent S/D et
+        // ajoutent Q+A (gauche) / Z+W (haut) pour couvrir les touches physiques des deux claviers. Aller
+        // « voir à droite » fait reculer l'origine.
         var input = Context.Input;
         var dir = Vector2.Zero;
-        if (input.IsKeyDown(Keys.Left) || input.IsKeyDown(Keys.Q)) dir.X += 1;
+        if (input.IsKeyDown(Keys.Left) || input.IsKeyDown(Keys.Q) || input.IsKeyDown(Keys.A)) dir.X += 1;
         if (input.IsKeyDown(Keys.Right) || input.IsKeyDown(Keys.D)) dir.X -= 1;
-        if (input.IsKeyDown(Keys.Up) || input.IsKeyDown(Keys.Z)) dir.Y += 1;
+        if (input.IsKeyDown(Keys.Up) || input.IsKeyDown(Keys.Z) || input.IsKeyDown(Keys.W)) dir.Y += 1;
         if (input.IsKeyDown(Keys.Down) || input.IsKeyDown(Keys.S)) dir.Y -= 1;
 
         // Pan manette : stick DROIT, en analogique (le stick gauche pilote déjà le curseur de case).
@@ -5524,6 +5541,18 @@ public sealed class GameplayScene : Scene
             var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
             _camera += dir * CameraPanSpeed * dt;
             MarkLayoutDirty();
+        }
+
+        // Pan à la SOURIS : clic molette maintenu = on attrape le plateau et il suit le curseur (le point
+        // sous la souris reste sous la souris). Delta en px canvas → 1:1 avec l'origine, donc pas de gain.
+        if (input.IsMiddleDown)
+        {
+            var d = input.MouseDelta;
+            if (d != Point.Zero)
+            {
+                _camera += d.ToVector2();
+                MarkLayoutDirty();
+            }
         }
     }
 
@@ -9095,7 +9124,7 @@ public sealed class GameplayScene : Scene
         // eux, quel que soit le nombre de traits) : la liste des mots-clés (traits séparés par « | », détaillés
         // en popups) tout en bas, puis « TUÉS : N » juste au-dessus (palmarès à vie, seulement si > 0).
         var keywords = KeywordsFor(c, equip, b, granted);
-        var bottomY = DrawKeywordList(sb, keywords, GrantedLabels(granted), rect, rect.Bottom - CardPad);
+        var bottomY = DrawKeywordList(sb, keywords, AddedKeywordLabels(c, equip, b, granted), rect, rect.Bottom - CardPad);
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
                 new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
@@ -9141,7 +9170,7 @@ public sealed class GameplayScene : Scene
 
         // Bas de carte (ancré en bas comme la carte détaillée) : traits en noms seuls, « TUÉS : N » au-dessus.
         var keywords = KeywordsFor(c, equip, b, granted);
-        var bottomY = DrawKeywordList(sb, keywords, GrantedLabels(granted), rect, rect.Bottom - CondensedPad);
+        var bottomY = DrawKeywordList(sb, keywords, AddedKeywordLabels(c, equip, b, granted), rect, rect.Bottom - CondensedPad);
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
                 new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
@@ -9433,8 +9462,9 @@ public sealed class GameplayScene : Scene
     /// ajoutent leurs traits (comme des traits natifs), sauf doublon.
     /// </summary>
     /// <summary>
-    /// Couleur des mots-clés tenus d'une AURA voisine et non de la fiche du pion : ils s'éteignent dès qu'il
-    /// sort de la zone, il ne faut donc pas les lire comme des traits natifs (ceux-ci restent en Cyan1).
+    /// Couleur des mots-clés qui ne sont PAS des traits de BASE de la classe (ajoutés par un équipement,
+    /// l'arbre de commandement ou une aura voisine) : mis en jaune pour signaler un bonus, à distinguer des
+    /// traits natifs (qui restent en Cyan1). Cf. <see cref="AddedKeywordLabels"/>.
     /// </summary>
     private static readonly Color GrantedKeywordColor = Palette.Yellow2;
 
@@ -9489,26 +9519,40 @@ public sealed class GameplayScene : Scene
         return alreadyDrawn;
     }
 
-    /// <summary>Libellés des mots-clés issus d'une aura, pour les repérer au moment de les peindre.</summary>
-    private static HashSet<string>? GrantedLabels(IReadOnlyList<string>? granted)
+    /// <summary>
+    /// Libellés des mots-clés qui ne sont PAS des traits de BASE de la classe : ajoutés par un équipement,
+    /// par l'arbre de commandement ou par une aura de placement. On les peint en jaune sur la carte pour
+    /// signaler un bonus (<see cref="GrantedKeywordColor"/>) ; les traits natifs restent en Cyan1. Un trait à
+    /// la fois natif ET accordé compte comme natif (présent dans <see cref="UnitClass.Traits"/>). Renvoie
+    /// <c>null</c> si rien n'est ajouté (évite une allocation et le test au moment de peindre).
+    /// </summary>
+    private static HashSet<string>? AddedKeywordLabels(UnitClass c, Equipment? equip,
+        CommandBuffs? buffs, IReadOnlyList<string>? granted)
     {
-        if (granted == null || granted.Count == 0)
-            return null;
-        var set = new HashSet<string>();
-        foreach (var t in granted)
-            set.Add(UnitKeywords.For(t).Label);
-        return set;
+        var innate = new HashSet<string>(c.Traits);
+        var labels = new HashSet<string>();
+        void Consider(string raw)
+        {
+            if (!innate.Contains(raw))
+                labels.Add(UnitKeywords.For(raw).Label);
+        }
+        if (equip is { } eq)
+            foreach (var et in eq.Traits) Consider(et);
+        foreach (var bt in (buffs ?? CommandBuffs.None).Traits) Consider(bt);
+        if (granted != null)
+            foreach (var gt in granted) Consider(gt);
+        return labels.Count == 0 ? null : labels;
     }
 
     /// <summary>
     /// Liste des mots-clés en bas de carte, empilée vers le HAUT depuis <paramref name="bottomY"/> et centrée
-    /// ligne par ligne. Chaque libellé est peint SÉPARÉMENT pour que ceux venus d'une aura ressortent (cf.
-    /// <see cref="GrantedKeywordColor"/>) — d'où le rendu segment par segment plutôt qu'une chaîne jointe.
-    /// Le repli se fait au mot-clé près (jamais au milieu d'un libellé), la police étant à chasse fixe.
-    /// Renvoie l'ordonnée du haut de la liste (le contenu suivant s'empile au-dessus).
+    /// ligne par ligne. Chaque libellé est peint SÉPARÉMENT pour que les traits NON natifs ressortent (cf.
+    /// <see cref="GrantedKeywordColor"/> / <see cref="AddedKeywordLabels"/>) : rendu segment par segment plutôt
+    /// qu'une chaîne jointe. Le repli se fait au mot-clé près (jamais au milieu d'un libellé), la police étant
+    /// à chasse fixe. Renvoie l'ordonnée du haut de la liste (le contenu suivant s'empile au-dessus).
     /// </summary>
     private int DrawKeywordList(SpriteBatch sb, List<UnitKeywords.Keyword> keywords,
-        HashSet<string>? grantedLabels, Rectangle rect, int bottomY)
+        HashSet<string>? addedLabels, Rectangle rect, int bottomY)
     {
         if (keywords.Count == 0)
             return bottomY;
@@ -9536,7 +9580,7 @@ public sealed class GameplayScene : Scene
                 lineW += sepW;
             }
             line.Add((kw.Label,
-                grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1));
+                addedLabels != null && addedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1));
             lineW += w;
         }
         lines.Add(line);
@@ -9667,15 +9711,15 @@ public sealed class GameplayScene : Scene
         if (y + total > VirtualViewport.Height - KwScreenMargin)
             y = System.Math.Max(KwScreenMargin, VirtualViewport.Height - KwScreenMargin - total);
 
-        var grantedLabels = GrantedLabels(granted);
+        var addedLabels = AddedKeywordLabels(c, equip, buffs, granted);
         foreach (var (kw, lines, h, reinforced, highlight) in boxes)
         {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
-            // Nom du trait : ROUGE si renforcé par l'arbre, sinon jaune (venu d'une aura) ou bleu (natif).
+            // Nom du trait : ROUGE si renforcé par l'arbre, sinon JAUNE si non natif (équipement/arbre/aura), sinon bleu.
             var labelColor = reinforced ? ReinforcedTraitColor
-                : grantedLabels != null && grantedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1;
+                : addedLabels != null && addedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1;
             Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, labelColor);
             var ly = box.Y + KwPad + 11;
             var highlightDrawn = false;
@@ -10650,48 +10694,52 @@ public sealed class GameplayScene : Scene
         // peut faire perdre. Les règles finales sont donc formulées différemment selon qu'il existe — et en
         // ROUGE, la couleur du danger dans tout le jeu, parce que ce sont elles qui font perdre la run.
         var quota = PaysansRequired;
-        var rules = new List<(string Text, Color Color)>();
+        // Deux blocs : le CONTEXTE (course / limite de tours) en haut, puis les CONDITIONS DE DÉFAITE isolées
+        // sous un sous-titre. Chaque condition qui FAIT PERDRE est une ligne à part : rater le quota (formulé
+        // « moins de N ») et, toujours, la mort du commandant.
+        var context = new List<(string Text, Color Color)>();
+        var defeat = new List<(string Text, Color Color)>();
         if (IsSauverMission)
         {
-            // COURSE sans limite de tours : on annonce la course, l'absence de limite, puis le quota.
-            rules.Add(("- " + Loc.T("special.rule_race"), Palette.Cyan1));
-            rules.Add(("- " + Loc.T("special.rule_no_limit"), Palette.Cyan1));
-            if (quota > 0)
-            {
-                rules.Add(("- " + Loc.T("special.rule_quota_save", quota), Palette.Purple5));
-                rules.Add(("- " + Loc.T("special.rule_defeat_save"), Palette.Purple5));
-            }
-            else
-            {
-                rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
-            }
+            // COURSE sans limite de tours : on annonce la course et l'absence de limite.
+            context.Add(("- " + Loc.T("special.rule_race"), Palette.Cyan1));
+            context.Add(("- " + Loc.T("special.rule_no_limit"), Palette.Cyan1));
         }
         else
         {
-            rules.Add(("- " + Loc.T("special.rule_turns", SpecialTurnBudget()), Palette.Cyan1));
-            if (quota > 0)
-            {
-                rules.Add(("- " + Loc.T(IsProtectMission ? "special.rule_quota_protect" : "special.rule_quota", quota),
-                    Palette.Purple5));
-                rules.Add(("- " + Loc.T("special.rule_defeat_quota"), Palette.Purple5));
-            }
-            else
-            {
-                rules.Add(("- " + Loc.T("special.rule_timeout"), Palette.Cyan1));
-                rules.Add(("- " + Loc.T("special.rule_defeat"), Palette.Cyan1));
-            }
+            context.Add(("- " + Loc.T("special.rule_turns", SpecialTurnBudget()), Palette.Cyan1));
+            // Sans quota, la fin du chrono ne fait PAS perdre : on le précise pour lever l'ambiguïté.
+            if (quota == 0)
+                context.Add(("- " + Loc.T("special.rule_timeout"), Palette.Cyan1));
         }
+        if (quota > 0)
+        {
+            var quotaKey = IsSauverMission ? "special.defeat_quota_save"
+                         : IsProtectMission ? "special.defeat_quota_protect"
+                         : "special.defeat_quota";
+            defeat.Add(("- " + Loc.T(quotaKey, quota), Palette.Purple5));
+        }
+        defeat.Add(("- " + Loc.T("special.defeat_commander"), Palette.Purple5));
+        var defeatHeading = Loc.T("special.defeat_heading");
         var prompt = Loc.T(Context.Input.UsingGamepad ? "special.brief_continue_gp" : "special.brief_continue");
 
         var textW = System.Math.Max(Context.Font.Measure(title, 2), Context.Font.Measure(prompt, 1));
         foreach (var l in body)
             textW = System.Math.Max(textW, Context.Font.Measure(l, 1));
-        foreach (var (text, _) in rules)
+        foreach (var (text, _) in context)
             textW = System.Math.Max(textW, Context.Font.Measure(text, 1));
+        foreach (var (text, _) in defeat)
+            textW = System.Math.Max(textW, Context.Font.Measure(text, 1));
+        if (defeat.Count > 0)
+            textW = System.Math.Max(textW, Context.Font.Measure(defeatHeading, 1));
 
         var boxW = textW + 2 * ModalPadH;
-        var boxH = ModalPadV + 7 + ModalGap + 14 + ModalGap + (body.Count + rules.Count) * ModalLineH
-                   + 2 * ModalGap + 7 + ModalPadV;
+        // Lignes de règles = contexte + défaite + le sous-titre (si présent) ; gaps = body→contexte,
+        // contexte→sous-titre (si défaite) et règles→invite.
+        var ruleLines = context.Count + defeat.Count + (defeat.Count > 0 ? 1 : 0);
+        var ruleGaps = defeat.Count > 0 ? 3 : 2;
+        var boxH = ModalPadV + 7 + ModalGap + 14 + ModalGap + (body.Count + ruleLines) * ModalLineH
+                   + ruleGaps * ModalGap + 7 + ModalPadV;
         var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
 
         sb.Begin(samplerState: SamplerState.PointClamp);
@@ -10712,10 +10760,21 @@ public sealed class GameplayScene : Scene
             y += ModalLineH;
         }
         y += ModalGap;
-        foreach (var (text, color) in rules)
+        foreach (var (text, color) in context)
         {
             Context.Font.Draw(sb, text, new Vector2(x, y), 1, color, preserveCase: true);
             y += ModalLineH;
+        }
+        if (defeat.Count > 0)
+        {
+            y += ModalGap;   // respiration pour bien détacher le bloc « défaite »
+            Context.Font.Draw(sb, defeatHeading, new Vector2(x, y), 1, Palette.Purple5);   // sous-titre en rouge (danger)
+            y += ModalLineH;
+            foreach (var (text, color) in defeat)
+            {
+                Context.Font.Draw(sb, text, new Vector2(x, y), 1, color, preserveCase: true);
+                y += ModalLineH;
+            }
         }
         y += ModalGap;
         var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));   // invite pulsée, comme la fin d'évolution

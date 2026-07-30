@@ -209,6 +209,22 @@ public class EquipmentTests
     }
 
     [Fact]
+    public void ShippedEquipment_Parses_AndAllEnemyAllowedForNow()
+    {
+        // Charge le VRAI equipment.json (valide JSON + commentaires + accents) et vérifie que TOUS les items
+        // sont enemyAllowed=true pour l'instant (l'utilisateur passera certains à false au cas par cas).
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var path = System.IO.Path.Combine(dir!.FullName, "src", "ChessArmy.Game", "Assets", "Config", "equipment.json");
+
+        var list = EquipmentCatalog.FromJson(System.IO.File.ReadAllText(path));
+        Assert.NotEmpty(list);
+        Assert.All(list, e => Assert.True(e.EnemyAllowed));
+    }
+
+    [Fact]
     public void Roll_Filter_HardExcludesDisallowedEquipment()
     {
         // Filtre = celui que RollEnemyEquipment applique (e => e.EnemyAllowed). Un pool réduit à des items

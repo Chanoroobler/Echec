@@ -14,7 +14,10 @@ namespace ChessArmy.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v5 = le chronomètre de la run (<see cref="RunStatsSave.PlayTime"/>) est persisté ;
+    /// Version du format. v6 = la nouveauté IA figée de la run (<see cref="AiFreshTier2"/> /
+    /// <see cref="AiFreshTier3"/>) est persistée ; une sauvegarde v5 ou antérieure reste LISIBLE (nouveauté
+    /// absente → null → retirée au 1er combat du tier, la reprise reste jouable).
+    /// v5 = le chronomètre de la run (<see cref="RunStatsSave.PlayTime"/>) est persisté ;
     /// une sauvegarde v4 reste LISIBLE (chronomètre absent → run reprise à 0 s).
     /// v4 = le récap de run (<see cref="Stats"/>) est persisté (compteurs de fin de run).
     /// v3 = le commandant choisi (<see cref="CommanderId"/>) et la difficulté (<see cref="Difficulty"/>) sont
@@ -28,7 +31,7 @@ public sealed class RunSave
     /// En revanche un <see cref="CombatNumber"/> hors [1..18] est impossible sous ce format → à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 5;
+    public int Version { get; set; } = 6;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -79,6 +82,14 @@ public sealed class RunSave
     /// antérieur) → compteur neuf à la reprise.</summary>
     public RunStatsSave? Stats { get; set; }
 
+    /// <summary>
+    /// Nouveauté IA figée pour la run : classes NON découvertes que l'IA peut aligner en plus des découvertes
+    /// (cf. <see cref="Run.AiFreshTier2"/>). <c>null</c> = pas encore tirée pour ce tier (sera tirée au 1er
+    /// combat qui l'aligne) ; absente d'une sauvegarde v5 ou antérieure → null → même comportement.
+    /// </summary>
+    public List<string>? AiFreshTier2 { get; set; }
+    public List<string>? AiFreshTier3 { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -100,6 +111,8 @@ public sealed class RunSave
             Rerolls = run.Rerolls,
             CommanderId = run.CommanderDef.Id, Difficulty = run.Difficulty,
             Stats = RunStatsSave.From(run.Stats),
+            AiFreshTier2 = run.AiFreshTier2?.ToList(),
+            AiFreshTier3 = run.AiFreshTier3?.ToList(),
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -118,7 +131,8 @@ public sealed class RunSave
             .Select(e => e!)
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
-            CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats());
+            CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats(),
+            AiFreshTier2, AiFreshTier3);
     }
 }
 

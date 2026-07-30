@@ -27,7 +27,7 @@
           {
             "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
             "evolutions": [
-              { "name": "Maître d'armes", "asset": "maitre_armes", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
+              { "name": "Maître d'armes", "asset": "maitre_arme", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
               { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
             ]
           }
@@ -42,7 +42,7 @@
           {
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
-              { "name": "Archevêque", "asset": "archeveque", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin parfait"] },
+              { "name": "Pretresse", "asset": "pretresse", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin parfait"] },
               { "name": "Barde",      "asset": "barde",      "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
             ]
           },
@@ -93,8 +93,8 @@
           {
             "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
             "evolutions": [
-              { "name": "Dragoon", "asset": "Dragoon", "hp": 18, "damage": 17, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Formation"] },
-              { "name": "Voltigeur", "asset": "voltigeur", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
+              { "name": "Dragoon", "asset": "Dragoon", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Formation"] },
+              { "name": "Voltigeur", "asset": "voltigeur", "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
             ]
           }
         ]
@@ -119,7 +119,7 @@
   "commandes": [
     { "role": "Commander", "id": "commandant", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
       "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2,
-      "startingUnits": [ "Dame", "Dame" ] },
+      "startingUnits": [ "Tour", "Dame" ] },
     // PROVISOIRE : deuxieme commandant, la pour eprouver le carrousel de selection. Il reprend le sprite du
     // boss Commandant_brute (les boss deviendront des commandants par la suite) et l'arbre du premier.
     // Brute : plus resistant et plus fort, mais il se deplace moins loin, deploie moins de pions, et il

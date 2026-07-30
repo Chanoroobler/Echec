@@ -110,19 +110,18 @@ special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS
 special.title_save,SAUVER LES PAYSANS,SAVE THE PEASANTS
 special.desc_liberate,Des paysans sont retenus par l'ennemi sur le champ de bataille. Amène un pion sur un paysan pour le libérer. Il rejoint aussitôt ta réserve.,Peasants are held by the enemy across the battlefield. Move a piece onto a peasant to free them. They join your reserve at once.
 special.desc_protect,L'ennemi veut capturer les paysans. Tu ne peux pas te poser sur eux. Barre-lui la route. Chaque paysan encore libre à la fin devient une nouvelle recrue.,The enemy wants to capture the peasants. You cannot stand on them. Block the way. Each peasant still free at the end becomes a new recruit.
-special.desc_save,Des paysans sont pris dans une course. Amène un pion sur un paysan pour le sauver. Il rejoint aussitôt ta réserve. Mais l'ennemi fonce pour les capturer : atteins-les avant lui.,Peasants are caught in a race. Move a piece onto a peasant to save them. They join your reserve at once. But the enemy is rushing to capture them: reach them first.
+special.desc_save,Des paysans sont pris dans une course. Amène un pion sur un paysan pour le sauver. Il rejoint aussitôt ta réserve. Mais l'ennemi fonce pour les capturer : atteins-les avant lui. La mission se termine quand chaque paysan a été sauvé ou capturé. Vaincre tous les ennemis met aussi fin à la course : les paysans restants sont alors sauvés.,Peasants are caught in a race. Move a piece onto a peasant to save them. They join your reserve at once. But the enemy is rushing to capture them: reach them first. The mission ends when every peasant has been saved or captured. Defeating all enemies also ends the race: the remaining peasants are then saved.
+# Regles de CONTEXTE annoncees au briefing (les conditions de defaite sont plus bas : special.defeat_*).
 special.rule_turns,Limite de {0} tours,Limit of {0} rounds
-# Regles annoncees au briefing. Les deux dernieres dependent du QUOTA de difficulte : sans quota le temps
-# ecoule ne fait que clore la mission, avec quota il peut la faire PERDRE.
-special.rule_quota,Sauver au moins {0} paysan(s),Free at least {0} peasant(s)
-special.rule_quota_protect,Protéger au moins {0} paysan(s),Keep at least {0} peasant(s) safe
-special.rule_quota_save,Récupérer au moins {0} paysan(s),Save at least {0} peasant(s)
-special.rule_defeat_quota,Échouer ou perdre le commandant fait perdre,Failing or losing the commander ends the run
-special.rule_defeat_save,Échouer à en sauver assez ou perdre le commandant fait perdre,Failing to save enough or losing the commander ends the run
 special.rule_race,L'ennemi fonce sur les paysans : atteins-les avant lui,The enemy rushes the peasants: reach them first
 special.rule_no_limit,Aucune limite de tours,No round limit
 special.rule_timeout,Le temps écoulé clôt la mission sans défaite,Running out of time ends the mission without defeat
-special.rule_defeat,Seule la chute du commandant fait perdre,Only the commander falling means defeat
+# Sous-titre + conditions de DEFAITE (ce qui fait PERDRE) : rater le quota (formule negative) et la mort du commandant.
+special.defeat_heading,CONDITION DE DEFAITE,DEFEAT CONDITION
+special.defeat_commander,Mort du commandant,The commander falls
+special.defeat_quota,Sauver moins de {0} paysan(s),Free fewer than {0} peasant(s)
+special.defeat_quota_protect,Protéger moins de {0} paysan(s),Keep fewer than {0} peasant(s) safe
+special.defeat_quota_save,Récupérer moins de {0} paysan(s),Save fewer than {0} peasant(s)
 special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
 special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT
 # Modale de bilan affichee a la cloture d'une mission speciale
@@ -228,7 +227,7 @@ unit.maitre_armes,MAITRE D'ARMES,WEAPON MASTER
 unit.barbare,BARBARE,BARBARIAN
 unit.mage,MAGE,MAGE
 unit.clerc,CLERC,CLERIC
-unit.archeveque,ARCHEVEQUE,ARCHBISHOP
+unit.pretresse,PRETRESSE,PRIESTESS
 unit.barde,BARDE,BARD
 unit.sorcier,SORCIER,SORCERER
 unit.archimage,ARCHIMAGE,ARCHMAGE
@@ -491,8 +490,8 @@ tree.commandantLancier.branch2,LOGISTIQUE,LOGISTICS
 # Noeuds : branche COMMANDANT (Lancier)
 tree.lan_cmd_rempart,REMPART DU MENEUR,LEADER BULWARK
 tree.lan_cmd_rempart.desc,le commandant réduit de 4 les dégâts des attaques à portée 2 ou plus.,the commander reduces by 4 the damage of attacks at range 2 or more.
-tree.lan_cmd_pm,FOULEE DU MENEUR,LEADER STRIDE
-tree.lan_cmd_pm.desc,+1 déplacement au commandant.,+1 movement to the commander.
+tree.lan_cmd_portee,ALLONGE DU MENEUR,LEADER REACH
+tree.lan_cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.
 tree.lan_cmd_pv_tour,MENEUR DE LANCIERS,SPEAR CAPTAIN
 tree.lan_cmd_pv_tour.desc,+3 pv au commandant par unité du domaine de la tour en réserve ou en jeu.,+3 hp to the commander for each rook-domain unit in reserve or in play.
 tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA
@@ -500,7 +499,7 @@ tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficien
 tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE
 tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.
 tree.lan_cmd_seisme,SEISME,EARTHQUAKE
-tree.lan_cmd_seisme.desc,à la fin du tour ennemi le commandant frappe les ennemis adjacents pour sa puissance.,at the end of the enemy turn the commander strikes adjacent enemies for its power.
+tree.lan_cmd_seisme.desc,à la fin du tour ennemi le commandant déclenche un séisme qui frappe les ennemis adjacents de sa puissance.,at the end of the enemy turn the commander triggers an earthquake that strikes adjacent enemies for its power.
 # Noeuds : branche LANCIERS (domaine de la tour)
 tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD
 tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.

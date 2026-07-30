@@ -70,10 +70,16 @@ public sealed class InputManager
     public bool WasKeyPressed(Keys key) =>
         _currentKeyboard.IsKeyDown(key) && _previousKeyboard.IsKeyUp(key);
 
+    /// <summary>Convertit une position écran RÉEL en espace virtuel (annule décalage + échelle du letterbox).</summary>
+    private Point ToVirtual(Point screen) => new(
+        (int)((screen.X - _viewOffset.X) / _viewScale),
+        (int)((screen.Y - _viewOffset.Y) / _viewScale));
+
     /// <summary>Position de la souris en espace virtuel (annule décalage + échelle du letterbox).</summary>
-    public Point MousePosition => new(
-        (int)((_currentMouse.Position.X - _viewOffset.X) / _viewScale),
-        (int)((_currentMouse.Position.Y - _viewOffset.Y) / _viewScale));
+    public Point MousePosition => ToVirtual(_currentMouse.Position);
+
+    /// <summary>Déplacement de la souris depuis la frame précédente, en espace virtuel (pan par glisser).</summary>
+    public Point MouseDelta => ToVirtual(_currentMouse.Position) - ToVirtual(_previousMouse.Position);
 
     /// <summary>Vrai uniquement à la frame du clic gauche.</summary>
     public bool WasLeftClicked =>
@@ -87,6 +93,9 @@ public sealed class InputManager
 
     /// <summary>Vrai tant que le bouton gauche est maintenu (pour le retour visuel d'enfoncement).</summary>
     public bool IsLeftDown => _currentMouse.LeftButton == ButtonState.Pressed;
+
+    /// <summary>Vrai tant que le bouton du MILIEU (clic molette) est maintenu : pan de caméra par glisser.</summary>
+    public bool IsMiddleDown => _currentMouse.MiddleButton == ButtonState.Pressed;
 
     /// <summary>Vrai uniquement à la frame du clic droit (annulation / désélection).</summary>
     public bool WasRightClicked =>
@@ -201,5 +210,5 @@ public sealed class InputManager
 
     private bool MouseActivity() =>
         _currentMouse.Position != _previousMouse.Position ||
-        WasLeftClicked || WasRightClicked || ScrollDelta != 0;
+        WasLeftClicked || WasRightClicked || IsMiddleDown || ScrollDelta != 0;
 }

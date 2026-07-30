@@ -73,7 +73,7 @@ public static class Domaines
             {
                 N(2, "Clerc", "clerc", 8, 12, 2, 4, traits: new[] { Trait.Soin }, evo: new[]
                 {
-                    N(3, "Archevêque", "archeveque", 12, 14, 2, 4, traits: new[] { Trait.SoinParfait }),
+                    N(3, "Pretresse", "pretresse", 12, 14, 2, 4, traits: new[] { Trait.SoinParfait }),
                     N(3, "Barde", "barde", 14, 12, 2, 5, traits: new[] { Trait.Soin, Trait.AuraDePuissance }),
                 }),
                 N(2, "Sorcier", "sorcier", 6, 18, 2, 4, evo: new[]

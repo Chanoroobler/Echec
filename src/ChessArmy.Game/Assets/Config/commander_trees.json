@@ -67,7 +67,7 @@
       "nodes": [
         // ── Branche 0 : le COMMANDANT (Lancier) ─────────────────────────────────────────────────
         { "id": "lan_cmd_rempart",           "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Rempart" } ] },
-        { "id": "lan_cmd_pm",                "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "moveRange", "amount": 1 } ] },
+        { "id": "lan_cmd_portee",            "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
         { "id": "lan_cmd_pv_tour",           "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 3, "scale": "perDomaineUnit", "domaine": "Tour" } ] },
         { "id": "lan_cmd_aura_rempart",      "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Aura de rempart" } ] },
         { "id": "lan_cmd_riposte",           "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },

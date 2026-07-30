@@ -190,16 +190,16 @@ public class RunTests
 
     // ─── Rareté de coffre (chances par phase + pitié) ────────────────────────────────────────────
     [Theory]
-    // Phase 1 : légendaire 2 %, rare 15 % (combat 1).
-    [InlineData(1, 1.0, EquipmentRarity.Legendary)]
-    [InlineData(1, 2.0, EquipmentRarity.Rare)]     // pile au-dessus du seuil légendaire → rare
-    [InlineData(1, 16.9, EquipmentRarity.Rare)]
-    [InlineData(1, 17.0, EquipmentRarity.Common)]  // 2 + 15 → commun
-    // Phase 3 : légendaire 10 %, rare 40 % (combat 13).
-    [InlineData(13, 9.9, EquipmentRarity.Legendary)]
-    [InlineData(13, 10.0, EquipmentRarity.Rare)]
-    [InlineData(13, 49.9, EquipmentRarity.Rare)]
-    [InlineData(13, 50.0, EquipmentRarity.Common)]
+    // Phase 1 : légendaire 5 %, rare 30 % (combat 1).
+    [InlineData(1, 4.9, EquipmentRarity.Legendary)]
+    [InlineData(1, 5.0, EquipmentRarity.Rare)]     // pile au-dessus du seuil légendaire → rare
+    [InlineData(1, 34.9, EquipmentRarity.Rare)]
+    [InlineData(1, 35.0, EquipmentRarity.Common)]  // 5 + 30 → commun
+    // Phase 3 : légendaire 15 %, rare 50 % (combat 13).
+    [InlineData(13, 14.9, EquipmentRarity.Legendary)]
+    [InlineData(13, 15.0, EquipmentRarity.Rare)]
+    [InlineData(13, 64.9, EquipmentRarity.Rare)]
+    [InlineData(13, 65.0, EquipmentRarity.Common)]
     public void ResolveChestRarity_ThresholdsByPhase(int combat, double roll, EquipmentRarity expected)
     {
         Assert.Equal(expected, RunAt(combat).ResolveChestRarity(roll));
@@ -302,21 +302,31 @@ public class RunTests
     }
 
     [Fact]
-    public void BuildEnemyWave_PrioritizesDiscoveredUnits_AtTier2And3()
+    public void BuildEnemyWave_FieldsOnlyEligible_DiscoveredPlusRunNovelty_AtTier2And3()
     {
-        // Phase 3, mission 1 : 5× T2 + 3× T3. On ne "découvre" qu'une classe T2 et une classe T3 (Fou) ;
-        // la vague ne doit alors contenir QUE ces classes aux tiers 2 et 3 (priorité maximale au découvert).
+        // Phase 3, mission 1 : 5× T2 + 3× T3. On découvre une classe T2 (Clerc) et une T3 (Prêtresse). La
+        // vague ne doit aligner, aux T2/T3, QUE des classes ÉLIGIBLES = découvertes + nouveauté IA de la run.
         var run = RunAt(13);
         var seenT2 = Run.ClassesAtTier(Domaine.Fou, 2)[0];   // Clerc
-        var seenT3 = Run.ClassesAtTier(Domaine.Fou, 3)[0];   // Archevêque
+        var seenT3 = Run.ClassesAtTier(Domaine.Fou, 3)[0];   // Prêtresse
         bool IsSeen(string asset) => asset == seenT2.Asset || asset == seenT3.Asset;
 
         var wave = run.BuildEnemyWave(IsSeen);
 
         Assert.Equal(5, wave.Count(u => u.UnitClass.Tier == 2));   // effectif/tiers toujours exacts
         Assert.Equal(3, wave.Count(u => u.UnitClass.Tier == 3));
-        Assert.All(wave.Where(u => u.UnitClass.Tier == 2), u => Assert.Equal(seenT2.Asset, u.UnitClass.Asset));
-        Assert.All(wave.Where(u => u.UnitClass.Tier == 3), u => Assert.Equal(seenT3.Asset, u.UnitClass.Asset));
+
+        var eligibleT2 = run.AiFreshTier2!.Append(seenT2.Asset).ToHashSet();
+        var eligibleT3 = run.AiFreshTier3!.Append(seenT3.Asset).ToHashSet();
+        Assert.All(wave.Where(u => u.UnitClass.Tier == 2), u => Assert.Contains(u.UnitClass.Asset, eligibleT2));
+        Assert.All(wave.Where(u => u.UnitClass.Tier == 3), u => Assert.Contains(u.UnitClass.Asset, eligibleT3));
+
+        // La nouveauté est faite de classes NON découvertes (pas encore au codex) ; sa taille suit
+        // max(apport par run, socle − découvertes) : 1 T2 découvert → +1 ; 1 T3 découvert → max(2, 4-1)=3.
+        Assert.All(run.AiFreshTier2!, a => Assert.False(IsSeen(a)));
+        Assert.All(run.AiFreshTier3!, a => Assert.False(IsSeen(a)));
+        Assert.Single(run.AiFreshTier2!);                                  // 1 T2 découvert → +AiFreshTier2PerRun (1)
+        Assert.Equal(Run.AiMinEligibleTier3 - 1, run.AiFreshTier3!.Count);
     }
 
     [Fact]
@@ -332,13 +342,23 @@ public class RunTests
     }
 
     [Fact]
-    public void BuildEnemyWave_FallsBackToAll_WhenNothingDiscovered()
+    public void BuildEnemyWave_NothingDiscovered_FieldsOnlyRunNovelty_AtTier2And3()
     {
-        // Rien de découvert : on ne bloque pas la génération, l'effectif/les tiers restent exacts.
-        var wave = RunAt(13).BuildEnemyWave(_ => false);
+        // Profil vierge : l'IA ne pioche QUE la nouveauté de la run (socle 2 en T2, 4 en T3), sans repli sur
+        // tout le catalogue. L'effectif/les tiers restent exacts.
+        var run = RunAt(13);
+        var wave = run.BuildEnemyWave(_ => false);
+
         Assert.Equal(8, wave.Count);   // phase 3 m1 : 5T2 + 3T3
         Assert.Equal(5, wave.Count(u => u.UnitClass.Tier == 2));
         Assert.Equal(3, wave.Count(u => u.UnitClass.Tier == 3));
+
+        Assert.Equal(Run.AiMinEligibleTier2, run.AiFreshTier2!.Count);   // socle 2
+        Assert.Equal(Run.AiMinEligibleTier3, run.AiFreshTier3!.Count);   // socle 4
+        var freshT2 = run.AiFreshTier2!.ToHashSet();
+        var freshT3 = run.AiFreshTier3!.ToHashSet();
+        Assert.All(wave.Where(u => u.UnitClass.Tier == 2), u => Assert.Contains(u.UnitClass.Asset, freshT2));
+        Assert.All(wave.Where(u => u.UnitClass.Tier == 3), u => Assert.Contains(u.UnitClass.Asset, freshT3));
     }
 
     [Fact]
@@ -729,7 +749,7 @@ public class RunTests
         Assert.Equal(3, restored.Rerolls);
     }
 
-    // ── Socle tier 3 : garantir un minimum de T3 « vus » avant que l'IA n'en aligne ───────────────
+    // ── Nouveauté IA : classes non découvertes rendues éligibles à l'IA, par run ───────────────────
 
     /// <summary>Toutes les classes tier 3 du catalogue, tous domaines confondus.</summary>
     private static List<UnitClass> AllTier3() =>
@@ -739,73 +759,70 @@ public class RunTests
     private const int FirstTier3Combat = 2 * Run.MissionsPerPhase + 1;
 
     [Fact]
-    public void SeedTier3_FreshProfile_ReturnsThreeDistinctTier3Assets()
+    public void AiFresh_FreshProfile_Tier3_IsFourDistinctUndiscovered()
     {
         var run = RunAt(FirstTier3Combat);
+        run.BuildEnemyWave(_ => false);   // déclenche le tirage (ce combat aligne du T3)
 
-        var seeded = run.SeedTier3Assets(_ => false);
-
-        Assert.Equal(Run.MinSeenTier3, seeded.Count);
-        Assert.Equal(seeded.Count, seeded.Distinct().Count());   // trois classes DIFFÉRENTES
+        Assert.NotNull(run.AiFreshTier3);
+        Assert.Equal(Run.AiMinEligibleTier3, run.AiFreshTier3!.Count);                 // socle 4 sur profil vierge
+        Assert.Equal(run.AiFreshTier3!.Count, run.AiFreshTier3!.Distinct().Count());   // classes DIFFÉRENTES
         var tier3 = AllTier3().Select(c => c.Asset).ToHashSet();
-        Assert.All(seeded, a => Assert.Contains(a, tier3));
+        Assert.All(run.AiFreshTier3!, a => Assert.Contains(a, tier3));
     }
 
     [Fact]
-    public void SeedTier3_TopsUpToThreshold_WithoutRepeatingWhatIsKnown()
+    public void AiFresh_Tier3_ShrinksToPerRunIncrement_AsDiscoveryGrows()
+    {
+        // 2 T3 déjà découverts : le socle 4 est presque atteint → max(2, 4-2) = 2 de nouveauté, hors du connu.
+        var known = AllTier3().Take(2).Select(c => c.Asset).ToHashSet();
+        var run = RunAt(FirstTier3Combat);
+        run.BuildEnemyWave(known.Contains);
+
+        Assert.Equal(Run.AiFreshTier3PerRun, run.AiFreshTier3!.Count);   // +2 par run
+        Assert.All(run.AiFreshTier3!, a => Assert.DoesNotContain(a, known));
+    }
+
+    [Fact]
+    public void AiFresh_Tier2_FreshProfile_IsSocle()
+    {
+        var run = RunAt(FirstTier3Combat);   // phase 3 m1 aligne aussi du T2
+        run.BuildEnemyWave(_ => false);
+        Assert.Equal(Run.AiMinEligibleTier2, run.AiFreshTier2!.Count);   // socle 2 sur profil vierge
+    }
+
+    [Fact]
+    public void AiFresh_IsDeterministic_ForSameSeed()
+    {
+        var a = RunAt(FirstTier3Combat, seed: 42);
+        var b = RunAt(FirstTier3Combat, seed: 42);
+        a.BuildEnemyWave(_ => false);
+        b.BuildEnemyWave(_ => false);
+
+        Assert.Equal(a.AiFreshTier2, b.AiFreshTier2);
+        Assert.Equal(a.AiFreshTier3, b.AiFreshTier3);
+    }
+
+    /// <summary>La nouveauté d'un tier n'est tirée qu'au moment utile : un combat sans T3 ne la calcule pas.</summary>
+    [Fact]
+    public void AiFresh_Tier3_NotRolled_WhenCombatHasNoTier3()
+    {
+        var run = RunAt(1);   // phase 1 m1 : que du T1
+        run.BuildEnemyWave(_ => false);
+        Assert.Null(run.AiFreshTier3);
+    }
+
+    /// <summary>La nouveauté figée survit à un aller-retour de sauvegarde (reprise = même vague).</summary>
+    [Fact]
+    public void AiFresh_IsPersistedAcrossSaveLoad()
     {
         var run = RunAt(FirstTier3Combat);
-        var known = AllTier3()[0].Asset;
+        run.BuildEnemyWave(_ => false);   // fige la nouveauté T2/T3
 
-        var seeded = run.SeedTier3Assets(a => a == known);
+        var restored = RunSave.From(run).ToRun();
 
-        Assert.Equal(Run.MinSeenTier3 - 1, seeded.Count);   // il en manquait 2, pas 3
-        Assert.DoesNotContain(known, seeded);
-    }
-
-    [Fact]
-    public void SeedTier3_ThresholdAlreadyReached_ReturnsNothing()
-    {
-        var run = RunAt(FirstTier3Combat);
-
-        Assert.Empty(run.SeedTier3Assets(_ => true));
-    }
-
-    /// <summary>Le socle n'apparaît qu'au moment utile : avant la phase 3, aucune vague n'aligne de T3.</summary>
-    [Fact]
-    public void SeedTier3_CombatWithoutTier3_SeedsNothing()
-    {
-        Assert.Empty(RunAt(1).SeedTier3Assets(_ => false));
-        Assert.Empty(RunAt(Run.MissionsPerPhase + 1).SeedTier3Assets(_ => false));   // phase 2, mission 1
-    }
-
-    /// <summary>Tiers FIXÉS par la map : un T3 imposé par l'éditeur déclenche le socle hors phase 3.</summary>
-    [Fact]
-    public void SeedTier3_HonoursMapFixedTiers()
-    {
-        var run = RunAt(1);
-
-        Assert.Empty(run.SeedTier3Assets(_ => false, new[] { 1, 1 }));
-        Assert.Equal(Run.MinSeenTier3, run.SeedTier3Assets(_ => false, new[] { 1, 3 }).Count);
-    }
-
-    /// <summary>
-    /// Bout en bout : une fois le socle marqué « vu », la vague ne sort QUE des trois classes T3 amorcées.
-    /// C'est tout l'intérêt — sans lui, PickEnemy piocherait dans le catalogue T3 entier.
-    /// </summary>
-    [Fact]
-    public void SeedTier3_ThenWave_OnlyDrawsTier3FromTheSeededSet()
-    {
-        var run = RunAt(FirstTier3Combat);
-        var seen = new HashSet<string>();
-        foreach (var asset in run.SeedTier3Assets(a => seen.Contains(a)))
-            seen.Add(asset);
-
-        var wave = run.BuildEnemyWave(seen.Contains);
-        var tier3 = wave.Where(u => u.UnitClass.Tier == 3).ToList();
-
-        Assert.NotEmpty(tier3);   // la phase 3 en aligne (garde-fou si le plan de campagne change)
-        Assert.All(tier3, u => Assert.Contains(u.UnitClass.Asset, seen));
+        Assert.Equal(run.AiFreshTier2, restored.AiFreshTier2);
+        Assert.Equal(run.AiFreshTier3, restored.AiFreshTier3);
     }
 
     private static Run RunAt(int combatNumber, int seed = 1, bool firstRun = false)

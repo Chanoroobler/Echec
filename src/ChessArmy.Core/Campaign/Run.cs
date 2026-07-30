@@ -372,6 +372,8 @@ public sealed class Run
         LegendaryPity = 0;
         RarePity = 0;
         Stats = new RunStats();     // récap remis à zéro pour la nouvelle campagne
+        _aiFreshT2 = null;          // nouveauté IA retirée à neuf : recalculée au 1er combat qui aligne le tier
+        _aiFreshT3 = null;
         Phase = RunPhase.Placement;
     }
 
@@ -394,11 +396,16 @@ public sealed class Run
     public static Run Restore(IReadOnlyList<UnitSpec> roster, int combatNumber, int seed, bool firstRun,
         IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
         int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
-        string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null)
+        string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null,
+        IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
         if (stats != null)
             run.Stats = stats;   // récap repris de la sauvegarde (sinon compteur neuf du constructeur)
+        // Nouveauté IA figée pour la run (null = à recalculer au 1er combat du tier concerné) : la reprise
+        // rejoue ainsi EXACTEMENT la même vague, même après la découverte-à-l'apparition du combat sauvegardé.
+        run._aiFreshT2 = aiFreshTier2?.ToList();
+        run._aiFreshT3 = aiFreshTier3?.ToList();
         run._roster.Clear();
         run._roster.AddRange(roster);
         run.CommanderDef = ResolveCommander(roster, commanderId);
@@ -519,8 +526,8 @@ public sealed class Run
     }
 
     // Chances de rareté à l'ouverture d'un coffre, par PHASE (index 0..2 = phase 1..3), en %. Le reste = commun.
-    private static readonly int[] LegendaryChanceByPhase = { 2, 5, 10 };
-    private static readonly int[] RareChanceByPhase = { 15, 25, 40 };
+    private static readonly int[] LegendaryChanceByPhase = { 5, 10, 15 };
+    private static readonly int[] RareChanceByPhase = { 30, 40, 50 };
     /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de légendaire (cf. <see cref="LegendaryPity"/>).</summary>
     private const int LegendaryPityStep = 2;
     /// <summary>Bonus de « pitié » ajouté par coffre qui ne donne pas de rare (cf. <see cref="RarePity"/>).</summary>
@@ -823,50 +830,75 @@ public sealed class Run
         }
     }
 
-    /// <summary>
-    /// Nombre MINIMAL de classes tier 3 « vues » garanti avant qu'un combat n'en aligne — cf.
-    /// <see cref="SeedTier3Assets"/>.
-    /// </summary>
-    public const int MinSeenTier3 = 3;
+    // ── NOUVEAUTÉ IA (méta-progression des tiers 2-3) ─────────────────────────────────────────────
+    // L'IA ne pioche ses T2/T3 QUE parmi les classes ÉLIGIBLES : celles déjà DÉCOUVERTES + un petit lot de
+    // classes ENCORE INCONNUES (la « nouveauté » de la run). Ce lot est rendu éligible mais N'entre au codex
+    // QUE si un exemplaire est réellement placé sur le plateau (la scène découvre à l'apparition) : une
+    // nouveauté jamais alignée reste inconnue et pourra ressortir plus tard. Il est tiré UNE fois par run, au
+    // 1er combat qui aligne le tier, puis FIGÉ et persisté (<see cref="RunSave"/>) pour que « Continuer »
+    // rejoue la même vague. Taille = max(apport par run, socle − nb déjà découvert), bornée par le stock
+    // inconnu restant :
+    //   • profil vierge → on garantit le socle (2 en T2, 4 en T3) ;
+    //   • ensuite → au moins l'apport de nouveauté par run (1 en T2, 2 en T3), donc du neuf à chaque run.
+    // Comme la découverte-à-l'apparition grossit le set découvert d'une run à l'autre, ce même calcul donne
+    // « au moins 4 T3 à la 1re run, puis +2 par run » sans compteur dédié.
+
+    /// <summary>Apport de nouveauté (classes inconnues rendues éligibles à l'IA) par run, tier 2.</summary>
+    public const int AiFreshTier2PerRun = 1;
+    /// <summary>Socle minimal de classes T2 éligibles à l'IA au 1er combat qui en aligne (profil vierge).</summary>
+    public const int AiMinEligibleTier2 = 2;
+    /// <summary>Apport de nouveauté par run, tier 3 (« débloque 2 T3 possibles » à chaque nouvelle run).</summary>
+    public const int AiFreshTier3PerRun = 2;
+    /// <summary>Socle minimal de classes T3 éligibles à l'IA au 1er combat qui en aligne (au moins 4 à la 1re run).</summary>
+    public const int AiMinEligibleTier3 = 4;
+
+    // Nouveauté tirée pour CETTE run (null = pas encore calculée pour ce tier). Persistée dans RunSave.
+    private List<string>? _aiFreshT2;
+    private List<string>? _aiFreshT3;
+
+    /// <summary>Nouveauté IA tier 2 tirée pour cette run (null si pas encore calculée) — pour la persistance/les tests.</summary>
+    public IReadOnlyList<string>? AiFreshTier2 => _aiFreshT2;
+    /// <summary>Nouveauté IA tier 3 tirée pour cette run (null si pas encore calculée) — pour la persistance/les tests.</summary>
+    public IReadOnlyList<string>? AiFreshTier3 => _aiFreshT3;
 
     /// <summary>
-    /// AMORÇAGE de la méta-progression tier 3, à appeler AVANT de composer la vague.
-    ///
-    /// <see cref="PickEnemy"/> privilégie les classes DÉJÀ DÉCOUVERTES aux tiers 2-3, et ne retombe sur le
-    /// catalogue entier que s'il n'en trouve AUCUNE. Deux cas dégradés en découlent au premier combat qui
-    /// aligne du T3 : profil vierge → les T3 ennemis sortent de n'importe où ; une seule classe T3 connue →
-    /// toute la vague se verrouille dessus. On garantit donc un socle : tant que le joueur connaît moins de
-    /// <see cref="MinSeenTier3"/> classes T3, on en tire AU HASARD de quoi compléter jusqu'à ce seuil et
-    /// l'appelant les marque « vues ». Les vagues piochent ensuite UNIQUEMENT parmi les découvertes — donc
-    /// parmi ces trois-là au minimum.
-    ///
-    /// Ne fait rien tant que le combat courant n'aligne aucun T3 (le socle n'apparaît qu'au moment utile,
-    /// le codex n'est pas divulgâché avant). Les tiers regardés sont ceux de <paramref name="fixedTiers"/>
-    /// s'il est fourni (composition FIXÉE par la map, cf. <see cref="Map.MapData.EnemyTiers"/>), sinon le
-    /// gabarit de <see cref="CampaignPlan"/> — dans les deux cas après <see cref="AdjustTiers"/>, la
-    /// difficulté pouvant promouvoir un pion au tier 3.
-    ///
-    /// Tirage sur TOUS les domaines (pas seulement ceux débloqués) : le T3 n'arrive qu'en phase 3, où le
-    /// pool est complet de toute façon. Déterministe (<see cref="CombatRng"/>). Liste VIDE (rien à écrire)
-    /// dès que le seuil est atteint : l'appel est idempotent.
+    /// Classes du tier données rendues éligibles à l'IA au titre de la NOUVEAUTÉ de la run (cf. section
+    /// ci-dessus). Calculée à la demande (1er combat qui aligne le tier), puis mémorisée et figée. Vide hors T2/T3.
     /// </summary>
-    public IReadOnlyList<string> SeedTier3Assets(Func<string, bool> isSeen, IReadOnlyList<int>? fixedTiers = null)
+    private IReadOnlyList<string> AiFreshFor(int tier, Func<string, bool> isSeen)
     {
-        var template = fixedTiers is { Count: > 0 } ? fixedTiers : CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers;
-        if (!AdjustTiers(template, Difficulty).Contains(MaxTier))
-            return Array.Empty<string>();   // ce combat n'aligne aucun T3 : rien à amorcer
+        if (tier == 2)
+            return _aiFreshT2 ??= RollAiFresh(2, isSeen, AiFreshTier2PerRun, AiMinEligibleTier2);
+        if (tier == 3)
+            return _aiFreshT3 ??= RollAiFresh(3, isSeen, AiFreshTier3PerRun, AiMinEligibleTier3);
+        return Array.Empty<string>();
+    }
 
-        var all = new List<UnitClass>();
+    /// <summary>
+    /// Tire les classes INCONNUES du tier à rendre éligibles à l'IA cette run. Déterministe pour une graine
+    /// donnée (indépendant du numéro de combat : tirage stable quel que soit le combat déclencheur, et
+    /// reproductible entre sessions). Vide si tout le tier est déjà découvert.
+    /// </summary>
+    private List<string> RollAiFresh(int tier, Func<string, bool> isSeen, int perRun, int floor)
+    {
+        var unknown = new List<string>();
+        var discovered = 0;
         foreach (var def in Domaines.All)
-            all.AddRange(ClassesAtTier(def.Id, MaxTier));   // MaxTier == 3 : le tier des feuilles de l'arbre
+            foreach (var cls in ClassesAtTier(def.Id, tier))
+                if (isSeen(cls.Asset)) discovered++;
+                else unknown.Add(cls.Asset);
 
-        var missing = MinSeenTier3 - all.Count(c => isSeen(c.Asset));
-        if (missing <= 0)
-            return Array.Empty<string>();
+        var want = Math.Min(Math.Max(perRun, floor - discovered), unknown.Count);
+        if (want <= 0)
+            return new List<string>();
 
-        var candidates = all.Where(c => !isSeen(c.Asset)).ToList();
-        ShuffleForCombat(candidates, salt: 4);   // sel 4 : ≠ terrain(0), vague(1), placement(2), équipement(3)
-        return candidates.Take(missing).Select(c => c.Asset).ToList();
+        var rng = new Random(unchecked(Seed * 7919 + tier * 2731));
+        for (var i = unknown.Count - 1; i > 0; i--)   // Fisher-Yates déterministe
+        {
+            var j = rng.Next(i + 1);
+            (unknown[i], unknown[j]) = (unknown[j], unknown[i]);
+        }
+        return unknown.Take(want).ToList();
     }
 
     /// <summary>
@@ -875,8 +907,9 @@ public sealed class Run
     /// (<see cref="PhaseIndex"/>, <see cref="MissionInPhase"/>) — TOUJOURS exacts et déterministes. Pour
     /// chaque tier requis : on tire un domaine dans le pool débloqué (<see cref="UnlockedDomaines"/>),
     /// puis une <see cref="UnitClass"/> de CE tier (<see cref="ClassesAtTier"/>). Aux tiers 2-3, si
-    /// <paramref name="isSeen"/> est fourni (méta-progression), on PRIVILÉGIE AU MAXIMUM les unités déjà
-    /// découvertes (cf. <see cref="PickEnemy"/>). Sur une mission boss, le pion <see cref="BossDef"/>
+    /// <paramref name="isSeen"/> est fourni (méta-progression), l'IA ne pioche QUE parmi les classes
+    /// ÉLIGIBLES : découvertes + nouveauté de la run (filtre dur, cf. <see cref="PickEnemy"/> /
+    /// <see cref="AiFreshFor"/>). Sur une mission boss, le pion <see cref="BossDef"/>
     /// est ajouté EN TÊTE. RNG déterministe (<see cref="CombatRng"/>) : « Continuer » rejoue la même vague
     /// tant que la découverte n'a pas changé (l'effectif et les tiers, eux, ne bougent jamais).
     /// </summary>
@@ -1003,29 +1036,33 @@ public sealed class Run
 
     /// <summary>
     /// Tire un ennemi de tier <paramref name="tier"/> parmi le pool débloqué. Aux tiers 2-3 AVEC
-    /// méta-progression (<paramref name="isSeen"/>), on PRIVILÉGIE AU MAXIMUM les classes déjà découvertes.
-    /// Dans tous les cas on ÉVITE AU MAXIMUM les doublons : on tire d'abord parmi les classes (préférées) qui
-    /// n'ont pas encore <see cref="MaxSameUnit"/> exemplaires dans <paramref name="counts"/> ; si TOUTES sont
-    /// saturées (pool trop petit), on autorise un exemplaire de plus (le tirage ne bloque jamais). Renvoie une
-    /// classe du bon tier dans tous les cas (effectif/tiers de la table préservés).
+    /// méta-progression (<paramref name="isSeen"/>), l'IA ne pioche QUE parmi les classes ÉLIGIBLES : déjà
+    /// découvertes OU nouveauté de la run (<see cref="AiFreshFor"/>) — filtre DUR, sans repli sur tout le
+    /// catalogue (garanti non vide par le socle de nouveauté). Au tier 1 (ou sans méta), tout le pool reste
+    /// ouvert. Dans tous les cas on ÉVITE AU MAXIMUM les doublons : on tire d'abord parmi les classes
+    /// (éligibles) qui n'ont pas encore <see cref="MaxSameUnit"/> exemplaires dans <paramref name="counts"/> ;
+    /// si TOUTES sont saturées (pool trop petit), on autorise un exemplaire de plus (le tirage ne bloque
+    /// jamais). Renvoie une classe du bon tier dans tous les cas (effectif/tiers de la table préservés).
     /// </summary>
-    private static UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier,
+    private UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier,
         Func<string, bool>? isSeen, Dictionary<UnitClass, int> counts)
     {
+        var metaTier = tier >= 2 && isSeen != null;
+        var fresh = metaTier ? AiFreshFor(tier, isSeen!) : Array.Empty<string>();
+
         var all = new List<(Domaine Domaine, UnitClass Class)>();
-        var seen = new List<(Domaine Domaine, UnitClass Class)>();
+        var eligible = new List<(Domaine Domaine, UnitClass Class)>();
         foreach (var domaine in pool)
             foreach (var cls in ClassesAtTier(domaine, tier))
             {
                 all.Add((domaine, cls));
-                if (tier >= 2 && isSeen != null && isSeen(cls.Asset))
-                    seen.Add((domaine, cls));
+                if (metaTier && (isSeen!(cls.Asset) || fresh.Contains(cls.Asset)))
+                    eligible.Add((domaine, cls));
             }
 
-        // Sous-ensemble PRÉFÉRÉ : les découverts (méta) s'il y en a, sinon tout. On évite les doublons À
-        // L'INTÉRIEUR de ce sous-ensemble (fallback sur les préférés, jamais sur « tout », pour ne pas casser
-        // la priorité méta ni la contrainte de domaine du 1er combat).
-        var preferred = seen.Count > 0 ? seen : all;
+        // T2/T3 méta : UNIQUEMENT l'éligible (non vide grâce au socle de nouveauté) ; sinon tout. On évite les
+        // doublons À L'INTÉRIEUR de ce sous-ensemble (jamais de repli sur « tout » qui casserait le filtre dur).
+        var preferred = metaTier && eligible.Count > 0 ? eligible : all;
         var notMaxed = preferred.Where(x => counts.GetValueOrDefault(x.Class, 0) < MaxSameUnit).ToList();
         var from = notMaxed.Count > 0 ? notMaxed : preferred;
 
