@@ -81,6 +81,8 @@ internal sealed class MainForm : Form
             _canvas.Brush = _catalog.Tiles[0].Key;
             NewMap(6, 6);
         }
+
+        _status.Text = "Astuce : Alt+clic gauche (ou clic molette) = pipette (prélève la tuile/spawn/objet sous le curseur).";
     }
 
     private string DefaultTileKey => _catalog is { Tiles.Count: > 0 } ? _catalog.Tiles[0].Key : "h";
@@ -89,6 +91,12 @@ internal sealed class MainForm : Form
     private void BuildUi()
     {
         _canvas.MapChanged += (_, _) => MarkDirty();
+        // Pipette : le canvas a prélevé un pinceau dans une case → resync la palette + confirme dans le statut.
+        _canvas.BrushPicked += (_, _) =>
+        {
+            SyncPaletteSelectionToCanvas();
+            _status.Text = $"Pipette : pinceau {CurrentBrushLabel()} prélevé.";
+        };
 
         // Structure en TableLayoutPanel (placement par cellules) : aucune dépendance à l'ordre de
         // docking, donc aucun recouvrement possible entre barre d'outils, panneau gauche et canvas.
@@ -278,12 +286,23 @@ internal sealed class MainForm : Form
         }
         _palette.ResumeLayout();
 
-        // Sélectionne le pinceau courant s'il existe dans la nouvelle palette (tags de pinceau = string ;
-        // les boutons de tier ont un tag char, donc ils ne matchent pas ici).
+        SyncPaletteSelectionToCanvas();
+    }
+
+    /// <summary>
+    /// Aligne la surbrillance de la palette (pinceau + tier + orientation) et l'inspecteur sur l'état COURANT
+    /// du canvas, et fait défiler la palette jusqu'au pinceau sélectionné. Appelé en fin de RebuildPalette ET
+    /// après un prélèvement à la pipette (<see cref="MapCanvas.BrushPicked"/>).
+    /// </summary>
+    private void SyncPaletteSelectionToCanvas()
+    {
+        // Sélectionne le pinceau courant s'il existe dans la palette (tags de pinceau = string ; les boutons
+        // de tier/orientation ont un tag char, donc ils ne matchent pas ici) et le défile à la vue.
         foreach (Control c in _palette.Controls)
             if (c is Button b && b.Tag is string s && s == _canvas.Brush)
             {
                 SelectPaletteButton(b);
+                _palette.ScrollControlIntoView(b);
                 break;
             }
 
@@ -305,6 +324,16 @@ internal sealed class MainForm : Form
 
         // L'inspecteur ne concerne que les tuiles de terrain (blocksMove/blocksFire du catalogue).
         FocusTile(_canvas.Layer == EditLayer.Terrain ? _catalog?.TileForKey(_canvas.Brush) : null);
+    }
+
+    /// <summary>Libellé lisible du pinceau courant pour la barre de statut (id de tuile sur le terrain, sinon la clé).</summary>
+    private string CurrentBrushLabel()
+    {
+        var brush = _canvas.Brush;
+        if (brush == MapCanvas.HandBrush) return "« main »";
+        if (_canvas.Layer == EditLayer.Terrain && _catalog?.TileForKey(brush) is { } t)
+            return $"« {t.Id} » ('{brush}')";
+        return $"'{brush}'";
     }
 
     private Button TilePaletteButton(TileInfo tile)

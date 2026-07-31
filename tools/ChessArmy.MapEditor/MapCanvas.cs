@@ -13,6 +13,8 @@ internal enum EditLayer { Terrain, Spawns, Objects }
 /// Zone de dessin de la map : rend les trois calques (terrain découpé des tilesets, spawns, objets)
 /// et peint la case survolée au clic. Reproduit le recouvrement 64×80 du jeu (les rangées du bas
 /// cachent l'épaisseur des rangées du haut). Clic gauche = pinceau courant, clic droit = efface.
+/// PIPETTE : clic MOLETTE (ou Alt+clic gauche) prélève ce qui est posé sous le curseur dans le calque
+/// actif et en fait le pinceau courant (cf. <see cref="PickCell"/> / <see cref="BrushPicked"/>).
 /// </summary>
 internal sealed class MapCanvas : Panel
 {
@@ -49,6 +51,11 @@ internal sealed class MapCanvas : Panel
     private Point _hover = new(-1, -1);
 
     public event EventHandler? MapChanged;
+
+    /// <summary>Levé après un prélèvement à la pipette : <see cref="Brush"/> (et, sur le calque Spawns,
+    /// <see cref="Tier"/>/<see cref="Facing"/>) viennent d'être remplacés par le contenu d'une case. La vue
+    /// (MainForm) s'y abonne pour resynchroniser la surbrillance de la palette.</summary>
+    public event EventHandler? BrushPicked;
 
     public MapCanvas()
     {
@@ -275,12 +282,23 @@ internal sealed class MapCanvas : Panel
     }
 
     // ---- Souris ----
-    protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); PaintCell(e); }
+    /// <summary>Geste « pipette » : clic MOLETTE, ou Alt maintenu + clic GAUCHE (glisser inclus pour échantillonner).</summary>
+    private static bool IsPickGesture(MouseEventArgs e) =>
+        e.Button == MouseButtons.Middle
+        || (e.Button == MouseButtons.Left && (ModifierKeys & Keys.Alt) == Keys.Alt);
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (IsPickGesture(e)) { PickCell(e); return; }   // pipette : prélève au lieu de peindre
+        PaintCell(e);
+    }
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
         var cell = CellAt(e.Location);
         if (cell != _hover) { _hover = cell; Invalidate(); }
+        if (IsPickGesture(e)) { PickCell(e); return; }   // Alt+glisser / molette-glisser = échantillonnage continu
         if (e.Button is MouseButtons.Left or MouseButtons.Right) PaintCell(e);
     }
     protected override void OnMouseLeave(EventArgs e)
@@ -327,6 +345,43 @@ internal sealed class MapCanvas : Panel
         }
         Invalidate();
         MapChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Pipette : lit ce qui est posé sous le curseur dans le CALQUE ACTIF et en fait le pinceau courant —
+    /// terrain → clé de tuile ; spawns → spawn + son tier (ennemis) + son orientation ; objets → objet.
+    /// Une case VIDE n'est pas prélevée (le pinceau ne change pas). Ne modifie jamais la map (lecture seule) ;
+    /// prévient la vue via <see cref="BrushPicked"/> pour resynchroniser la surbrillance de la palette.
+    /// </summary>
+    private void PickCell(MouseEventArgs e)
+    {
+        if (_doc is null) return;
+        var cell = CellAt(e.Location);
+        if (cell.X < 0 || cell.X >= _doc.Width || cell.Y < 0 || cell.Y >= _doc.Height) return;
+
+        if (Layer == EditLayer.Spawns)
+        {
+            var spawn = _doc.Spawns[cell.Y, cell.X];
+            if (spawn == MapDocument.EmptySpawn) return;   // case sans spawn : rien à prélever
+            Brush = spawn.ToString();
+            if (IsEnemySpawn(spawn) && _doc.Tiers[cell.Y, cell.X] != MapDocument.EmptyTier)
+                Tier = _doc.Tiers[cell.Y, cell.X];          // récupère aussi le tier posé sur cet ennemi
+            if (AcceptsFacing(spawn))
+                Facing = _doc.Facing[cell.Y, cell.X];       // …et son orientation ('.'/v/^)
+        }
+        else if (Layer == EditLayer.Objects)
+        {
+            var obj = _doc.Objects[cell.Y, cell.X];
+            if (obj == MapDocument.EmptyObject) return;     // case sans objet : rien à prélever
+            Brush = obj.ToString();
+        }
+        else   // Terrain
+        {
+            var key = _doc.Tiles[cell.Y, cell.X];
+            if (string.IsNullOrWhiteSpace(key)) return;     // case sans tuile : rien à prélever
+            Brush = key;
+        }
+        BrushPicked?.Invoke(this, EventArgs.Empty);
     }
 
     private Point CellAt(Point mouse)

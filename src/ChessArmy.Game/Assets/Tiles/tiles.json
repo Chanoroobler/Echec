@@ -22,6 +22,11 @@
       "file": "tileEscalier.png",
       "cellW": 64,
       "cellH": 80
+    },
+    "eaux2": {
+      "file": "tiles_addon_water.png",
+      "cellW": 64,
+      "cellH": 80
     }
   },
   "tiles": [
@@ -1067,6 +1072,61 @@
       "sheet": "escalier",
       "col": 5,
       "row": 4
+    },
+    {
+      "_comment": "--- Tileset 'eaux2' (tiles_addon_water.png), grille 3x2 : complement du tileset 'eaux' (mares a berges rocheuses + amas de rochers). Cles 2-car (prefixe '_') a la suite d'escalier : _4.._9. Defaut EAU = blocksMove=true, blocksFire=false ; eau2_00 (amas de rochers) = tout bloquant. Ajuster par tuile dans l'editeur. ---",
+      "id": "eau2_00",
+      "key": "_4",
+      "blocksMove": true,
+      "blocksFire": true,
+      "sheet": "eaux2",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "eau2_10",
+      "key": "_5",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux2",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "eau2_20",
+      "key": "_6",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux2",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "eau2_01",
+      "key": "_7",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux2",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "eau2_11",
+      "key": "_8",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux2",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "eau2_21",
+      "key": "_9",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux2",
+      "col": 2,
+      "row": 1
     }
   ]
 }

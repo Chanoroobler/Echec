@@ -7,14 +7,14 @@
   "width": 8,
   "height": 8,
   "tiles": [
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh",
-    "hhhhhhhh"
+    "h8h8hh8h",
+    "4z40hh8h",
+    "hhhhhh94",
+    "&@hhhphh",
+    "7(_6hh644",
+    "9447h8hh",
+    "hhhv40hh",
+    "hhh8hhhh"
   ],
   "spawns": [
     "OOOOOOOO",
@@ -38,11 +38,11 @@
   ],
   "objects": [
     "........",
+    "..B.....",
     "........",
-    "........",
-    "..R....R",
+    "..R...CR",
     "R..R.R..",
-    "........",
+    "......B.",
     "........",
     "........"
   ]
