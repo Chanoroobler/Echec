@@ -298,11 +298,9 @@ public sealed class GameplayScene : Scene
     // Particules poolées : ne servent plus que pour le feu d'artifice d'extinction des chiffres de dégâts.
     private readonly SparkBurst _sparks = new();
 
-    // « Séisme » : secousse de plateau (tremblement de terre) INDÉPENDANTE des FX d'attaque (cf. ShakeBoard),
-    // déclenchée à la fin du tour ennemi. Compte à rebours en secondes ; l'amplitude décroît avec lui.
-    private float _seismeShake;
-    private const float SeismeShakeDuration = 0.45f;
-    private const float SeismeShakeMagnitude = 5f;
+    // Tremblement vertical LOCAL des tuiles de l'AoE (« Séisme » à la fin du tour ennemi, « Impact » à
+    // l'action d'un porteur) : les cases frappées tressautent de haut en bas (cf. TileTremor / DrawTerrain).
+    private readonly TileTremor _tremor = new();
     // Garde-fou « impact traité une seule fois par coup » (spawn du chiffre de dégâts au contact).
     private bool _impactHandled;
     // Chiffres de dégâts flottants (jaillis à l'impact, puis éclatent) + dégâts du coup en attente.
@@ -318,6 +316,7 @@ public sealed class GameplayScene : Scene
     // Impact / Recule (traits d'action) : chiffres de dégâts figés APRÈS l'attaque, déclenchés à l'impact
     // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
+    private List<Cell>? _pendingImpactZone;                     // zone AoE de l'« Impact » à l'attaque (tremblement des tuiles), reportée à l'impact
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
     // « Recule » qui a GLISSÉ (pas plaqué) : la victime a changé de case dans le moteur ; on l'anime en la
     // faisant glisser de sa case d'origine (From) vers sa case d'arrivée (To) pendant l'anim d'attaque.
@@ -357,8 +356,9 @@ public sealed class GameplayScene : Scene
     private readonly Dictionary<Unit, bool> _facesDown = new();
 
     // Orientation par DÉFAUT imposée à un ENNEMI par la case de spawn où il est apparu (calque `facing` de la
-    // map, cf. MapData.EnemyFacing) : true = vers le bas, false = vers le haut. Capturée au spawn car l'ennemi
+    // map, cf. MapData.ForcedFacing) : true = vers le bas, false = vers le haut. Capturée au spawn car l'ennemi
     // se déplace ensuite ; sert de défaut à DefaultFacesDown jusqu'à sa première action (comme _facesDown).
+    // (Les pions JOUEUR lisent leur orientation forcée sur la case courante ; cf. DefaultFacesDown.)
     private readonly Dictionary<Unit, bool> _enemyForcedFacing = new();
 
     // Lien unité déployée → gabarit d'inventaire, pour calculer les pertes après combat.
@@ -1098,9 +1098,11 @@ public sealed class GameplayScene : Scene
         _dragFrom = null;
         _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
         _storm.Clear();
+        _tremor.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
         _pendingImpactHits = null;
+        _pendingImpactZone = null;
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
@@ -1233,9 +1235,11 @@ public sealed class GameplayScene : Scene
         _dragFrom = null;
         _damagePopups.Clear();
         _storm.Clear();
+        _tremor.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
         _pendingImpactHits = null;
+        _pendingImpactZone = null;
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
@@ -1792,7 +1796,7 @@ public sealed class GameplayScene : Scene
         unit.AiKind = ai;
         _match.Place(cell, unit);
         _enemySpec[unit] = spec;   // pour retrouver le gabarit à la mort (recrutement)
-        if (_map is { } m && m.EnemyFacing.TryGetValue(cell, out var forced))
+        if (_map is { } m && m.ForcedFacing.TryGetValue(cell, out var forced))
             _enemyForcedFacing[unit] = forced;   // orientation par défaut imposée par la case de spawn (calque `facing`)
     }
 
@@ -3512,8 +3516,7 @@ public sealed class GameplayScene : Scene
         }
 
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
-        if (_seismeShake > 0f)     // la secousse de séisme s'éteint (cf. ShakeBoard / SeismeShakeOffset)
-            _seismeShake = System.Math.Max(0f, _seismeShake - dt);
+        _tremor.Update(dt);        // les tuiles de l'AoE (Séisme/Impact) finissent de trembler (cf. DrawTerrain)
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point de commandement sur un coup reçu
@@ -4723,15 +4726,16 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// « Séisme » : à la FIN du tour ennemi, chaque pion JOUEUR portant le trait frappe les ennemis adjacents
-    /// pour sa puissance (cf. <see cref="Match.ApplySeismes"/>). Feedback : un chiffre de dégâts par cible
-    /// touchée + le son de décharge (partagé avec l'orage). Les dégâts/kills sont déjà appliqués côté moteur.
+    /// pour sa puissance (cf. <see cref="Match.ApplySeismes"/>). Feedback : les tuiles de l'AoE tremblent de
+    /// haut en bas (cf. TileTremor) + poussière + un chiffre de dégâts par cible + le son « seisme ». Les
+    /// dégâts/kills sont déjà appliqués côté moteur.
     /// </summary>
     private void TriggerSeismes()
     {
         var hits = _match.ApplySeismes(Faction.Player);
         if (hits.Count == 0)
             return;
-        _seismeShake = SeismeShakeDuration;                 // tremblement de terre : le plateau tressaute
+        _tremor.Shake(_match.LastSeismeZone);               // les tuiles de l'AoE tressautent de haut en bas
         var layout = BuildLayout();
         var tile = layout.TileSize;
         var pixel = MathF.Max(2f, tile / 32f);
@@ -5307,7 +5311,19 @@ public sealed class GameplayScene : Scene
         var kind = _match.TryMove(from, to);
         foreach (var (cell, dmg) in _match.LastImpactHits)
             _damagePopups.Spawn(cell, dmg);
+        if (_match.LastImpactHits.Count > 0)   // l'« Impact » a frappé : tuiles de l'AoE + son (instantané sur un déplacement)
+            ShakeAoeZone(_match.LastImpactZone);
         return kind;
+    }
+
+    /// <summary>Feedback de l'« Impact » (déplacement comme attaque) : fait trembler les tuiles de l'AoE de
+    /// haut en bas + joue le son lourd (le même que le « Séisme »). Sans effet si la zone est vide.</summary>
+    private void ShakeAoeZone(IReadOnlyList<Cell> zone)
+    {
+        if (zone.Count == 0)
+            return;
+        _tremor.Shake(zone);
+        Context.Sounds.Play("seisme");
     }
 
     /// <summary>
@@ -5379,6 +5395,10 @@ public sealed class GameplayScene : Scene
         // Impact / Recule : chiffres reportés à l'impact (copie : la liste du moteur est réécrite à l'action suivante).
         _pendingImpactHits = _match.LastImpactHits.Count > 0
             ? new List<(Cell, int)>(_match.LastImpactHits)
+            : null;
+        // Zone AoE reportée : les tuiles ne tremblent qu'au CONTACT (avec les chiffres), seulement si l'Impact a frappé.
+        _pendingImpactZone = _pendingImpactHits != null
+            ? new List<Cell>(_match.LastImpactZone)
             : null;
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
         // Glissement du recul : la victime a réellement changé de case (To != cible) → on l'anime en glissant.
@@ -6174,7 +6194,7 @@ public sealed class GameplayScene : Scene
             var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
             var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
             var (oy, a) = BoardIntroAnim(cell, layout);
-            rect.Y += oy;
+            rect.Y += oy + _tremor.OffsetY(cell);   // secousse locale de l'AoE (Séisme/Impact)
             sb.Draw(tex, rect, src, Color.White * a);
         }
     }
@@ -6954,29 +6974,17 @@ public sealed class GameplayScene : Scene
 
     // ── Effets de combat (estafilade / dissolution / flash) ───────────────────────
 
-    /// <summary>Renvoie le layout décalé de la secousse d'écran si une attaque s'anime, sinon tel quel.</summary>
+    /// <summary>Renvoie le layout décalé de la secousse d'écran d'une attaque qui s'anime, sinon tel quel.
+    /// (Le « Séisme » ne secoue plus l'écran : il fait trembler LOCALEMENT les tuiles de l'AoE, cf. TileTremor.)</summary>
     private GridLayout ShakeBoard(GridLayout layout)
     {
-        // Priorité au FX d'attaque en cours ; sinon, la secousse de « Séisme » (tremblement de terre).
-        var s = _fx.Active ? _fx.ShakeOffset(_fx.Killed ? 4f : 2f)   // secousse plus marquée sur un kill
-              : SeismeShakeOffset();
+        if (!_fx.Active)
+            return layout;
+        var s = _fx.ShakeOffset(_fx.Killed ? 4f : 2f);   // secousse plus marquée sur un kill
         if (s == Point.Zero)
             return layout;
         return new GridLayout(layout.Origin + new Vector2(s.X, s.Y),
             layout.TileSize, layout.SpriteWidth, layout.SpriteHeight, layout.RowPitch);
-    }
-
-    /// <summary>Décalage de la secousse « Séisme » (px entiers), sinusoïde décroissante — comme les FX d'attaque.</summary>
-    private Point SeismeShakeOffset()
-    {
-        if (_seismeShake <= 0f)
-            return Point.Zero;
-        var elapsed = SeismeShakeDuration - _seismeShake;
-        var decay = _seismeShake / SeismeShakeDuration;
-        var phase = elapsed * 90f;
-        var x = MathF.Sin(phase) * SeismeShakeMagnitude * decay;
-        var y = MathF.Sin(phase * 1.7f + 1.1f) * SeismeShakeMagnitude * decay;
-        return new Point((int)MathF.Round(x), (int)MathF.Round(y));
     }
 
     /// <summary>
@@ -7246,12 +7254,15 @@ public sealed class GameplayScene : Scene
             _pendingStormHits = null;
         }
 
-        // Impact (trait) : chiffres sur les ennemis frappés autour du porteur, au contact de l'attaque.
+        // Impact (trait) : chiffres sur les ennemis frappés + tremblement des tuiles de l'AoE + son, au contact de l'attaque.
         if (_pendingImpactHits != null)
         {
             foreach (var (cell, dmg) in _pendingImpactHits)
                 _damagePopups.Spawn(cell, dmg);
+            if (_pendingImpactZone != null)
+                ShakeAoeZone(_pendingImpactZone);
             _pendingImpactHits = null;
+            _pendingImpactZone = null;
         }
 
         // Recule (trait) : chiffre du dégât BONUS de plaquage sur la cible restée collée à l'obstacle.
@@ -11201,10 +11212,15 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool DefaultFacesDown(Unit unit)
     {
-        // La map peut FIXER l'orientation par défaut d'un ENNEMI, PAR CASE de spawn (calque `facing`, capté au
-        // spawn dans _enemyForcedFacing), quel que soit l'endroit du plateau. Sinon, règle positionnelle habituelle.
+        // La map peut FIXER l'orientation par défaut, PAR CASE de spawn (calque `facing`), quel que soit l'endroit
+        // du plateau. ENNEMI : capté au spawn (_enemyForcedFacing), conservé même s'il se déplace ensuite. JOUEUR :
+        // lu sur la case COURANTE (les pions joueurs sont ré-instanciés en Placement/Équipement, donc un cache
+        // par-Unit serait perdu). Dans les deux cas, la règle ne vaut qu'AVANT la 1re action (ensuite _facesDown).
         if (unit.Faction == Faction.Enemy && _enemyForcedFacing.TryGetValue(unit, out var forced))
             return forced;
+        if (unit.Faction == Faction.Player && _map is { } fm && _match.CellOf(unit) is { } pc
+            && fm.ForcedFacing.TryGetValue(pc, out var playerForced))
+            return playerForced;
         return _match.CellOf(unit) is { } c ? c.Row < Rows / 2 : unit.Faction == Faction.Enemy;
     }
 

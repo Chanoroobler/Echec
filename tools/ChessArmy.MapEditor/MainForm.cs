@@ -260,9 +260,9 @@ internal sealed class MainForm : Form
                 AddTierButton('1', Color.FromArgb(90, 200, 120));
                 AddTierButton('2', Color.FromArgb(235, 205, 90));
                 AddTierButton('3', Color.FromArgb(230, 110, 90));
-                // Orientation posée AVEC les ennemis (E/D/O) — calque facing (cf. Core MapData.EnemyFacing).
-                // « Auto » = pas d'override (le jeu décide selon la moitié du plateau).
-                _palette.Controls.Add(Label("Sens ennemi :"));
+                // Orientation posée AVEC les spawns joueur (P) et ennemis (E/D/O) — calque facing (cf. Core
+                // MapData.ForcedFacing). « Auto » = pas d'override (le jeu décide selon la moitié du plateau).
+                _palette.Controls.Add(Label("Orientation :"));
                 AddFacingButton(MapDocument.EmptyFacing, "Auto", Color.FromArgb(120, 122, 130));
                 AddFacingButton('v', "Bas", Color.FromArgb(80, 170, 235));
                 AddFacingButton('^', "Haut", Color.FromArgb(235, 150, 70));
@@ -431,7 +431,7 @@ internal sealed class MainForm : Form
         btn.FlatAppearance.BorderSize = 3;
     }
 
-    /// <summary>Bouton d'ORIENTATION (Auto/Bas/Haut) posé avec les spawns ennemis (E/D/O). Sélection indépendante du pinceau.</summary>
+    /// <summary>Bouton d'ORIENTATION (Auto/Bas/Haut) posé avec les spawns joueur (P) et ennemis (E/D/O). Sélection indépendante du pinceau.</summary>
     private void AddFacingButton(char facing, string label, Color color)
     {
         var sens = facing == 'v' ? "vers le bas (face caméra)"
@@ -444,7 +444,7 @@ internal sealed class MainForm : Form
             Text = facing == 'v' ? "▼" : facing == '^' ? "▲" : "—", TextAlign = ContentAlignment.MiddleCenter,
         };
         btn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
-        _tips.SetToolTip(btn, $"Sens « {label} » : les ennemis (E/D/O) peints regardent {sens}.");
+        _tips.SetToolTip(btn, $"Sens « {label} » : les spawns joueur (P) et ennemis (E/D/O) peints regardent {sens}.");
         btn.Click += (_, _) => { _canvas.Facing = facing; SelectFacingButton(btn); };
         _palette.Controls.Add(btn);
     }

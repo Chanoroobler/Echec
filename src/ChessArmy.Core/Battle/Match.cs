@@ -35,6 +35,8 @@ public sealed class Match
     // Résultats de la DERNIÈRE action (déplacement/attaque) du porteur, pour le feedback de la scène.
     // Réinitialisés au début de chaque TryMove/TryAttack ; restent vides/null si le trait est absent.
     private readonly List<(Cell Cell, int Damage)> _impactHits = new();   // « Impact » : ennemis touchés autour du porteur
+    private readonly List<Cell> _impactZone = new();                      // « Impact » : les 8 cases de l'AoE (touchées ou non) pour le tremblement des tuiles
+    private readonly List<Cell> _seismeZone = new();                      // « Séisme » : union des voisinages 3×3 des porteurs, pour le tremblement des tuiles
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
 
@@ -482,6 +484,14 @@ public sealed class Match
     /// <summary>Ennemis touchés par l'« Impact » de la DERNIÈRE action (case + dégâts réels) — vide sinon. Pour le feedback.</summary>
     public IReadOnlyList<(Cell Cell, int Damage)> LastImpactHits => _impactHits;
 
+    /// <summary>Les 8 cases voisines frappées par l'« Impact » de la DERNIÈRE action (qu'un ennemi y fût ou non ;
+    /// cases hors plateau incluses, ignorées au rendu). Vide sinon. Pour le tremblement des tuiles de l'AoE.</summary>
+    public IReadOnlyList<Cell> LastImpactZone => _impactZone;
+
+    /// <summary>Union des voisinages 3×3 des porteurs de « Séisme » lors du DERNIER <see cref="ApplySeismes"/>
+    /// (cases hors plateau incluses, ignorées au rendu). Pour le tremblement des tuiles de l'AoE.</summary>
+    public IReadOnlyList<Cell> LastSeismeZone => _seismeZone;
+
     /// <summary>Résultat du « Recule » de la DERNIÈRE attaque : case d'arrivée de la cible + dégât de plaquage
     /// (0 si elle a glissé librement) ; <c>null</c> si aucun recul n'a eu lieu. Pour le feedback.</summary>
     public (Cell To, int SlamDamage)? LastRecule => _lastRecule;
@@ -637,6 +647,7 @@ public sealed class Match
     /// </summary>
     public IReadOnlyList<(Cell Cell, int Damage)> ApplySeismes(Faction actor)
     {
+        _seismeZone.Clear();
         var hits = new List<(Cell, int)>();
         if (IsOver)
             return hits;
@@ -645,6 +656,11 @@ public sealed class Match
         var casterCells = Units()
             .Where(cu => cu.Unit.Faction == actor && cu.Unit.HasTrait(Trait.Seisme))
             .Select(cu => cu.Cell).ToList();
+
+        // Zone de tremblement : les 8 voisines de chaque porteur (feedback), indépendamment des cibles réelles.
+        foreach (var casterCell in casterCells)
+            foreach (var (dc, dr) in Neighbors8)
+                _seismeZone.Add(new Cell(casterCell.Column + dc, casterCell.Row + dr));
 
         foreach (var casterCell in casterCells)
         {
@@ -719,6 +735,7 @@ public sealed class Match
     private void ResetActionFx()
     {
         _impactHits.Clear();
+        _impactZone.Clear();
         _lastRecule = null;
         _lastRiposte = null;
     }
@@ -735,6 +752,7 @@ public sealed class Match
         foreach (var (dc, dr) in Neighbors8)
         {
             var c = new Cell(center.Column + dc, center.Row + dr);
+            _impactZone.Add(c);   // toute la zone AoE tremble au feedback, même les cases sans cible
             if (UnitAt(c) is not { } victim || victim.Faction == unit.Faction)
                 continue;
             var before = victim.Hp;

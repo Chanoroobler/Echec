@@ -43,8 +43,8 @@ internal sealed class MapDocument
     /// de la map — fixe la composition des vagues spéciale/boss (cf. Core MapData.EnemyTiers).</summary>
     public char[,] Tiers { get; private set; }
 
-    /// <summary>Orientation par case de spawn ENNEMI : <c>'v'</c> = vers le bas, <c>'^'</c> = vers le haut,
-    /// <see cref="EmptyFacing"/> = auto. Calque « facing » de la map (cf. Core MapData.EnemyFacing).</summary>
+    /// <summary>Orientation par case de spawn JOUEUR (P) ou ENNEMI (E/D/O) : <c>'v'</c> = vers le bas, <c>'^'</c>
+    /// = vers le haut, <see cref="EmptyFacing"/> = auto. Calque « facing » de la map (cf. Core MapData.ForcedFacing).</summary>
     public char[,] Facing { get; private set; }
 
     public string? FilePath { get; set; }

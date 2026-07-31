@@ -521,7 +521,7 @@ tree.lan_logi_fusion.desc,chaque fusion recrute en plus un lancier.,each fusion 
 tree.lan_logi_deploy_2,RENFORTS,REINFORCEMENTS
 tree.lan_logi_deploy_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
 tree.lan_logi_reserve_1,INTENDANCE,QUARTERMASTER
-tree.lan_logi_reserve_1.desc,+4 places en réserve.,+4 reserve slots.
+tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
 tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE
 tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
 tree.lan_logi_reserve_2,AMALGAME,AMALGAM

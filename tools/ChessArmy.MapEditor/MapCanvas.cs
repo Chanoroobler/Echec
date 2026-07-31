@@ -43,6 +43,8 @@ internal sealed class MapCanvas : Panel
     public char Facing { get; set; } = MapDocument.EmptyFacing;
 
     private static bool IsEnemySpawn(char c) => c is 'E' or 'D' or 'O';
+    /// <summary>Spawns qui portent une ORIENTATION forcée (calque facing) : joueur (P) et ennemis (E/D/O), pas le boss.</summary>
+    private static bool AcceptsFacing(char c) => c == 'P' || IsEnemySpawn(c);
 
     private Point _hover = new(-1, -1);
 
@@ -237,8 +239,8 @@ internal sealed class MapCanvas : Panel
         DrawCentered(g, ch.ToString(), bx, by, badge, badge, badge * 0.62f);
     }
 
-    /// <summary>Badge d'ORIENTATION en BAS-GAUCHE d'une case de spawn ennemi : ▼ = regarde vers le bas
-    /// (bleu), ▲ = vers le haut (orange). Grisé si le calque Spawns n'est pas actif.</summary>
+    /// <summary>Badge d'ORIENTATION en BAS-GAUCHE d'une case de spawn (joueur ou ennemi) : ▼ = regarde vers le
+    /// bas (bleu), ▲ = vers le haut (orange). Grisé si le calque Spawns n'est pas actif.</summary>
     private void DrawFacing(Graphics g, float x, float y, float s, char ch, bool active)
     {
         var (glyph, col) = ch == 'v'
@@ -296,15 +298,16 @@ internal sealed class MapCanvas : Panel
 
         bool erase = e.Button == MouseButtons.Right;
 
-        // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier ET l'orientation courants (calques tiers
-        // et facing) ; poser joueur/boss ou effacer les efface. Répercuté même si le spawn ne change pas, pour
-        // permettre de ne changer QUE le tier ou l'orientation (re-cliquer un ennemi après avoir changé la sélection).
+        // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier courant ; peindre un joueur (P) ou un
+        // ennemi pose AUSSI l'orientation courante (calque facing) ; poser un boss ou effacer les efface.
+        // Répercuté même si le spawn ne change pas, pour permettre de ne changer QUE le tier ou l'orientation
+        // (re-cliquer un spawn après avoir changé la sélection).
         if (Layer == EditLayer.Spawns)
         {
             // Pinceau spawn = 1 caractère (P/E/D/O/B) ; le mode main est déjà écarté ci-dessus.
             var spawn = erase ? MapDocument.EmptySpawn : Brush[0];
             var tier = IsEnemySpawn(spawn) ? Tier : MapDocument.EmptyTier;
-            var facing = IsEnemySpawn(spawn) ? Facing : MapDocument.EmptyFacing;
+            var facing = AcceptsFacing(spawn) ? Facing : MapDocument.EmptyFacing;
             if (_doc.Spawns[cell.Y, cell.X] == spawn && _doc.Tiers[cell.Y, cell.X] == tier
                 && _doc.Facing[cell.Y, cell.X] == facing) return;
             _doc.Spawns[cell.Y, cell.X] = spawn;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace ChessArmy.Core.Map;
@@ -118,18 +119,18 @@ public static class MapLoader
             }
         }
 
-        // Calque `facing` (optionnel) : orientation par DÉFAUT imposée PAR CASE de spawn ennemi — 'v' = regarde
-        // vers le bas (face caméra), '^' = vers le haut, '.'/' ' = auto (règle par moitié de plateau). Une case
-        // absente du dictionnaire = aucun override (cf. MapData.EnemyFacing).
-        var enemyFacing = new Dictionary<Cell, bool>();
+        // Calque `facing` (optionnel) : orientation par DÉFAUT imposée PAR CASE de spawn JOUEUR (P) ou ENNEMI
+        // (E/D/O) — 'v' = regarde vers le bas (face caméra), '^' = vers le haut, '.'/' ' = auto (règle par moitié
+        // de plateau). Une case absente du dictionnaire = aucun override (cf. MapData.ForcedFacing).
+        var forcedFacing = new Dictionary<Cell, bool>();
         if (dto.Facing is not null)
         {
             RequireGrid(dto.Facing, width, height, "facing");
-            foreach (var cell in enemy)
+            foreach (var cell in player.Concat(enemy))
             {
                 var ch = dto.Facing[cell.Row][cell.Column];
-                if (ch == 'v') enemyFacing[cell] = true;
-                else if (ch == '^') enemyFacing[cell] = false;
+                if (ch == 'v') forcedFacing[cell] = true;
+                else if (ch == '^') forcedFacing[cell] = false;
                 else if (ch is not ('.' or ' '))
                     throw new FormatException(
                         $"Caractère d'orientation '{ch}' invalide en ({cell.Column},{cell.Row}). Attendu 'v', '^' ou '.'.");
@@ -163,7 +164,7 @@ public static class MapLoader
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, enemyFacing);
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, forcedFacing);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)

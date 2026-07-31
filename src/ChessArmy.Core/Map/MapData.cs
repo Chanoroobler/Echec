@@ -15,7 +15,7 @@ public sealed class MapData
         IReadOnlyList<MapObject>? objects = null, IReadOnlyList<Cell>? defensiveEnemySpawns = null,
         SpecialObjective objective = SpecialObjective.Aucun, int phase = 0, int turnLimit = 0,
         IReadOnlyList<Cell>? offensiveEnemySpawns = null, IReadOnlyList<int>? enemyTiers = null,
-        IReadOnlyDictionary<Cell, bool>? enemyFacing = null)
+        IReadOnlyDictionary<Cell, bool>? forcedFacing = null)
     {
         Name = name;
         Type = type;
@@ -32,7 +32,7 @@ public sealed class MapData
         Phase = phase;
         TurnLimit = turnLimit;
         EnemyTiers = enemyTiers ?? System.Array.Empty<int>();
-        EnemyFacing = enemyFacing ?? EmptyFacing;
+        ForcedFacing = forcedFacing ?? EmptyFacing;
     }
 
     private static readonly IReadOnlyDictionary<Cell, bool> EmptyFacing = new Dictionary<Cell, bool>();
@@ -93,12 +93,12 @@ public sealed class MapData
     public IReadOnlyList<MapObject> Objects { get; }
 
     /// <summary>
-    /// Orientation par DÉFAUT imposée PAR CASE de spawn ENNEMI (calque <c>facing</c>) : <c>true</c> = le pion
-    /// qui y apparaît regarde vers le bas (face caméra), <c>false</c> = vers le haut. Une case ABSENTE du
-    /// dictionnaire = aucun override (le jeu décide selon la moitié du plateau). Ne s'applique qu'AVANT la
-    /// première action du pion (ensuite l'orientation suit le déplacement).
+    /// Orientation par DÉFAUT imposée PAR CASE de spawn (calque <c>facing</c>), pour les cases JOUEUR comme
+    /// ENNEMI : <c>true</c> = le pion qui y apparaît regarde vers le bas (face caméra), <c>false</c> = vers le
+    /// haut. Une case ABSENTE du dictionnaire = aucun override (le jeu décide selon la moitié du plateau). Ne
+    /// s'applique qu'AVANT la première action du pion (ensuite l'orientation suit le déplacement).
     /// </summary>
-    public IReadOnlyDictionary<Cell, bool> EnemyFacing { get; }
+    public IReadOnlyDictionary<Cell, bool> ForcedFacing { get; }
 
     /// <summary>Tuile à une case (origine en haut à gauche, comme <see cref="Battlefield"/>).</summary>
     public TileDef TileAt(Cell cell) => _tiles[cell.Column, cell.Row];

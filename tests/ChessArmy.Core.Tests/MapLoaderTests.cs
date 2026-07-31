@@ -197,23 +197,36 @@ public class MapLoaderTests
     }
 
     [Fact]
-    public void Parse_ReadsEnemyFacingLayer()
+    public void Parse_ReadsForcedFacingLayer()
     {
         // 'v' = regarde vers le bas (true), '^' = vers le haut (false) ; PAR CASE de spawn ennemi.
         var json = Map2x2.Replace("\"spawns\": [ \"E.\", \".P\" ]",
             "\"spawns\": [ \"EE\", \".P\" ], \"facing\": [ \"v^\", \"..\" ]");
         var map = MapLoader.Parse(json, Catalog());
 
-        Assert.True(map.EnemyFacing[new Cell(0, 0)]);    // 'v' → bas
-        Assert.False(map.EnemyFacing[new Cell(1, 0)]);   // '^' → haut
-        Assert.Equal(2, map.EnemyFacing.Count);
+        Assert.True(map.ForcedFacing[new Cell(0, 0)]);    // 'v' → bas
+        Assert.False(map.ForcedFacing[new Cell(1, 0)]);   // '^' → haut
+        Assert.Equal(2, map.ForcedFacing.Count);
+    }
+
+    [Fact]
+    public void Parse_ReadsForcedFacingOnPlayerCell()
+    {
+        // Le calque facing s'applique aussi aux cases JOUEUR (P) : ici P en (1,1) forcé vers le bas.
+        var json = Map2x2.Replace("\"spawns\": [ \"E.\", \".P\" ]",
+            "\"spawns\": [ \"E.\", \".P\" ], \"facing\": [ \"^.\", \".v\" ]");
+        var map = MapLoader.Parse(json, Catalog());
+
+        Assert.False(map.ForcedFacing[new Cell(0, 0)]);   // ennemi '^' → haut
+        Assert.True(map.ForcedFacing[new Cell(1, 1)]);    // joueur 'v' → bas
+        Assert.Equal(2, map.ForcedFacing.Count);
     }
 
     [Fact]
     public void Parse_NoFacingLayer_EmptyFacing()
     {
         var map = MapLoader.Parse(Map2x2, Catalog());
-        Assert.Empty(map.EnemyFacing);
+        Assert.Empty(map.ForcedFacing);
     }
 
     [Fact]
