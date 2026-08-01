@@ -333,7 +333,7 @@ kw.soin.label,SOIN,HEAL
 kw.soin.desc,SOIGNE L'ALLIÉ CIBLE DE LA MOITIÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR HALF ITS POWER
 kw.franchissement.label,FRANCHISSEMENT,VAULTING
 kw.franchissement.desc,SE DÉPLACE EN IGNORANT LES UNITÉS ET LES OBSTACLES SUR SON CHEMIN,MOVES IGNORING UNITS AND TERRAIN OBSTACLES IN ITS PATH
-kw.transpercement.label,TRANSPERCEMENT,PIERCING
+kw.transpercement.label,TRANSPERCER,PIERCING
 kw.transpercement.desc,TRAVERSE LA CIBLE ET TOUCHE L'UNITÉ JUSTE DERRIÈRE,PIERCES THE TARGET AND HITS THE UNIT JUST BEHIND
 kw.interception.label,INTERCEPTION,INTERCEPT
 kw.interception.desc,UN ENNEMI QUI ENTRE DANS LA ZONE D'ATTAQUE SUBIT UNE ATTAQUE D'OPPORTUNITÉ,AN ENEMY ENTERING THE ATTACK ZONE SUFFERS AN OPPORTUNITY ATTACK
@@ -345,8 +345,10 @@ kw.riposte.label,RIPOSTE,RIPOSTE
 kw.riposte.desc,CONTRE-ATTAQUE SI ELLE SURVIT ET PEUT ATTEINDRE L'ASSAILLANT,COUNTERS IF IT SURVIVES AND CAN REACH THE ATTACKER
 kw.duelliste.label,DUELLISTE,DUELIST
 kw.duelliste.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES AU CORPS À CORPS,REDUCES BY 4 DAMAGE FROM MELEE ATTACKS
+kw.berserk.label,BERSERK,BERSERK
+kw.berserk.desc,GAGNE +1 PUISSANCE PAR ENNEMI TUÉ SUR LA PARTIE,GAINS +1 POWER PER ENEMY KILLED THIS RUN
 kw.rage.label,RAGE,RAGE
-kw.rage.desc,GAGNE +1 PUISSANCE PAR ENNEMI TUÉ SUR LA PARTIE,GAINS +1 POWER PER ENEMY KILLED THIS RUN
+kw.rage.desc,GAGNE +7 PUISSANCE À LA PREMIÈRE MORT D'UN ALLIÉ (UNE FOIS PAR COMBAT),GAINS +7 POWER ON THE FIRST ALLY DEATH (ONCE PER COMBAT)
 kw.soin_parfait.label,SOIN PARFAIT,PERFECT HEAL
 kw.soin_parfait.desc,SOIGNE L'ALLIÉ CIBLE DE LA TOTALITÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR ITS FULL POWER
 kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLIES
@@ -360,7 +362,7 @@ kw.balistique.desc,TIR INDIRECT IGNORE LES OBSTACLES SUR LA LIGNE DE TIR,INDIREC
 kw.vol.label,VOL,FLIGHT
 kw.vol.desc,SE DÉPLACE EN IGNORANT LES OBSTACLES DE TERRAIN,MOVES IGNORING TERRAIN OBSTACLES
 kw.formation.label,FORMATION,FORMATION
-kw.formation.desc,AUGMENTE LA PUISSANCE DE 2 PAR ALLIÉ ADJACENT,INCREASES POWER BY 2 PER ADJACENT ALLY
+kw.formation.desc,AUGMENTE LA PUISSANCE DE {0} PAR ALLIÉ ADJACENT,INCREASES POWER BY {0} PER ADJACENT ALLY
 kw.esquive.label,ESQUIVE,DODGE
 kw.esquive.desc,{0} POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE,{0} PERCENT CHANCE TO DODGE AN ATTACK
 kw.orage.label,ORAGE,STORM
@@ -376,14 +378,18 @@ kw.seisme.desc,À LA FIN DU TOUR ENNEMI FRAPPE LES ENNEMIS ADJACENTS POUR SA PUI
 kw.impact.label,IMPACT,IMPACT
 kw.impact.desc,INFLIGE 5 DÉGÂTS AUTOUR DE LUI QUAND IL SE DÉPLACE OU ATTAQUE,DEALS 5 DAMAGE AROUND ITSELF WHEN IT MOVES OR ATTACKS
 kw.recule.label,RECULE,KNOCKBACK
-kw.recule.desc,REPOUSSE LA CIBLE D'UNE CASE ET INFLIGE +5 DÉGÂTS CONTRE UN OBSTACLE,PUSHES THE TARGET BACK ONE TILE AND DEALS +5 DAMAGE AGAINST AN OBSTACLE
+kw.recule.desc,REPOUSSE LA CIBLE D'UNE CASE ET INFLIGE +5 DÉGÂTS SI ELLE EST CONTRE UN OBSTACLE,PUSHES THE TARGET BACK ONE TILE AND DEALS +5 DAMAGE IF IT IS AGAINST AN OBSTACLE
 kw.renaissance.label,RENAISSANCE,REBIRTH
 kw.renaissance.desc,À LA MORT RESSUSCITE À 1 PV ET BRISE L'ÉQUIPEMENT (UNE FOIS),ON DEATH REVIVES AT 1 HP AND BREAKS THE EQUIPMENT (ONCE)
+kw.tueur_geants.label,TUEUR DE GÉANTS,GIANT SLAYER
+kw.tueur_geants.desc,GAGNE +{0} DE PUISSANCE SI LA CIBLE A PLUS DE PV QUE LUI,GAINS +{0} POWER IF THE TARGET HAS MORE HP THAN ITSELF
 # ── Effets de combat ─────────────────────────────────────────────────────────
 fx.dodge,ESQUIVE !,DODGE!
 fx.riposte,RIPOSTE !,RIPOSTE!
 fx.phenix,PHÉNIX !,PHOENIX!
 fx.command_point,+{0} COMMANDEMENT,+{0} COMMAND
+fx.transpercer,TRANSPERCER !,PIERCE!
+fx.seisme,SÉISME !,EARTHQUAKE!
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
 # Les TITRES restent en capitales (libelles d'UI) ; les consignes et les corps de texte sont des PHRASES,
 # rendues telles quelles (preserveCase) : minuscules accentuees, majuscule en debut de phrase.
@@ -509,8 +515,8 @@ tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA
 tree.lan_tour_aura_puissance.desc,les unités du domaine de la tour augmentent de 3 la puissance des alliés adjacents.,units of the rook domain increase adjacent allies' power by 3.
 tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
 tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
-tree.lan_esquive_renforce,ESQUIVE RENFORCEE,REINFORCED DODGE
-tree.lan_esquive_renforce.desc,la chance du trait esquive passe à 40%.,the dodge trait's chance is raised to 40%.
+tree.lan_formation_renforce,FORMATION RENFORCÉE,REINFORCED FORMATION
+tree.lan_formation_renforce.desc,la puissance par allié du trait formation passe de 2 à 3.,the formation trait's power per ally is raised from 2 to 3.
 tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
 tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
 # Noeuds : branche LOGISTIQUE

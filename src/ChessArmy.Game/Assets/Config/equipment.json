@@ -2,7 +2,7 @@
   // Catalogue d'ÉQUIPEMENTS posables sur un pion (jamais le commandant) pendant la phase Équipement.
   // Un seul équipement par pion. Un équipement porte UN OU PLUSIEURS effets :
   //   • bonus de STAT : { "stat": "Hp" | "Damage" | "MoveRange" | "AttackRange", "amount": +N }
-  //   • octroi de TRAIT : { "trait": "<nom canonique>" } (voir Trait.cs : Rempart, Riposte, Rage, Soin,
+  //   • octroi de TRAIT : { "trait": "<nom canonique>" } (voir Trait.cs : Rempart, Riposte, Berserk, Rage, Soin,
   //                        Transpercement, Interception, Balistique, …).
   // Deux façons de les déclarer :
   //   A) effet UNIQUE : champs "stat"+"amount" OU "trait" au premier niveau (forme historique).
@@ -62,7 +62,10 @@
     { "id": "formationRare", "name": "Bannière du régiment", "rarity": "Rare", "effects": [ { "stat": "Hp", "amount": 4 }, { "trait": "Formation" } ], "enemyAllowed": false },
     { "id": "ImpactRare", "name": "Masse d'impact", "rarity": "Rare", "effects": [ { "stat": "Hp", "amount": 2 }, { "trait": "Impact" } ], "enemyAllowed": true },
     { "id": "InterceptionLegendaire", "name": "Vigilance", "rarity": "Legendary", "trait": "Interception", "enemyAllowed": true },
-    { "id": "rageLegendaire", "name": "Crane du berserker", "rarity": "Legendary", "trait": "Rage", "enemyAllowed": false },
+    { "id": "berserkLegendaire", "name": "Crane du berserker", "rarity": "Legendary", "trait": "Berserk", "enemyAllowed": false },
+    { "id": "tueurGeantLegendaire", "name": "Fronde de David", "rarity": "Legendary", "trait": "Tueur de géants", "enemyAllowed": false },
+    { "id": "rageRare", "name": "Vendetta", "rarity": "Rare", "trait": "Rage", "enemyAllowed": false },
+    { "id": "rageLegendaire", "name": "Vendetta", "rarity": "Legendary", "effects": [ { "stat": "Hp", "amount": 5 }, { "trait": "Rage" } ], "enemyAllowed": false },
     { "id": "Recule", "name": "Attaque lourde", "rarity": "Common", "trait": "Recule", "enemyAllowed": true },
     { "id": "ReculeRare", "name": "Attaque lourde", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 3 }, { "trait": "Recule" } ], "enemyAllowed": true },
     { "id": "riposteRare", "name": "Fleuret de riposte", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 2 }, { "trait": "Riposte" } ], "enemyAllowed": true },
@@ -70,7 +73,7 @@
     { "id": "TempeteLegendaire", "name": "Sceptre de tempête", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 5 }, { "trait": "Tempete" } ], "enemyAllowed": true },
     { "id": "TranspercerRare", "name": "Épieu perforant", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 2 }, { "trait": "Transpercement" } ], "enemyAllowed": true },
     { "id": "volRare", "name": "Botte de pégasse", "rarity": "Rare", "effects": [ { "trait": "Vol" } ], "enemyAllowed": true },
-    { "id": "volLegendaire", "name": "Botte de pégasse", "rarity": "Legendary", "effects": [ { "stat": "MoveRange", "amount": 1 } ], "enemyAllowed": true },
+    { "id": "volLegendaire", "name": "Botte de pégasse", "rarity": "Legendary", "effects": [ { "trait": "Vol" }, { "stat": "MoveRange", "amount": 1 } ], "enemyAllowed": true },
     { "id": "volVieLegendaire", "name": "Le dentier de Furious", "rarity": "Legendary", "effects": [ { "trait": "Drain de vie" } ], "enemyAllowed": true }
   ]
 }

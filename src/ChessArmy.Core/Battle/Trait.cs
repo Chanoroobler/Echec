@@ -23,7 +23,7 @@ public static class Trait
     public const string AuraDePuissance = "Aura de puissance"; // +AuraPuissanceBonus de puissance aux alliés adjacents
     public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
-    public const string Rage = "Rage";                       // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
+    public const string Berserk = "Berserk";                 // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
     public const string DrainDeVie = "Drain de vie";         // soigne l'attaquant de 50 % des dégâts infligés
     public const string ZoneMorte = "Zone morte";            // ne peut pas frapper au contact (portée min = 2)
     public const string Balistique = "Balistique";           // tir indirect : ignore les obstacles (montagne) sur la ligne
@@ -38,13 +38,15 @@ public static class Trait
     public const string Impact = "Impact";                   // à son PROPRE déplacement/attaque : 5 dégâts fixes aux ennemis autour de soi (jamais relayé par un autre trait)
     public const string Recule = "Recule";                   // à l'attaque : repousse la cible survivante d'une case ; +5 dégâts si un obstacle l'arrête
     public const string Renaissance = "Renaissance";         // ÉQUIPEMENT « Queue de phénix » : à la mort, ressuscite à 1 PV et se brise (une fois)
+    public const string TueurDeGeants = "Tueur de géants";   // à l'attaque : +5 dégâts si la cible a PLUS de PV ACTUELS que l'attaquant (attaquant plus blessé)
+    public const string Rage = "Rage";                       // combat : +7 puissance à la PREMIÈRE mort d'un allié (non cumulable, une seule fois par combat, cf. Unit.RagePower)
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, SoinParfait, Franchissement, Transpercement, Interception,
-        AuraDeRempart, AuraDePuissance, Riposte, Duelliste, Rage,
+        AuraDeRempart, AuraDePuissance, Riposte, Duelliste, Berserk,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Orage, Tempete, AttaqueLibre,
-        Statique, Seisme, Impact, Recule, Renaissance,
+        Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
     };
 }

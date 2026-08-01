@@ -12,9 +12,9 @@ namespace ChessArmy.Game.Scenes;
 /// </summary>
 internal sealed class TileTremor
 {
-    private const float Duration = 0.35f;    // durée de la secousse (s)
+    private const float Duration = 0.65f;    // durée de la secousse (s) — assez longue pour LIRE ce qui se passe
     private const float Magnitude = 4f;      // amplitude verticale à pleine intensité (px canvas)
-    private const float Frequency = 60f;     // vitesse de vibration (≈ 3 oscillations sur la durée)
+    private const float Frequency = 50f;     // vitesse de vibration (oscillations décroissantes sur la durée)
 
     private readonly HashSet<Cell> _cells = new();
     private float _time;

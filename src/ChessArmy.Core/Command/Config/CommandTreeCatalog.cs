@@ -70,6 +70,8 @@ public static class CommandTreeCatalog
             "fusionsizereduction" => CommandEffect.FusionSizeReduction(amount, DomaineOf(e, nodeId)),
             "rempartbonus" => CommandEffect.RempartBonus(amount),
             "esquivebonus" => CommandEffect.EsquiveBonus(amount),
+            "tueurgeantsbonus" => CommandEffect.TueurDeGeantsBonus(amount),
+            "formationbonus" => CommandEffect.FormationBonus(amount),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }

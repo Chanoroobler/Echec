@@ -80,6 +80,52 @@ public class TraitsTests
         Assert.Equal(10, ranged.UnitAt(new Cell(0, 2))!.Hp);   // 20 - 10
     }
 
+    // ── Tueur de géants : +5 si la cible a PLUS de PV ACTUELS que l'attaquant ─────────
+
+    [Fact]
+    public void TueurDeGeants_AddsFiveDamage_OnlyWhenAttackerHasLessCurrentHp()
+    {
+        // Cible avec plus de PV ACTUELS que l'attaquant (30 > 20) : +5.
+        var more = Board();
+        more.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.TueurDeGeants }));
+        more.Place(new Cell(0, 2), Make(Faction.Enemy, 30, 5, None));
+        more.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(15, more.UnitAt(new Cell(0, 2))!.Hp);   // 30 - (10 + 5)
+
+        // PV actuels ÉGAUX (20 == 20) : aucun bonus.
+        var equal = Board();
+        equal.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.TueurDeGeants }));
+        equal.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        equal.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(10, equal.UnitAt(new Cell(0, 2))!.Hp);  // 20 - 10
+
+        // Gros MAX mais BAS PV actuels (cible blessée à 15) : PAS de bonus — ce sont les PV ACTUELS qui comptent
+        // (l'ancienne règle « PV max » aurait donné le bonus ici).
+        var wounded = Board();
+        wounded.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.TueurDeGeants }));
+        var bigButHurt = Make(Faction.Enemy, 100, 5, None);
+        bigButHurt.TakeDamage(85);   // 15 PV actuels < 20 de l'attaquant
+        wounded.Place(new Cell(0, 2), bigButHurt);
+        wounded.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(5, wounded.UnitAt(new Cell(0, 2))!.Hp);  // 15 - 10 (aucun bonus)
+
+        // Attaquant BLESSÉ (10 PV actuels) contre une cible en meilleure forme (20) : +5 même si son MAX est supérieur.
+        var hurtAttacker = Board();
+        var lowHp = Make(Faction.Player, 40, 10, new[] { Trait.TueurDeGeants });
+        lowHp.TakeDamage(30);        // 10 PV actuels
+        hurtAttacker.Place(new Cell(0, 0), lowHp);
+        hurtAttacker.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        hurtAttacker.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(5, hurtAttacker.UnitAt(new Cell(0, 2))!.Hp);  // 20 - (10 + 5)
+
+        // Sans le trait : aucun bonus, même contre une cible plus fraîche.
+        var noTrait = Board();
+        noTrait.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
+        noTrait.Place(new Cell(0, 2), Make(Faction.Enemy, 30, 5, None));
+        noTrait.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(20, noTrait.UnitAt(new Cell(0, 2))!.Hp);  // 30 - 10
+    }
+
     [Fact]
     public void AuraDeRempart_GrantsRempartToAdjacentAlly()
     {
@@ -91,24 +137,69 @@ public class TraitsTests
         Assert.Equal(14, m.UnitAt(new Cell(0, 2))!.Hp);        // -4 grâce à l'aura (distance 2)
     }
 
-    // ── Rage / auras de puissance : bonus de puissance ────────────────────────────
+    // ── Berserk / Rage / auras de puissance : bonus de puissance ──────────────────
 
     [Fact]
-    public void Rage_AddsOnePower_PerKill()
+    public void Berserk_AddsOnePower_PerKill()
     {
         // Sans kill : puissance brute, aucun bonus.
         var fresh = Board();
-        fresh.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Rage }, kills: 0));
+        fresh.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Berserk }, kills: 0));
         fresh.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
         fresh.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(20, fresh.UnitAt(new Cell(0, 1))!.Hp);    // 30 - 10 (pas de bonus)
 
         // Avec 3 kills accumulés sur la run : +3 puissance.
         var seasoned = Board();
-        seasoned.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Rage }, kills: 3));
+        seasoned.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Berserk }, kills: 3));
         seasoned.Place(new Cell(0, 1), Make(Faction.Enemy, 30, 5, None));
         seasoned.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(17, seasoned.UnitAt(new Cell(0, 1))!.Hp); // 30 - (10 + 3)
+    }
+
+    [Fact]
+    public void Rage_GainsSevenPower_WhenAnAllyDies()
+    {
+        var m = Board();
+        var rageux = new Cell(5, 0);
+        m.Place(rageux, Make(Faction.Player, 40, 10, new[] { Trait.Rage }));   // le rageux (n'agit pas ici)
+        m.Place(new Cell(0, 1), Make(Faction.Player, 1, 1, None));             // allié fragile (va mourir)
+        m.Place(new Cell(0, 0), Make(Faction.Enemy, 20, 5, None));             // bourreau
+        m.Place(new Cell(5, 2), Make(Faction.Enemy, 100, 5, None));           // cible du rageux
+
+        Assert.Equal(0, m.UnitAt(rageux)!.RagePower);   // aucun allié mort : pas de bonus
+
+        // Tour ennemi : le bourreau tue l'allié fragile → le rageux gagne +7 de puissance (le combat).
+        m.PassTurn();
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(0, 0), new Cell(0, 1)));
+        Assert.Equal(7, m.UnitAt(rageux)!.RagePower);
+
+        // De retour au joueur : le rageux frappe pour 10 + 7.
+        Assert.Equal(Faction.Player, m.CurrentTurn);
+        m.TryAttack(rageux, new Cell(5, 2));
+        Assert.Equal(83, m.UnitAt(new Cell(5, 2))!.Hp);   // 100 - (10 + 7)
+    }
+
+    [Fact]
+    public void Rage_IsNotCumulative_OnlyGrantsBonusOncePerCombat()
+    {
+        var m = Board();
+        var rageux = new Cell(5, 0);
+        m.Place(rageux, Make(Faction.Player, 40, 10, new[] { Trait.Rage }));   // le rageux (n'agit pas ici)
+        m.Place(new Cell(0, 1), Make(Faction.Player, 1, 1, None));             // 1er allié fragile
+        m.Place(new Cell(2, 1), Make(Faction.Player, 1, 1, None));             // 2e allié fragile
+        m.Place(new Cell(0, 0), Make(Faction.Enemy, 20, 5, None));             // bourreau 1
+        m.Place(new Cell(2, 0), Make(Faction.Enemy, 20, 5, None));             // bourreau 2
+
+        // 1re mort d'allié : la Rage s'active à +7.
+        m.PassTurn();
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(0, 0), new Cell(0, 1)));
+        Assert.Equal(7, m.UnitAt(rageux)!.RagePower);
+
+        // 2e mort d'allié : NON cumulable, le bonus reste à 7 (une seule fois par combat).
+        m.PassTurn();
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(2, 0), new Cell(2, 1)));
+        Assert.Equal(7, m.UnitAt(rageux)!.RagePower);
     }
 
     [Fact]
@@ -592,6 +683,51 @@ public class TraitsTests
         ev.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
         ev.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(10, ev.UnitAt(new Cell(0, 1))!.Hp);   // 20 - 10, encaissé
+    }
+
+    /// <summary>« Tueur de géant renforcé » (bonus +2 → +7) ne s'applique qu'au JOUEUR : un ennemi garde +5.</summary>
+    [Fact]
+    public void TueurDeGeantsReinforcement_AppliesToPlayerOnly()
+    {
+        // Attaquant JOUEUR renforcé (+2) contre une cible aux PV actuels supérieurs (full : 100 > 20) : +7.
+        var pv = new Match(8, 8, tueurGeantsBonus: 2);
+        pv.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.TueurDeGeants }));
+        pv.Place(new Cell(0, 1), Make(Faction.Enemy, 100, 5, None));
+        pv.TryAttack(new Cell(0, 0), new Cell(0, 1));
+        Assert.Equal(83, pv.UnitAt(new Cell(0, 1))!.Hp);   // 100 - (10 + 7)
+
+        // Attaquant ENNEMI : le renforcement du JOUEUR ne le touche pas → +5 seulement.
+        var ev = new Match(8, 8, tueurGeantsBonus: 2);
+        ev.Place(new Cell(0, 0), Make(Faction.Player, 100, 5, None));
+        ev.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 10, new[] { Trait.TueurDeGeants }));
+        ev.PassTurn();
+        ev.TryAttack(new Cell(0, 1), new Cell(0, 0));
+        Assert.Equal(85, ev.UnitAt(new Cell(0, 0))!.Hp);   // 100 - (10 + 5), pas +7
+    }
+
+    /// <summary>« Formation renforcée » (bonus +1 → 3 de puissance par allié) ne s'applique qu'au JOUEUR : un
+    /// pion « Formation » ennemi garde 2 par allié.</summary>
+    [Fact]
+    public void FormationReinforcement_AppliesToPlayerOnly()
+    {
+        // JOUEUR « Formation » avec 2 alliés adjacents, renforcé (+1 → 3/allié) : puissance 10 + 3*2 = 16.
+        var pv = new Match(8, 8, formationBonus: 1);
+        pv.Place(new Cell(1, 1), Make(Faction.Player, 20, 10, new[] { Trait.Formation }));
+        pv.Place(new Cell(0, 1), Make(Faction.Player, 20, 5, None));   // allié adjacent
+        pv.Place(new Cell(2, 1), Make(Faction.Player, 20, 5, None));   // allié adjacent
+        pv.Place(new Cell(1, 2), Make(Faction.Enemy, 100, 5, None));   // cible (adjacente, dessous)
+        pv.TryAttack(new Cell(1, 1), new Cell(1, 2));
+        Assert.Equal(84, pv.UnitAt(new Cell(1, 2))!.Hp);   // 100 - (10 + 3*2)
+
+        // ENNEMI « Formation » : le renforcement du JOUEUR ne le touche pas → 2 par allié (10 + 2*2 = 14).
+        var ev = new Match(8, 8, formationBonus: 1);
+        ev.Place(new Cell(1, 1), Make(Faction.Enemy, 20, 10, new[] { Trait.Formation }));
+        ev.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, None));   // allié ennemi adjacent
+        ev.Place(new Cell(2, 1), Make(Faction.Enemy, 20, 5, None));   // allié ennemi adjacent
+        ev.Place(new Cell(1, 2), Make(Faction.Player, 100, 5, None)); // cible joueur
+        ev.PassTurn();
+        ev.TryAttack(new Cell(1, 1), new Cell(1, 2));
+        Assert.Equal(86, ev.UnitAt(new Cell(1, 2))!.Hp);   // 100 - (10 + 2*2), pas 3 par allié
     }
 
     // ── Drain de vie : soigne l'attaquant de 50 % des dégâts ──────────────────────

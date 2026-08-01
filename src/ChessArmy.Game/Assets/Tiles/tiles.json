@@ -27,6 +27,11 @@
       "file": "tiles_addon_water.png",
       "cellW": 64,
       "cellH": 80
+    },
+    "eaux3": {
+      "file": "tiles_addon_Twater.png",
+      "cellW": 64,
+      "cellH": 80
     }
   },
   "tiles": [
@@ -1126,6 +1131,43 @@
       "blocksFire": false,
       "sheet": "eaux2",
       "col": 2,
+      "row": 1
+    },
+    {
+      "_comment": "--- Tileset 'eaux3' (tiles_addon_Twater.png), grille 2x2 : encore des mares a berges rocheuses (bords/coins). Cles 2-car (prefixe '_') a la suite d'eaux2 : _A.._D (majuscules, sensibles a la casse). Defaut EAU = blocksMove=true, blocksFire=false. Ajuster par tuile dans l'editeur. ---",
+      "id": "eau3_00",
+      "key": "_A",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux3",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "eau3_10",
+      "key": "_B",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux3",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "eau3_01",
+      "key": "_C",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux3",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "eau3_11",
+      "key": "_D",
+      "blocksMove": true,
+      "blocksFire": false,
+      "sheet": "eaux3",
+      "col": 1,
       "row": 1
     }
   ]

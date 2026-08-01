@@ -65,7 +65,7 @@ public static class Domaines
                 N(2, "Spadassin", "spadassin", 14, 14, 2, 1, evo: new[]
                 {
                     N(3, "Maître d'armes", "maitre_armes", 20, 16, 2, 1, traits: new[] { Trait.Duelliste }),
-                    N(3, "Barbare", "barbare", 18, 18, 2, 1, traits: new[] { Trait.Rage }),
+                    N(3, "Barbare", "barbare", 18, 18, 2, 1, traits: new[] { Trait.Berserk }),
                 }),
             })),
         new DomaineDef(Domaine.Fou,

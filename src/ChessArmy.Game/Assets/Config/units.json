@@ -7,8 +7,8 @@
   //   "piercesAllies": true  => « Traverse allié » : tire à travers ses alliés sans les toucher.
   //   "traits": [...]        => particularités (mécaniques dans Match) : Zone morte, Balistique, Vol,
   //                             Formation, Esquive, Drain de vie, Rempart, Soin, Duelliste,
-  //                             Rage, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte,
-  //                             Impact, Recule…
+  //                             Berserk, Soin parfait, Aura de puissance, Franchissement, Aura de rempart, Riposte,
+  //                             Impact, Recule, Tueur de géants, Rage…
   //   "evolutions": [...]    => les sous-classes (arbre à 3 tiers : base → 2 branches → 2 feuilles).
   // NB : « Zone morte » pilote la portée d'attaque min (2, contact interdit en ligne droite) via le trait.
   "domaines": [
@@ -18,17 +18,17 @@
         "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
         "evolutions": [
           {
-            "name": "Archer", "asset": "archer", "hp": 12, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte"],
+            "name": "Archer", "asset": "archer", "hp": 15, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte","Transpercement"],
             "evolutions": [
-              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Balistique"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 14, "moveRange": 2, "attackRange": 3, "traits": ["Recule"] }
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 15, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte", "Balistique","Transpercement"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 18, "damage": 14, "moveRange": 2, "attackRange": 2, "traits": ["Recule","Transpercement"] }
             ]
           },
           {
             "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
             "evolutions": [
               { "name": "Maître d'armes", "asset": "maitre_arme", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
-              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Rage"] }
+              { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Berserk"] }
             ]
           }
         ]
@@ -86,15 +86,15 @@
           {
             "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
-              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Transpercement"] },
+              { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Rage"] },
               { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
             ]
           },
           {
-            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive"],
+            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation"],
             "evolutions": [
-              { "name": "Dragoon", "asset": "Dragoon", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Formation"] },
-              { "name": "Voltigeur", "asset": "voltigeur", "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Esquive", "Riposte"] }
+              { "name": "Dragoon", "asset": "Dragoon", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Tueur de géants", "Formation"] },
+              { "name": "Voltigeur", "asset": "voltigeur", "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation", "Riposte"] }
             ]
           }
         ]
@@ -136,7 +136,7 @@
       "damage": 10,
       "moveRange": 2,
       "attackRange": 1,
-      "deployments": 4,
+      "deployments": 5,
       "reserveSize": 8,
       "tree": "commandantLancier",
       "fusionPoints": 0,
@@ -163,14 +163,14 @@
           "damage": 18,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Rage" ]
+          "traits": [ "Berserk" ]
         },
         "3": {
           "hp": 60,
           "damage": 22,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Rage", "Transpercement"]
+          "traits": [ "Berserk", "Transpercement"]
         }
       }
     },

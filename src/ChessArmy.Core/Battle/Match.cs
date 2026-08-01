@@ -39,6 +39,7 @@ public sealed class Match
     private readonly List<Cell> _seismeZone = new();                      // « Séisme » : union des voisinages 3×3 des porteurs, pour le tremblement des tuiles
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
+    private (Cell Cell, int Damage, int Dc, int Dr)? _lastPierce;          // « Transpercement » : ennemi derrière la cible touché + dégâts + direction du coup
 
     // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
@@ -56,7 +57,8 @@ public sealed class Match
 
     public Match(int width, int height, Battlefield? terrain = null,
         IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
-        IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0, int esquiveBonusPercent = 0)
+        IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0, int esquiveBonusPercent = 0,
+        int tueurGeantsBonus = 0, int formationBonus = 0)
     {
         Width = width;
         Height = height;
@@ -68,6 +70,8 @@ public sealed class Match
         _playerBlocked = playerBlockedCells is null ? new HashSet<Cell>() : new HashSet<Cell>(playerBlockedCells);
         RempartBonus = rempartBonus;
         EsquiveBonusPercent = esquiveBonusPercent;
+        TueurDeGeantsBonus = tueurGeantsBonus;
+        FormationBonus = formationBonus;
     }
 
     /// <summary>Bonus d'arbre « Rempart renforcé » (points de réduction en PLUS de <see cref="BaseRempartReduction"/>).
@@ -78,6 +82,24 @@ public sealed class Match
     /// <summary>Bonus d'arbre « Esquive renforcée » (points de %, en PLUS de <see cref="BaseEsquiveChance"/>).
     /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="EsquiveChanceFor"/>.</summary>
     public int EsquiveBonusPercent { get; set; }
+
+    /// <summary>Bonus d'arbre « Tueur de géant renforcé » (dégâts en PLUS de <see cref="BaseGiantSlayerBonus"/>).
+    /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="GiantSlayerDamageFor"/>.</summary>
+    public int TueurDeGeantsBonus { get; set; }
+
+    /// <summary>Bonus EFFECTIF du trait « Tueur de géants » pour <paramref name="attacker"/> : base, plus le bonus
+    /// d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
+    private int GiantSlayerDamageFor(Unit attacker) =>
+        BaseGiantSlayerBonus + (attacker.Faction == Faction.Player ? TueurDeGeantsBonus : 0);
+
+    /// <summary>Bonus d'arbre « Formation renforcée » (puissance par allié adjacent en PLUS de
+    /// <see cref="BaseFormationBonus"/>). Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="PerAllyFormationBonus"/>.</summary>
+    public int FormationBonus { get; set; }
+
+    /// <summary>Bonus de puissance EFFECTIF par allié adjacent du trait « Formation » pour <paramref name="unit"/> :
+    /// base, plus le bonus d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
+    private int PerAllyFormationBonus(Unit unit) =>
+        BaseFormationBonus + (unit.Faction == Faction.Player ? FormationBonus : 0);
 
     /// <summary>Réduction EFFECTIVE du trait « Rempart » pour <paramref name="victim"/> : base, plus le bonus
     /// d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
@@ -422,6 +444,7 @@ public sealed class Match
         {
             unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
+            OnUnitDied(victim);                          // « Rage » : les alliés survivants du mort gagnent de la puissance
             // « Statique » : ne prend JAMAIS la place de sa cible — l'attaquant reste sur sa case (la case de
             // la victime reste libre). Sinon, comportement normal : il avance sur la case si l'accès le permet.
             if (!unit.HasTrait(Trait.Statique) && CanTakePlace(from, target))
@@ -467,7 +490,13 @@ public sealed class Match
     public const int BaseRempartReduction = 4;   // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
-    private const int FormationBonus = 2;        // +2 puissance par allié adjacent (trait « Formation »)
+    /// <summary>Bonus de puissance de BASE par allié adjacent du trait « Formation » (avant « Formation renforcée » de l'arbre).</summary>
+    public const int BaseFormationBonus = 2;     // +2 puissance par allié adjacent (trait « Formation »)
+    /// <summary>Bonus de dégâts de BASE du trait « Tueur de géants » (avant « Tueur de géant renforcé » de l'arbre).</summary>
+    public const int BaseGiantSlayerBonus = 5;   // +5 dégâts contre une cible aux PV ACTUELS supérieurs
+    /// <summary>Bonus de puissance du trait « Rage » : accordé UNE fois, à la première mort d'un allié du combat
+    /// (non cumulable — les morts suivantes ne l'augmentent pas).</summary>
+    public const int RagePowerBonus = 7;
     /// <summary>Chance de BASE (0..1) du trait « Esquive » (avant bonus d'arbre « Esquive renforcée »).</summary>
     public const double BaseEsquiveChance = 0.25; // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
@@ -499,6 +528,11 @@ public sealed class Match
     /// <summary>Riposte de la DERNIÈRE attaque : case du riposteur (après un éventuel recul) → case de l'assaillant,
     /// dégâts réellement infligés, et si l'assaillant en est mort. <c>null</c> si aucune riposte. Pour le feedback.</summary>
     public (Cell From, Cell To, int Damage, bool Killed)? LastRiposte => _lastRiposte;
+
+    /// <summary>« Transpercement » de la DERNIÈRE attaque : case de l'ennemi transpercé (derrière la cible), dégâts
+    /// réellement infligés (&gt; 0) et direction (dc, dr) du coup ; <c>null</c> si aucun transpercement (ou esquivé).
+    /// Pour le feedback : recul + chiffre + mot-clé sur le pion transpercé.</summary>
+    public (Cell Cell, int Damage, int Dc, int Dr)? LastPierce => _lastPierce;
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -544,20 +578,21 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Puissance qu'une unité « Formation » tient de ses alliés ADJACENTS (+<see cref="FormationBonus"/> par
+    /// Puissance qu'une unité « Formation » tient de ses alliés ADJACENTS (+<see cref="BaseFormationBonus"/> par
     /// allié), ou 0 si elle n'a pas le trait. Effet CONTEXTUEL au placement — comme les auras, l'UI ne peut
     /// pas le déduire de la fiche et doit le demander ici pour afficher la vraie puissance de combat.
     /// </summary>
     public int FormationPowerBonus(Cell cell) =>
         UnitAt(cell) is { } u && u.HasTrait(Trait.Formation)
-            ? FormationBonus * AdjacentAllyCount(cell, u.Faction)
+            ? PerAllyFormationBonus(u) * AdjacentAllyCount(cell, u.Faction)
             : 0;
 
     /// <summary>
     /// Bonus de puissance CONTEXTUEL total d'une unité : ce qu'elle tient de son PLACEMENT — auras alliées
     /// (<see cref="AuraPowerBonus"/>) et Formation (<see cref="FormationPowerBonus"/>) — et que sa fiche ne
     /// laisse pas deviner. La carte l'affiche en « +N » sur la puissance pour rester fidèle aux dégâts
-    /// réellement infligés. La Rage, elle, dépend des kills (pas du placement) et se calcule côté UI.
+    /// réellement infligés. Le Berserk (kills) et la Rage (alliés morts), eux, dépendent de l'état du pion
+    /// (pas du placement) et se calculent à part.
     /// </summary>
     public int ContextualPowerBonus(Cell cell) => AuraPowerBonus(cell) + FormationPowerBonus(cell);
 
@@ -573,8 +608,9 @@ public sealed class Match
 
     /// <summary>
     /// PUISSANCE EFFECTIVE de l'unité posée sur <paramref name="cell"/> : sa puissance de base plus TOUS ses
-    /// bonus offensifs contextuels — Rage (+1 par ennemi tué à vie), Aura de puissance d'un allié adjacent,
-    /// Formation (+2 par allié adjacent). C'est la valeur affichée sur sa carte, et la SEULE source de
+    /// bonus offensifs contextuels — Berserk (+1 par ennemi tué à vie), Rage (+7 à la première mort d'un allié),
+    /// Aura de puissance d'un allié adjacent, Formation (+2 par allié adjacent). C'est la valeur affichée sur
+    /// sa carte, et la SEULE source de
     /// « puissance » du moteur : tout ce qui se dit « une fraction de la puissance » (<see cref="HealAmount"/>)
     /// en dérive, pour que les bonus profitent partout de la même façon. Les réductions de la CIBLE ne sont
     /// pas ici : elles s'appliquent à l'arrivée, dans <see cref="EffectiveDamage"/>.
@@ -582,8 +618,10 @@ public sealed class Match
     private int EffectivePower(Unit unit, Cell cell)
     {
         var power = unit.Damage;
+        if (unit.HasTrait(Trait.Berserk))
+            power += unit.Kills;      // « Berserk » : +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
         if (unit.HasTrait(Trait.Rage))
-            power += unit.Kills;   // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
+            power += unit.RagePower;  // « Rage » : +7 dès la première mort d'un allié ce combat (non cumulable, cf. Unit.RagePower)
         power += AuraPowerBonus(cell);
         power += FormationPowerBonus(cell);
         return System.Math.Max(0, power);
@@ -597,6 +635,12 @@ public sealed class Match
     private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
     {
         var dmg = EffectivePower(attacker, attackerCell);
+
+        // « Tueur de géants » : +5 (ou +7 « renforcé ») quand la cible a PLUS de PV ACTUELS que l'attaquant
+        // (autrement dit l'attaquant est le plus BLESSÉ des deux). Comparaison AVANT que ce coup ne porte.
+        // Bonus offensif (soumis comme le reste aux réductions de la cible : Rempart, Duelliste, couvert).
+        if (attacker.HasTrait(Trait.TueurDeGeants) && victim.Hp > attacker.Hp)
+            dmg += GiantSlayerDamageFor(attacker);
 
         var distance = ChebyshevDistance(attackerCell, victimCell);
         var shielded = victim.HasTrait(Trait.Rempart)
@@ -637,6 +681,18 @@ public sealed class Match
         if (attacker == null || victim == null)
             return 0;
         return System.Math.Min(EffectiveDamage(attacker, from, victim, target), victim.Hp);
+    }
+
+    /// <summary>Part « Tueur de géants » des dégâts de l'attaque de <paramref name="from"/> sur
+    /// <paramref name="target"/>, ou 0 si le trait ne s'applique pas (la cible n'a pas plus de PV ACTUELS que
+    /// l'attaquant). Sert au feedback : afficher le « +N » du bonus à côté du chiffre de dégâts.</summary>
+    public int GiantSlayerBonusFor(Cell from, Cell target)
+    {
+        var attacker = UnitAt(from);
+        var victim = UnitAt(target);
+        if (attacker == null || victim == null)
+            return 0;
+        return attacker.HasTrait(Trait.TueurDeGeants) && victim.Hp > attacker.Hp ? GiantSlayerDamageFor(attacker) : 0;
     }
 
     /// <summary>
@@ -727,7 +783,10 @@ public sealed class Match
         var behind = new Cell(target.Column + dc, target.Row + dr);
         if (UnitAt(behind) is not { } u || u.Faction == attacker.Faction)
             return;
+        var before = u.Hp;
         ApplyDamage(u, EffectiveDamage(attacker, from, u, behind), attacker);
+        if (before - u.Hp is > 0 and var dealt)   // rien à signaler si l'unité derrière a esquivé
+            _lastPierce = (behind, dealt, dc, dr);
         RemoveDeadAt(behind, attacker);
     }
 
@@ -738,6 +797,7 @@ public sealed class Match
         _impactZone.Clear();
         _lastRecule = null;
         _lastRiposte = null;
+        _lastPierce = null;
     }
 
     /// <summary>
@@ -826,6 +886,20 @@ public sealed class Match
         if (killer != null && dead.Faction != killer.Faction)
             killer.RecordKill();
         _units[cell.Column, cell.Row] = null;
+        OnUnitDied(dead);   // « Rage » : les alliés survivants du mort gagnent de la puissance
+    }
+
+    /// <summary>
+    /// Signale la mort de <paramref name="dead"/> (déjà retiré de la grille) : chaque ALLIÉ SURVIVANT porteur de
+    /// « Rage » voit son bonus fixé à <see cref="RagePowerBonus"/> pour le RESTE du combat. NON cumulable : un
+    /// porteur déjà enragé n'y gagne rien de plus aux morts suivantes (une seule fois par combat). Buff transitoire,
+    /// non persisté — un nouveau combat repart d'unités neuves. Appelé à chaque chemin de mort.
+    /// </summary>
+    private void OnUnitDied(Unit dead)
+    {
+        foreach (var (_, u) in Units())
+            if (u.Faction == dead.Faction && u.HasTrait(Trait.Rage))
+                u.ActivateRage(RagePowerBonus);
     }
 
     /// <summary>
@@ -847,7 +921,7 @@ public sealed class Match
 
     /// <summary>Montant soigné par le soigneur posé sur <paramref name="healerCell"/> : sa
     /// <see cref="EffectivePower"/> ENTIÈRE avec « Soin parfait », sinon la MOITIÉ (arrondie vers le bas).
-    /// Les bonus de puissance (Rage, auras, Formation) comptent donc aussi pour le soin. « Soin parfait »
+    /// Les bonus de puissance (Berserk, Rage, auras, Formation) comptent donc aussi pour le soin. « Soin parfait »
     /// prime s'il porte les deux.</summary>
     private int HealAmount(Unit healer, Cell healerCell)
     {

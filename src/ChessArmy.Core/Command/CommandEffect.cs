@@ -41,6 +41,12 @@ public enum CommandEffectKind
 
     /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> points de POURCENTAGE la chance du trait « Esquive » (moteur : base 25).</summary>
     EsquiveBonus,
+
+    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> le bonus de dégâts du trait « Tueur de géants » (moteur : base 5).</summary>
+    TueurDeGeantsBonus,
+
+    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> la puissance par allié adjacent du trait « Formation » (moteur : base 2).</summary>
+    FormationBonus,
 }
 
 /// <summary>
@@ -162,4 +168,10 @@ public sealed class CommandEffect
 
     public static CommandEffect EsquiveBonus(int amount) =>
         new(CommandEffectKind.EsquiveBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect TueurDeGeantsBonus(int amount) =>
+        new(CommandEffectKind.TueurDeGeantsBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect FormationBonus(int amount) =>
+        new(CommandEffectKind.FormationBonus, default, amount, null, CommandScale.Flat, null);
 }

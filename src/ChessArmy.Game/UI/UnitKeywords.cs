@@ -30,6 +30,7 @@ public static class UnitKeywords
         ["Aura de puissance"] = "kw.aura_puissance",
         ["Riposte"] = "kw.riposte",
         ["Duelliste"] = "kw.duelliste",
+        ["Berserk"] = "kw.berserk",
         ["Rage"] = "kw.rage",
         ["Drain de vie"] = "kw.drain_vie",
         ["Zone morte"] = "kw.dead_zone",
@@ -45,6 +46,7 @@ public static class UnitKeywords
         ["Impact"] = "kw.impact",
         ["Recule"] = "kw.recule",
         ["Renaissance"] = "kw.renaissance",
+        ["Tueur de géants"] = "kw.tueur_geants",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

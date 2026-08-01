@@ -80,8 +80,8 @@
         { "id": "lan_tour_pv_tour",        "branch": 1, "level": 3, "effects": [ { "kind": "rempartBonus", "amount": 2 } ] },
         { "id": "lan_tour_aura_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Aura de puissance", "domaine": "Tour" } ] },
         { "id": "lan_tour_releve",         "branch": 1, "level": 2, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Tour" } ] },
-        // Repurposé « Esquive renforcée » : la chance du trait Esquive passe de 25 % à 40 % (bonus +15 points).
-        { "id": "lan_esquive_renforce",    "branch": 1, "level": 3, "effects": [ { "kind": "esquiveBonus", "amount": 15 } ] },
+        // Repurposé « Formation renforcée » : la puissance par allié adjacent du trait Formation passe de 2 à 3 (bonus +1, joueur seulement).
+        { "id": "lan_formation_renforce",  "branch": 1, "level": 3, "effects": [ { "kind": "formationBonus", "amount": 1 } ] },
         // « Marche des lanciers » descend ici (déplacement +1 aux unités Tour), à la place de l'allonge.
         { "id": "lan_tour_pm",             "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1, "domaine": "Tour" } ] },
 

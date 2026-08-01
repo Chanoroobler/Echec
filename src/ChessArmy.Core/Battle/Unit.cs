@@ -81,6 +81,19 @@ public sealed class Unit
     public void RecordDamage(int amount) => DamageDealt += System.Math.Max(0, amount);
 
     /// <summary>
+    /// Puissance offerte par le trait « Rage » : +<see cref="Match.RagePowerBonus"/> dès qu'un PREMIER allié
+    /// meurt pendant le combat courant. NON cumulable et une seule fois par combat — les morts suivantes ne
+    /// l'augmentent pas. Amorcée à 0 au spawn et NON persistée (chaque combat repart d'une unité neuve, donc le
+    /// bonus se réamorce à chaque mission). Ajoutée à la puissance effective par <see cref="Match.EffectivePower"/>
+    /// tant que l'unité porte le trait.
+    /// </summary>
+    public int RagePower { get; private set; }
+
+    /// <summary>Active la « Rage » (à la mort d'un allié) : FIXE le bonus sans le cumuler (idempotent, borné à
+    /// <paramref name="amount"/>). Appelé par le moteur de combat.</summary>
+    public void ActivateRage(int amount) => RagePower = System.Math.Max(RagePower, System.Math.Max(0, amount));
+
+    /// <summary>
     /// Unité « pivot » dont la mort décide la partie : le commandant (joueur) ou le
     /// boss (ennemi). Voir <see cref="Match"/> pour les conditions de victoire.
     /// </summary>

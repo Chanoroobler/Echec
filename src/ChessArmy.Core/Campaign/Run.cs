@@ -602,7 +602,7 @@ public sealed class Run
         var rng = CombatRng(3);
         Shuffle(carriers, rng);   // qui porte l'objet est aléatoire ; COMBIEN en portent ne l'est pas
         for (var i = 0; i < count; i++)
-            carriers[i].Equipment = RollEnemyEquipment(rng);
+            carriers[i].Equipment = RollEnemyEquipment(rng, carriers[i]);
     }
 
     /// <summary>
@@ -613,8 +613,12 @@ public sealed class Run
     /// l'anti-doublon ne s'applique pas (il compte ce que le JOUEUR possède). Repli sur le commun si le pool
     /// rare est vide. Les équipements marqués <see cref="Equipment.EnemyAllowed"/> = false sont EXCLUS du tirage
     /// (réservés au joueur) ; si le filtre vide une rareté, on retombe sur celle du dessous, puis rien.
+    ///
+    /// Le tirage respecte les MÊMES restrictions de domaine que le joueur (cf. <see cref="CanEquip"/>) : un
+    /// objet interdit au porteur — typiquement des bottes (mouvement) ou un arc (portée) sur un cavalier — est
+    /// exclu de SON tirage. D'où le passage du <paramref name="spec"/> : le filtre dépend du pion équipé.
     /// </summary>
-    private Equipment? RollEnemyEquipment(Random rng)
+    private Equipment? RollEnemyEquipment(Random rng, UnitSpec spec)
     {
         var phase = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
         var rarity = rng.NextDouble() * 100.0 < RareChanceByPhase[phase]
@@ -622,7 +626,7 @@ public sealed class Run
             : EquipmentRarity.Common;
 
         for (var r = (int)rarity; r >= 0; r--)
-            if (Equipments.Roll((EquipmentRarity)r, rng, filter: e => e.EnemyAllowed) is { } item)
+            if (Equipments.Roll((EquipmentRarity)r, rng, filter: e => e.EnemyAllowed && CanEquip(spec, e)) is { } item)
                 return item;
         return null;
     }
@@ -1238,6 +1242,12 @@ public sealed class Run
 
     /// <summary>Bonus (points de %) de chance du trait « Esquive » apporté par l'arbre (nœud « Esquive renforcée »). 0 = aucun.</summary>
     public int EsquiveBonusPercent => TotalOf(CommandEffectKind.EsquiveBonus);
+
+    /// <summary>Bonus de dégâts du trait « Tueur de géants » apporté par l'arbre (nœud « Tueur de géant renforcé »). 0 = aucun.</summary>
+    public int TueurDeGeantsBonus => TotalOf(CommandEffectKind.TueurDeGeantsBonus);
+
+    /// <summary>Bonus de puissance par allié du trait « Formation » apporté par l'arbre (nœud « Formation renforcée »). 0 = aucun.</summary>
+    public int FormationBonus => TotalOf(CommandEffectKind.FormationBonus);
 
     /// <summary>
     /// Deux gabarits sont de la MÊME classe (donc fusionnables ensemble) s'ils partagent domaine et

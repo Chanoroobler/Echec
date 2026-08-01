@@ -306,6 +306,7 @@ public sealed class GameplayScene : Scene
     // Chiffres de dégâts flottants (jaillis à l'impact, puis éclatent) + dégâts du coup en attente.
     private readonly DamagePopups _damagePopups = new();
     private int _pendingDamage;
+    private int _pendingGiantBonus;   // part « Tueur de géants » du coup en attente : « +N » distinct affiché à l'impact
     private bool _pendingDodge;   // l'attaque en cours a été ESQUIVÉE : feedback dédié à l'impact (popup + son)
     private bool _pendingPhenix;  // la cible du coup a été RESSUSCITÉE (Queue de phénix) : callout dédié à l'impact
     // Orage / Tempête : éclairs sur tous les pions à l'attaque d'un porteur. Cases et chiffres figés
@@ -325,6 +326,11 @@ public sealed class GameplayScene : Scene
     // (le pion riposteur fente vers l'assaillant + mot « RIPOSTE »). Réutilise _fx une fois l'anim d'attaque finie.
     // Le sprite de l'ASSAILLANT est figé ici (il peut mourir de la riposte) ; celui du riposteur est repris à vif.
     private (Cell From, Cell To, Texture2D? AttackerSprite, bool Killed, AttackStyle Style, int Damage)? _pendingRiposte;
+    // « Transpercement » : le pion DERRIÈRE la cible encaisse aussi (déjà résolu par le moteur). Recul + chiffre +
+    // mot-clé sont reportés à l'impact de l'attaque, comme un coup encaissé normal. Recul directionnel indépendant
+    // de la victime directe (cf. HitRecoil), figé à l'impact et résorbé dans la fenêtre des FX.
+    private readonly HitRecoil _pierceRecoil = new();
+    private (Cell Cell, int Damage, int Dc, int Dr)? _pendingPierce;
     // Points de commandement « sur coup reçu » (commandant Lancier) : coups DÉJÀ signalés au joueur ce combat.
     // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
     // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
@@ -473,6 +479,10 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _hoverAttackTargets = new();
     private readonly List<Cell> _hoverReach = new();
     private readonly List<Cell> _hoverHealTargets = new();
+    // Cases dont le pion tremblote légèrement en aperçu (cf. DrawUnit / TargetTremble) : les ENNEMIS ciblables
+    // par le pion sélectionné/survolé ET les ALLIÉS MENACÉS (à portée d'un ennemi). Rempli à chaque frame par
+    // DrawHighlights.
+    private readonly HashSet<Cell> _trembleTargets = new();
     private double _aiTimer;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
 
@@ -1048,7 +1058,8 @@ public sealed class GameplayScene : Scene
         // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé » / « Esquive renforcée » (cf. Run + Match).
         _match = new Match(Columns, Rows, _battlefield, _bushCells,
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked,
-            rempartBonus: _run.RempartBonus, esquiveBonusPercent: _run.EsquiveBonusPercent);
+            rempartBonus: _run.RempartBonus, esquiveBonusPercent: _run.EsquiveBonusPercent,
+            tueurGeantsBonus: _run.TueurDeGeantsBonus, formationBonus: _run.FormationBonus);
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
         _specialBriefOpen = _specialMission;
@@ -1106,6 +1117,8 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
+        _pendingPierce = null;
+        _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
@@ -1243,6 +1256,8 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
+        _pendingPierce = null;
+        _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
         _sparks.Clear();
         ClearSelection();
@@ -1678,6 +1693,8 @@ public sealed class GameplayScene : Scene
         // réinstancier les pions (stats d'arbre). _run peut être null (tutoriel) → aucun bonus d'arbre.
         _match.RempartBonus = _run?.RempartBonus ?? 0;
         _match.EsquiveBonusPercent = _run?.EsquiveBonusPercent ?? 0;
+        _match.TueurDeGeantsBonus = _run?.TueurDeGeantsBonus ?? 0;
+        _match.FormationBonus = _run?.FormationBonus ?? 0;
         foreach (var (cell, unit) in _match.Units().Where(u => u.Unit.Faction == Faction.Player).ToList())
             RespawnAt(cell, unit);
     }
@@ -3517,6 +3534,7 @@ public sealed class GameplayScene : Scene
 
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
         _tremor.Update(dt);        // les tuiles de l'AoE (Séisme/Impact) finissent de trembler (cf. DrawTerrain)
+        _pierceRecoil.Update(dt);  // le recul du pion transpercé se résorbe (cf. DrawUnit)
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point de commandement sur un coup reçu
@@ -3645,6 +3663,12 @@ public sealed class GameplayScene : Scene
             _detailedTooltip = !_detailedTooltip;
             Context.Sounds.Play("menu_click");
         }
+
+        // Tremblement de zone (« Séisme » / « Impact ») : on GÈLE le jeu (IA comme joueur) tant qu'il joue,
+        // pour laisser le temps de LIRE les dégâts avant que le tour suivant n'enchaîne. Le tremor a déjà été
+        // mis à jour en tête de frame (cf. _tremor.Update) : il s'éteint seul, pas de risque de blocage.
+        if (_tremor.Active)
+            return;
 
         if (_match.CurrentTurn == Faction.Enemy)
         {
@@ -4742,6 +4766,7 @@ public sealed class GameplayScene : Scene
         foreach (var (cell, dmg) in hits)
         {
             _damagePopups.Spawn(cell, dmg);
+            _damagePopups.SpawnText(cell, Loc.T("fx.seisme"), Palette.Brown3, new Vector2(0f, -0.5f));   // mot-clé au-dessus du chiffre
             // Poussière/débris giclant du sol sous chaque ennemi frappé.
             var ground = layout.CellToScreen(cell.Column, cell.Row) + new Vector2(tile / 2f, tile * 0.7f);
             _sparks.EmitDust(ground, 10, pixel);
@@ -5355,6 +5380,8 @@ public sealed class GameplayScene : Scene
         var victimEquipBefore = victim?.Equipment;   // pour détecter une renaissance « Queue de phénix » après le coup
         // Dégâts EFFECTIFS à afficher (traits inclus : Rempart, Rage…), bornés aux PV de la cible.
         _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
+        // Part « Tueur de géants » de ces dégâts (0 sinon) : affichée en « +N » distinct à l'impact.
+        _pendingGiantBonus = attacker != null && victim != null ? _match.GiantSlayerBonusFor(from, target) : 0;
         var victimHpBefore = victim?.Hp ?? 0;       // pour détecter l'esquive (PV inchangés malgré des dégâts attendus)
         if (attacker != null)
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
@@ -5403,6 +5430,8 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
         // Glissement du recul : la victime a réellement changé de case (To != cible) → on l'anime en glissant.
         _reculeSlide = _match.LastRecule is { } rc && rc.To != target ? (target, rc.To) : null;
+        // Transpercement : le pion derrière la cible a encaissé — recul + chiffre + mot-clé reportés à l'impact.
+        _pendingPierce = _match.LastPierce;
 
         // Riposte : contre-attaque DÉJÀ résolue par le moteur → on la rejoue en animation APRÈS l'anim d'attaque.
         // On fige le sprite de l'ASSAILLANT (il peut mourir de la riposte) ; le riposteur, vivant, sera repris à vif.
@@ -5470,6 +5499,7 @@ public sealed class GameplayScene : Scene
         _pendingDamage = rip.Damage;
         _pendingDodge = false;
         _pendingPhenix = false;
+        _pendingGiantBonus = 0;   // le « +N » du bonus n'est pas rejoué sur la riposte (report principal déjà consommé)
         _fx.Begin(rip.From, rip.To, rip.From, riposterSprite, rip.AttackerSprite, rip.Killed, advanced: false, rip.Style);
         _impactHandled = false;
     }
@@ -6237,10 +6267,15 @@ public sealed class GameplayScene : Scene
 
     private void DrawHighlights(SpriteBatch sb, GridLayout layout)
     {
+        // Aperçu tremblant (cf. DrawUnit) : ALLIÉS menacés (toujours) + ENNEMIS ciblables (sélection/survol).
+        _trembleTargets.Clear();
+        AddThreatenedAlliesToTremble();
+
         // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
         if (_selected is { } sel)
         {
             DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets);
+            foreach (var c in _attackTargets) _trembleTargets.Add(c);
             return;
         }
 
@@ -6253,6 +6288,23 @@ public sealed class GameplayScene : Scene
             _match.AttackTargets(cell, _hoverAttackTargets);
             _match.HealTargets(cell, _hoverHealTargets);
             DrawMoveAttackZones(sb, layout, cell, _hoverReach, _hoverMoves, _hoverAttackTargets, _hoverHealTargets);
+            foreach (var c in _hoverAttackTargets) _trembleTargets.Add(c);
+        }
+    }
+
+    /// <summary>Ajoute à <see cref="_trembleTargets"/> tout pion ALLIÉ (joueur) posé sur une case menacée par au
+    /// moins un ennemi (à portée d'attaque), pour qu'il tremblote en alerte comme l'icône « ! ». Indépendant de
+    /// la sélection/du survol.</summary>
+    private void AddThreatenedAlliesToTremble()
+    {
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy)
+                continue;
+            _match.ThreatenedCells(cell, _threatCells);
+            foreach (var t in _threatCells)
+                if (_match.UnitAt(t) is { Faction: Faction.Player })
+                    _trembleTargets.Add(t);
         }
     }
 
@@ -6675,12 +6727,25 @@ public sealed class GameplayScene : Scene
         var spriteLift = (int)(size * SpriteLiftFraction);
 
         // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU — si elle a été REPOUSSÉE
-        // d'une case (« Recule ») — le GLISSEMENT vers sa case d'arrivée : décalage en pixels.
+        // d'une case (« Recule ») — le GLISSEMENT vers sa case d'arrivée : décalage en pixels. Le pion TRANSPERCÉ
+        // (derrière la cible) recule dans l'axe du coup en parallèle (cf. HitRecoil).
         var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
+        kb += _pierceRecoil.Offset(cell, size);
         zx += kb.X;
         zy += kb.Y;
 
+        // Léger tremblement d'aperçu : un ennemi CIBLABLE par le pion sélectionné/survolé vibre doucement.
+        if (_run.Phase == RunPhase.Battle && _trembleTargets.Contains(cell))
+        {
+            var tr = TargetTremble(cell, size);
+            zx += tr.X;
+            zy += tr.Y;
+        }
+
         var sprite = UnitSprite(unit);
+        // « Rage » ACTIVE (le pion a gagné de la puissance à la mort d'alliés) : halo rouge pulsant DERRIÈRE le pion.
+        if (sprite != null && unit.RagePower > 0 && unit.HasTrait(Trait.Rage))
+            DrawRageAura(sb, sprite, zx, zy - spriteLift - animLift, size, introA);
         if (sprite != null)
         {
             // Le socle est en bas du sprite : on remonte pour le centrer (haut qui déborde, voulu).
@@ -6707,6 +6772,44 @@ public sealed class GameplayScene : Scene
 
         // La barre de vie est dessinée dans une passe SÉPARÉE (DrawUnitHpBars), APRÈS les buissons,
         // pour qu'elle reste toujours visible (même quand le feuillage passe devant le pion).
+    }
+
+    /// <summary>Les 8 directions du halo (anneau autour de la silhouette).</summary>
+    private static readonly (int Dx, int Dy)[] AuraRing =
+        { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
+
+    /// <summary>
+    /// Halo rouge PULSANT d'un pion « sous Rage » : on redessine sa SILHOUETTE TRAMÉE (blanche, donc teintable
+    /// en rouge PLEIN — pas assombrie par les couleurs du sprite, cf. <see cref="ShadowStipple"/>) décalée en
+    /// anneau DERRIÈRE le vrai sprite — deux passes (large plus pâle + proche vive) pour un glow qui déborde des
+    /// bords. L'intensité respire au rythme de la colère et suit le fondu d'apparition du pion.
+    /// </summary>
+    private void DrawRageAura(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade)
+    {
+        var stipple = ShadowStipple(sprite);                   // silhouette tramée BLANCHE (réutilisée de l'ombre)
+        var pulse = 0.55f + 0.35f * MathF.Sin(_time * 6f);     // respiration rapide (colère)
+        var spread = System.Math.Max(2, size / 22);           // épaisseur (px) du halo proche
+        var outer = Palette.Purple5 * (0.35f * pulse * fade);  // couronne large, pâle
+        var inner = Palette.Purple5 * (0.75f * pulse * fade);  // liseré proche, rouge vif
+        foreach (var (dx, dy) in AuraRing)
+            sb.Draw(stipple, new Rectangle(x + dx * spread * 2, y + dy * spread * 2, size, size), outer);
+        foreach (var (dx, dy) in AuraRing)
+            sb.Draw(stipple, new Rectangle(x + dx * spread, y + dy * spread, size, size), inner);
+    }
+
+    /// <summary>
+    /// Décalage (px entiers) d'un « FRISSON » de peur pour un pion en alerte (ennemi ciblable ou allié menacé) :
+    /// jitter TRÈS discret (~1 px) et rapide, surtout horizontal, DÉPHASÉ par case (les pions ne frissonnent pas
+    /// à l'unisson). Deux ondes légèrement désaccordées donnent un tremblement nerveux et IRRÉGULIER, pas une
+    /// oscillation lisse. Suit <see cref="_time"/>.
+    /// </summary>
+    private Point TargetTremble(Cell cell, int size)
+    {
+        var amp = MathF.Max(1f, size / 64f);                             // ~1 px : à peine perceptible
+        var phase = _time * 26f + cell.Column * 2.3f + cell.Row * 3.1f;  // frisson posé, déphasé par case
+        var dx = (MathF.Sin(phase) * 0.6f + MathF.Sin(phase * 2.2f) * 0.4f) * amp;   // jitter horizontal irrégulier
+        var dy = MathF.Sin(phase * 1.6f) * amp * 0.55f;                  // soupçon de vertical
+        return new Point((int)MathF.Round(dx), (int)MathF.Round(dy));
     }
 
     /// <summary>
@@ -6745,6 +6848,7 @@ public sealed class GameplayScene : Scene
             var (introY, _) = BoardIntroAnim(cell, layout);
             var animLift = UnitLift(cell, size);
             var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
+            kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
                 isAimed ? aimedPreview : 0);
         }
@@ -7238,9 +7342,12 @@ public sealed class GameplayScene : Scene
         else
         {
             _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+            if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
+                _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
             if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
                 _damagePopups.SpawnText(_fx.To, Loc.T("fx.phenix"), Palette.Brown3);
         }
+        _pendingGiantBonus = 0;   // consommé (évite un report sur une action ultérieure sans bonus)
 
         // Orage / Tempête : au contact, les éclairs s'abattent sur les ennemis foudroyés et leurs chiffres
         // de dégâts jaillissent.
@@ -7258,7 +7365,15 @@ public sealed class GameplayScene : Scene
         if (_pendingImpactHits != null)
         {
             foreach (var (cell, dmg) in _pendingImpactHits)
-                _damagePopups.Spawn(cell, dmg);
+            {
+                // La cible ATTAQUÉE encaisse l'attaque ET l'impact sur la même case : on décale l'impact en
+                // « +N » (en haut à gauche) pour qu'il ne recouvre pas le chiffre de l'attaque. Les autres
+                // ennemis de l'AoE (et un impact SANS attaque, ex. déplacement) gardent un chiffre normal centré.
+                if (cell == _fx.To && _pendingDamage > 0)
+                    _damagePopups.SpawnBonus(cell, dmg, Palette.Yellow2, new Vector2(-0.22f, -0.34f));
+                else
+                    _damagePopups.Spawn(cell, dmg);
+            }
             if (_pendingImpactZone != null)
                 ShakeAoeZone(_pendingImpactZone);
             _pendingImpactHits = null;
@@ -7270,6 +7385,17 @@ public sealed class GameplayScene : Scene
         {
             _damagePopups.Spawn(slam.Cell, slam.Damage);
             _pendingReculeSlam = null;
+        }
+
+        // Transpercement : le pion DERRIÈRE la cible encaisse comme un coup normal — recul directionnel, chiffre
+        // de dégâts et mot-clé « TRANSPERCER » posé juste au-dessus. S'il en est mort le moteur l'a déjà retiré :
+        // le recul n'a alors aucun pion à décaler, mais le chiffre et le mot-clé jaillissent quand même.
+        if (_pendingPierce is { } pierce)
+        {
+            _pierceRecoil.Begin(pierce.Cell, pierce.Dc, pierce.Dr);
+            _damagePopups.Spawn(pierce.Cell, pierce.Damage);
+            _damagePopups.SpawnText(pierce.Cell, Loc.T("fx.transpercer"), Palette.Cyan2, new Vector2(0f, -0.5f));
+            _pendingPierce = null;
         }
     }
 
@@ -8979,6 +9105,10 @@ public sealed class GameplayScene : Scene
         // Auras de puissance ET Formation agissent sur la PUISSANCE elle-même : afficher le mot-clé sans
         // faire bouger le chiffre laisserait la carte en contradiction avec les dégâts réellement infligés.
         var contextualDmg = cell is { } pc ? _match.ContextualPowerBonus(pc) : 0;
+        // « Rage » ACTIVE : bonus transitoire (gagné à la mort d'un allié) — même logique que Match.EffectivePower,
+        // sinon la carte sous-estime la puissance réelle (bonus invisible malgré le halo rouge).
+        if (unit.HasTrait(Trait.Rage))
+            contextualDmg += unit.RagePower;
         // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
@@ -9040,11 +9170,11 @@ public sealed class GameplayScene : Scene
         var b = buffs ?? CommandBuffs.None;
         var hpBonus = (equip?.BonusFor(EquipStat.Hp) ?? 0) + b.BonusFor(EquipStat.Hp);
         var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
-        // Rage : +1 puissance par ennemi tué (bonus intrinsèque TOUJOURS actif, cf. Match.EffectiveDamage) —
+        // Berserk : +1 puissance par ennemi tué (bonus intrinsèque TOUJOURS actif, cf. Match.EffectivePower) —
         // on l'intègre au « +N » de la puissance pour que la carte montre la vraie valeur de combat.
-        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Rage))
+        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Berserk))
             dmgBonus += kills;
-        dmgBonus += contextualDmgBonus;   // auras de puissance + Formation (bonus de placement, cf. DrawUnitCard)
+        dmgBonus += contextualDmgBonus;   // bonus de combat contextuels : auras de puissance + Formation + Rage (cf. DrawUnitCard)
         var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
         var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
@@ -9147,7 +9277,7 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Version CONDENSÉE de la carte (combat, par défaut) : nom, PV en texte « pv/max », les trois
-    /// caractéristiques réduites à ICÔNE + valeur EFFECTIVE (équipement/arbre/rage/contexte inclus, mais SANS
+    /// caractéristiques réduites à ICÔNE + valeur EFFECTIVE (équipement/arbre/berserk/contexte inclus, mais SANS
     /// le détail « +N »), puis en bas les traits en NOMS seuls (aucun popup) et « TUÉS : N ». Toujours révélée
     /// (les cartes de combat le sont). Le clic droit / X repasse au détaillé (cf. <see cref="DrawCardLayout"/>).
     /// </summary>
@@ -9158,7 +9288,7 @@ public sealed class GameplayScene : Scene
         // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
         var b = buffs ?? CommandBuffs.None;
         var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
-        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Rage))
+        if (kills > 0 && CardHasTrait(c, equip, b, Trait.Berserk))
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;
         var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
@@ -9500,10 +9630,16 @@ public sealed class GameplayScene : Scene
     {
         var rempartBonus = reinforcedApplies ? _run?.RempartBonus ?? 0 : 0;
         var esquiveBonus = reinforcedApplies ? _run?.EsquiveBonusPercent ?? 0 : 0;
+        var geantsBonus = reinforcedApplies ? _run?.TueurDeGeantsBonus ?? 0 : 0;
+        var formationBonus = reinforcedApplies ? _run?.FormationBonus ?? 0 : 0;
         if (kw.Label == UnitKeywords.For(Trait.Rempart).Label)
             return ResolveReinforced(kw.Description, Match.BaseRempartReduction, rempartBonus);
         if (kw.Label == UnitKeywords.For(Trait.Esquive).Label)
             return ResolveReinforced(kw.Description, (int)System.Math.Round(Match.BaseEsquiveChance * 100), esquiveBonus);
+        if (kw.Label == UnitKeywords.For(Trait.TueurDeGeants).Label)
+            return ResolveReinforced(kw.Description, Match.BaseGiantSlayerBonus, geantsBonus);
+        if (kw.Label == UnitKeywords.For(Trait.Formation).Label)
+            return ResolveReinforced(kw.Description, Match.BaseFormationBonus, formationBonus);
         return (kw.Description, null, false);
     }
 

@@ -19,6 +19,8 @@ internal sealed class DamagePopup
     public float MaxLife;
     public Color Color = Palette.Yellow2;   // jaune vif par défaut (chiffres de dégâts)
     public bool Burst = true;               // éclate en feu d'artifice à l'extinction (faux pour un texte d'état)
+    public Vector2 Offset;                  // décalage d'ancrage en FRACTION de case (ex. un « +N » de bonus au-dessus du chiffre)
+    public float Scale = 1f;                // facteur d'échelle relatif (petit pour un bonus discret)
 }
 
 /// <summary>
@@ -54,8 +56,34 @@ internal sealed class DamagePopups
         });
     }
 
-    /// <summary>Fait jaillir un TEXTE libre (ex. « ESQUIVE ! ») d'une couleur donnée, sans explosion finale.</summary>
-    public void SpawnText(Cell cell, string text, Color color)
+    /// <summary>
+    /// Fait jaillir un « +N » d'appoint (bonus « Tueur de géants », impact reçu EN PLUS de l'attaque…)
+    /// légèrement DÉCALÉ par rapport au chiffre de dégâts principal, d'une couleur distincte et un peu plus
+    /// petit, sans explosion. Le décalage (fraction de case) évite qu'il ne recouvre le chiffre principal ;
+    /// varier le décalage permet de superposer plusieurs « +N » sans collision. Sans effet si le montant est nul.
+    /// </summary>
+    public void SpawnBonus(Cell cell, int bonus, Color color, Vector2? offset = null)
+    {
+        if (bonus <= 0)
+            return;
+        _active.Add(new DamagePopup
+        {
+            Column = cell.Column,
+            Row = cell.Row,
+            Text = "+" + bonus,
+            Color = color,
+            Burst = false,
+            Offset = offset ?? new Vector2(0.22f, -0.34f),   // défaut : un cran en haut à droite du chiffre
+            Scale = 0.8f,
+            MaxLife = LifeDur,
+            Life = LifeDur,
+        });
+    }
+
+    /// <summary>Fait jaillir un TEXTE libre (ex. « ESQUIVE ! ») d'une couleur donnée, sans explosion finale.
+    /// <paramref name="offset"/> (fraction de case) décale l'ancrage — utile pour poser un mot-clé AU-DESSUS
+    /// d'un chiffre de dégâts qui jaillit de la même case (transpercement / séisme).</summary>
+    public void SpawnText(Cell cell, string text, Color color, Vector2? offset = null)
     {
         if (string.IsNullOrEmpty(text))
             return;
@@ -66,6 +94,7 @@ internal sealed class DamagePopups
             Text = text,
             Color = color,
             Burst = false,
+            Offset = offset ?? Vector2.Zero,
             MaxLife = LifeDur,
             Life = LifeDur,
         });
@@ -118,7 +147,8 @@ internal sealed class DamagePopups
             var rise = (1f - (1f - t) * (1f - t)) * size * RiseFraction;
 
             // Petit « pop » : un cran d'échelle en plus sur les premières frames, puis taille normale.
-            var scale = t < 0.14f ? baseScale + 1 : baseScale;
+            // Le facteur relatif du popup (p.Scale) rapetisse un bonus « +N » sans toucher aux chiffres normaux.
+            var scale = Math.Max(1, (int)MathF.Round((t < 0.14f ? baseScale + 1 : baseScale) * p.Scale));
 
             // Solide quasiment jusqu'au bout : c'est l'explosion (feu d'artifice) qui sert de sortie,
             // pas un fondu. Juste un léger estompage sur les toutes dernières frames.
@@ -126,8 +156,8 @@ internal sealed class DamagePopups
 
             var top = layout.CellToScreen(p.Column, p.Row);
             var w = font.Measure(p.Text, scale);
-            var x = top.X + size / 2f - w / 2f;
-            var y = top.Y + size * 0.18f - rise;                  // part du haut de la case, monte
+            var x = top.X + size / 2f - w / 2f + p.Offset.X * size;
+            var y = top.Y + size * 0.18f - rise + p.Offset.Y * size;   // part du haut de la case (+ décalage), monte
             var pos = new Vector2((int)MathF.Round(x), (int)MathF.Round(y));
 
             font.Draw(sb, p.Text, pos + new Vector2(scale, scale), scale, Palette.Black1 * alpha);  // ombre

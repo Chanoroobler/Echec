@@ -825,6 +825,48 @@ public class RunTests
         Assert.Equal(run.AiFreshTier3, restored.AiFreshTier3);
     }
 
+    /// <summary>
+    /// L'IA subit les MÊMES restrictions d'équipement que le joueur (cf. <c>Run.CanEquip</c>) : un objet de
+    /// MOUVEMENT (bottes) ne doit JAMAIS atterrir sur un cavalier ennemi. Pool ennemi réduit aux bottes ; on
+    /// balaie tous les combats et plusieurs graines : chaque cavalier ennemi reste NU, et aucun ennemi ne porte
+    /// un objet que <c>CanEquip</c> refuserait. Garde-fous : on exige d'avoir croisé un cavalier ET d'avoir vu
+    /// l'IA équiper des ennemis, sinon le test serait vacant.
+    /// </summary>
+    [Fact]
+    public void BuildEnemyWave_RespectsEquipRestrictions_NoMoveItemOnEnemyCavalier()
+    {
+        try
+        {
+            // Seul objet du pool ennemi : des bottes (mouvement, commun, autorisé à l'IA par défaut).
+            Equipments.Load(new[] { Equipment.OfStat("botte", "Bottes", EquipStat.MoveRange, 1) });
+
+            var sawCavalier = false;
+            var sawEquippedEnemy = false;
+            for (var seed = 1; seed <= 6; seed++)
+                for (var combat = 1; combat <= Run.TotalCombats; combat++)
+                {
+                    var run = RunAt(combat, seed);
+                    foreach (var s in run.BuildEnemyWave())
+                    {
+                        if (s.Equipment is not null)
+                            sawEquippedEnemy = true;
+                        if (s.Domaine == Domaine.Cavalier)
+                        {
+                            sawCavalier = true;
+                            Assert.Null(s.Equipment);   // jamais de bottes sur un cavalier ennemi (le bug corrigé)
+                        }
+                        // Invariant général : l'IA ne porte rien que CanEquip refuserait au joueur.
+                        Assert.True(s.Equipment is null || run.CanEquip(s, s.Equipment),
+                            $"Un ennemi ({s.Domaine}) porte un équipement interdit : {s.Equipment?.Id}.");
+                    }
+                }
+
+            Assert.True(sawCavalier, "Aucun cavalier ennemi rencontré : test non significatif.");
+            Assert.True(sawEquippedEnemy, "L'IA n'a équipé aucun ennemi : test non significatif.");
+        }
+        finally { Equipments.ResetToDefaults(); }
+    }
+
     private static Run RunAt(int combatNumber, int seed = 1, bool firstRun = false)
     {
         var commander = new UnitSpec(Commandes.Commander.Movement, Commandes.Commander.BaseClass, essential: true);
