@@ -319,6 +319,13 @@ public sealed class GameplayScene : Scene
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
     private List<Cell>? _pendingImpactZone;                     // zone AoE de l'« Impact » à l'attaque (tremblement des tuiles), reportée à l'impact
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
+    private const float ReculeSlamPopupDelay = 0.24f;          // délai (s) avant le « +N » de plaquage, pour le lire APRÈS le chiffre direct
+    // « Recule » qui ACHÈVE : la cible survit au coup direct (flash) mais meurt du +5 de plaquage. On DIFFÈRE sa
+    // dissolution APRÈS l'anim d'attaque (et l'apparition du +5), sinon elle disparaîtrait sans se dissoudre.
+    private (Cell Cell, Texture2D? Sprite)? _pendingSlamDissolve;
+    // « Transpercement » qui TUE le pion DERRIÈRE la cible : même souci (retiré sans dissolution). On le dessine
+    // solide pendant l'anim d'attaque puis on DIFFÈRE sa dissolution après (cf. DrawCombatFx / UpdateBattle).
+    private (Cell Cell, Texture2D? Sprite)? _pendingPierceDissolve;
     // « Recule » qui a GLISSÉ (pas plaqué) : la victime a changé de case dans le moteur ; on l'anime en la
     // faisant glisser de sa case d'origine (From) vers sa case d'arrivée (To) pendant l'anim d'attaque.
     private (Cell From, Cell To)? _reculeSlide;
@@ -326,6 +333,11 @@ public sealed class GameplayScene : Scene
     // (le pion riposteur fente vers l'assaillant + mot « RIPOSTE »). Réutilise _fx une fois l'anim d'attaque finie.
     // Le sprite de l'ASSAILLANT est figé ici (il peut mourir de la riposte) ; celui du riposteur est repris à vif.
     private (Cell From, Cell To, Texture2D? AttackerSprite, bool Killed, AttackStyle Style, int Damage)? _pendingRiposte;
+    // « Interception » : attaque d'opportunité DÉJÀ résolue dans le moteur quand un mobile entre dans la portée d'un
+    // intercepteur (cf. Match.LastInterceptions). Rejouée en animation d'attaque APRÈS le déplacement, une par une
+    // (un mobile peut se faire intercepter par plusieurs pions). Le sprite du MOBILE est figé au départ du déplacement
+    // (il peut mourir de l'interception) ; l'intercepteur, vivant, est repris à vif au lancement de son anim.
+    private readonly Queue<(Cell From, Cell To, Texture2D? MoverSprite, bool Killed, int Damage)> _pendingInterceptions = new();
     // « Transpercement » : le pion DERRIÈRE la cible encaisse aussi (déjà résolu par le moteur). Recul + chiffre +
     // mot-clé sont reportés à l'impact de l'attaque, comme un coup encaissé normal. Recul directionnel indépendant
     // de la victime directe (cf. HitRecoil), figé à l'impact et résorbé dans la fenêtre des FX.
@@ -486,6 +498,10 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
     private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
     private readonly List<Cell> _healTargets = new();     // trait « Soin » : alliés blessés à portée, ciblables pour soigner
+    // Couleur du feedback de SOIN pour la CASE (zone), l'aperçu de PV et le chiffre « +N ».
+    private static readonly Color HealColor = Palette.Green2;   // vert #314e3f
+    // Couleur du HALO (aura autour des alliés soignables) : distincte de la case.
+    private static readonly Color HealAuraColor = Palette.White;   // crème #ede6cb
     private readonly List<Cell> _threatCells = new();
     private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
     private readonly List<Cell> _auraCarriers = new();        // porteurs d'une même famille d'aura (barrière fusionnée)
@@ -1137,6 +1153,9 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
+        _pendingInterceptions.Clear();
+        _pendingSlamDissolve = null;
+        _pendingPierceDissolve = null;
         _pendingPierce = null;
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
@@ -1276,6 +1295,9 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = null;
         _reculeSlide = null;
         _pendingRiposte = null;
+        _pendingInterceptions.Clear();
+        _pendingSlamDissolve = null;
+        _pendingPierceDissolve = null;
         _pendingPierce = null;
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
@@ -3587,7 +3609,8 @@ public sealed class GameplayScene : Scene
         // l'attaquant AVANCE dessus (le moteur l'y place instantanément), la révélation s'ouvrirait AVANT que
         // l'animation d'attaque n'ait fini de jouer. On attend donc la fin des FX : l'attaque se joue, PUIS la
         // découverte. La détection est basée sur l'état (occupation courante) : rien n'est manqué, juste différé.
-        if (!_fx.Active && !_storm.Active && !_tremor.Active && _pendingRiposte is null)
+        if (!_fx.Active && !_storm.Active && !_tremor.Active && _pendingRiposte is null && _pendingInterceptions.Count == 0
+            && _pendingSlamDissolve is null && _pendingPierceDissolve is null)
         {
             if (AiCapturesPaysans)
                 CheckPaysanCapture();
@@ -3689,6 +3712,38 @@ public sealed class GameplayScene : Scene
         if (_pendingRiposte is { } rip)
         {
             StartRiposteFx(rip);
+            return;
+        }
+
+        // « Interception » : attaque(s) d'opportunité DÉJÀ résolue(s) dans le moteur (un mobile est entré dans la
+        // portée d'un intercepteur), rejouée(s) en animation d'attaque APRÈS le déplacement, une par une. Gèle le
+        // tour comme une riposte (via _fx.Active) : on voit l'intercepteur frapper avant que le jeu ne reprenne.
+        if (_pendingInterceptions.Count > 0)
+        {
+            StartInterceptionFx(_pendingInterceptions.Dequeue());
+            return;
+        }
+
+        // « Recule » qui ACHÈVE : l'anim d'attaque (flash) est finie et le +5 de plaquage est déjà apparu (popup
+        // différée), on peut MAINTENANT jouer la dissolution de la cible tuée par le plaquage. Gèle le tour comme
+        // une riposte (via _fx.Active). Exclusif d'une riposte (une cible morte ne riposte pas).
+        if (_pendingSlamDissolve is { } sd)
+        {
+            _pendingSlamDissolve = null;
+            _reculeSlide = null;                     // pas de glissement pour un plaquage (la cible est restée sur place)
+            _fx.BeginDissolve(sd.Cell, sd.Sprite);
+            _impactHandled = true;                   // dissolution pure : aucun chiffre/impact à traiter
+            return;
+        }
+
+        // « Transpercement » qui a TUÉ le pion derrière la cible : l'anim d'attaque finie, on joue sa dissolution
+        // (il était dessiné solide jusque-là). Gèle le tour comme une riposte (via _fx.Active).
+        if (_pendingPierceDissolve is { } pd)
+        {
+            _pendingPierceDissolve = null;
+            _reculeSlide = null;
+            _fx.BeginDissolve(pd.Cell, pd.Sprite);
+            _impactHandled = true;
             return;
         }
 
@@ -5482,11 +5537,19 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private MoveKind TryMoveWithFx(Cell from, Cell to)
     {
+        // Sprite du mobile capturé AVANT le déplacement : une « Interception » peut le tuer dans TryMove, et on a
+        // alors besoin de son sprite pour rejouer l'animation d'attaque de l'intercepteur (le mort a été retiré).
+        var moverSprite = _match.UnitAt(from) is { } mover ? UnitSprite(mover) : null;
         var kind = _match.TryMove(from, to);
         foreach (var (cell, dmg) in _match.LastImpactHits)
             _damagePopups.Spawn(cell, dmg);
         if (_match.LastImpactHits.Count > 0)   // l'« Impact » a frappé : tuiles de l'AoE + son (instantané sur un déplacement)
             ShakeAoeZone(_match.LastImpactZone);
+        // Interception(s) : chaque intercepteur rejouera son animation d'attaque sur le mobile, APRÈS le déplacement
+        // (différé, gèle le tour comme une riposte — cf. UpdateBattle). On copie les valeurs (la liste moteur est
+        // réécrite à l'action suivante).
+        foreach (var itc in _match.LastInterceptions)
+            _pendingInterceptions.Enqueue((itc.From, itc.To, moverSprite, itc.Killed, itc.Damage));
         return kind;
     }
 
@@ -5514,7 +5577,7 @@ public sealed class GameplayScene : Scene
         var healed = (_match.UnitAt(target)?.Hp ?? 0) - before;
         Context.Sounds.Play("unit_cast");
         if (healed > 0)
-            _damagePopups.SpawnText(target, "+" + healed, Palette.Green1);
+            _damagePopups.SpawnText(target, "+" + healed, HealColor);
     }
 
     /// <summary>
@@ -5536,6 +5599,21 @@ public sealed class GameplayScene : Scene
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
         var victimSprite = victim != null ? UnitSprite(victim) : null;
+
+        // Transpercement : on fige AVANT le coup la case + le sprite du pion DERRIÈRE la cible (il peut mourir du
+        // transpercement et être retiré) → nécessaire pour le dessiner puis le dissoudre APRÈS (cf. plus bas).
+        Cell? pierceCell = null;
+        Texture2D? pierceSprite = null;
+        if (attacker != null && attacker.HasTrait(Trait.Transpercement))
+        {
+            var behind = new Cell(target.Column + System.Math.Sign(target.Column - from.Column),
+                                  target.Row + System.Math.Sign(target.Row - from.Row));
+            if (_match.UnitAt(behind) is { } pierced && pierced.Faction != attacker.Faction)
+            {
+                pierceCell = behind;
+                pierceSprite = UnitSprite(pierced);
+            }
+        }
 
         // Orage / Tempête : on fige AVANT l'attaque les PV des ENNEMIS candidats (ni alliés, ni porteur, ni cible
         // directe), car TryAttack applique la foudre instantanément — sur 3 ennemis TIRÉS AU HASARD. Après coup,
@@ -5579,8 +5657,19 @@ public sealed class GameplayScene : Scene
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
         // Glissement du recul : la victime a réellement changé de case (To != cible) → on l'anime en glissant.
         _reculeSlide = _match.LastRecule is { } rc && rc.To != target ? (target, rc.To) : null;
+        // « Recule » qui ACHÈVE : la cible a SURVÉCU au coup direct (kind Attacked, donc flash de survivant) mais le
+        // +5 de plaquage l'a tuée (retirée du plateau). Le flash s'est joué sur un futur mort : on DIFFÈRE sa
+        // dissolution après l'anim d'attaque ET l'apparition du +5 (cf. UpdateBattle / MeleeStrikeFx.BeginDissolve).
+        _pendingSlamDissolve = kind == MoveKind.Attacked && _pendingReculeSlam != null && victim is { IsAlive: false }
+            ? (target, victimSprite)
+            : null;
         // Transpercement : le pion derrière la cible a encaissé — recul + chiffre + mot-clé reportés à l'impact.
         _pendingPierce = _match.LastPierce;
+        // Transpercement qui TUE : le pion derrière a été touché (LastPierce) et n'est plus sur sa case → il est mort.
+        // On le dessine solide pendant l'anim puis on DIFFÈRE sa dissolution (sinon il disparaîtrait sans se dissoudre).
+        _pendingPierceDissolve = pierceCell is { } pcell && _pendingPierce != null && _match.UnitAt(pcell) is null
+            ? (pcell, pierceSprite)
+            : null;
 
         // Riposte : contre-attaque DÉJÀ résolue par le moteur → on la rejoue en animation APRÈS l'anim d'attaque.
         // On fige le sprite de l'ASSAILLANT (il peut mourir de la riposte) ; le riposteur, vivant, sera repris à vif.
@@ -5604,7 +5693,9 @@ public sealed class GameplayScene : Scene
         var attackerCell = advanced ? target : from;
         var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
         Context.Sounds.Play(SoundForStyle(style));   // incantation (mage) / charge (cavalier) / tir (archer) / coup d'arme
-        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style, dodged: _pendingDodge);
+        // victimDoomed : la cible va mourir du plaquage « Recule » (déjà retirée) → dessinée solide/statique, sans flash.
+        _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style,
+            dodged: _pendingDodge, victimDoomed: _pendingSlamDissolve != null);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         return kind;
@@ -5637,6 +5728,43 @@ public sealed class GameplayScene : Scene
         _pendingPhenix = false;
         _pendingGiantBonus = 0;   // le « +N » du bonus n'est pas rejoué sur la riposte (report principal déjà consommé)
         _fx.Begin(rip.From, rip.To, rip.From, riposterSprite, rip.AttackerSprite, rip.Killed, advanced: false, rip.Style);
+        _impactHandled = false;
+    }
+
+    /// <summary>
+    /// Joue l'« Interception » (attaque d'opportunité DÉJÀ résolue dans le moteur) comme une animation d'attaque :
+    /// l'intercepteur fente vers le MOBILE qui vient d'entrer dans sa portée, avec le mot « INTERCEPTION » au-dessus
+    /// de lui et le chiffre de dégâts à l'impact. Réutilise <see cref="_fx"/> après le déplacement (les PV ont déjà
+    /// bougé). L'intercepteur (vivant, il n'a pas bougé) est réorienté et repris à vif ; le mobile, lui, peut être mort.
+    /// </summary>
+    private void StartInterceptionFx((Cell From, Cell To, Texture2D? MoverSprite, bool Killed, int Damage) itc)
+    {
+        Texture2D? interceptorSprite = null;
+        var style = AttackStyle.Lunge;
+        if (_match.UnitAt(itc.From) is { } interceptor)
+        {
+            FaceToward(interceptor, itc.From, itc.To);   // l'intercepteur regarde le mobile
+            interceptorSprite = UnitSprite(interceptor);
+            style = AttackStyleFor(interceptor, itc.From, itc.To);
+        }
+
+        _damagePopups.SpawnText(itc.From, Loc.T("fx.interception"), Palette.Cyan2);   // mot-clé au-dessus de l'intercepteur
+        Context.Sounds.Play(SoundForStyle(style));
+
+        // À l'impact : uniquement le chiffre de dégâts. On remet à zéro tous les autres reports (aucun trait
+        // exotique n'est rejoué sur l'interception), sinon un report d'une action précédente jaillirait ici.
+        _pendingDamage = itc.Damage;
+        _pendingGiantBonus = 0;
+        _pendingDodge = false;
+        _pendingPhenix = false;
+        _pendingStormBolts = null;
+        _pendingStormHits = null;
+        _pendingImpactHits = null;
+        _pendingImpactZone = null;
+        _pendingReculeSlam = null;
+        _pendingPierce = null;
+        _reculeSlide = null;
+        _fx.Begin(itc.From, itc.To, itc.From, interceptorSprite, itc.MoverSprite, itc.Killed, advanced: false, style);
         _impactHandled = false;
     }
 
@@ -6521,8 +6649,8 @@ public sealed class GameplayScene : Scene
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.50f);
 
         if (heals != null)
-            foreach (var cell in heals) // trait « Soin » : allié blessé ciblable = vert
-                DrawZone(sb, layout, cell, Palette.Green1 * 0.55f);
+            foreach (var cell in heals) // trait « Soin » : allié blessé ciblable (couleur de soin)
+                DrawZone(sb, layout, cell, HealColor * 0.55f);
 
         // Quadrillage de la portée PAR-DESSUS les remplissages (contour par case) : déplacement/attaque.
         foreach (var cell in reach)
@@ -6533,7 +6661,7 @@ public sealed class GameplayScene : Scene
             DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.9f, 1);
         if (heals != null)
             foreach (var cell in heals)
-                DrawZoneBorder(sb, layout, cell, Palette.Green1, 1);
+                DrawZoneBorder(sb, layout, cell, HealColor, 1);
     }
 
     /// <summary>
@@ -6661,6 +6789,27 @@ public sealed class GameplayScene : Scene
                 if (_auraCarriers.Count > 0)
                     DrawAuraBarrier(sb, layout, faction == Faction.Player ? ally : foe);
             }
+
+        DrawCeleriteAuraTiles(sb, layout);   // « Aura de célérité » : repère sur les 4 cases orthogonales (portée du bonus)
+    }
+
+    /// <summary>« Aura de célérité » : petit repère JAUNE discret sur les 4 cases ORTHOGONALES (hors diagonales) autour
+    /// de chaque porteur — un allié qui COMMENCE son tour là gagne +1 Déplacement. Sous les pions (comme les zones).</summary>
+    private void DrawCeleriteAuraTiles(SpriteBatch sb, GridLayout layout)
+    {
+        var pulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
+        var tint = Palette.Yellow2 * (0.10f + 0.09f * pulse);   // teinte discrète qui respire
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (!unit.HasTrait(Trait.AuraDeCelerite))
+                continue;
+            foreach (var (dc, dr) in Orthogonal4)
+            {
+                var n = new Cell(cell.Column + dc, cell.Row + dr);
+                if (_match.InBounds(n))
+                    DrawZone(sb, layout, n, tint);
+            }
+        }
     }
 
     /// <summary>
@@ -6942,6 +7091,13 @@ public sealed class GameplayScene : Scene
         // « Rage » ACTIVE (le pion a gagné de la puissance à la mort d'alliés) : halo rouge pulsant DERRIÈRE le pion.
         if (sprite != null && unit.RagePower > 0 && unit.HasTrait(Trait.Rage))
             DrawRageAura(sb, sprite, zx, zy - spriteLift - animLift, size, introA);
+        // « Aura de célérité » : halo JAUNE pulsant sur les unités qui BÉNÉFICIENT du +1 Déplacement (un allié
+        // porteur au contact direct). Même style que la Rage, en jaune et plus posé.
+        if (sprite != null && _match.BenefitsFromAura(cell, Trait.AuraDeCelerite))
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Yellow2, 3.5f);
+        // Trait « Soin » : halo (couleur d'aura) autour des alliés blessés que le pion ATTRAPÉ (soigneur sélectionné) peut soigner.
+        if (sprite != null && _healTargets.Contains(cell))
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, HealAuraColor, 3f);
         if (sprite != null)
         {
             // Le socle est en bas du sprite : on remonte pour le centrer (haut qui déborde, voulu).
@@ -6974,19 +7130,28 @@ public sealed class GameplayScene : Scene
     private static readonly (int Dx, int Dy)[] AuraRing =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
 
+    /// <summary>Les 4 directions ORTHOGONALES (contact direct, hors diagonales) — portée de l'« Aura de célérité ».</summary>
+    private static readonly (int Dc, int Dr)[] Orthogonal4 = { (0, -1), (0, 1), (-1, 0), (1, 0) };
+
     /// <summary>
     /// Halo rouge PULSANT d'un pion « sous Rage » : on redessine sa SILHOUETTE TRAMÉE (blanche, donc teintable
     /// en rouge PLEIN — pas assombrie par les couleurs du sprite, cf. <see cref="ShadowStipple"/>) décalée en
     /// anneau DERRIÈRE le vrai sprite — deux passes (large plus pâle + proche vive) pour un glow qui déborde des
     /// bords. L'intensité respire au rythme de la colère et suit le fondu d'apparition du pion.
     /// </summary>
-    private void DrawRageAura(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade)
+    private void DrawRageAura(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade) =>
+        DrawUnitGlow(sb, sprite, x, y, size, fade, Palette.Purple5, 6f);   // rouge, respiration rapide (colère)
+
+    /// <summary>Halo tramé PULSANT derrière un pion (silhouette tramée décalée en anneau, deux passes). Partagé par
+    /// la « Rage » (rouge, rapide) et l'« Aura de célérité » (jaune, plus posé). <paramref name="speed"/> = vitesse
+    /// de pulsation, <paramref name="col"/> = teinte.</summary>
+    private void DrawUnitGlow(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade, Color col, float speed)
     {
         var stipple = ShadowStipple(sprite);                   // silhouette tramée BLANCHE (réutilisée de l'ombre)
-        var pulse = 0.55f + 0.35f * MathF.Sin(_time * 6f);     // respiration rapide (colère)
+        var pulse = 0.55f + 0.35f * MathF.Sin(_time * speed);
         var spread = System.Math.Max(2, size / 22);           // épaisseur (px) du halo proche
-        var outer = Palette.Purple5 * (0.35f * pulse * fade);  // couronne large, pâle
-        var inner = Palette.Purple5 * (0.75f * pulse * fade);  // liseré proche, rouge vif
+        var outer = col * (0.35f * pulse * fade);              // couronne large, pâle
+        var inner = col * (0.75f * pulse * fade);              // liseré proche, vif
         foreach (var (dx, dy) in AuraRing)
             sb.Draw(stipple, new Rectangle(x + dx * spread * 2, y + dy * spread * 2, size, size), outer);
         foreach (var (dx, dy) in AuraRing)
@@ -7021,6 +7186,8 @@ public sealed class GameplayScene : Scene
         // à s'afficher même à pleine vie. Remplace la carte-tooltip (masquée pendant le glisser).
         Cell? aimed = null;
         var aimedPreview = 0;
+        Cell? healAimed = null;
+        var healPreview = 0;
         if (_combatDragFrom is { } dragFrom)
         {
             var over = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
@@ -7028,6 +7195,11 @@ public sealed class GameplayScene : Scene
             {
                 aimed = target;
                 aimedPreview = _match.PreviewDamage(dragFrom, target);
+            }
+            else if (over is { } htarget && _healTargets.Contains(htarget))   // survolé sur un allié soignable
+            {
+                healAimed = htarget;
+                healPreview = _match.PreviewHeal(dragFrom);
             }
         }
 
@@ -7038,7 +7210,8 @@ public sealed class GameplayScene : Scene
             if (_fx.Active && _fx.Attacker == cell) // attaquant animé : géré par la passe FX
                 continue;
             var isAimed = aimed == cell;
-            if (unit.Hp >= unit.MaxHp && !isAimed)   // pleine vie : pas de barre (sauf cible visée → aperçu)
+            var isHealAimed = healAimed == cell;
+            if (unit.Hp >= unit.MaxHp && !isAimed)   // pleine vie : pas de barre (sauf cible d'attaque visée → aperçu ; les cibles de soin sont blessées)
                 continue;
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, _) = BoardIntroAnim(cell, layout);
@@ -7046,7 +7219,7 @@ public sealed class GameplayScene : Scene
             var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
             kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
-                isAimed ? aimedPreview : 0);
+                isAimed ? aimedPreview : 0, isHealAimed ? healPreview : 0);
         }
     }
 
@@ -7058,7 +7231,7 @@ public sealed class GameplayScene : Scene
     /// <paramref name="previewDamage"/> &gt; 0 (cible visée pendant un glisser) : la tranche de PV qui
     /// serait perdue clignote plein↔vide en haut de la jauge restante — aperçu des dégâts.
     /// </summary>
-    private void DrawUnitHpBar(SpriteBatch sb, int zx, int zy, int size, int hp, int maxHp, int previewDamage = 0)
+    private void DrawUnitHpBar(SpriteBatch sb, int zx, int zy, int size, int hp, int maxHp, int previewDamage = 0, int previewHeal = 0)
     {
         if (maxHp <= 0)
             return;
@@ -7089,6 +7262,21 @@ public sealed class GameplayScene : Scene
                 var blink = 0.5f + 0.5f * MathF.Sin(_time * 12f);
                 var col = Color.Lerp(Palette.Green4, Palette.Purple5, blink);
                 DrawRect(sb, new Rectangle(x, y + barH - fillH, barW, doomH), col);
+            }
+        }
+
+        // Aperçu du SOIN (survol d'un allié soignable pendant un glisser) : la tranche qui serait RENDUE, JUSTE
+        // au-dessus des PV actuels (dans le vert foncé des PV manquants), clignote dans la couleur de soin. Bornée aux PV
+        // réellement manquants (pas de sur-soin).
+        if (previewHeal > 0)
+        {
+            var restored = System.Math.Min(maxHp - hp, previewHeal);
+            var healH = (int)System.Math.Round((double)barH * restored / maxHp);
+            if (healH > 0)
+            {
+                var blink = 0.5f + 0.5f * MathF.Sin(_time * 12f);
+                var col = Color.Lerp(Palette.Green4, HealColor, blink);
+                DrawRect(sb, new Rectangle(x, y + barH - fillH - healH, barW, healH), col);
             }
         }
     }
@@ -7278,7 +7466,7 @@ public sealed class GameplayScene : Scene
     /// (Le « Séisme » ne secoue plus l'écran : il fait trembler LOCALEMENT les tuiles de l'AoE, cf. TileTremor.)</summary>
     private GridLayout ShakeBoard(GridLayout layout)
     {
-        if (!_fx.Active)
+        if (!_fx.Active || _fx.DissolveOnly)   // dissolution pure (plaquage « Recule ») : un fondu, pas d'impact → pas de secousse
             return layout;
         var s = _fx.ShakeOffset(_fx.Killed ? 4f : 2f);   // secousse plus marquée sur un kill
         if (s == Point.Zero)
@@ -7333,9 +7521,32 @@ public sealed class GameplayScene : Scene
             sb.End();
         }
 
-        // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (reculé comme lui).
+        // 3. Réaction « touché » du survivant : flash additif par-dessus son sprite (reculé comme lui). MAIS si la
+        //    victime est CONDAMNÉE (tuée par le plaquage « Recule », déjà retirée du plateau), on la dessine SOLIDE
+        //    et STATIQUE (aucun clignotement) : elle se dissoudra APRÈS les deux chiffres (cf. BeginDissolve).
         if (!_fx.Killed && _fx.VictimSprite is { } hitSprite)
-            _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White, fxPixel);
+        {
+            if (_fx.VictimDoomed)
+            {
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                sb.Draw(hitSprite, victimRect, Color.White);
+                sb.End();
+            }
+            else
+                _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White, fxPixel);
+        }
+
+        // 3b. Transpercement MORTEL : le pion DERRIÈRE la cible, tué et retiré du plateau, dessiné SOLIDE (avec son
+        //     recul directionnel) le temps de l'anim d'attaque — il se dissoudra juste après (cf. UpdateBattle),
+        //     sinon il disparaîtrait sec. Non dessiné pendant SA propre dissolution (le champ est alors consommé).
+        if (_pendingPierceDissolve is { Sprite: { } pierceSprite } pierce)
+        {
+            var top = layout.CellToScreen(pierce.Cell.Column, pierce.Cell.Row) - new Vector2(0, spriteLift);
+            var off = _pierceRecoil.Offset(pierce.Cell, size);
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(pierceSprite, new Rectangle((int)top.X + off.X, (int)top.Y + off.Y, size, size), Color.White);
+            sb.End();
+        }
 
         // 4. Projectile en vol vers la cible (mage : orbe ; archer : flèche) — disparaît à l'impact.
         if (_fx.ProjectileFlight is var flight && flight >= 0f)
@@ -7576,10 +7787,14 @@ public sealed class GameplayScene : Scene
             _pendingImpactZone = null;
         }
 
-        // Recule (trait) : chiffre du dégât BONUS de plaquage sur la cible restée collée à l'obstacle.
+        // Recule (trait) : dégât BONUS de plaquage sur la cible collée à l'obstacle. Elle RESTE sur sa case (=
+        // celle du coup direct), donc si on l'affichait tout de suite il se superposerait au chiffre principal.
+        // On le fait donc jaillir un peu APRÈS, en « +N » d'une AUTRE couleur (corail) : on lit d'abord les
+        // dégâts directs, puis le bonus de plaquage.
         if (_pendingReculeSlam is { } slam)
         {
-            _damagePopups.Spawn(slam.Cell, slam.Damage);
+            _damagePopups.SpawnBonus(slam.Cell, slam.Damage, Palette.Brown5, new Vector2(0.28f, -0.06f),
+                delay: ReculeSlamPopupDelay);
             _pendingReculeSlam = null;
         }
 
@@ -9305,6 +9520,9 @@ public sealed class GameplayScene : Scene
         // sinon la carte sous-estime la puissance réelle (bonus invisible malgré le halo rouge).
         if (unit.HasTrait(Trait.Rage))
             contextualDmg += unit.RagePower;
+        // « Aura de célérité » d'un allié adjacent : +1 Déplacement contextuel (comme la puissance ci-dessus), sinon
+        // la carte montrerait une portée inférieure à celle réellement atteignable (cf. Match.LegalMoves).
+        var contextualMove = cell is { } mc ? _match.MoveRangeBonus(mc) : 0;
         // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
@@ -9314,12 +9532,12 @@ public sealed class GameplayScene : Scene
         {
             // Version condensée (combat) : traits en NOMS inline, donc AUCUN popup de mots-clés à différer.
             (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c,
-                domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage));
+                domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage, contextualMove));
             return;
         }
         (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
             hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
-            granted: granted, contextualDmgBonus: contextualDmg));
+            granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove));
         if (showKeywords)
             (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted, faction));
     }
@@ -9329,6 +9547,7 @@ public sealed class GameplayScene : Scene
     {
         (Trait.AuraDeRempart, Trait.Rempart),                  // l'aura confère l'effet « Rempart »
         (Trait.AuraDePuissance, Trait.AuraDePuissance),        // pas de trait dédié : on montre l'aura elle-même
+        (Trait.AuraDeCelerite, Trait.AuraDeCelerite),          // +1 Déplacement : on montre l'aura elle-même sur le bénéficiaire
     };
 
     /// <summary>
@@ -9359,7 +9578,7 @@ public sealed class GameplayScene : Scene
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
         Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
         CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
-        IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0)
+        IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -9372,6 +9591,7 @@ public sealed class GameplayScene : Scene
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;   // bonus de combat contextuels : auras de puissance + Formation + Rage (cf. DrawUnitCard)
         var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
+        moveBonus += contextualMoveBonus;   // bonus de déplacement contextuel : « Aura de célérité » d'un allié adjacent
         var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
 
@@ -9479,7 +9699,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawCondensedCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Domaine domaine, int hp, int maxHp,
         Equipment? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
-        int hpPreviewDamage)
+        int hpPreviewDamage, int contextualMoveBonus = 0)
     {
         // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
         var b = buffs ?? CommandBuffs.None;
@@ -9487,7 +9707,7 @@ public sealed class GameplayScene : Scene
         if (kills > 0 && CardHasTrait(c, equip, b, Trait.Berserk))
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;
-        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
+        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange) + contextualMoveBonus;
         var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
 
         Context.Style.DrawPanel(sb, rect);

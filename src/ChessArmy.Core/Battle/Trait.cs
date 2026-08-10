@@ -21,6 +21,7 @@ public static class Trait
     public const string Interception = "Interception";       // attaque d'opportunité sur un ennemi entrant en portée
     public const string AuraDeRempart = "Aura de rempart";   // donne l'effet Rempart aux alliés adjacents
     public const string AuraDePuissance = "Aura de puissance"; // +AuraPuissanceBonus de puissance aux alliés adjacents
+    public const string AuraDeCelerite = "Aura de célérité"; // +1 Déplacement aux alliés qui COMMENCENT leur tour au CONTACT DIRECT (orthogonal)
     public const string Riposte = "Riposte";                 // contre-attaque si elle survit ET peut atteindre l'assaillant
     public const string Duelliste = "Duelliste";             // -DamageReduction si attaque au corps à corps
     public const string Berserk = "Berserk";                 // +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
@@ -45,7 +46,7 @@ public static class Trait
     public static readonly string[] All =
     {
         Rempart, TraverseAllie, Soin, SoinParfait, Franchissement, Transpercement, Interception,
-        AuraDeRempart, AuraDePuissance, Riposte, Duelliste, Berserk,
+        AuraDeRempart, AuraDePuissance, AuraDeCelerite, Riposte, Duelliste, Berserk,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Orage, Tempete, AttaqueLibre,
         Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
     };

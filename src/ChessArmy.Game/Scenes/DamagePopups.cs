@@ -21,6 +21,7 @@ internal sealed class DamagePopup
     public bool Burst = true;               // éclate en feu d'artifice à l'extinction (faux pour un texte d'état)
     public Vector2 Offset;                  // décalage d'ancrage en FRACTION de case (ex. un « +N » de bonus au-dessus du chiffre)
     public float Scale = 1f;                // facteur d'échelle relatif (petit pour un bonus discret)
+    public float Delay;                     // temps (s) AVANT apparition (0 = immédiat) : étale des chiffres liés (ex. dégât direct puis bonus de plaquage)
 }
 
 /// <summary>
@@ -62,7 +63,7 @@ internal sealed class DamagePopups
     /// petit, sans explosion. Le décalage (fraction de case) évite qu'il ne recouvre le chiffre principal ;
     /// varier le décalage permet de superposer plusieurs « +N » sans collision. Sans effet si le montant est nul.
     /// </summary>
-    public void SpawnBonus(Cell cell, int bonus, Color color, Vector2? offset = null)
+    public void SpawnBonus(Cell cell, int bonus, Color color, Vector2? offset = null, float delay = 0f)
     {
         if (bonus <= 0)
             return;
@@ -77,6 +78,7 @@ internal sealed class DamagePopups
             Scale = 0.8f,
             MaxLife = LifeDur,
             Life = LifeDur,
+            Delay = delay,   // > 0 : apparaît APRÈS le chiffre principal (ex. bonus de plaquage « Recule »)
         });
     }
 
@@ -111,6 +113,11 @@ internal sealed class DamagePopups
         for (var i = _active.Count - 1; i >= 0; i--)
         {
             var p = _active[i];
+            if (p.Delay > 0f)   // pas encore né : le compte à rebours tourne, il ne vieillit pas
+            {
+                p.Delay -= dt;
+                continue;
+            }
             p.Life -= dt;
             if (p.Life > 0f)
                 continue;
@@ -141,6 +148,8 @@ internal sealed class DamagePopups
         sb.Begin(samplerState: SamplerState.PointClamp);
         foreach (var p in _active)
         {
+            if (p.Delay > 0f)                                      // en attente de son délai : pas encore affiché
+                continue;
             var t = 1f - p.Life / p.MaxLife;                       // 0 → 1
 
             // Montée en décélération (ease-out) : vif au départ, ralentit en fin de vie.

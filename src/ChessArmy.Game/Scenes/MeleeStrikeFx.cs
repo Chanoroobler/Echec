@@ -76,6 +76,16 @@ public sealed class MeleeStrikeFx
     /// impact. Cf. <see cref="BeginMove"/>.</summary>
     public bool MoveOnly { get; private set; }
 
+    /// <summary>Vrai si l'anim en cours est une DISSOLUTION SEULE (aucun attaquant) : on rejoue juste la mort d'une
+    /// victime sur place. Sert au « Recule » qui ACHÈVE la cible avec son bonus de plaquage : elle survit au coup
+    /// direct (flash) puis se dissout APRÈS l'apparition du +5. Cf. <see cref="BeginDissolve"/>.</summary>
+    public bool DissolveOnly { get; private set; }
+
+    /// <summary>Vrai si la victime est CONDAMNÉE (déjà retirée du plateau, tuée par le plaquage « Recule ») mais
+    /// dessinée SOLIDE et STATIQUE le temps de l'anim d'attaque — SANS clignotement « touché » — car elle se
+    /// dissoudra ensuite. La scène dessine son sprite tel quel au lieu du flash (cf. DrawCombatFx).</summary>
+    public bool VictimDoomed { get; private set; }
+
     /// <summary>Vrai si la victime a ESQUIVÉ l'attaque : elle fait un bond de côté (pas de flash ni de recul).</summary>
     public bool Dodged { get; private set; }
 
@@ -84,7 +94,7 @@ public sealed class MeleeStrikeFx
 
     public void Begin(Cell from, Cell to, Cell attackerCell, Texture2D? attackerSprite,
         Texture2D? victimSprite, bool killed, bool advanced, AttackStyle style = AttackStyle.Lunge,
-        bool dodged = false)
+        bool dodged = false, bool victimDoomed = false)
     {
         From = from;
         To = to;
@@ -95,6 +105,8 @@ public sealed class MeleeStrikeFx
         Advanced = advanced;
         Dodged = dodged;
         MoveOnly = false;
+        DissolveOnly = false;
+        VictimDoomed = victimDoomed;
         _style = style;
         _approachDur = style switch
         {
@@ -134,9 +146,36 @@ public sealed class MeleeStrikeFx
         Advanced = false;
         Dodged = false;
         MoveOnly = true;
+        DissolveOnly = false;
+        VictimDoomed = false;
         _style = AttackStyle.Lunge;
         _approachDur = MoveDur;   // l'« impact » (= atterrissage) ne se déclenche qu'à la fin du glissement
         _total = MoveDur;
+        _elapsed = 0;
+        _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
+        _seedCounter++;
+        Active = true;
+    }
+
+    /// <summary>
+    /// Démarre une DISSOLUTION SEULE de la victime sur <paramref name="cell"/> (aucun attaquant animé). Sert au
+    /// « Recule » dont le bonus de plaquage ACHÈVE une cible ayant survécu au coup direct : on rejoue sa mort
+    /// APRÈS l'anim d'attaque et l'apparition du +5. Impact immédiat (la dissolution démarre tout de suite).
+    /// </summary>
+    public void BeginDissolve(Cell cell, Texture2D? sprite)
+    {
+        From = To = Attacker = cell;
+        AttackerSprite = null;   // pas d'attaquant : on ne rejoue QUE la dissolution
+        VictimSprite = sprite;
+        Killed = true;
+        Advanced = false;
+        Dodged = false;
+        MoveOnly = false;
+        DissolveOnly = true;
+        VictimDoomed = false;
+        _style = AttackStyle.Lunge;
+        _approachDur = 0;        // impact immédiat : la dissolution démarre à la première frame
+        _total = DissolveDur;
         _elapsed = 0;
         _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
         _seedCounter++;

@@ -28,6 +28,7 @@ public static class UnitKeywords
         ["Interception"] = "kw.interception",
         ["Aura de rempart"] = "kw.aura_rempart",
         ["Aura de puissance"] = "kw.aura_puissance",
+        ["Aura de célérité"] = "kw.aura_celerite",
         ["Riposte"] = "kw.riposte",
         ["Duelliste"] = "kw.duelliste",
         ["Berserk"] = "kw.berserk",

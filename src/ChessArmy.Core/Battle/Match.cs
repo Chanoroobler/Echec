@@ -40,6 +40,7 @@ public sealed class Match
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
     private (Cell Cell, int Damage, int Dc, int Dr)? _lastPierce;          // « Transpercement » : ennemi derrière la cible touché + dégâts + direction du coup
+    private readonly List<(Cell From, Cell To, int Damage, bool Killed)> _interceptions = new();  // « Interception » : intercepteur → mobile + dégâts + mobile abattu (par ordre de frappe)
 
     // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
@@ -216,9 +217,13 @@ public sealed class Match
         // Franchissement : traverse aussi bien les UNITÉS que les OBSTACLES de terrain (eau/montagne/mur)
         // qui jalonnent le chemin — sans jamais pouvoir s'y arrêter (il se pose sur une case libre franchissable).
         var phases = unit.HasTrait(Trait.Franchissement);
+        // « Aura de célérité » : +1 portée si l'unité COMMENCE son tour (= sa case actuelle `from`) au CONTACT DIRECT
+        // (orthogonal, hors diagonales — plus exigeant que les autres auras) d'un allié porteur. Contextuel au placement.
+        var range = unit.MoveRange
+                    + (HasAdjacentAlly(from, unit.Faction, Trait.AuraDeCelerite, orthogonalOnly: true) ? AuraCeleriteBonus : 0);
         foreach (var dir in vectors)
         {
-            for (var step = 1; step <= unit.MoveRange; step++)
+            for (var step = 1; step <= range; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
@@ -490,6 +495,7 @@ public sealed class Match
     public const int BaseRempartReduction = 4;   // -4 dégâts d'une attaque à distance (>= 2)
     private const int DuellisteReduction = 4;    // -4 dégâts d'une attaque au corps à corps
     private const int AuraPuissanceBonus = 3;    // +3 puissance offerte par un allié « Aura de puissance » adjacent
+    private const int AuraCeleriteBonus = 1;     // +1 Déplacement offert par un allié « Aura de célérité » adjacent
     /// <summary>Bonus de puissance de BASE par allié adjacent du trait « Formation » (avant « Formation renforcée » de l'arbre).</summary>
     public const int BaseFormationBonus = 2;     // +2 puissance par allié adjacent (trait « Formation »)
     /// <summary>Bonus de dégâts de BASE du trait « Tueur de géants » (avant « Tueur de géant renforcé » de l'arbre).</summary>
@@ -529,6 +535,11 @@ public sealed class Match
     /// dégâts réellement infligés, et si l'assaillant en est mort. <c>null</c> si aucune riposte. Pour le feedback.</summary>
     public (Cell From, Cell To, int Damage, bool Killed)? LastRiposte => _lastRiposte;
 
+    /// <summary>« Interception(s) » du DERNIER déplacement : pour chaque intercepteur qui a frappé le mobile, sa case
+    /// → la case d'arrivée du mobile, les dégâts réels et si le mobile en est mort (ordre de frappe). Vide sinon.
+    /// Pour rejouer l'animation d'attaque de chaque intercepteur (le moteur a déjà appliqué les dégâts).</summary>
+    public IReadOnlyList<(Cell From, Cell To, int Damage, bool Killed)> LastInterceptions => _interceptions;
+
     /// <summary>« Transpercement » de la DERNIÈRE attaque : case de l'ennemi transpercé (derrière la cible), dégâts
     /// réellement infligés (&gt; 0) et direction (dc, dr) du coup ; <c>null</c> si aucun transpercement (ou esquivé).
     /// Pour le feedback : recul + chiffre + mot-clé sur le pion transpercé.</summary>
@@ -547,13 +558,20 @@ public sealed class Match
     private static bool IsDirectContact(Cell a, Cell b) =>
         System.Math.Abs(a.Column - b.Column) + System.Math.Abs(a.Row - b.Row) == 1;
 
-    /// <summary>Vrai si une case adjacente porte un allié de <paramref name="faction"/> avec ce trait.</summary>
-    private bool HasAdjacentAlly(Cell cell, Faction faction, string trait)
+    /// <summary>Vrai si une case adjacente porte un allié de <paramref name="faction"/> avec ce trait. Par défaut
+    /// le voisinage 8 (diagonales comprises, comme les auras de puissance/rempart) ; <paramref name="orthogonalOnly"/>
+    /// le restreint au CONTACT DIRECT (haut/bas/gauche/droite) — c'est le cas de l'« Aura de célérité », volontairement
+    /// plus exigeante que les autres auras pour ne pas être trop forte.</summary>
+    private bool HasAdjacentAlly(Cell cell, Faction faction, string trait, bool orthogonalOnly = false)
     {
         foreach (var (dc, dr) in Neighbors8)
+        {
+            if (orthogonalOnly && dc != 0 && dr != 0)
+                continue;   // hors diagonales
             if (UnitAt(new Cell(cell.Column + dc, cell.Row + dr)) is { } u
                 && u.Faction == faction && u.HasTrait(trait))
                 return true;
+        }
         return false;
     }
 
@@ -563,7 +581,8 @@ public sealed class Match
     /// équipement, ni arbre) — l'UI ne peut donc pas le déduire seule et doit le demander ici.
     /// </summary>
     public bool BenefitsFromAura(Cell cell, string auraTrait) =>
-        UnitAt(cell) is { } u && HasAdjacentAlly(cell, u.Faction, auraTrait);
+        UnitAt(cell) is { } u && HasAdjacentAlly(cell, u.Faction, auraTrait,
+            orthogonalOnly: auraTrait == Trait.AuraDeCelerite);   // la célérité ne compte pas les diagonales
 
     /// <summary>
     /// Puissance que l'unité de <paramref name="cell"/> tient de l'AURA de puissance d'un allié adjacent,
@@ -576,6 +595,12 @@ public sealed class Match
             return 0;
         return HasAdjacentAlly(cell, u.Faction, Trait.AuraDePuissance) ? AuraPuissanceBonus : 0;
     }
+
+    /// <summary>Bonus de DÉPLACEMENT que l'unité de <paramref name="cell"/> tient de l'« Aura de célérité » d'un allié
+    /// adjacent (+<see cref="AuraCeleriteBonus"/>), ou 0 sinon. Contextuel au placement, comme <see cref="AuraPowerBonus"/> :
+    /// la carte doit afficher la même portée que celle réellement utilisée par <see cref="LegalMoves(Cell, List{Cell})"/>.</summary>
+    public int MoveRangeBonus(Cell cell) =>
+        UnitAt(cell) is { } u && HasAdjacentAlly(cell, u.Faction, Trait.AuraDeCelerite, orthogonalOnly: true) ? AuraCeleriteBonus : 0;
 
     /// <summary>
     /// Puissance qu'une unité « Formation » tient de ses alliés ADJACENTS (+<see cref="BaseFormationBonus"/> par
@@ -798,6 +823,7 @@ public sealed class Match
         _lastRecule = null;
         _lastRiposte = null;
         _lastPierce = null;
+        _interceptions.Clear();
     }
 
     /// <summary>
@@ -863,8 +889,11 @@ public sealed class Match
                 continue;
             if (!ThreatenedCells(cell).Contains(movedTo))
                 continue;
+            var before = mover.Hp;
             ApplyDamage(mover, EffectiveDamage(unit, cell, mover, movedTo), unit);
-            if (!mover.IsAlive)
+            var killed = !mover.IsAlive;
+            _interceptions.Add((cell, movedTo, before - mover.Hp, killed));   // report pour l'animation d'attaque
+            if (killed)
             {
                 RemoveDeadAt(movedTo, unit);   // l'intercepteur abat le mobile : kill crédité
                 return;   // mobile abattu : plus rien à intercepter
@@ -972,6 +1001,12 @@ public sealed class Match
                 break;                // toute unité borne la ligne
             }
     }
+
+    /// <summary>Montant de soin qu'appliquerait le soigneur de <paramref name="from"/> (cf. <see cref="HealAmount"/>),
+    /// pour l'aperçu de barre de vie. 0 si ce n'est pas un soigneur. Indépendant de la cible (le soin = fraction de la
+    /// puissance du soigneur) ; l'affichage borne au PV manquants de la cible.</summary>
+    public int PreviewHeal(Cell from) =>
+        ActiveUnitAt(from) is { } healer && IsHealer(healer) ? HealAmount(healer, from) : 0;
 
     /// <summary>« Soin » / « Soin parfait » : soigne un allié ciblé (cf. <see cref="HealAmount"/> — moitié de
     /// la puissance, ou totalité). Fonctionne pour n'importe quel porteur du trait, commandant compris.
