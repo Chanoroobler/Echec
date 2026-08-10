@@ -21,7 +21,7 @@
   //   { "kind": "deploySlots",  "amount": 1 }                 ← agrandit le déploiement
   //   { "kind": "fusionRecruit", "amount": 1 }                ← chaque fusion recrute en plus un tier 1 vu
   //   { "kind": "eliteDeathRecruit", "amount": 1 }            ← chaque unité tier 2+ tombée fait arriver un tier 1 vu en réserve
-  //   { "kind": "fusionSizeReduction", "amount": 1 }          ← réduit le nombre de pions requis pour une fusion (min 2)
+  //   { "kind": "fusionSizeReduction", "amount": 1 }          ← réduit le nombre de pions requis pour une fusion tier 1→2 (min 2)
   //
   // "stat"  : hp | damage | moveRange | attackRange
   // "scale" : flat (défaut) | perDistinctPair  → bonus × (classes distinctes du roster hors commandant ÷ 2),
@@ -52,7 +52,7 @@
         { "id": "logi_deploiement_2", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots", "amount": 2 } ] },
         // logi_deploiement_3 : REPURPOSÉ en « Grande Armée » (+4 réserve) — cf. strings.csv tree.logi_deploiement_3.
         { "id": "logi_deploiement_3", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
-        // amalgame : la fusion ne demande plus que 2 pions (au lieu de 3). Icône : Assets/CommandTree/amalgame.png.
+        // amalgame : une fusion tier 1→2 ne demande plus que 2 pions (au lieu de 3) ; tier 2→3 reste à 3. Icône : Assets/CommandTree/amalgame.png.
         { "id": "amalgame",           "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1 } ] }
       ]
     },
@@ -91,7 +91,7 @@
         //{ "id": "lan_logi_deploy_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "lan_logi_reserve_1","branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
         { "id": "lan_logi_deploy_3", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
-        // Repurposé « Amalgame » (Tour) : une fusion d'une classe du domaine de la TOUR ne demande que 2 pions.
+        // Repurposé « Amalgame » (Tour) : une fusion tier 1→2 d'une classe du domaine de la TOUR ne demande que 2 pions.
         { "id": "lan_logi_reserve_2","branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Tour" } ] }
       ]
     }

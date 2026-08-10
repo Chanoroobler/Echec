@@ -354,6 +354,8 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
     private int _tutorialCardIndex;                        // donnée de carte en cours de revue (0..3)
     private const int TutorialCardStats = 5;              // Déplacement (domaine), PV, Puissance, Mouvement, Portée
+    private double _tutorialHold;                          // temps de maintien cumulé (leçon « zones de danger »)
+    private const double TutorialDangerHoldSeconds = 0.45; // durée de maintien ESPACE/RT pour valider la leçon danger
 
     // Recrutement : le panneau d'inventaire est VISIBLE pendant le choix (on voit son armée, hors
     // commandant). À la sélection, le pion de la carte choisie VOLE vers son emplacement d'inventaire,
@@ -412,11 +414,11 @@ public sealed class GameplayScene : Scene
     private int _fusionFocus;
     private bool FusionOpen => _fusionGroup.Count > 0 && _fusionGroup.Count == FusionGroupTarget;
 
-    /// <summary>Nombre de pions requis pour fusionner la classe de <paramref name="spec"/> (domaine inclus, cf. Amalgame).</summary>
-    private int FusionSizeOf(UnitSpec spec) => _run.FusionSizeFor(spec.Domaine);
+    /// <summary>Nombre de pions requis pour fusionner la classe de <paramref name="spec"/> (domaine + tier, cf. Amalgame).</summary>
+    private int FusionSizeOf(UnitSpec spec) => _run.FusionSizeFor(spec);
 
-    /// <summary>Taille CIBLE de la pile de fusion en cours (selon le domaine de sa classe), ou 0 si aucune pile.</summary>
-    private int FusionGroupTarget => _fusionGroup.Count > 0 ? _run.FusionSizeFor(_fusionGroup[0].Domaine) : 0;
+    /// <summary>Taille CIBLE de la pile de fusion en cours (selon la classe de sa pièce), ou 0 si aucune pile.</summary>
+    private int FusionGroupTarget => _fusionGroup.Count > 0 ? _run.FusionSizeFor(_fusionGroup[0]) : 0;
 
     // Portage de la pile ENTIÈRE (on attrape les 2 pièces d'un coup, pour la déplacer). _carryPileFrom
     // = ancre d'origine (null = réserve) pour restaurer sur un lâcher invalide.
@@ -1282,6 +1284,7 @@ public sealed class GameplayScene : Scene
         _gpInventory = false;
         _gpButtons = false;
         _battleIntroTimer = 0;
+        _tutorialHold = 0;
 
         // Commandant déjà posé (montre l'unité essentielle), 1 SOLDAT à déployer dans l'inventaire.
         var commanderCell = new Cell(Columns / 2, Rows - 1);
@@ -1305,9 +1308,9 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Fin du tutoriel (victoire OU skip) : enchaîne sur le vrai combat 1. La préparation guidée a PRÊTÉ au
-    /// joueur trois soldats, un équipement et des points de commandement ; <see cref="Run.Reset"/> rend la
-    /// run à son état de départ (commandant + 2 soldats, rien d'autre) pour que le tuto ne fuite pas dans
-    /// l'équilibrage. C'est aussi lui qui repasse la run en phase de placement.
+    /// joueur des soldats, un équipement et des points de commandement ; <see cref="Run.Reset"/> rend la
+    /// run à son état de départ (commandant + ses pions de départ, rien d'autre) pour que le tuto ne fuite
+    /// pas dans l'équilibrage. C'est aussi lui qui repasse la run en phase de placement.
     /// </summary>
     private void EndTutorial()
     {
@@ -1340,11 +1343,18 @@ public sealed class GameplayScene : Scene
             _playerSpec.Remove(unit);
         }
 
-        // Prêt du tuto : le roster (commandant + 2 soldats) passe à 3 soldats → une fusion est possible.
-        _run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+        // Prêt du tuto : la leçon de fusion doit toujours être réalisable, quel que soit le commandant CHOISI
+        // (LE FOUDROYEUR démarre avec 1 Lancier + 1 Soldat, LE BASTION avec 2 Lanciers...). On force donc la
+        // réserve à EXACTEMENT FusionSize soldats identiques : on retire les pions de départ hérités du
+        // commandant, puis on prête juste ce qu'il faut de soldats. Tout est rendu par EndTutorial (Run.Reset).
+        foreach (var spec in ArmyMinusCommander())
+            _run.DeleteUnit(spec);
+        var fusionSize = _run.FusionSizeFor(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+        for (var i = 0; i < fusionSize; i++)
+            _run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
 
         _pending.Clear();
-        _pending.AddRange(ArmyMinusCommander());
+        _pending.AddRange(ArmyMinusCommander());   // = FusionSize soldats identiques, prêts à fusionner
         _dragSpec = null;
         _dragFrom = null;
         _gpInventory = false;
@@ -2178,8 +2188,14 @@ public sealed class GameplayScene : Scene
                 // Réussite = une unité NON basique au roster (l'évolution issue de la fusion), l'animation finie.
                 if (!FusionOpen && !EvoPlaying
                     && _run.Roster.Any(u => !u.Essential && u.UnitClass != Domaines.Dame.BaseClass))
-                    t.Advance();
+                    t.Advance();                     // → RerollLesson
                 break;
+
+            case TutorialStep.RerollLesson:
+                // Encart informatif (relance + recyclage) : le placement reste gelé jusqu'à validation.
+                if (Advanced())
+                    t.Advance();                     // → DeployFused
+                return true;
 
             case TutorialStep.DeployFused:
                 // Réussite = la réserve est vide, donc l'unité évoluée est sur le plateau (prête à s'équiper).
@@ -2976,7 +2992,8 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawRerollIcon(SpriteBatch sb)
     {
-        if (_tutorial != null)
+        // Masquée pendant le tuto, SAUF la leçon dédiée « relance » qui a justement besoin de la montrer.
+        if (_tutorial is not (null or { Step: TutorialStep.RerollLesson }))
             return;
 
         var frame = RerollIconRect();
@@ -3699,6 +3716,37 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // Tuto : leçons de commandes INTERACTIVES intercalées dans le combat (caméra, zones de danger, revoir
+        // action). Chacune GÈLE le combat (aucun tour ne se joue) tant que le geste n'est pas fait ; le bouton
+        // PASSER reste dispo. Les autres étapes ne matchent aucun cas et laissent l'aiguillage des tours suivre.
+        if (_tutorial is { } tut)
+        {
+            switch (tut.Step)
+            {
+                case TutorialStep.CameraLesson:
+                    // Un pan (clavier / stick droit / molette centrale) OU un simple clic valide : le plateau du
+                    // tuto tient à l'écran, panner peut ne rien révéler, on n'exige donc pas un déplacement réel.
+                    if (TutorialCameraPanned() || Advanced())
+                        tut.Advance();                              // → DangerLesson
+                    return;
+                case TutorialStep.DangerLesson:
+                    if (Context.Input.IsKeyDown(Keys.Space) || Context.Input.IsRightTriggerDown)
+                        _tutorialHold += dt;                        // maintien cumulé (les cases menacées s'allument)
+                    if (_tutorialHold >= TutorialDangerHoldSeconds)
+                        tut.Advance();                              // → Chest
+                    return;
+                case TutorialStep.ReplayLesson:
+                    // _lastAiAction est garanti non nul ici : l'ennemi a bougé pendant la phase Move (cf. script).
+                    if (_lastAiAction is { } rep
+                        && (Context.Input.WasKeyPressed(Keys.R) || Context.Input.WasRightShoulderPressed))
+                    {
+                        StartAiReplay(rep);
+                        tut.Advance();                              // → Attack (l'anim se joue par-dessus via _fx.Active)
+                    }
+                    return;
+            }
+        }
+
         if (_match.CurrentTurn == Faction.Enemy)
         {
             if (_tutorial != null)
@@ -3719,16 +3767,18 @@ public sealed class GameplayScene : Scene
         // Filet ANTI-BLOCAGE : si plus aucun ennemi n'est sur le plateau alors que le script en attend un
         // (mort hors script, cas qui ne devrait plus arriver), on saute droit à l'encart du commandant
         // plutôt que d'attendre une condition qui ne viendra jamais.
-        if (_tutorial is { } guide && guide.Step is TutorialStep.Chest or TutorialStep.Move or TutorialStep.Attack
+        if (_tutorial is { } guide && guide.Step is TutorialStep.Chest or TutorialStep.Move
+                or TutorialStep.ReplayLesson or TutorialStep.Attack
             && !_fx.Active && !ChestRevealActive
             && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy))
             while (guide.Step != TutorialStep.Commander)
                 guide.Advance();
 
-        // Tuto : dès que le soldat peut frapper l'ennemi, on passe à l'étape « attaque ».
+        // Tuto : dès que le soldat peut frapper l'ennemi, on passe à la leçon « revoir action » (l'ennemi a
+        // forcément déjà bougé), puis à l'étape « attaque ».
         if (_tutorial is { Step: TutorialStep.Move }
             && _match.AttackTargets(_tutorial.PlayerSoldier).Contains(_tutorial.EnemySoldier))
-            _tutorial.Advance();
+            _tutorial.Advance();                            // Move → ReplayLesson
 
         if (!_fx.Active)        // une attaque vient peut-être de lancer une animation : on attend
             CheckBattleEnd();
@@ -3757,7 +3807,10 @@ public sealed class GameplayScene : Scene
         if (_match.AttackTargets(from).Contains(target))
         {
             if (_match.UnitAt(from) is { } enemy && enemy.Hp < enemy.MaxHp)
-                ResolveAttack(from, target);
+            {
+                if (ResolveAttack(from, target) != MoveKind.Invalid)
+                    RecordAiAttackReplay();   // la contre-attaque est « revoyable » (leçon replay)
+            }
             else
                 _match.PassTurn();   // intact : il attend le premier coup du joueur
             return;
@@ -3780,11 +3833,24 @@ public sealed class GameplayScene : Scene
             TriggerLanding(best);
             Context.Sounds.Play("unit_move");
             _tutorial.EnemySoldier = best;     // l'ennemi suit sa nouvelle case
+            RecordAiMoveReplay(from, best);    // ce déplacement est « revoyable » (leçon replay)
         }
         else
         {
             _match.PassTurn();                 // adjacent ou bloqué : on rend la main au joueur
         }
+    }
+
+    /// <summary>Vrai si le joueur actionne une commande de déplacement de caméra cette frame (mêmes entrées que
+    /// <see cref="UpdateCamera"/>) : flèches / ZQSD / WASD, stick droit, ou glisser à la molette. Sert à valider
+    /// la leçon « caméra » du tuto sans dépendre d'un déplacement effectif (le plateau du tuto tient à l'écran).</summary>
+    private bool TutorialCameraPanned()
+    {
+        var i = Context.Input;
+        return i.IsKeyDown(Keys.Left) || i.IsKeyDown(Keys.Right) || i.IsKeyDown(Keys.Up) || i.IsKeyDown(Keys.Down)
+            || i.IsKeyDown(Keys.Q) || i.IsKeyDown(Keys.D) || i.IsKeyDown(Keys.Z) || i.IsKeyDown(Keys.S)
+            || i.IsKeyDown(Keys.A) || i.IsKeyDown(Keys.W)
+            || i.RightStick != Vector2.Zero || i.IsMiddleDown;
     }
 
     private static int Chebyshev(Cell a, Cell b) =>
@@ -3887,6 +3953,10 @@ public sealed class GameplayScene : Scene
         {
             DrawRectBorder(sb, Inflate(CommandTreeButtonRect(), 3), pcol, 3);   // c'est LUI qui ouvre l'arbre
         }
+        else if (t.Step == TutorialStep.RerollLesson)
+        {
+            DrawRectBorder(sb, Inflate(RerollIconRect(), 3), pcol, 3);   // l'icône de relance, expliquée
+        }
         else if (t.Step == TutorialStep.Chest && t.Chest is { } chestCell)
         {
             DrawZoneBorder(sb, board, chestCell, pcol, 3);
@@ -3931,6 +4001,14 @@ public sealed class GameplayScene : Scene
                 DrawPawnPopup(sb, board, t.PlayerSoldier, Loc.T(key), null);
                 break;
             }
+            case TutorialStep.CameraLesson:
+                DrawPawnPopup(sb, board, t.Commander,
+                    Loc.T(Context.Input.UsingGamepad ? "tuto.camera_gp" : "tuto.camera"), Loc.T("tuto.next"));
+                break;
+            case TutorialStep.DangerLesson:
+                DrawPawnPopup(sb, board, t.EnemySoldier,
+                    Loc.T(Context.Input.UsingGamepad ? "tuto.danger_gp" : "tuto.danger"), null);
+                break;
             case TutorialStep.Chest:
                 if (t.Chest is { } chestCell)
                     DrawPawnPopup(sb, board, chestCell, Loc.T("tuto.chest"), null);
@@ -3940,6 +4018,11 @@ public sealed class GameplayScene : Scene
                     DrawPawnPopup(sb, board, t.EnemySoldier, Loc.T("tuto.enemy_plays"), null);
                 else
                     DrawPawnPopup(sb, board, t.PlayerSoldier, Loc.T("tuto.move"), null);
+                break;
+            case TutorialStep.ReplayLesson:
+                if (!_fx.Active)   // pendant le replay lui-même, on n'affiche pas de pop par-dessus l'anim
+                    DrawPawnPopup(sb, board, t.EnemySoldier,
+                        Loc.T(Context.Input.UsingGamepad ? "tuto.replay_gp" : "tuto.replay"), null);
                 break;
             case TutorialStep.Attack:
                 if (!_fx.Active)
@@ -3967,6 +4050,9 @@ public sealed class GameplayScene : Scene
             case TutorialStep.FusionDo:
                 if (!FusionOpen && !EvoPlaying && _pending.Count > 0)
                     DrawAnchoredPopup(sb, PanelCardRect(0), Loc.T("tuto.fusion_do"), null);
+                break;
+            case TutorialStep.RerollLesson:
+                DrawAnchoredPopup(sb, RerollIconRect(), Loc.T("tuto.reroll"), Loc.T("tuto.next"));
                 break;
             case TutorialStep.DeployFused:
                 DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), Loc.T("tuto.deploy_fused"), null);

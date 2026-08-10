@@ -13,14 +13,18 @@ public enum TutorialStep
     PlaceSoldier,  // le poser dans la zone de déploiement
     ReviewCard,    // revue de la carte donnée par donnée (DÈS la pose, avant de lancer le combat)
     StartCombat,   // lancer le combat
+    CameraLesson,  // INTERACTIF : bouger la caméra (flèches / ZQSD / stick droit) pour observer le plateau
+    DangerLesson,  // INTERACTIF : maintenir ESPACE / RT pour voir les cases menacées par l'ennemi
     Chest,         // aller sur le coffre : c'est comme ça qu'on trouve un équipement (l'ennemi attend)
     Move,          // une action/tour : déplacer le soldat vers l'ennemi
+    ReplayLesson,  // INTERACTIF : presser R / RB pour revoir la dernière action de l'IA (après son 1er coup)
     Attack,        // se déplacer SUR l'ennemi pour l'attaquer
     Commander,     // encart : le commandant, sa mort = défaite
 
     // ── Préparation guidée (retour en phase de placement, sur la même map) ──────────────────────
     FusionIntro,   // encart : 3 pions identiques fusionnent en une unité évoluée
     FusionDo,      // empiler 3 soldats en réserve, puis choisir l'évolution
+    RerollLesson,  // encart : la relance (échanger un pion) et le recyclage (casser un équipement)
     DeployFused,   // poser l'unité évoluée sur le plateau (un pion s'équipe une fois déployé)
     EquipIntro,    // encart : les équipements, trouvés dans les coffres
     EquipDo,       // glisser l'équipement prêté sur le pion déployé
@@ -84,13 +88,17 @@ public sealed class TutorialGuide
         TutorialStep.PickSoldier  => "tuto.pick_soldier",
         TutorialStep.PlaceSoldier => "tuto.place_soldier",
         TutorialStep.StartCombat  => "tuto.start_combat",
+        TutorialStep.CameraLesson => "tuto.camera",
+        TutorialStep.DangerLesson => "tuto.danger",
         TutorialStep.ReviewCard   => "tuto.card_title",
         TutorialStep.Chest        => "tuto.chest",
         TutorialStep.Move         => "tuto.move",
+        TutorialStep.ReplayLesson => "tuto.replay",
         TutorialStep.Attack       => "tuto.attack",
         TutorialStep.Commander    => "tuto.commander",
         TutorialStep.FusionIntro  => "tuto.fusion_title",
         TutorialStep.FusionDo     => "tuto.fusion_do",
+        TutorialStep.RerollLesson => "tuto.reroll",
         TutorialStep.DeployFused  => "tuto.deploy_fused",
         TutorialStep.EquipIntro   => "tuto.equip_title",
         TutorialStep.EquipDo      => "tuto.equip_do",

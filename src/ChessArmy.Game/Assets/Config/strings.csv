@@ -408,6 +408,13 @@ tuto.attack,Pour attaquer : déplace ta pièce directement sur l'ennemi.,To atta
 tuto.counter,L'ennemi a survécu. A son tour il riposte et frappe ta pièce.,The enemy survived. On its turn it strikes back at your piece.
 tuto.attack2,Achève-le : déplace-toi à nouveau sur lui. S'il meurt ta pièce prend sa case.,Finish it: move onto it again. If it dies your piece takes its tile.
 tuto.commander,La pièce au liseré doré est ton commandant. S'il meurt tu perds. Garde-le en vie !,The gold-outlined piece is your commander. If it dies you lose. Keep it alive!
+tuto.camera,Déplace la caméra avec les flèches ou ZQSD ou en glissant au clic molette pour observer tout le plateau.,Move the camera with the arrow keys or WASD or by dragging with the middle mouse button to look around the board.
+tuto.camera_gp,Déplace la caméra avec le stick droit pour observer tout le plateau.,Move the camera with the right stick to look around the whole board.
+tuto.danger,Maintiens ESPACE pour voir toutes les cases menacées par l'ennemi.,Hold SPACE to see every tile the enemy threatens.
+tuto.danger_gp,Maintiens la gâchette droite (RT) pour voir toutes les cases menacées par l'ennemi.,Hold the right trigger (RT) to see every tile the enemy threatens.
+tuto.replay,Appuie sur R pour revoir la dernière action de l'IA.,Press R to replay the AI last action.
+tuto.replay_gp,Appuie sur RB pour revoir la dernière action de l'IA.,Press RB to replay the AI last action.
+tuto.next,Clic pour continuer,Click to continue
 tuto.card_title,LA CARTE DE TON UNITE,YOUR UNIT CARD
 tuto.card_hp,Points de vie : la pièce meurt quand ils tombent à zéro.,Health: the piece dies when it reaches zero.
 tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power: the damage it deals on each attack.
@@ -423,6 +430,7 @@ tuto.continue,Clic pour commencer à jouer,Click to start playing
 tuto.fusion_title,LA FUSION,FUSION
 tuto.fusion_body,Pendant la phase de placement - avant chaque combat - tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase - before each battle - you can fuse three identical pawns into an evolved unit. You just received a third soldier.
 tuto.fusion_do,Glisse tes trois soldats l'un sur l'autre pour les fusionner.,Drag your three soldiers onto each other to fuse them.
+tuto.reroll,Glisse un pion sur l'icône de relance pour l'échanger contre un autre. Casser un équipement redonne une relance.,Drag a pawn onto the reroll icon to swap it for another. Breaking equipment grants a reroll.
 tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board: a pawn can only be equipped once deployed.
 tuto.equip_title,LES EQUIPEMENTS,EQUIPMENT
 tuto.equip_body,Voici l'épée trouvée dans le coffre. Un équipement reste collé au pion qui le porte.,Here is the sword found in the chest. Equipment stays stuck to the pawn that carries it.
@@ -488,7 +496,7 @@ tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.
 tree.logi_deploiement_3,GRANDE ARMEE,GRAND ARMY
 tree.logi_deploiement_3.desc,+4 places en réserve.,+4 reserve slots.
 tree.amalgame,AMALGAME,AMALGAM
-tree.amalgame.desc,une fusion ne demande plus que 2 pions au lieu de 3.,a fusion needs only 2 pawns instead of 3.
+tree.amalgame.desc,fusionner un tier 1 en tier 2 ne demande que 2 pions au lieu de 3.,fusing a tier 1 into a tier 2 needs only 2 pawns instead of 3.
 # ── Arbre du commandant LANCIER (tree "commandantLancier") ──
 tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat)
 tree.commandantLancier.branch0,COMMANDANT,COMMANDER
@@ -532,4 +540,4 @@ tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
 tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE
 tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
 tree.lan_logi_reserve_2,AMALGAME,AMALGAM
-tree.lan_logi_reserve_2.desc,une fusion d'unité du domaine de la tour ne demande plus que 2 pions.,fusing a rook-domain unit needs only 2 pawns.
+tree.lan_logi_reserve_2.desc,fusionner un tier 1 en tier 2 du domaine de la tour ne demande que 2 pions.,fusing a rook-domain tier 1 into a tier 2 needs only 2 pawns.

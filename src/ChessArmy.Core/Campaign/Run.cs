@@ -1226,15 +1226,17 @@ public sealed class Run
     // tier 3 réactiverait automatiquement la fusion une fois les évolutions ajoutées au JSON.
 
     /// <summary>
-    /// Nombre d'exemplaires d'une même classe requis pour fusionner une classe du <paramref name="domaine"/>
-    /// donné. Base 3, RAMENÉ au minimum de 2 par un nœud « Amalgame »
+    /// Nombre d'exemplaires d'une même classe requis pour fusionner la classe de <paramref name="spec"/>.
+    /// Base 3, RAMENÉ au minimum de 2 par un nœud « Amalgame »
     /// (<see cref="CommandEffectKind.FusionSizeReduction"/>) — GLOBAL, ou restreint à un domaine (ex. le Bastion :
-    /// uniquement le domaine de la Tour).
+    /// uniquement le domaine de la Tour). La réduction ne s'applique QU'AUX fusions de tier 1 vers tier 2
+    /// (classe de base) : fusionner un tier 2 en tier 3 demande toujours 3 pions, sinon les hautes évolutions
+    /// deviennent trop faciles à obtenir.
     /// </summary>
-    public int FusionSizeFor(Domaine domaine) =>
-        System.Math.Max(2, BaseFusionSize - ActiveEffects
-            .Where(e => e.Kind == CommandEffectKind.FusionSizeReduction && (e.Domaine is null || e.Domaine == domaine))
-            .Sum(e => e.Amount));
+    public int FusionSizeFor(UnitSpec spec) =>
+        System.Math.Max(2, BaseFusionSize - (spec.UnitClass.Tier > 1 ? 0 : ActiveEffects
+            .Where(e => e.Kind == CommandEffectKind.FusionSizeReduction && (e.Domaine is null || e.Domaine == spec.Domaine))
+            .Sum(e => e.Amount)));
     private const int BaseFusionSize = 3;
 
     /// <summary>Bonus de réduction du trait « Rempart » apporté par l'arbre (nœud « Rempart renforcé »). 0 = aucun.</summary>
@@ -1268,7 +1270,7 @@ public sealed class Run
         Phase == RunPhase.Placement
         && !spec.Essential
         && !spec.UnitClass.IsLeaf
-        && CountFusable(spec) >= FusionSizeFor(spec.Domaine);
+        && CountFusable(spec) >= FusionSizeFor(spec);
 
     /// <summary>Les évolutions proposées au choix pour fusionner <paramref name="spec"/> (vide si impossible).</summary>
     public IReadOnlyList<UnitClass> FusionOptions(UnitSpec spec) =>
@@ -1285,7 +1287,7 @@ public sealed class Run
         if (!CanFuse(spec))
             return null;
         // Retire le nombre requis d'exemplaires (n'importe lesquels : ils sont identiques).
-        var group = _roster.Where(u => !u.Essential && SameClass(u, spec)).Take(FusionSizeFor(spec.Domaine)).ToList();
+        var group = _roster.Where(u => !u.Essential && SameClass(u, spec)).Take(FusionSizeFor(spec)).ToList();
         return Fuse(group, evolution);
     }
 
@@ -1300,7 +1302,7 @@ public sealed class Run
     {
         if (group.Count == 0)
             return null;
-        var size = FusionSizeFor(group[0].Domaine);   // taille requise pour le domaine de la classe fusionnée
+        var size = FusionSizeFor(group[0]);   // taille requise pour la classe fusionnée (domaine + tier)
         // Autorisée au PLACEMENT (drag-stack habituel) ET au RECRUTEMENT (faire de la place sous le plafond
         // de réserve en fusionnant, cf. écrans draft/récompense).
         if (Phase is not (RunPhase.Placement or RunPhase.Recruitment) || group.Count != size)
