@@ -780,7 +780,7 @@ public sealed class CommanderSelectScene : Scene
 
     /// <summary>Vrai si <paramref name="level"/> équipe plus d'ennemis que le niveau juste en dessous.</summary>
     private static bool EquipsEnemies(int level) =>
-        Climbs(level, s => s.EnemyEquipBonus ?? -1);   // null (aucun équipement) se classe sous tous les autres
+        Climbs(level, s => s.EnemyEquipBonus is { } b ? b.Sum() : -1);   // null (aucun équipement) se classe sous tous les autres
 
     /// <summary>Vrai si un levier de difficulté MONTE entre le niveau précédent et celui-ci.</summary>
     private static bool Climbs(int level, Func<DifficultySettings, double> lever) =>

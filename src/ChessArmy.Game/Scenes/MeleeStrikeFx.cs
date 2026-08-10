@@ -45,11 +45,13 @@ public sealed class MeleeStrikeFx
     private const double ShakeDur    = 0.22; // secousse d'écran après l'impact
     private const double KnockbackDur = 0.18; // recul de la victime après le contact
     private const double SlideDur    = 0.20; // glissement « Recule » de la victime sur une case (permanent)
+    private const double MoveDur     = 0.30; // glissement d'un DÉPLACEMENT rejoué (« revoir action IA »)
 
     private const float LungeFraction = 0.42f; // amplitude de la fente, en fraction de case
     private const float LeapContactGap = 0.25f; // arrêt de la charge avant la case cible (fraction de case)
     private const float LeapJumpFraction = 0.55f; // hauteur du bond principal (fraction de case)
     private const float LeapHopFraction = 0.30f;  // hauteur du petit saut d'avance/repli
+    private const float MoveHopFraction = 0.16f;  // petit saut du pion pendant un déplacement rejoué
 
     private double _elapsed;
     private double _total;
@@ -69,6 +71,11 @@ public sealed class MeleeStrikeFx
     public bool Killed { get; private set; }
     public bool Advanced { get; private set; }
 
+    /// <summary>Vrai si l'anim en cours est un DÉPLACEMENT rejoué (fonction « revoir la dernière action de l'IA »)
+    /// et non une attaque : le pion glisse simplement de <see cref="From"/> à <see cref="To"/>, sans victime ni
+    /// impact. Cf. <see cref="BeginMove"/>.</summary>
+    public bool MoveOnly { get; private set; }
+
     /// <summary>Vrai si la victime a ESQUIVÉ l'attaque : elle fait un bond de côté (pas de flash ni de recul).</summary>
     public bool Dodged { get; private set; }
 
@@ -87,6 +94,7 @@ public sealed class MeleeStrikeFx
         Killed = killed;
         Advanced = advanced;
         Dodged = dodged;
+        MoveOnly = false;
         _style = style;
         _approachDur = style switch
         {
@@ -106,6 +114,33 @@ public sealed class MeleeStrikeFx
             (true, false) => _approachDur + DissolveDur,              // tir mortel : reste en place
             _             => _approachDur + BlinkDur,                 // survivant : flash après contact
         };
+    }
+
+    /// <summary>
+    /// Démarre un DÉPLACEMENT rejoué (fonction « revoir la dernière action de l'IA ») : le pion glisse de
+    /// <paramref name="from"/> à <paramref name="to"/> en un léger arc, sans victime ni impact. Sa case de repos
+    /// est la DESTINATION (le pion y est déjà sur le plateau ; la scène l'y masque le temps du glissement, comme
+    /// pour un attaquant animé). <see cref="HasImpacted"/> ne devient vrai qu'à la toute fin : la scène en profite
+    /// pour le rebond de pose.
+    /// </summary>
+    public void BeginMove(Cell from, Cell to, Texture2D? sprite)
+    {
+        From = from;
+        To = to;
+        Attacker = to;
+        AttackerSprite = sprite;
+        VictimSprite = null;
+        Killed = false;
+        Advanced = false;
+        Dodged = false;
+        MoveOnly = true;
+        _style = AttackStyle.Lunge;
+        _approachDur = MoveDur;   // l'« impact » (= atterrissage) ne se déclenche qu'à la fin du glissement
+        _total = MoveDur;
+        _elapsed = 0;
+        _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
+        _seedCounter++;
+        Active = true;
     }
 
     public void Update(double dt)
@@ -197,6 +232,9 @@ public sealed class MeleeStrikeFx
     /// </summary>
     public Vector2 AttackerTopLeft(Vector2 fromTop, Vector2 toTop, float tile)
     {
+        if (MoveOnly)   // déplacement rejoué : glissement plein de From à To (ni fente ni recul)
+            return Vector2.Lerp(fromTop, toTop, EaseInOut(Clamp01(_elapsed / _total)));
+
         if (_style is AttackStyle.Cast or AttackStyle.Shoot)
         {
             // Tireur à distance : reste sur sa case, léger recul (incantation / bande d'arc) qui revient.
@@ -266,6 +304,9 @@ public sealed class MeleeStrikeFx
     /// </summary>
     public float AttackerJumpLift(float tile)
     {
+        if (MoveOnly)   // déplacement rejoué : petit arc de saut, retombe à plat sur la case d'arrivée
+            return Arc(Clamp01(_elapsed / _total)) * tile * MoveHopFraction;
+
         if (_style != AttackStyle.Leap)
             return 0f;
 

@@ -567,7 +567,7 @@ public sealed class Run
 
     /// <summary>
     /// Nombre EXACT de pions ennemis équipés dans la vague courante : le barème de la phase
-    /// (<see cref="EnemyEquipByPhase"/>) décalé par la difficulté
+    /// (<see cref="EnemyEquipByPhase"/>) décalé par le bonus de difficulté PROPRE À LA PHASE
     /// (<see cref="DifficultySettings.EnemyEquipBonus"/>). Zéro en facile, et zéro sur les
     /// <see cref="NoEquipCombats"/> premiers combats quelle que soit la difficulté.
     /// </summary>
@@ -579,7 +579,7 @@ public sealed class Run
             return 0;
 
         var phase = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
-        return Math.Max(0, EnemyEquipByPhase[phase] + bonus);
+        return Math.Max(0, EnemyEquipByPhase[phase] + bonus[phase]);
     }
 
     /// <summary>

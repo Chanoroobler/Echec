@@ -271,6 +271,7 @@ domaine.tour,TOUR,ROOK
 # ── HUD / commandes ─────────────────────────────────────────────────────────
 hud.toggle_grid,GRILLE,GRID
 hud.danger_zones,ZONES DE DANGER,DANGER ZONES
+hud.replay_ai,REVOIR ACTION IA,REPLAY AI ACTION
 # ── Recrutement ─────────────────────────────────────────────────────────────
 recruit.title,RECRUTEMENT,RECRUITMENT
 recruit.subtitle,CHOISIS PARMI LES TROIS DERNIERS ENNEMIS VAINCUS,CHOOSE FROM THE LAST THREE DEFEATED ENEMIES

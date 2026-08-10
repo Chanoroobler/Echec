@@ -42,7 +42,7 @@
           {
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
-              { "name": "Pretresse", "asset": "pretresse", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin parfait"] },
+              { "name": "Pretresse", "asset": "pretresse", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin"] },
               { "name": "Barde",      "asset": "barde",      "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
             ]
           },

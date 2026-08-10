@@ -33,9 +33,9 @@ public enum Difficulty
 /// </param>
 /// <param name="EnemyEquipBonus">
 /// Pions ennemis ÉQUIPÉS par vague, en écart au barème de base de la phase (cf.
-/// <see cref="Campaign.Run.EnemyEquipCount"/>) : <c>0</c> = le barème tel quel, <c>+1</c> = un porteur de
-/// plus. <c>null</c> = AUCUN ennemi équipé, quel que soit le barème. Le boss n'est jamais concerné (il est
-/// <c>Essential</c>, comme le commandant du joueur).
+/// <see cref="Campaign.Run.EnemyEquipCount"/>) : un écart PAR PHASE (index 0..2 = phase 1..3), <c>0</c> = le
+/// barème tel quel, <c>+1</c> = un porteur de plus. <c>null</c> = AUCUN ennemi équipé, quelle que soit la
+/// phase. Le boss n'est jamais concerné (il est <c>Essential</c>, comme le commandant du joueur).
 /// </param>
 /// <param name="PaysansRequired">
 /// MISSION « LIBÉRER » : nombre MINIMUM de paysans à libérer pour que la mission compte. En dessous, la run
@@ -56,7 +56,7 @@ public enum Difficulty
 /// ses erreurs, l'option est retirée du menu (couche Game). Sert aussi à afficher la mention dans
 /// l'infobulle de difficulté.
 /// </param>
-public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? EnemyEquipBonus,
+public sealed record DifficultySettings(double AiAccuracy, int TierShift, int[]? EnemyEquipBonus,
     int PaysansRequired, int PaysansRequiredProtect, int PaysansRequiredSave, bool AllowRestart)
 {
     /// <summary>IA maladroite (1 coup sur 2 raté), vague affaiblie d'un tier, aucun ennemi équipé, aucun quota ; recommencer autorisé.</summary>
@@ -66,12 +66,12 @@ public sealed record DifficultySettings(double AiAccuracy, int TierShift, int? E
 
     /// <summary>Défaut : l'IA rate un coup sur quatre, vague de la table, équipement de base ; 1 paysan à libérer, 2 à protéger, 2 à sauver ; recommencer autorisé.</summary>
     public static readonly DifficultySettings Normal =
-        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: 0,
+        new(AiAccuracy: 0.75, TierShift: 0, EnemyEquipBonus: new[] { 0, 0, 0 },
             PaysansRequired: 1, PaysansRequiredProtect: 2, PaysansRequiredSave: 2, AllowRestart: true);
 
-    /// <summary>Jeu parfait, vague renforcée d'un tier, un pion équipé de plus ; 2 paysans à libérer, 3 à protéger, 3 à sauver ; run sans filet (pas de « recommencer »).</summary>
+    /// <summary>Jeu parfait, vague renforcée d'un tier, plus de pions équipés en fin de run (phase 1 +1, phase 2 +1, phase 3 +3) ; 2 paysans à libérer, 3 à protéger, 3 à sauver ; run sans filet (pas de « recommencer »).</summary>
     public static readonly DifficultySettings Difficile =
-        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: +1,
+        new(AiAccuracy: 1.00, TierShift: +1, EnemyEquipBonus: new[] { 1, 1, 3 },
             PaysansRequired: 2, PaysansRequiredProtect: 3, PaysansRequiredSave: 3, AllowRestart: false);
 
     /// <summary>Tous les niveaux, dans l'ordre croissant : c'est l'ordre du sélecteur de l'écran de sélection.</summary>

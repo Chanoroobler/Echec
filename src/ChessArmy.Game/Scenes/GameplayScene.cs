@@ -331,6 +331,20 @@ public sealed class GameplayScene : Scene
     // de la victime directe (cf. HitRecoil), figé à l'impact et résorbé dans la fenêtre des FX.
     private readonly HitRecoil _pierceRecoil = new();
     private (Cell Cell, int Damage, int Dc, int Dr)? _pendingPierce;
+    // « Revoir la dernière action de l'IA » (R clavier / RB manette, pendant le tour du joueur) : instantané de la
+    // dernière action ennemie, capturé pour REJOUER son animation par-dessus le plateau courant sans re-toucher le
+    // moteur (qui a déjà avancé). Null tant que l'IA n'a pas joué ce combat (ou après un tour PASSÉ).
+    private AiReplaySnapshot? _lastAiAction;
+
+    /// <summary>Tout ce qu'il faut pour rejouer l'animation de la dernière action de l'IA (cf. <see cref="_lastAiAction"/>).
+    /// Une ATTAQUE rejoue l'anim complète + le feedback PRINCIPAL (dégâts / esquive / phénix) ; un DÉPLACEMENT rejoue le
+    /// glissement du pion. Les FX de traits exotiques (orage, impact de zone, transpercement, riposte) ne sont PAS rejoués.</summary>
+    private readonly record struct AiReplaySnapshot(
+        bool IsAttack, Cell From, Cell To, Cell AttackerCell,
+        Texture2D? AttackerSprite, Texture2D? VictimSprite,
+        bool Killed, bool Advanced, AttackStyle Style, bool Dodged,
+        int Damage, int GiantBonus, bool Phenix,
+        (Cell From, Cell To)? ReculeSlide, string Sound);
     // Points de commandement « sur coup reçu » (commandant Lancier) : coups DÉJÀ signalés au joueur ce combat.
     // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
     // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
@@ -1364,6 +1378,7 @@ public sealed class GameplayScene : Scene
         _battleIntroTimer = BattleIntroDuration;
         MarkLayoutDirty();
         _aiTimer = 0;
+        _lastAiAction = null;   // aucune action IA à revoir au tout début du combat
         Context.Sounds.Play("battle_start");
 
         // Mission spéciale : le compte à rebours de tours démarre au combat (le joueur joue le round 1 en
@@ -3623,7 +3638,10 @@ public sealed class GameplayScene : Scene
         {
             _fx.Update(dt);
             if (_fx.HasImpacted && !_impactHandled)
-                OnImpact();
+            {
+                if (_fx.MoveOnly) OnReplayMoveLand();   // déplacement rejoué : rebond de pose, aucun impact
+                else OnImpact();
+            }
             _storm.Update(dt);    // les éclairs avancent en parallèle de la fin de l'anim d'attaque
             return;
         }
@@ -3669,6 +3687,17 @@ public sealed class GameplayScene : Scene
         // mis à jour en tête de frame (cf. _tremor.Update) : il s'éteint seul, pas de risque de blocage.
         if (_tremor.Active)
             return;
+
+        // « Revoir la dernière action de l'IA » : R (clavier) ou RB (manette), pendant le tour du JOUEUR et hors
+        // manipulation d'un pion. Rejoue l'animation par-dessus le plateau courant (le moteur a déjà avancé) et gèle
+        // le tour le temps des FX (cf. _fx.Active plus haut). Le tuto n'utilise pas UpdateAiTurn : rien à revoir.
+        if (_match.CurrentTurn == Faction.Player && _tutorial == null && _combatDragFrom is null
+            && _lastAiAction is { } replay
+            && (Context.Input.WasKeyPressed(Keys.R) || Context.Input.WasRightShoulderPressed))
+        {
+            StartAiReplay(replay);
+            return;
+        }
 
         if (_match.CurrentTurn == Faction.Enemy)
         {
@@ -4706,13 +4735,15 @@ public sealed class GameplayScene : Scene
             // Aucun coup productif (ex. gardes défensifs déjà en place, joueur hors de portée) : l'ennemi
             // PASSE, sinon le tour resterait bloqué côté ennemi. Le round est tout de même consommé.
             _match.PassTurn();
+            _lastAiAction = null;   // rien à revoir : l'IA a passé son tour
             OnEnemyTurnResolved();
             return;
         }
 
         if (a.IsAttack)
         {
-            ResolveAttack(a.From, a.To);
+            if (ResolveAttack(a.From, a.To) != MoveKind.Invalid)
+                RecordAiAttackReplay();     // fige l'attaque pour pouvoir la REVOIR (touche R / RB)
         }
         else
         {
@@ -4720,9 +4751,28 @@ public sealed class GameplayScene : Scene
             if (_match.UnitAt(a.To) is { } moved) FaceToward(moved, a.From, a.To);
             TriggerLanding(a.To);
             Context.Sounds.Play("unit_move");
+            RecordAiMoveReplay(a.From, a.To);
         }
         OnEnemyTurnResolved();
     }
+
+    /// <summary>Fige la dernière ATTAQUE de l'IA (état de <see cref="_fx"/> + feedback principal en attente) pour pouvoir
+    /// la REVOIR. Appelé juste après <see cref="ResolveAttack"/>, donc AVANT que l'impact ne consomme les _pending*.</summary>
+    private void RecordAiAttackReplay() =>
+        _lastAiAction = new AiReplaySnapshot(
+            IsAttack: true, From: _fx.From, To: _fx.To, AttackerCell: _fx.Attacker,
+            AttackerSprite: _fx.AttackerSprite, VictimSprite: _fx.VictimSprite,
+            Killed: _fx.Killed, Advanced: _fx.Advanced, Style: _fx.Style, Dodged: _fx.Dodged,
+            Damage: _pendingDamage, GiantBonus: _pendingGiantBonus, Phenix: _pendingPhenix,
+            ReculeSlide: _reculeSlide, Sound: SoundForStyle(_fx.Style));
+
+    /// <summary>Fige le dernier DÉPLACEMENT de l'IA (cases départ/arrivée + sprite du pion) pour pouvoir le REVOIR.</summary>
+    private void RecordAiMoveReplay(Cell from, Cell to) =>
+        _lastAiAction = new AiReplaySnapshot(
+            IsAttack: false, From: from, To: to, AttackerCell: to,
+            AttackerSprite: _match.UnitAt(to) is { } m ? UnitSprite(m) : null, VictimSprite: null,
+            Killed: false, Advanced: false, Style: AttackStyle.Lunge, Dodged: false,
+            Damage: 0, GiantBonus: 0, Phenix: false, ReculeSlide: null, Sound: "unit_move");
 
     /// <summary>
     /// Cases des paysans encore EN JEU (tuiles recrue non résolues), passées à l'IA : GARDÉES par les
@@ -5454,14 +5504,7 @@ public sealed class GameplayScene : Scene
         var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
         var attackerCell = advanced ? target : from;
         var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
-        // Son selon le style : incantation pour le mage, charge pour le cavalier, coup d'arme sinon.
-        Context.Sounds.Play(style switch
-        {
-            AttackStyle.Cast  => "unit_cast",
-            AttackStyle.Leap  => "unit_charge",
-            AttackStyle.Shoot => "unit_shoot",
-            _                 => "unit_attack",
-        });
+        Context.Sounds.Play(SoundForStyle(style));   // incantation (mage) / charge (cavalier) / tir (archer) / coup d'arme
         _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style, dodged: _pendingDodge);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
@@ -5486,13 +5529,7 @@ public sealed class GameplayScene : Scene
         }
 
         _damagePopups.SpawnText(rip.From, Loc.T("fx.riposte"), Palette.Yellow2);   // « RIPOSTE » au-dessus du riposteur
-        Context.Sounds.Play(rip.Style switch
-        {
-            AttackStyle.Cast  => "unit_cast",
-            AttackStyle.Leap  => "unit_charge",
-            AttackStyle.Shoot => "unit_shoot",
-            _                 => "unit_attack",
-        });
+        Context.Sounds.Play(SoundForStyle(rip.Style));
 
         // À l'impact de cette 2e anim : le chiffre de la riposte (les autres reports ont été consommés à
         // l'impact principal, donc _pending* sont déjà nuls) ; ni esquive ni phénix ici.
@@ -5504,9 +5541,66 @@ public sealed class GameplayScene : Scene
         _impactHandled = false;
     }
 
+    /// <summary>
+    /// (Re)lance l'animation de la dernière action de l'IA depuis son instantané, SANS re-toucher le moteur (qui a
+    /// déjà avancé). Une ATTAQUE rejoue l'anim complète + le feedback PRINCIPAL (dégâts / esquive / phénix + éventuel
+    /// glissement « Recule ») ; un DÉPLACEMENT rejoue le glissement du pion. Les reports de traits exotiques (orage /
+    /// impact de zone / transpercement / riposte) sont remis à zéro pour ne pas refaire jaillir de chiffres parasites
+    /// pendant le tour du joueur. L'anim gèle le tour comme d'habitude (cf. _fx.Active dans UpdateBattle).
+    /// </summary>
+    private void StartAiReplay(AiReplaySnapshot snap)
+    {
+        _pendingStormBolts = null;
+        _pendingStormHits = null;
+        _pendingImpactHits = null;
+        _pendingImpactZone = null;
+        _pendingReculeSlam = null;
+        _pendingPierce = null;
+        _pendingRiposte = null;
+
+        if (snap.IsAttack)
+        {
+            _pendingDamage = snap.Damage;
+            _pendingGiantBonus = snap.GiantBonus;
+            _pendingPhenix = snap.Phenix;
+            _pendingDodge = snap.Dodged;
+            _reculeSlide = snap.ReculeSlide;
+            Context.Sounds.Play(snap.Sound);
+            _fx.Begin(snap.From, snap.To, snap.AttackerCell, snap.AttackerSprite, snap.VictimSprite,
+                snap.Killed, snap.Advanced, snap.Style, dodged: snap.Dodged);
+        }
+        else
+        {
+            _pendingDamage = 0;
+            _pendingGiantBonus = 0;
+            _pendingPhenix = false;
+            _pendingDodge = false;
+            _reculeSlide = null;
+            _fx.BeginMove(snap.From, snap.To, snap.AttackerSprite);   // son « unit_move » joué à l'atterrissage
+        }
+        _impactHandled = false;
+    }
+
+    /// <summary>Fin d'un DÉPLACEMENT rejoué (« revoir action ») : le pion se pose (rebond + son), sans aucun dégât.</summary>
+    private void OnReplayMoveLand()
+    {
+        _impactHandled = true;
+        TriggerLanding(_fx.To);
+        Context.Sounds.Play("unit_move");
+    }
+
     /// <summary>Style d'animation d'attaque selon l'unité ET la case ciblée : un cavalier (monté compris) qui
     /// frappe une case en L SAUTE (charge) ; sinon archer (« Zone morte ») = tir, mage = projectile, autres =
     /// fente. Ainsi l'archer monté SAUTE au corps-à-corps en L mais TIRE une flèche sur ses cibles en ligne.</summary>
+    /// <summary>Son d'attaque selon le style : incantation (mage), charge (cavalier), tir (archer) ou coup d'arme.</summary>
+    private static string SoundForStyle(AttackStyle style) => style switch
+    {
+        AttackStyle.Cast  => "unit_cast",
+        AttackStyle.Leap  => "unit_charge",
+        AttackStyle.Shoot => "unit_shoot",
+        _                 => "unit_attack",
+    };
+
     private static AttackStyle AttackStyleFor(Unit unit, Cell from, Cell target)
     {
         // Cavalier (y compris archer monté) frappant une case en L : c'est un SAUT (charge), pas un tir.
@@ -6244,17 +6338,20 @@ public sealed class GameplayScene : Scene
     private void DrawControlsLegend(SpriteBatch sb, Viewport viewport)
     {
         var gp = Context.Input.UsingGamepad;
-        var lines = new[]
+        var lines = new List<string>
         {
             $"{(gp ? "SELECT" : "F1")} : {Loc.T("hud.toggle_grid")}",
             $"{(gp ? "RT" : "ESPACE")} : {Loc.T("hud.danger_zones")}",
         };
+        // « Revoir action IA » n'a de sens qu'en combat (l'IA n'a pas joué au placement) : ligne ajoutée alors.
+        if (_run.Phase == RunPhase.Battle)
+            lines.Add($"{(gp ? "RB" : "R")} : {Loc.T("hud.replay_ai")}");
 
         const int pad = 10, lineH = 11;
         var w = 0;
         foreach (var line in lines)
             w = System.Math.Max(w, Context.Font.Measure(line, 1));
-        var box = new Rectangle(12, 12, w + 2 * pad, pad + lines.Length * lineH + pad - 2);
+        var box = new Rectangle(12, 12, w + 2 * pad, pad + lines.Count * lineH + pad - 2);
         Context.Style.DrawPanel(sb, box);
 
         var y = box.Y + pad;

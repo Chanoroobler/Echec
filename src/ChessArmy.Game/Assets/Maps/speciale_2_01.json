@@ -3,7 +3,7 @@
   "type": "Speciale",
   "objective": "LibererPaysans",
   "phase": 2,
-  "turnLimit": 30,
+  "turnLimit": 35,
   "width": 12,
   "height": 12,
   "tiles": [

@@ -315,14 +315,15 @@ public class CommanderSelectionTests
         RunAt(combat, difficulty, seed).BuildEnemyWave().Count(u => u.Equipment != null);
 
     [Theory]
-    // Le nombre d'équipés est EXACT, pas probabiliste : phase 1 → 1, phases 2-3 → 3, +1 en difficile.
+    // Le nombre d'équipés est EXACT, pas probabiliste : phase 1 → 1, phases 2-3 → 3 en normal.
+    // Bonus difficile PAR PHASE : phase 1 +1, phase 2 +1, phase 3 +3.
     [InlineData(3, Difficulty.Facile, 0)]      // facile : jamais d'équipement
     [InlineData(3, Difficulty.Normal, 1)]      // phase 1
     [InlineData(3, Difficulty.Difficile, 2)]
     [InlineData(7, Difficulty.Normal, 3)]      // phase 2
     [InlineData(7, Difficulty.Difficile, 4)]
     [InlineData(13, Difficulty.Normal, 3)]     // phase 3
-    [InlineData(13, Difficulty.Difficile, 4)]
+    [InlineData(13, Difficulty.Difficile, 6)]
     public void EnemyEquipment_ExactCountPerPhaseAndDifficulty(int combat, Difficulty difficulty, int expected)
     {
         // Même nombre quelle que soit la graine : seul le PORTEUR et l'OBJET sont tirés au sort.
