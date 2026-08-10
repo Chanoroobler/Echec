@@ -1068,6 +1068,10 @@ public sealed class GameplayScene : Scene
         // du commandant reste une défaite — cf. CheckBattleEnd).
         _specialObjective = _map is { Type: CombatType.Speciale } sm ? sm.Objective : SpecialObjective.Aucun;
         _specialMission = _specialObjective != SpecialObjective.Aucun;
+        // Compteur de tours armé DÈS la config (placement compris) : le HUD affiche le budget plein avant le
+        // combat, et l'alerte « temps bas » ne se déclenche pas à tort sur un 0 non initialisé. BeginBattle le
+        // remet au plein au lancement du combat (redondant mais sans effet).
+        _specialRoundsLeft = SpecialTurnBudget();
         // Mission « protéger » : le joueur ne peut pas se poser sur les cases paysan (il les défend, ne les
         // squatte pas) ; les ennemis, eux, y vont pour les capturer.
         var playerBlocked = IsProtectMission ? _recrueCells : null;
@@ -3577,11 +3581,20 @@ public sealed class GameplayScene : Scene
         //   • « sauver » : COURSE — les deux camps agissent (l'IA capture, l'allié récupère) sur les mêmes tuiles.
         //   • partout ailleurs (Liberer / escarmouche) : seul un ALLIÉ qui entre dessus recrute.
         // Chaque détection sort tôt sur _recrueConsumed → la première à résoudre une tuile gagne la course dessus.
-        if (AiCapturesPaysans)
-            CheckPaysanCapture();
-        if (!IsProtectMission)
-            CheckRecrueObjects();
-        CheckChests();             // ouverture d'un coffre si un allié vient d'entrer dessus
+        //
+        // GARDE : on ne résout ces tuiles QUE quand le combat est POSÉ (aucune anim d'attaque / orage / riposte /
+        // tremblement en cours). Sinon, quand une attaque TUE un pion sur un coffre ou une tuile recrue et que
+        // l'attaquant AVANCE dessus (le moteur l'y place instantanément), la révélation s'ouvrirait AVANT que
+        // l'animation d'attaque n'ait fini de jouer. On attend donc la fin des FX : l'attaque se joue, PUIS la
+        // découverte. La détection est basée sur l'état (occupation courante) : rien n'est manqué, juste différé.
+        if (!_fx.Active && !_storm.Active && !_tremor.Active && _pendingRiposte is null)
+        {
+            if (AiCapturesPaysans)
+                CheckPaysanCapture();
+            if (!IsProtectMission)
+                CheckRecrueObjects();
+            CheckChests();         // ouverture d'un coffre si un allié vient d'entrer dessus
+        }
 
         // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
         if (ChestRevealActive)
@@ -10916,32 +10929,61 @@ public sealed class GameplayScene : Scene
     private void DrawSpecialObjective(SpriteBatch sb, Viewport viewport)
     {
         var railW = (int)CenteringWidth();   // même centrage que le plateau/la frise (suit le départ du panneau)
-        string line1, line2;
-        Color line2Color;
+        var lines = new List<(string Text, Color Color)>();
+
+        // Objectif OBLIGATOIRE (quota de difficulté) rappelé EN POSITIF pendant toute la mission : c'est la
+        // condition de défaite PARTICULIÈRE de cette mission (rater le quota fait perdre la run, en plus de la
+        // mort du commandant). Absent quand la difficulté n'impose aucun quota (PaysansRequired == 0).
+        var required = PaysansRequired;
+        if (required > 0)
+        {
+            var goalKey = IsProtectMission ? "special.goal_protect"
+                        : IsSauverMission  ? "special.goal_save"
+                        :                    "special.goal_liberate";
+            // ROUGE tant que le quota n'est pas atteint, VERT dès qu'il l'est : le joueur voit d'un coup d'oeil
+            // si la condition de défaite particulière est déjà sécurisée.
+            var met = PaysansSaved >= required;
+            lines.Add((Loc.T(goalKey, required), met ? Palette.Green1 : Palette.Purple5));
+        }
+
+        // Peu de temps : le compteur de tours CLIGNOTE (rouge <-> clair) pour alerter, dès 5 tours restants
+        // (plus vite sous 2 tours).
+        var lowTime = HasSpecialTurnLimit && _specialRoundsLeft is > 0 and <= 5;
+        var pulse = 0.5f + 0.5f * MathF.Sin(_time * (_specialRoundsLeft <= 1 ? 12f : 7f));
+
         if (IsSauverMission)
         {
-            // COURSE : récupérés (haut, positif) vs capturés par l'IA (bas, danger). Aucun compteur de tours.
-            line1 = Loc.T("special.saved", PaysansFreed, PaysansTotal);
-            line2 = Loc.T("special.captured", PaysansCaptured, PaysansTotal);
-            line2Color = PaysansCaptured > 0 ? Palette.Purple5 : Palette.Yellow1;
+            // COURSE : récupérés (positif) vs capturés par l'IA (danger). Aucun compteur de tours.
+            lines.Add((Loc.T("special.saved", PaysansFreed, PaysansTotal), Palette.Cyan1));
+            lines.Add((Loc.T("special.captured", PaysansCaptured, PaysansTotal),
+                PaysansCaptured > 0 ? Palette.Purple5 : Palette.Yellow1));
         }
         else
         {
-            // Proteger : paysans encore PROTÉGÉS X/N ; Liberer : paysans LIBÉRÉS X/N ; ligne 2 = tours restants.
-            line1 = IsProtectMission
+            // Proteger : encore PROTÉGÉS X/N ; Liberer : LIBÉRÉS X/N ; puis les tours restants (clignotants si bas).
+            lines.Add((IsProtectMission
                 ? Loc.T("special.protected", PaysansProtected, PaysansTotal)
-                : Loc.T("special.paysans", PaysansResolved, PaysansTotal);
-            line2 = Loc.T("special.rounds", System.Math.Max(0, _specialRoundsLeft));
-            line2Color = _specialRoundsLeft <= 3 ? Palette.Purple5 : Palette.Yellow1;   // alerte fin de temps
+                : Loc.T("special.paysans", PaysansResolved, PaysansTotal), Palette.Cyan1));
+            lines.Add((Loc.T("special.rounds", System.Math.Max(0, _specialRoundsLeft)),
+                lowTime ? Color.Lerp(Palette.Purple5, Palette.White, pulse) : Palette.Yellow1));
         }
-        var textW = System.Math.Max(Context.Font.Measure(line1, 1), Context.Font.Measure(line2, 1));
-        var box = new Rectangle((railW - ((int)textW + 28)) / 2, 78, (int)textW + 28, 40);
+
+        var textW = 0;
+        foreach (var (text, _) in lines)
+            textW = System.Math.Max(textW, (int)Context.Font.Measure(text, 1));
+        var boxH = 24 + (lines.Count - 1) * 16;   // 2 lignes = 40 (inchangé) ; +16 par ligne supplémentaire
+        var box = new Rectangle((railW - (textW + 28)) / 2, 78, textW + 28, boxH);
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         Context.Style.FillDither(sb, box);
-        DrawRectBorder(sb, box, Palette.Navy1, 2);
-        Context.Font.DrawCentered(sb, line1, new Rectangle(box.X, box.Y + 6, box.Width, 12), 1, Palette.Cyan1);
-        Context.Font.DrawCentered(sb, line2, new Rectangle(box.X, box.Y + 22, box.Width, 12), 1, line2Color);
+        // Le cadre pulse aussi en rouge quand le temps presse : renfort visuel du clignotement du compteur.
+        DrawRectBorder(sb, box, lowTime ? Color.Lerp(Palette.Navy1, Palette.Purple5, pulse) : Palette.Navy1, 2);
+        var y = box.Y + 6;
+        foreach (var (text, color) in lines)
+        {
+            Context.Font.DrawCentered(sb, text, new Rectangle(box.X, y, box.Width, 12), 1, color);
+            y += 16;
+        }
         sb.End();
     }
 

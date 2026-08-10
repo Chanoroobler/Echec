@@ -90,7 +90,7 @@ difficulty.no_restart,Impossible de recommencer la mission,Cannot restart the mi
 # ── Combat / placement ──────────────────────────────────────────────────────
 combat.boss,COMBAT DE BOSS,BOSS BATTLE
 combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
-combat.phase,PHASE {0}/{1} - {2},PHASE {0}/{1} - {2}
+combat.phase,PHASE {0}/{1} : {2},PHASE {0}/{1} : {2}
 hud.phase,PHASE {0}/{1},PHASE {0}/{1}
 hud.enemies,{0} ENNEMIS,{0} ENEMIES
 mission.escarmouche,ESCARMOUCHE,SKIRMISH
@@ -122,6 +122,10 @@ special.defeat_commander,Mort du commandant,The commander falls
 special.defeat_quota,Sauver moins de {0} paysan(s),Free fewer than {0} peasant(s)
 special.defeat_quota_protect,Protéger moins de {0} paysan(s),Keep fewer than {0} peasant(s) safe
 special.defeat_quota_save,Récupérer moins de {0} paysan(s),Save fewer than {0} peasant(s)
+# Objectif rappele EN JEU (HUD sous la frise) quand un quota existe : formulation POSITIVE (au moins N).
+special.goal_liberate,Libère au moins {0} paysan(s),Free at least {0} peasant(s)
+special.goal_protect,Protège au moins {0} paysan(s),Keep at least {0} peasant(s) safe
+special.goal_save,Sauve au moins {0} paysan(s),Save at least {0} peasant(s)
 special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
 special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT
 # Modale de bilan affichee a la cloture d'une mission speciale
@@ -247,7 +251,7 @@ unit.javelinier,JAVELINIER,JAVELINEER
 unit.Dragoon,DRAGOON,DRAGOON
 unit.voltigeur,VOLTIGEUR,VOLTIGEUR
 unit.commandant,COMMANDANT,COMMANDER
-# unit.boss : PAS un asset de units.json — c'est le boss du repli codé (Bosses.Defaults), affiché
+# unit.boss : PAS un asset de units.json. C'est le boss du repli codé (Bosses.Defaults) affiché
 # seulement si units.json ne charge pas. Ne pas supprimer en croyant à une clé orpheline.
 unit.boss,BOSS,BOSS
 # Noms des boss (cle = unit.<asset>, casse exacte de l'asset PNG)
@@ -276,7 +280,7 @@ hud.replay_ai,REVOIR ACTION IA,REPLAY AI ACTION
 recruit.title,RECRUTEMENT,RECRUITMENT
 recruit.subtitle,CHOISIS PARMI LES TROIS DERNIERS ENNEMIS VAINCUS,CHOOSE FROM THE LAST THREE DEFEATED ENEMIES
 recruit.army,TON ARMEE,YOUR ARMY
-recruit.hold_prompt,RESERVE PLEINE - LIBERE UNE PLACE OU ABANDONNE,RESERVE FULL - FREE A SLOT OR DISCARD
+recruit.hold_prompt,RESERVE PLEINE : LIBERE UNE PLACE OU ABANDONNE,RESERVE FULL : FREE A SLOT OR DISCARD
 recruit.abandon,ABANDONNER LE PION,DISCARD THE UNIT
 reward.title,PAYSANS SAUVES,PEASANTS SAVED
 reward.subtitle,COCHE LES PIONS A GARDER,CHECK THE UNITS TO KEEP
@@ -286,8 +290,8 @@ reserve.hint_fuse,GLISSE 3 IDENTIQUES : FUSION,DRAG 3 ALIKE: FUSE
 reserve.hint_del,CLIC DROIT : SUPPRIMER,RIGHT-CLICK: DELETE
 reserve.delete,SUPPRIMER,DELETE
 reserve.fuse,FUSIONNER,FUSE
-reserve.full_hint,PLEINE - FUSIONNE OU SUPPRIME,FULL - FUSE OR DELETE
-reserve.no_room,PLUS DE PLACE - FUSIONNE OU SUPPRIME,NO ROOM - FUSE OR DELETE
+reserve.full_hint,PLEINE : FUSIONNE OU SUPPRIME,FULL : FUSE OR DELETE
+reserve.no_room,PLUS DE PLACE : FUSIONNE OU SUPPRIME,NO ROOM : FUSE OR DELETE
 reserve.hint_enter,RB : GERER RESERVE,RB: MANAGE RESERVE
 reserve.hint_pick,A : CHOISIR   B : RETOUR,A: PICK   B: BACK
 reserve.hint_act,A : VALIDER   B : RETOUR,A: CONFIRM   B: BACK
@@ -395,7 +399,7 @@ fx.seisme,SÉISME !,EARTHQUAKE!
 # Les TITRES restent en capitales (libelles d'UI) ; les consignes et les corps de texte sont des PHRASES,
 # rendues telles quelles (preserveCase) : minuscules accentuees, majuscule en debut de phrase.
 tuto.intro_title,TUTORIEL,TUTORIAL
-tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) - combat - récompense.,A battle has 3 phases: preparation (placement) - battle - reward.
+tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) puis combat puis récompense.,A battle has 3 phases: preparation (placement) then battle then reward.
 tuto.intro_continue,Clic pour commencer,Click to begin
 tuto.pick_soldier,Clique sur le soldat dans l'inventaire pour le prendre en main.,Click the soldier in the inventory to pick it up.
 tuto.place_soldier,Pose le soldat sur une case libre de ta zone (les rangées du bas).,Drop the soldier on a free tile in your zone (the bottom rows).
@@ -428,7 +432,7 @@ tuto.victory_title,BRAVO !,WELL DONE!
 tuto.continue,Clic pour commencer à jouer,Click to start playing
 # Preparation guidee : fusion -> equipement -> arbre de commandement. Ce que le tuto prete est rendu a la fin.
 tuto.fusion_title,LA FUSION,FUSION
-tuto.fusion_body,Pendant la phase de placement - avant chaque combat - tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase - before each battle - you can fuse three identical pawns into an evolved unit. You just received a third soldier.
+tuto.fusion_body,Pendant la phase de placement (avant chaque combat) tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase (before each battle) you can fuse three identical pawns into an evolved unit. You just received a third soldier.
 tuto.fusion_do,Glisse tes trois soldats l'un sur l'autre pour les fusionner.,Drag your three soldiers onto each other to fuse them.
 tuto.reroll,Glisse un pion sur l'icône de relance pour l'échanger contre un autre. Casser un équipement redonne une relance.,Drag a pawn onto the reroll icon to swap it for another. Breaking equipment grants a reroll.
 tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board: a pawn can only be equipped once deployed.
@@ -441,7 +445,7 @@ tuto.tree_open,Clique sur COMMANDEMENT en bas du panneau pour ouvrir ton arbre. 
 tuto.tree_open_gp,Descends sur COMMANDEMENT dans le panneau et valide avec A pour ouvrir ton arbre.,Move down to COMMAND in the panel and confirm with A to open your tree.
 tuto.tree_do,Clique une amélioration de la rangée du bas pour l'acheter.,Click an upgrade on the bottom row to buy it.
 tuto.tree_do_gp,Choisis une amélioration de la rangée du bas et valide avec A.,Pick an upgrade on the bottom row and confirm with A.
-tuto.recap_body,Tu sais combattre - fusionner - équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight - fuse - equip and command. The real campaign begins: your army starts fresh.
+tuto.recap_body,Tu sais combattre et fusionner. Tu sais aussi équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight and fuse. You can also equip and command. The real campaign begins: your army starts fresh.
 
 # ── Arbre de commandement (placement) ───────────────────────────────────────
 tree.button,COMMANDEMENT : {0},COMMAND: {0}

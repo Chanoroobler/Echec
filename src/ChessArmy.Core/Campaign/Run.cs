@@ -534,7 +534,7 @@ public sealed class Run
     private const int RarePityStep = 3;
 
     /// <summary>Nombre d'exemplaires d'un même équipement à partir duquel il devient RARE au coffre (anti-doublon).</summary>
-    private const int DuplicateThreshold = 2;
+    private const int DuplicateThreshold = 1;
 
     /// <summary>Poids de tirage au coffre d'un équipement déjà possédé <see cref="DuplicateThreshold"/> fois ou plus
     /// (1 = normal). &lt; 1 → moins probable, sans jamais être impossible.</summary>
