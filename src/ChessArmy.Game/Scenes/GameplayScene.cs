@@ -6397,13 +6397,20 @@ public sealed class GameplayScene : Scene
         if (!hasDrag && !hasPile && !hasCarry)
             return;
 
-        const int box = 128;   // marge autour du sprite 64 (lift compris)
+        const int box = 160;   // marge autour du sprite 64 : lift ET ombre projetée cisaillée compris
         const int s = 64;
+        int cx = box / 2, cy = box / 2;
         EnsureTarget(device, ref _ghostTarget, box, box);
         device.SetRenderTarget(_ghostTarget);
         device.Clear(Microsoft.Xna.Framework.Color.Transparent);
+
+        // Pion de COMBAT porté : son ombre projetée d'abord (batch cisaillé propre, cf. DrawPieceCastShadow),
+        // SOUS le sprite. Dessinée ICI (et non dans la passe d'ombres du plateau) pour rester à l'aplomb du pion
+        // à la souris en dézoom : sur le target plateau natif (repère décalé + mis à l'échelle) elle atterrirait loin.
+        if (hasCarry && UnitSprite(_match.UnitAt(_combatDragFrom!.Value)!) is { } carryShadow)
+            DrawPieceCastShadow(sb, carryShadow, cx - s / 2, cy - s / 2, s, (int)(s * CarriedLiftFraction));
+
         sb.Begin(samplerState: SamplerState.PointClamp);
-        int cx = box / 2, cy = box / 2;
         if (hasPile)
         {
             var r = new Rectangle(cx - InvIconSize / 2, cy - InvIconSize / 2, InvIconSize, InvIconSize);
@@ -7328,8 +7335,10 @@ public sealed class GameplayScene : Scene
             DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift + introY, size, UnitLift(cell, size), introA);
         }
 
-        // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »).
-        if (_combatDragFrom is { } from && _match.UnitAt(from) is { } carried && UnitSprite(carried) is { } cs)
+        // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »). En DÉZOOM,
+        // l'ombre est dessinée AVEC le pion dans la couche fantôme (cf. RenderGhostLayer) : la placer ici, sur le
+        // target plateau natif (repère décalé + mis à l'échelle), la ferait atterrir loin du pion — on la saute.
+        if (!Dezoomed && _combatDragFrom is { } from && _match.UnitAt(from) is { } carried && UnitSprite(carried) is { } cs)
         {
             var m = Context.Input.MousePosition;
             DrawPieceCastShadow(sb, cs, m.X - size / 2, m.Y - size / 2, size, (int)(size * CarriedLiftFraction));
@@ -11195,7 +11204,15 @@ public sealed class GameplayScene : Scene
         foreach (var (text, _) in lines)
             textW = System.Math.Max(textW, (int)Context.Font.Measure(text, 1));
         var boxH = 24 + (lines.Count - 1) * 16;   // 2 lignes = 40 (inchangé) ; +16 par ligne supplémentaire
-        var box = new Rectangle((railW - (textW + 28)) / 2, 78, textW + 28, boxH);
+        // Ancré EN HAUT À DROITE (au niveau de la frise) au lieu d'être centré sous elle : dégage le centre du
+        // plateau. Calé au bord droit, mais borné pour ne jamais chevaucher la frise (résolution étroite / texte
+        // localisé large) — son bord droit sert de butée gauche.
+        const int count = Run.MissionsPerPhase;
+        var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
+        var frameRight = (railW + contentW) / 2 + 14;               // bord droit du fond de la frise
+        var boxW = textW + 28;
+        var boxX = System.Math.Max(frameRight + 8, railW - boxW - 8);
+        var box = new Rectangle(boxX, 6, boxW, boxH);
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         Context.Style.FillDither(sb, box);
