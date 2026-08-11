@@ -58,7 +58,7 @@ public sealed class CommanderSelectScene : Scene
     /// qui désigne le pion choisi et fait disparaître celui qui sort, au lieu de le laisser déborder.
     /// </summary>
     private const float FadePerSlot = 0.55f;
-    private const int NameH = 21;               // texte scale 3
+    private int NameH => Context.Font.LineHeight(3);   // hauteur du nom (scale 3) : 21 latin / 36 cjk (police active)
     private const int TileGap = 10;
     private const int BtnH = 38;
     private const int BackW = 150, StartW = 220;
@@ -712,7 +712,10 @@ public sealed class CommanderSelectScene : Scene
     {
         // Trois modifications empilées se lisaient comme un pavé : un tiret par ligne et un interligne plus
         // large en font une LISTE, qu'on parcourt d'un coup d'œil.
-        const int pad = 8, lineH = 13, bullet = 10;
+        const int pad = 8, bullet = 10;
+        // Espacements dérivés de la police active (titre CJK plus haut) ; identiques au latin (titre 22 / ligne 13).
+        var lineH = Context.Font.GlyphHeight + 6;
+        var titleBlock = Context.Font.LineHeight(2) + 8;
         var difficulty = DifficultySettings.AllLevels[level];
         var title = DifficultyName(difficulty);
 
@@ -741,7 +744,7 @@ public sealed class CommanderSelectScene : Scene
         foreach (var line in lines)
             w = Math.Max(w, bullet + Context.Font.Measure(line, 1));
         w += 2 * pad;
-        var h = pad + 16 + 6 + lines.Count * lineH + pad;
+        var h = pad + titleBlock + lines.Count * lineH + pad;
 
         var x = Math.Clamp(anchor.Center.X - w / 2, bounds.X, Math.Max(bounds.X, bounds.Right - w));
         // Au-DESSUS du bouton : la barre de difficulté est déjà en bas de l'écran.
@@ -750,7 +753,7 @@ public sealed class CommanderSelectScene : Scene
         var box = new Rectangle(x, y, w, h);
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, title, new Vector2(box.X + pad, box.Y + pad), 2, DifficultyColor(difficulty));
-        var ty = box.Y + pad + 22;
+        var ty = box.Y + pad + titleBlock;
         foreach (var line in lines)
         {
             // preserveCase : ce sont des PHRASES, pas des libellés d'UI — et la police ne dessine les

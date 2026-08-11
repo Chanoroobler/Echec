@@ -628,7 +628,7 @@ public sealed class GameplayScene : Scene
         // « Recommencer la mission » disparaît du menu pause si la difficulté l'interdit (Difficile : run sans filet).
         _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height),
             allowRestart: DifficultySettings.For(_chosenDifficulty).AllowRestart);
-        _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
+        _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Style);
         _commandTree = new CommandTreeView(Context);
         _codex = new CodexView(Context);
         _combatFx = LoadCombatFx();
@@ -6574,7 +6574,8 @@ public sealed class GameplayScene : Scene
         if (_run.Phase == RunPhase.Battle)
             lines.Add($"{(gp ? "RB" : "R")} : {Loc.T("hud.replay_ai")}");
 
-        const int pad = 10, lineH = 11;
+        const int pad = 10;
+        var lineH = Context.Font.GlyphHeight + 4;   // 11 latin / 16 cjk
         var w = 0;
         foreach (var line in lines)
             w = System.Math.Max(w, Context.Font.Measure(line, 1));
@@ -8961,16 +8962,7 @@ public sealed class GameplayScene : Scene
     /// (rareté ôtée, ex. <c>casqueRare</c> → <c>equip.casque</c>) pour que les variantes de rareté partagent
     /// la même traduction, sinon le nom brut du json (repli). Voir strings.csv (<c>equip.*</c>).
     /// </summary>
-    private static string EquipName(Equipment equip) =>
-        Loc.TOr("equip." + equip.Id, null!) ?? Loc.TOr("equip." + EquipBaseId(equip.Id), equip.Name);
-
-    /// <summary>Id d'équipement sans son suffixe de rareté (« Rare » / « Legendaire ») : clé de nom partagée.</summary>
-    private static string EquipBaseId(string id)
-    {
-        if (id.EndsWith("Legendaire", System.StringComparison.Ordinal)) return id[..^"Legendaire".Length];
-        if (id.EndsWith("Rare", System.StringComparison.Ordinal)) return id[..^"Rare".Length];
-        return id;
-    }
+    private static string EquipName(Equipment equip) => UI.EquipmentNames.Localized(equip);
 
     /// <summary>Couleur associée à une rareté (commun = blanc, rare = bleu, légendaire = or).</summary>
     private static Color RarityColor(EquipmentRarity rarity) => rarity switch
@@ -9107,9 +9099,10 @@ public sealed class GameplayScene : Scene
 
     // Géométrie partagée entre le calcul de hauteur et le rendu (pour rester synchronisés).
     private const int EquipTooltipPad = 8;     // marge intérieure
-    private const int EquipTooltipLineH = 9;   // interligne du texte (scale 1)
-    private const int EquipTooltipTitleH = 11; // hauteur réservée au nom
     private const int EquipTooltipGap = 6;     // espace AVANT la ligne de restriction
+    // Interligne / hauteur de titre dérivés de la police active (9 / 11 en latin, plus grands en CJK 12px).
+    private int EquipTooltipLineH => Context.Font.GlyphHeight + 2;
+    private int EquipTooltipTitleH => Context.Font.GlyphHeight + 4;
 
     /// <summary>Hauteur du cadre tooltip : nom + effet replié, plus l'éventuelle restriction (espacée), largeur fixe.</summary>
     private int EquipTooltipHeight(Equipment equip)
@@ -9478,7 +9471,7 @@ public sealed class GameplayScene : Scene
         var b = unit.Buffs ?? CommandBuffs.None;
         var keywords = KeywordsFor(unit.Class, unit.Equipment, b, GrantedTraitsFor(unit, cell));
         var lines = KeywordLineCount(keywords, CondensedCardW);
-        var bottom = lines * 9 + (unit.Kills > 0 ? 9 : 0);
+        var bottom = lines * KwLineH + (unit.Kills > 0 ? KwLineH : 0);
         return CondensedTopBlockH + (bottom > 0 ? CondensedBottomGap + bottom : 0) + CondensedPad;
     }
 
@@ -9609,8 +9602,11 @@ public sealed class GameplayScene : Scene
         // est pixel-perfect à l'échelle ENTIÈRE. La hauteur réservée ne bouge pas → rien ne se décale dessous.
         var name = revealed ? UnitName(c).ToUpperInvariant() : unknown;
         var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CardPad ? 2 : 1;
-        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, 14), nameScale, Palette.White);
-        y += 22;
+        // Boîte de titre = hauteur RÉELLE du nom (14 latin / 24 cjk) : centré dans une boîte à sa taille, le
+        // titre remplit la boîte au lieu de déborder vers le HAUT sur l'en-tête tier/domaine. Avance idem.
+        var titleH = Context.Font.LineHeight(nameScale);
+        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
+        y += titleH + 8;
 
         // Sprite du pion (comme en jeu, de face). En SILHOUETTE si l'unité n'est pas encore découverte.
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
@@ -9688,7 +9684,7 @@ public sealed class GameplayScene : Scene
         var bottomY = DrawKeywordList(sb, keywords, AddedKeywordLabels(c, equip, b, granted), rect, rect.Bottom - CardPad);
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
-                new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
+                new Rectangle(rect.X, bottomY - KwLineH, rect.Width, KwLineH), 1, Palette.Purple5);
     }
 
     /// <summary>
@@ -9719,8 +9715,10 @@ public sealed class GameplayScene : Scene
         // Nom centré, échelle 2 par défaut, repliée en 1 s'il déborde (même règle que la carte détaillée).
         var name = UnitName(c).ToUpperInvariant();
         var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CondensedPad ? 2 : 1;
-        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, 14), nameScale, Palette.White);
-        y += 18;
+        // Boîte de titre à la hauteur réelle du nom (cf. DrawCardLayout) : pas de débordement vers l'en-tête en CJK.
+        var titleH = Context.Font.LineHeight(nameScale);
+        Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
+        y += titleH + 4;
 
         // PV « pv/max » EN ROUGE (échelle 2, bien lisible) centré ; aperçu de dégâts éventuel accolé.
         DrawCondensedHp(sb, rect, y, hp, maxHp, hpPreviewDamage);
@@ -9734,7 +9732,7 @@ public sealed class GameplayScene : Scene
         var bottomY = DrawKeywordList(sb, keywords, AddedKeywordLabels(c, equip, b, granted), rect, rect.Bottom - CondensedPad);
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
-                new Rectangle(rect.X, bottomY - 9, rect.Width, 8), 1, Palette.Purple5);
+                new Rectangle(rect.X, bottomY - KwLineH, rect.Width, KwLineH), 1, Palette.Purple5);
     }
 
     /// <summary>PV condensés « pv/max » EN ROUGE (échelle 2) centrés ; si une attaque est visée, « -N » jaune accolé.</summary>
@@ -10152,7 +10150,8 @@ public sealed class GameplayScene : Scene
         }
         lines.Add(line);
 
-        var ty = bottomY - lines.Count * 9;
+        var lineH = KwLineH;   // 9 latin / 14 cjk : le trait CJK (12px) ne rentre pas dans 9px
+        var ty = bottomY - lines.Count * lineH;
         foreach (var l in lines)
         {
             var x = rect.X + (rect.Width - l.Sum(t => font.Measure(t.Text, 1))) / 2;
@@ -10161,9 +10160,9 @@ public sealed class GameplayScene : Scene
                 font.Draw(sb, text, new Vector2(x, ty), 1, color);
                 x += font.Measure(text, 1);
             }
-            ty += 9;
+            ty += lineH;
         }
-        return bottomY - lines.Count * 9;
+        return bottomY - lines.Count * lineH;
     }
 
     /// <summary>Vrai si la carte porte ce trait, toutes sources confondues (classe, équipement, arbre) —
@@ -10238,7 +10237,11 @@ public sealed class GameplayScene : Scene
     /// libellé (jaune) et la description en lignes repliées. Rien si l'unité n'a aucun mot-clé.
     /// Inclut le trait d'un éventuel équipement (cf. <see cref="KeywordsFor"/>).
     /// </summary>
-    private const int KwPad = 8, KwLineH = 9, KwGap = 8, KwScreenMargin = 8;
+    private const int KwPad = 8, KwGap = 8, KwScreenMargin = 8;
+    // Interlignes dérivés de la police ACTIVE (le CJK fait 12px de glyphe contre 7 en latin, sinon titre et
+    // description se chevauchent). Valeurs latines préservées : KwLineH=9, KwTitleH=11.
+    private int KwLineH => Context.Font.GlyphHeight + 2;
+    private int KwTitleH => Context.Font.GlyphHeight + 4;
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
     private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight)> KeywordBoxes(
@@ -10251,7 +10254,7 @@ public sealed class GameplayScene : Scene
             // Le renforcement d'arbre ne s'affiche que pour les unités du JOUEUR (l'ennemi n'en profite pas).
             var (desc, highlight, reinforced) = KeywordDisplay(kw, faction == Faction.Player);
             var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);
-            boxes.Add((kw, lines, KwPad + 10 + lines.Count * KwLineH + KwPad, reinforced, highlight));   // titre + lignes
+            boxes.Add((kw, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad, reinforced, highlight));   // titre + lignes
         }
         return boxes;
     }
@@ -10288,7 +10291,7 @@ public sealed class GameplayScene : Scene
             var labelColor = reinforced ? ReinforcedTraitColor
                 : addedLabels != null && addedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1;
             Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, labelColor);
-            var ly = box.Y + KwPad + 11;
+            var ly = box.Y + KwPad + KwTitleH;
             var highlightDrawn = false;
             foreach (var line in lines)
             {

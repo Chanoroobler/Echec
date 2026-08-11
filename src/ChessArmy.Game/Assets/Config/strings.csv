@@ -1,550 +1,556 @@
-Key,FR,EN
+Key,FR,EN,IT,DE,ES,PL,TR,ZH
 # ── Commun ──────────────────────────────────────────────────────────────────
-common.yes,OUI,YES
-common.no,NON,NO
+common.yes,OUI,YES,SI,JA,SI,TAK,EVET,是
+common.no,NON,NO,NO,NEIN,NO,NIE,HAYIR,否
 # Noms de langues (endonymes : affichés dans leur propre langue, identiques en FR/EN).
-lang.francais,FRANCAIS,FRANCAIS
-lang.english,ENGLISH,ENGLISH
+lang.francais,FRANCAIS,FRANCAIS,FRANCAIS,FRANCAIS,FRANCAIS,FRANCAIS,FRANCAIS,FRANCAIS
+lang.english,ENGLISH,ENGLISH,ENGLISH,ENGLISH,ENGLISH,ENGLISH,ENGLISH,ENGLISH
+lang.italiano,ITALIANO,ITALIANO,ITALIANO,ITALIANO,ITALIANO,ITALIANO,ITALIANO,ITALIANO
+lang.deutsch,DEUTSCH,DEUTSCH,DEUTSCH,DEUTSCH,DEUTSCH,DEUTSCH,DEUTSCH,DEUTSCH
+lang.espanol,ESPANOL,ESPANOL,ESPANOL,ESPANOL,ESPANOL,ESPANOL,ESPANOL,ESPANOL
+lang.polski,POLSKI,POLSKI,POLSKI,POLSKI,POLSKI,POLSKI,POLSKI,POLSKI
+lang.turkce,TURKCE,TURKCE,TURKCE,TURKCE,TURKCE,TURKCE,TURKCE,TURKCE
+lang.chinese,简体中文,简体中文,简体中文,简体中文,简体中文,简体中文,简体中文,简体中文
 # ── Menu pause ──────────────────────────────────────────────────────────────
-menu.pause,PAUSE,PAUSE
-menu.resume,REPRENDRE,RESUME
-menu.codex,CODEX,CODEX
-menu.options,OPTIONS,OPTIONS
-menu.restart,RECOMMENCER LA MISSION,RESTART MISSION
-menu.main_menu,MENU PRINCIPAL,MAIN MENU
-menu.quit,QUITTER,QUIT
+menu.pause,PAUSE,PAUSE,PAUSA,PAUSE,PAUSA,PAUZA,DURAKLAT,暂停
+menu.resume,REPRENDRE,RESUME,RIPRENDI,FORTSETZEN,REANUDAR,WZNOW,DEVAM ET,继续
+menu.codex,CODEX,CODEX,CODEX,CODEX,CODEX,CODEX,CODEX,图鉴
+menu.options,OPTIONS,OPTIONS,OPZIONI,OPTIONEN,OPCIONES,OPCJE,SECENEKLER,选项
+menu.restart,RECOMMENCER LA MISSION,RESTART MISSION,RIAVVIA MISSIONE,MISSION NEU STARTEN,REINICIAR MISION,RESTART MISJI,GOREVI YENIDEN BASLAT,重新开始任务
+menu.main_menu,MENU PRINCIPAL,MAIN MENU,MENU PRINCIPALE,HAUPTMENU,MENU PRINCIPAL,MENU GLOWNE,ANA MENU,主菜单
+menu.quit,QUITTER,QUIT,ESCI,BEENDEN,SALIR,WYJDZ,CIKIS,退出
 # ── Options ─────────────────────────────────────────────────────────────────
-options.title,OPTIONS,OPTIONS
-options.resolution,RESOLUTION,RESOLUTION
-options.display_mode,MODE D'AFFICHAGE,DISPLAY MODE
-display.windowed,FENETRE,WINDOWED
-display.borderless,SANS BORDURE,BORDERLESS
-display.fullscreen,PLEIN ECRAN,FULLSCREEN
-options.volume_master,VOLUME GLOBAL,MASTER VOLUME
-options.volume_music,VOLUME MUSIQUE,MUSIC VOLUME
-options.volume_sfx,VOLUME EFFETS,SFX VOLUME
-options.language,LANGUE,LANGUAGE
-options.back,RETOUR,BACK
+options.title,OPTIONS,OPTIONS,OPZIONI,OPTIONEN,OPCIONES,OPCJE,SECENEKLER,选项
+options.resolution,RESOLUTION,RESOLUTION,RISOLUZIONE,AUFLOSUNG,RESOLUCION,ROZDZIELCZOSC,COZUNURLUK,分辨率
+options.display_mode,MODE D'AFFICHAGE,DISPLAY MODE,MODALITA SCHERMO,ANZEIGEMODUS,MODO DE PANTALLA,TRYB WYSWIETLANIA,EKRAN MODU,显示模式
+display.windowed,FENETRE,WINDOWED,FINESTRA,FENSTER,VENTANA,OKNO,PENCERE,窗口
+display.borderless,SANS BORDURE,BORDERLESS,SENZA BORDI,RANDLOS,SIN BORDES,BEZ RAMKI,KENARSIZ,无边框
+display.fullscreen,PLEIN ECRAN,FULLSCREEN,SCHERMO INTERO,VOLLBILD,PANTALLA COMPLETA,PELNY EKRAN,TAM EKRAN,全屏
+options.volume_master,VOLUME GLOBAL,MASTER VOLUME,VOLUME GENERALE,GESAMTLAUTSTARKE,VOLUMEN GENERAL,GLOSNOSC OGOLNA,ANA SES,主音量
+options.volume_music,VOLUME MUSIQUE,MUSIC VOLUME,VOLUME MUSICA,MUSIKLAUTSTARKE,VOLUMEN MUSICA,GLOSNOSC MUZYKI,MUZIK SESI,音乐音量
+options.volume_sfx,VOLUME EFFETS,SFX VOLUME,VOLUME EFFETTI,EFFEKTLAUTSTARKE,VOLUMEN EFECTOS,GLOSNOSC EFEKTOW,EFEKT SESI,音效音量
+options.language,LANGUE,LANGUAGE,LINGUA,SPRACHE,IDIOMA,JEZYK,DIL,语言
+options.back,RETOUR,BACK,INDIETRO,ZURUCK,ATRAS,WSTECZ,GERI,返回
 # ── Menu principal ──────────────────────────────────────────────────────────
-game.title,CHESS ARMY,CHESS ARMY
-mainmenu.slot,SLOT {0},SLOT {0}
-mainmenu.slot_progress,COMBAT {0}/{1}   {2} UNITES,BATTLE {0}/{1}   {2} UNITS
-mainmenu.new_game,NOUVELLE PARTIE,NEW GAME
-mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0}?
-mainmenu.delete,EFFACER,DELETE
-mainmenu.cancel,ANNULER,CANCEL
-mainmenu.reset_meta,EFFACER LES DECOUVERTES,RESET DISCOVERIES
-mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES?
-mainmenu.reset_meta_desc1,TOUTES LES UNITES DECOUVERTES SERONT OUBLIEES,ALL DISCOVERED UNITS WILL BE FORGOTTEN
-mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOLUTIONS BECOME SHADOWS AGAIN WHEN FUSING
-mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED)
+game.title,CHESS ARMY,CHESS ARMY,CHESS ARMY,CHESS ARMY,CHESS ARMY,CHESS ARMY,CHESS ARMY,CHESS ARMY
+mainmenu.slot,SLOT {0},SLOT {0},SLOT {0},SLOT {0},SLOT {0},SLOT {0},SLOT {0},存档 {0}
+mainmenu.slot_progress,COMBAT {0}/{1}   {2} UNITES,BATTLE {0}/{1}   {2} UNITS,BATTAGLIA {0}/{1}   {2} UNITA,KAMPF {0}/{1}   {2} EINHEITEN,BATALLA {0}/{1}   {2} UNIDADES,BITWA {0}/{1}   {2} JEDNOSTEK,SAVAS {0}/{1}   {2} BIRIM,战斗 {0}/{1}   {2} 单位
+mainmenu.new_game,NOUVELLE PARTIE,NEW GAME,NUOVA PARTITA,NEUES SPIEL,NUEVA PARTIDA,NOWA GRA,YENI OYUN,新游戏
+mainmenu.confirm_delete,EFFACER LE SLOT {0} ?,DELETE SLOT {0}?,ELIMINARE LO SLOT {0}?,SLOT {0} LOSCHEN?,BORRAR SLOT {0}?,USUNAC SLOT {0}?,SLOT {0} SILINSIN MI?,删除存档 {0}?
+mainmenu.delete,EFFACER,DELETE,ELIMINA,LOSCHEN,BORRAR,USUN,SIL,删除
+mainmenu.cancel,ANNULER,CANCEL,ANNULLA,ABBRECHEN,CANCELAR,ANULUJ,IPTAL,取消
+mainmenu.reset_meta,EFFACER LES DECOUVERTES,RESET DISCOVERIES,AZZERA SCOPERTE,ENTDECKUNGEN ZURUCKSETZEN,REINICIAR DESCUBRIMIENTOS,RESET ODKRYC,KESIFLERI SIFIRLA,清除发现
+mainmenu.reset_meta_confirm,EFFACER LES DECOUVERTES ?,RESET DISCOVERIES?,AZZERARE LE SCOPERTE?,ENTDECKUNGEN ZURUCKSETZEN?,REINICIAR DESCUBRIMIENTOS?,ZRESETOWAC ODKRYCIA?,KESIFLER SIFIRLANSIN MI?,清除发现?
+mainmenu.reset_meta_desc1,TOUTES LES UNITES DECOUVERTES SERONT OUBLIEES,ALL DISCOVERED UNITS WILL BE FORGOTTEN,TUTTE LE UNITA SCOPERTE VERRANNO DIMENTICATE,ALLE ENTDECKTEN EINHEITEN WERDEN VERGESSEN,TODAS LAS UNIDADES DESCUBIERTAS SE OLVIDARAN,WSZYSTKIE ODKRYTE JEDNOSTKI ZOSTANA ZAPOMNIANE,KESFEDILEN TUM BIRIMLER UNUTULACAK,所有已发现的单位将被遗忘
+mainmenu.reset_meta_desc2,LES EVOLUTIONS REDEVIENDRONT DES OMBRES EN FUSION,EVOLUTIONS BECOME SHADOWS AGAIN WHEN FUSING,LE EVOLUZIONI TORNERANNO OMBRE NELLA FUSIONE,EVOLUTIONEN WERDEN BEIM FUSIONIEREN WIEDER ZU SCHATTEN,LAS EVOLUCIONES VOLVERAN A SER SOMBRAS AL FUSIONAR,EWOLUCJE ZNOW STANA SIE CIENIAMI PRZY FUZJI,EVRIMLER BIRLESTIRMEDE YENIDEN GOLGEYE DONER,融合时进化体将重新变回暗影
+mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGOING SAVES ARE NOT AFFECTED),(LE PARTITE IN CORSO NON VENGONO TOCCATE),(LAUFENDE SPIELSTANDE BLEIBEN UNVERANDERT),(TUS PARTIDAS EN CURSO NO SE VEN AFECTADAS),(TWOJE TRWAJACE ZAPISY POZOSTANA NIENARUSZONE),(SUREN OYUNLARIN ETKILENMEZ),(进行中的存档不受影响)
 # ── Selection du commandant (creation d'une nouvelle partie) ────────────────
 # Nom affiche d'un commandant : cle commander.<id> (repli sur le nom de units.json)
-commander.commandant,LE FOUDROYEUR,THE THUNDERER
-commander.brute,BRUTE,BRUTE
-commander.Commandant_lancier,LE BASTION,THE BASTION
-commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER
-commander.starting_units,PIONS DE DEPART,STARTING PAWNS
+commander.commandant,LE FOUDROYEUR,THE THUNDERER,IL FOLGORANTE,DER DONNERER,EL ATRONADOR,GROMOWLADCA,YILDIRIM,雷霆者
+commander.brute,BRUTE,BRUTE,BRUTO,ROHLING,BRUTO,BRUTAL,ZORBA,蛮兵
+commander.Commandant_lancier,LE BASTION,THE BASTION,IL BASTIONE,DIE BASTION,EL BASTION,BASTION,TABYA,壁垒
+commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER,SCEGLI UN COMANDANTE,KOMMANDANT WAHLEN,ELIGE UN COMANDANTE,WYBIERZ DOWODCE,BIR KOMUTAN SEC,选择指挥官
+commander.starting_units,PIONS DE DEPART,STARTING PAWNS,PEDINE INIZIALI,STARTFIGUREN,PEONES INICIALES,POCZATKOWE PIONKI,BASLANGIC PIYONLARI,初始棋子
 # Remplace le titre des pions de depart quand le commandant n'est pas encore debloque
-commander.locked,COMMANDANT NON DEBLOQUE,COMMANDER NOT UNLOCKED
-commander.alone,AUCUN : IL COMMENCE SEUL,NONE: STARTS ALONE
-commander.points,GAIN DE POINT DE COMMANDE,COMMAND POINT GAIN
-commander.points_mission,+{0} DE POINTS PAR MISSION REUSSIE,+{0} POINTS PER MISSION WON
-commander.points_fusion,+{0} DE POINTS PAR FUSION REALISEE,+{0} POINTS PER FUSION
-commander.stats,STATS,STATS
-commander.army,ARMEE,ARMY
-commander.deploy,DEPLOIEMENT,DEPLOYMENT
-commander.reserve,RESERVE,RESERVE
-commander.index,{0} / {1},{0} / {1}
-commander.tree,ARBRE DE COMPETENCE,SKILL TREE
+commander.locked,COMMANDANT NON DEBLOQUE,COMMANDER NOT UNLOCKED,COMANDANTE NON SBLOCCATO,KOMMANDANT NICHT FREI,COMANDANTE NO DESBLOQUEADO,DOWODCA ZABLOKOWANY,KOMUTAN KILITLI,指挥官未解锁
+commander.alone,AUCUN : IL COMMENCE SEUL,NONE: STARTS ALONE,NESSUNA: INIZIA DA SOLO,KEINE: STARTET ALLEIN,NINGUNO: EMPIEZA SOLO,BRAK: ZACZYNA SAM,YOK: TEK BASINA BASLAR,无：独自开始
+commander.points,GAIN DE POINT DE COMMANDE,COMMAND POINT GAIN,GUADAGNO PUNTI COMANDO,KOMMANDOPUNKTE,GANANCIA DE PUNTOS DE MANDO,ZYSK PUNKTOW DOWODZENIA,KOMUTA PUANI KAZANIMI,指挥点获取
+commander.points_mission,+{0} DE POINTS PAR MISSION REUSSIE,+{0} POINTS PER MISSION WON,+{0} PUNTI PER MISSIONE VINTA,+{0} PUNKTE PRO GEWONNENER MISSION,+{0} PUNTOS POR MISION GANADA,+{0} PKT ZA WYGRANA MISJE,KAZANILAN GOREV BASINA +{0} PUAN,每胜利一次任务 +{0} 指挥点
+commander.points_fusion,+{0} DE POINTS PAR FUSION REALISEE,+{0} POINTS PER FUSION,+{0} PUNTI PER FUSIONE,+{0} PUNKTE PRO FUSION,+{0} PUNTOS POR FUSION,+{0} PKT ZA FUZJE,FUZYON BASINA +{0} PUAN,每次融合 +{0} 指挥点
+commander.stats,STATS,STATS,STATS,WERTE,STATS,STATY,STATLAR,属性
+commander.army,ARMEE,ARMY,ARMATA,ARMEE,EJERCITO,ARMIA,ORDU,军队
+commander.deploy,DEPLOIEMENT,DEPLOYMENT,SCHIERAMENTO,AUFSTELLUNG,DESPLIEGUE,ROZSTAWIENIE,YERLESTIRME,部署
+commander.reserve,RESERVE,RESERVE,RISERVA,RESERVE,RESERVA,REZERWA,YEDEK,预备队
+commander.index,{0} / {1},{0} / {1},{0} / {1},{0} / {1},{0} / {1},{0} / {1},{0} / {1},{0} / {1}
+commander.tree,ARBRE DE COMPETENCE,SKILL TREE,ALBERO ABILITA,FAHIGKEITSBAUM,ARBOL DE HABILIDADES,DRZEWO UMIEJETNOSCI,YETENEK AGACI,技能树
 # Niveaux de difficulte affiches en BOUTONS numerotes (0/1/2) ; le nom et l'effet sortent au survol
-difficulty.level_0,0,0
-difficulty.level_1,1,1
-difficulty.level_2,2,2
-commander.start,LANCER,START
-commander.back,RETOUR,BACK
-commander.hint,ECHAP POUR REVENIR,ESC TO GO BACK
-commander.hint_gp,A CHOISIR   B RETOUR   LB/RB COMMANDANT,A SELECT   B BACK   LB/RB COMMANDER
-difficulty.label,DIFFICULTE,DIFFICULTY
-difficulty.facile,FACILE,EASY
-difficulty.normal,NORMAL,NORMAL
-difficulty.difficile,DIFFICILE,HARD
+difficulty.level_0,0,0,0,0,0,0,0,0
+difficulty.level_1,1,1,1,1,1,1,1,1
+difficulty.level_2,2,2,2,2,2,2,2,2
+commander.start,LANCER,START,AVVIA,STARTEN,INICIAR,START,BASLA,开始
+commander.back,RETOUR,BACK,INDIETRO,ZURUCK,ATRAS,WSTECZ,GERI,返回
+commander.hint,ECHAP POUR REVENIR,ESC TO GO BACK,ESC PER TORNARE,ESC ZUM ZURUCKGEHEN,ESC PARA VOLVER,ESC ABY WROCIC,GERI DONMEK ICIN ESC,按ESC返回
+commander.hint_gp,A CHOISIR   B RETOUR   LB/RB COMMANDANT,A SELECT   B BACK   LB/RB COMMANDER,A SCEGLI   B INDIETRO   LB/RB COMANDANTE,A WAHLEN   B ZURUCK   LB/RB KOMMANDANT,A ELEGIR   B ATRAS   LB/RB COMANDANTE,A WYBOR   B WSTECZ   LB/RB DOWODCA,A SEC   B GERI   LB/RB KOMUTAN,A 选择   B 返回   LB/RB 指挥官
+difficulty.label,DIFFICULTE,DIFFICULTY,DIFFICOLTA,SCHWIERIGKEIT,DIFICULTAD,POZIOM TRUDNOSCI,ZORLUK,难度
+difficulty.facile,FACILE,EASY,FACILE,LEICHT,FACIL,LATWY,KOLAY,简单
+difficulty.normal,NORMAL,NORMAL,NORMALE,NORMAL,NORMAL,NORMALNY,NORMAL,普通
+difficulty.difficile,DIFFICILE,HARD,DIFFICILE,SCHWER,DIFICIL,TRUDNY,ZOR,困难
 # Corps d'infobulle : des PHRASES (preserveCase), donc minuscules accentuees et majuscule d'attaque.
 # Chaque ligne dit ce qui CHANGE par rapport au niveau du dessous ; le niveau le plus bas se decrit lui-meme.
 # Pas de chiffres : le joueur compare des paliers, il n'a pas a lire un pourcentage.
-difficulty.ai_low,L'IA fait beaucoup d'erreurs,The AI makes many mistakes
-difficulty.ai_fewer,L'IA fait moins d'erreurs,The AI makes fewer mistakes
-difficulty.ai_fewer_again,L'IA fait encore moins d'erreurs,The AI makes even fewer mistakes
+difficulty.ai_low,L'IA fait beaucoup d'erreurs,The AI makes many mistakes,L'IA commette molti errori,Die KI macht viele Fehler,La IA comete muchos errores,SI popełnia wiele błędów,Yapay zeka çok hata yapar,敌方AI经常失误
+difficulty.ai_fewer,L'IA fait moins d'erreurs,The AI makes fewer mistakes,L'IA commette meno errori,Die KI macht weniger Fehler,La IA comete menos errores,SI popełnia mniej błędów,Yapay zeka daha az hata yapar,敌方AI失误更少
+difficulty.ai_fewer_again,L'IA fait encore moins d'erreurs,The AI makes even fewer mistakes,L'IA commette ancora meno errori,Die KI macht noch weniger Fehler,La IA comete aun menos errores,SI popełnia jeszcze mniej błędów,Yapay zeka daha da az hata yapar,敌方AI失误更加少
 # Affiche sur un niveau dont les vagues sont plus fortes que celles du niveau precedent ; la variante
 # « again » sert des qu'un niveau inferieur renforcait deja les vagues
-difficulty.more_evolved,Plus d'ennemis évolués,More evolved enemies
-difficulty.more_evolved_again,Encore plus d'ennemis évolués,Even more evolved enemies
+difficulty.more_evolved,Plus d'ennemis évolués,More evolved enemies,Piu nemici evoluti,Mehr entwickelte Gegner,Mas enemigos evolucionados,Więcej rozwiniętych wrogów,Daha fazla gelişmiş düşman,更多进化的敌人
+difficulty.more_evolved_again,Encore plus d'ennemis évolués,Even more evolved enemies,Ancora piu nemici evoluti,Noch mehr entwickelte Gegner,Aun mas enemigos evolucionados,Jeszcze więcej rozwiniętych wrogów,Daha da fazla gelişmiş düşman,甚至更多进化的敌人
 # Idem pour l'equipement porte par les ennemis : « again » des qu'un niveau inferieur en donnait deja
-difficulty.equipped,Ennemis parfois équipés,Enemies sometimes equipped
-difficulty.equipped_again,Ennemis souvent équipés,Enemies often equipped
+difficulty.equipped,Ennemis parfois équipés,Enemies sometimes equipped,Nemici a volte equipaggiati,Gegner manchmal ausgerüstet,Enemigos a veces equipados,Wrogowie czasem wyposażeni,Düşmanlar bazen teçhizatlı,敌人有时携带装备
+difficulty.equipped_again,Ennemis souvent équipés,Enemies often equipped,Nemici spesso equipaggiati,Gegner oft ausgerüstet,Enemigos a menudo equipados,Wrogowie często wyposażeni,Düşmanlar sık sık teçhizatlı,敌人经常携带装备
 # Quota de paysans des missions speciales : le rater fait PERDRE la run
-difficulty.special_quota,Objectif obligatoire en mission spéciale,Mandatory objective in special missions
-difficulty.special_quota_again,Objectif de mission spéciale plus exigeant,Harder objective in special missions
+difficulty.special_quota,Objectif obligatoire en mission spéciale,Mandatory objective in special missions,Obiettivo obbligatorio nelle missioni speciali,Pflichtziel in Spezialmissionen,Objetivo obligatorio en misiones especiales,Obowiązkowy cel w misjach specjalnych,Özel görevlerde zorunlu hedef,特殊任务中目标为强制
+difficulty.special_quota_again,Objectif de mission spéciale plus exigeant,Harder objective in special missions,Obiettivo piu esigente nelle missioni speciali,Harteres Ziel in Spezialmissionen,Objetivo mas exigente en misiones especiales,Trudniejszy cel w misjach specjalnych,Özel görevlerde daha zorlu hedef,特殊任务目标更苛刻
 # Run sans filet : « Recommencer la mission » est retire du menu pause
-difficulty.no_restart,Impossible de recommencer la mission,Cannot restart the mission
+difficulty.no_restart,Impossible de recommencer la mission,Cannot restart the mission,Impossibile riavviare la missione,Mission kann nicht neu gestartet werden,No se puede reiniciar la mision,Nie można zrestartować misji,Görev yeniden başlatılamaz,无法重新开始任务
 # ── Combat / placement ──────────────────────────────────────────────────────
-combat.boss,COMBAT DE BOSS,BOSS BATTLE
-combat.number,COMBAT {0} / {1},BATTLE {0} / {1}
-combat.phase,PHASE {0}/{1} : {2},PHASE {0}/{1} : {2}
-hud.phase,PHASE {0}/{1},PHASE {0}/{1}
-hud.enemies,{0} ENNEMIS,{0} ENEMIES
-mission.escarmouche,ESCARMOUCHE,SKIRMISH
-mission.speciale,MISSION SPECIALE,SPECIAL MISSION
-mission.boss,BOSS,BOSS
-special.paysans,PAYSANS {0}/{1},PEASANTS {0}/{1}
-special.protected,PAYSANS PROTEGES {0}/{1},PEASANTS SAFE {0}/{1}
-special.saved,SAUVES {0}/{1},SAVED {0}/{1}
-special.captured,CAPTURES {0}/{1},CAPTURED {0}/{1}
-special.rounds,TOURS RESTANTS : {0},ROUNDS LEFT: {0}
-special.brief_goal,LIBERER LE MAXIMUM DE PAYSANS EN {0} TOURS,FREE AS MANY PEASANTS AS POSSIBLE IN {0} ROUNDS
-special.brief_protect,PROTEGER LE MAXIMUM DE PAYSANS EN {0} TOURS,PROTECT AS MANY PEASANTS AS POSSIBLE FOR {0} ROUNDS
-special.brief_save,SAUVE LES PAYSANS AVANT QUE L'ENNEMI NE LES CAPTURE,SAVE THE PEASANTS BEFORE THE ENEMY CAPTURES THEM
+combat.boss,COMBAT DE BOSS,BOSS BATTLE,SCONTRO COL BOSS,BOSS KAMPF,COMBATE BOSS,WALKA Z BOSSEM,BOSS SAVASI,BOSS战斗
+combat.number,COMBAT {0} / {1},BATTLE {0} / {1},BATTAGLIA {0} / {1},KAMPF {0} / {1},BATALLA {0} / {1},BITWA {0} / {1},SAVAS {0} / {1},战斗 {0} / {1}
+combat.phase,PHASE {0}/{1} : {2},PHASE {0}/{1} : {2},FASE {0}/{1}: {2},PHASE {0}/{1}: {2},FASE {0}/{1}: {2},FAZA {0}/{1}: {2},ASAMA {0}/{1}: {2},阶段 {0}/{1}: {2}
+hud.phase,PHASE {0}/{1},PHASE {0}/{1},FASE {0}/{1},PHASE {0}/{1},FASE {0}/{1},FAZA {0}/{1},ASAMA {0}/{1},阶段 {0}/{1}
+hud.enemies,{0} ENNEMIS,{0} ENEMIES,{0} NEMICI,{0} GEGNER,{0} ENEMIGOS,{0} WROGOW,{0} DUSMAN,{0} 敌人
+mission.escarmouche,ESCARMOUCHE,SKIRMISH,SCARAMUCCIA,SCHARMUTZEL,ESCARAMUZA,POTYCZKA,CATISMA,遭遇战
+mission.speciale,MISSION SPECIALE,SPECIAL MISSION,MISSIONE SPECIALE,SPEZIALMISSION,MISION ESPECIAL,MISJA SPECJALNA,OZEL GOREV,特殊任务
+mission.boss,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS
+special.paysans,PAYSANS {0}/{1},PEASANTS {0}/{1},CONTADINI {0}/{1},BAUERN {0}/{1},CAMPESINOS {0}/{1},CHLOPI {0}/{1},KOYLU {0}/{1},农民 {0}/{1}
+special.protected,PAYSANS PROTEGES {0}/{1},PEASANTS SAFE {0}/{1},CONTADINI SALVI {0}/{1},BAUERN SICHER {0}/{1},CAMPESINOS A SALVO {0}/{1},CHLOPI BEZPIECZNI {0}/{1},KOYLU GUVENDE {0}/{1},农民安全 {0}/{1}
+special.saved,SAUVES {0}/{1},SAVED {0}/{1},SALVATI {0}/{1},GERETTET {0}/{1},SALVADOS {0}/{1},URATOWANI {0}/{1},KURTARILAN {0}/{1},已救 {0}/{1}
+special.captured,CAPTURES {0}/{1},CAPTURED {0}/{1},CATTURATI {0}/{1},GEFANGEN {0}/{1},CAPTURADOS {0}/{1},SCHWYTANI {0}/{1},ELE GECEN {0}/{1},被俘 {0}/{1}
+special.rounds,TOURS RESTANTS : {0},ROUNDS LEFT: {0},TURNI RIMASTI: {0},VERBLEIBENDE RUNDEN: {0},RONDAS RESTANTES: {0},POZOSTALE TURY: {0},KALAN TUR: {0},剩余回合：{0}
+special.brief_goal,LIBERER LE MAXIMUM DE PAYSANS EN {0} TOURS,FREE AS MANY PEASANTS AS POSSIBLE IN {0} ROUNDS,LIBERA PIU CONTADINI POSSIBILE IN {0} TURNI,BEFREIE MOGLICHST VIELE BAUERN IN {0} RUNDEN,LIBERA A CUANTOS CAMPESINOS PUEDAS EN {0} RONDAS,UWOLNIJ JAK NAJWIECEJ CHLOPOW W {0} TURACH,{0} TURDA OLABILDIGINCE COK KOYLU KURTAR,在 {0} 回合内尽量解救更多农民
+special.brief_protect,PROTEGER LE MAXIMUM DE PAYSANS EN {0} TOURS,PROTECT AS MANY PEASANTS AS POSSIBLE FOR {0} ROUNDS,PROTEGGI PIU CONTADINI POSSIBILE PER {0} TURNI,SCHUTZE MOGLICHST VIELE BAUERN FUR {0} RUNDEN,PROTEGE A CUANTOS CAMPESINOS PUEDAS DURANTE {0} RONDAS,CHRON JAK NAJWIECEJ CHLOPOW PRZEZ {0} TUR,{0} TUR BOYUNCA OLABILDIGINCE COK KOYLU KORU,在 {0} 回合内尽量保护更多农民
+special.brief_save,SAUVE LES PAYSANS AVANT QUE L'ENNEMI NE LES CAPTURE,SAVE THE PEASANTS BEFORE THE ENEMY CAPTURES THEM,SALVA I CONTADINI PRIMA CHE IL NEMICO LI CATTURI,RETTE DIE BAUERN BEVOR DER GEGNER SIE FANGT,SALVA A LOS CAMPESINOS ANTES DE QUE EL ENEMIGO LOS CAPTURE,URATUJ CHLOPOW ZANIM WROG ICH SCHWYTA,DUSMAN YAKALAMADAN KOYLULERI KURTAR,在敌人俘获农民之前救出他们
 # Modale de briefing ouverte au debut du placement d'une mission speciale
-special.title_liberate,LIBERER LES PAYSANS,FREE THE PEASANTS
-special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS
-special.title_save,SAUVER LES PAYSANS,SAVE THE PEASANTS
-special.desc_liberate,Des paysans sont retenus par l'ennemi sur le champ de bataille. Amène un pion sur un paysan pour le libérer. Il rejoint aussitôt ta réserve.,Peasants are held by the enemy across the battlefield. Move a piece onto a peasant to free them. They join your reserve at once.
-special.desc_protect,L'ennemi veut capturer les paysans. Tu ne peux pas te poser sur eux. Barre-lui la route. Chaque paysan encore libre à la fin devient une nouvelle recrue.,The enemy wants to capture the peasants. You cannot stand on them. Block the way. Each peasant still free at the end becomes a new recruit.
-special.desc_save,Des paysans sont pris dans une course. Amène un pion sur un paysan pour le sauver. Il rejoint aussitôt ta réserve. Mais l'ennemi fonce pour les capturer : atteins-les avant lui. La mission se termine quand chaque paysan a été sauvé ou capturé. Vaincre tous les ennemis met aussi fin à la course : les paysans restants sont alors sauvés.,Peasants are caught in a race. Move a piece onto a peasant to save them. They join your reserve at once. But the enemy is rushing to capture them: reach them first. The mission ends when every peasant has been saved or captured. Defeating all enemies also ends the race: the remaining peasants are then saved.
+special.title_liberate,LIBERER LES PAYSANS,FREE THE PEASANTS,LIBERA I CONTADINI,BAUERN BEFREIEN,LIBERA A LOS CAMPESINOS,UWOLNIJ CHLOPOW,KOYLULERI OZGUR BIRAK,解救农民
+special.title_protect,PROTEGER LES PAYSANS,PROTECT THE PEASANTS,PROTEGGI I CONTADINI,BAUERN SCHUTZEN,PROTEGE A LOS CAMPESINOS,CHRON CHLOPOW,KOYLULERI KORU,保护农民
+special.title_save,SAUVER LES PAYSANS,SAVE THE PEASANTS,SALVA I CONTADINI,BAUERN RETTEN,SALVA A LOS CAMPESINOS,URATUJ CHLOPOW,KOYLULERI KURTAR,拯救农民
+special.desc_liberate,Des paysans sont retenus par l'ennemi sur le champ de bataille. Amène un pion sur un paysan pour le libérer. Il rejoint aussitôt ta réserve.,Peasants are held by the enemy across the battlefield. Move a piece onto a peasant to free them. They join your reserve at once.,Dei contadini sono trattenuti dal nemico sul campo di battaglia. Porta una pedina su un contadino per liberarlo. Si unisce subito alla tua riserva.,Bauern werden vom Gegner auf dem Schlachtfeld festgehalten. Ziehe eine Figur auf einen Bauern um ihn zu befreien. Er tritt sofort deiner Reserve bei.,El enemigo retiene a campesinos por todo el campo de batalla. Lleva una pieza sobre un campesino para liberarlo. Se une al instante a tu reserva.,Wróg przetrzymuje chłopów na polu bitwy. Przesuń pionek na chłopa aby go uwolnić. Natychmiast dołącza do twojej rezerwy.,Köylüler savaş alanında düşman tarafından tutuluyor. Bir piyonu bir köylünün üzerine getirerek onu kurtar. Hemen yedeğine katılır.,农民被敌人扣押在战场各处。将棋子移动到农民身上即可解救。他会立即加入你的预备队。
+special.desc_protect,L'ennemi veut capturer les paysans. Tu ne peux pas te poser sur eux. Barre-lui la route. Chaque paysan encore libre à la fin devient une nouvelle recrue.,The enemy wants to capture the peasants. You cannot stand on them. Block the way. Each peasant still free at the end becomes a new recruit.,Il nemico vuole catturare i contadini. Non puoi sostare su di loro. Sbarragli la strada. Ogni contadino ancora libero alla fine diventa una nuova recluta.,Der Gegner will die Bauern gefangen nehmen. Du kannst nicht auf ihnen stehen. Versperre ihm den Weg. Jeder am Ende noch freie Bauer wird zu einem neuen Rekruten.,El enemigo quiere capturar a los campesinos. No puedes situarte sobre ellos. Cierrale el paso. Cada campesino aun libre al final se convierte en un nuevo recluta.,Wróg chce schwytać chłopów. Nie możesz na nich stawać. Zagrodź mu drogę. Każdy wolny na końcu chłop staje się nowym rekrutem.,Düşman köylüleri yakalamak istiyor. Onların üzerine duramazsın. Yolunu kes. Sonda hala özgür olan her köylü yeni bir asker olur.,敌人想俘获农民。你无法站到他们身上。挡住敌人的去路。结束时仍然自由的每个农民都会成为新的招募。
+special.desc_save,Des paysans sont pris dans une course. Amène un pion sur un paysan pour le sauver. Il rejoint aussitôt ta réserve. Mais l'ennemi fonce pour les capturer : atteins-les avant lui. La mission se termine quand chaque paysan a été sauvé ou capturé. Vaincre tous les ennemis met aussi fin à la course : les paysans restants sont alors sauvés.,Peasants are caught in a race. Move a piece onto a peasant to save them. They join your reserve at once. But the enemy is rushing to capture them: reach them first. The mission ends when every peasant has been saved or captured. Defeating all enemies also ends the race: the remaining peasants are then saved.,Dei contadini sono presi in una corsa. Porta una pedina su un contadino per salvarlo. Si unisce subito alla tua riserva. Ma il nemico corre a catturarli: raggiungili prima di lui. La missione finisce quando ogni contadino è stato salvato o catturato. Sconfiggere tutti i nemici pone fine alla corsa: i contadini rimasti vengono salvati.,Bauern stecken in einem Wettlauf. Ziehe eine Figur auf einen Bauern um ihn zu retten. Er tritt sofort deiner Reserve bei. Doch der Gegner eilt sie zu fangen: erreiche sie zuerst. Die Mission endet wenn jeder Bauer gerettet oder gefangen wurde. Alle Gegner zu besiegen beendet den Wettlauf ebenfalls: die verbliebenen Bauern sind dann gerettet.,Unos campesinos están en una carrera. Lleva una pieza sobre un campesino para salvarlo. Se une al instante a tu reserva. Pero el enemigo corre a capturarlos: alcánzalos antes que él. La misión termina cuando cada campesino ha sido salvado o capturado. Derrotar a todos los enemigos también acaba la carrera: los campesinos restantes quedan salvados.,Chłopi biorą udział w wyścigu. Przesuń pionek na chłopa aby go uratować. Natychmiast dołącza do twojej rezerwy. Ale wróg pędzi by ich schwytać: dotrzyj do nich pierwszy. Misja kończy się gdy każdy chłop został uratowany lub schwytany. Pokonanie wszystkich wrogów też kończy wyścig: pozostali chłopi zostają uratowani.,Köylüler bir yarışa kapıldı. Bir piyonu bir köylünün üzerine getirerek onu kurtar. Hemen yedeğine katılır. Ama düşman onları yakalamak için koşuyor: onlara önce sen ulaş. Her köylü kurtarıldığında ya da yakalandığında görev biter. Tüm düşmanları yenmek de yarışı bitirir: kalan köylüler o zaman kurtulur.,农民卷入了一场竞速。将棋子移动到农民身上即可拯救。他会立即加入你的预备队。但敌人正冲过来俘获他们：抢先到达。当每个农民都被拯救或俘获时任务结束。击败所有敌人也会结束竞速：剩余的农民随即获救。
 # Regles de CONTEXTE annoncees au briefing (les conditions de defaite sont plus bas : special.defeat_*).
-special.rule_turns,Limite de {0} tours,Limit of {0} rounds
-special.rule_race,L'ennemi fonce sur les paysans : atteins-les avant lui,The enemy rushes the peasants: reach them first
-special.rule_no_limit,Aucune limite de tours,No round limit
-special.rule_timeout,Le temps écoulé clôt la mission sans défaite,Running out of time ends the mission without defeat
+special.rule_turns,Limite de {0} tours,Limit of {0} rounds,Limite di {0} turni,Limit von {0} Runden,Límite de {0} rondas,Limit {0} tur,{0} tur sınırı,{0} 回合限制
+special.rule_race,L'ennemi fonce sur les paysans : atteins-les avant lui,The enemy rushes the peasants: reach them first,Il nemico corre sui contadini: raggiungili prima di lui,Der Gegner stürmt auf die Bauern: erreiche sie zuerst,El enemigo corre hacia los campesinos: alcánzalos antes,Wróg pędzi na chłopów: dotrzyj pierwszy,Düşman köylülere koşuyor: onlara önce ulaş,敌人正冲向农民：抢先到达
+special.rule_no_limit,Aucune limite de tours,No round limit,Nessun limite di turni,Kein Rundenlimit,Sin límite de rondas,Bez limitu tur,Tur sınırı yok,无回合限制
+special.rule_timeout,Le temps écoulé clôt la mission sans défaite,Running out of time ends the mission without defeat,Il tempo scaduto chiude la missione senza sconfitta,Abgelaufene Zeit beendet die Mission ohne Niederlage,Agotar el tiempo termina la misión sin derrota,Koniec czasu kończy misję bez porażki,Sürenin bitmesi görevi yenilgisiz bitirir,时间耗尽会结束任务而不算失败
 # Sous-titre + conditions de DEFAITE (ce qui fait PERDRE) : rater le quota (formule negative) et la mort du commandant.
-special.defeat_heading,CONDITION DE DEFAITE,DEFEAT CONDITION
-special.defeat_commander,Mort du commandant,The commander falls
-special.defeat_quota,Sauver moins de {0} paysan(s),Free fewer than {0} peasant(s)
-special.defeat_quota_protect,Protéger moins de {0} paysan(s),Keep fewer than {0} peasant(s) safe
-special.defeat_quota_save,Récupérer moins de {0} paysan(s),Save fewer than {0} peasant(s)
+special.defeat_heading,CONDITION DE DEFAITE,DEFEAT CONDITION,CONDIZIONE DI SCONFITTA,NIEDERLAGE BEDINGUNG,CONDICION DE DERROTA,WARUNEK PORAZKI,YENILGI KOSULU,失败条件
+special.defeat_commander,Mort du commandant,The commander falls,Morte del comandante,Der Kommandant fällt,Muerte del comandante,Śmierć dowódcy,Komutanın ölümü,指挥官阵亡
+special.defeat_quota,Sauver moins de {0} paysan(s),Free fewer than {0} peasant(s),Salvare meno di {0} contadini,Weniger als {0} Bauern befreien,Liberar a menos de {0} campesinos,Uwolnienie mniej niż {0} chłopów,{0} köylüden azını kurtarmak,解救少于 {0} 名农民
+special.defeat_quota_protect,Protéger moins de {0} paysan(s),Keep fewer than {0} peasant(s) safe,Proteggere meno di {0} contadini,Weniger als {0} Bauern schützen,Proteger a menos de {0} campesinos,Ochrona mniej niż {0} chłopów,{0} köylüden azını korumak,保住少于 {0} 名农民
+special.defeat_quota_save,Récupérer moins de {0} paysan(s),Save fewer than {0} peasant(s),Recuperare meno di {0} contadini,Weniger als {0} Bauern retten,Salvar a menos de {0} campesinos,Uratowanie mniej niż {0} chłopów,{0} köylüden azını kurtarmak,拯救少于 {0} 名农民
 # Objectif rappele EN JEU (HUD sous la frise) quand un quota existe : formulation POSITIVE (au moins N).
-special.goal_liberate,Libère au moins {0} paysan(s),Free at least {0} peasant(s)
-special.goal_protect,Protège au moins {0} paysan(s),Keep at least {0} peasant(s) safe
-special.goal_save,Sauve au moins {0} paysan(s),Save at least {0} peasant(s)
-special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT
-special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT
+special.goal_liberate,Libère au moins {0} paysan(s),Free at least {0} peasant(s),Libera almeno {0} contadini,Befreie mindestens {0} Bauern,Libera al menos {0} campesinos,Uwolnij co najmniej {0} chłopów,En az {0} köylü kurtar,至少解救 {0} 名农民
+special.goal_protect,Protège au moins {0} paysan(s),Keep at least {0} peasant(s) safe,Proteggi almeno {0} contadini,Schütze mindestens {0} Bauern,Protege al menos {0} campesinos,Ochroń co najmniej {0} chłopów,En az {0} köylü koru,至少保住 {0} 名农民
+special.goal_save,Sauve au moins {0} paysan(s),Save at least {0} peasant(s),Salva almeno {0} contadini,Rette mindestens {0} Bauern,Salva al menos {0} campesinos,Uratuj co najmniej {0} chłopów,En az {0} köylü kurtar,至少拯救 {0} 名农民
+special.brief_continue,CLIC POUR COMMENCER LE PLACEMENT,CLICK TO START DEPLOYMENT,CLIC PER INIZIARE LO SCHIERAMENTO,KLICK ZUM AUFSTELLEN,CLIC PARA COLOCAR,KLIKNIJ ABY ROZSTAWIC,YERLESTIRMEYE BASLAMAK ICIN TIKLA,点击开始部署
+special.brief_continue_gp,A : COMMENCER LE PLACEMENT,A : START DEPLOYMENT,A: INIZIA SCHIERAMENTO,A: AUFSTELLEN,A: COLOCAR,A: ROZSTAW,A: YERLESTIR,A：开始部署
 # Modale de bilan affichee a la cloture d'une mission speciale
-recap.title,BILAN DE MISSION,MISSION REPORT
-recap.paysans_freed,PAYSANS LIBERES,PEASANTS FREED
-recap.paysans_saved,PAYSANS PROTEGES,PEASANTS SAFE
-recap.paysans_rescued,PAYSANS SAUVES,PEASANTS SAVED
-recap.turns,TOURS UTILISES,ROUNDS USED
-recap.required,MINIMUM EXIGE,REQUIRED MINIMUM
-recap.losses,PERTES,LOSSES
-recap.continue,CLIC POUR CONTINUER,CLICK TO CONTINUE
-recap.continue_gp,A : CONTINUER,A : CONTINUE
-boss.brief_goal,VAINCRE LE BOSS POUR GAGNER LE COMBAT,DEFEAT THE BOSS TO WIN THE BATTLE
-placement.title,PLACEMENT,DEPLOYMENT
-placement.inventory,INVENTAIRE,INVENTORY
-placement.deployed,DEPLOYES {0}/{1},DEPLOYED {0}/{1}
-placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED
-placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD
-placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY
-placement.hint_gp_btn,A VALIDER  B PLATEAU,A CONFIRM  B BOARD
-placement.hint_gp_fight,Y : COMBATTRE,Y: FIGHT
-placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE
-placement.hint_fight,ENTREE : COMBATTRE,ENTER: FIGHT
-placement.fight,COMBATTRE,FIGHT
-recrue.join,UNE UNITE VEUT REJOINDRE VOTRE ARMEE,A UNIT WANTS TO JOIN YOUR ARMY
-recrue.continue,CLIQUER POUR CONTINUER,CLICK TO CONTINUE
-placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN: FUSE
-placement.hint_gp_fuse,X : FUSIONNER,X: FUSE
-placement.hint_gp_unfuse,B : DEFUSIONNER,B: UNFUSE
-placement.hint_gp_hold,A : POSER   B : ANNULER,A: PLACE   B: CANCEL
-placement.hint_gp_reroll,X : RELANCER,X: REROLL
+recap.title,BILAN DE MISSION,MISSION REPORT,RESOCONTO MISSIONE,MISSIONSBERICHT,INFORME DE MISION,PODSUMOWANIE MISJI,GOREV RAPORU,任务报告
+recap.paysans_freed,PAYSANS LIBERES,PEASANTS FREED,CONTADINI LIBERATI,BEFREITE BAUERN,CAMPESINOS LIBERADOS,UWOLNIENI CHLOPI,OZGUR KOYLU,已解救农民
+recap.paysans_saved,PAYSANS PROTEGES,PEASANTS SAFE,CONTADINI SALVI,BAUERN IN SICHERHEIT,CAMPESINOS A SALVO,BEZPIECZNI CHLOPI,GUVENDEKI KOYLU,农民安全
+recap.paysans_rescued,PAYSANS SAUVES,PEASANTS SAVED,CONTADINI SALVATI,GERETTETE BAUERN,CAMPESINOS SALVADOS,URATOWANI CHLOPI,KURTARILAN KOYLU,已拯救农民
+recap.turns,TOURS UTILISES,ROUNDS USED,TURNI USATI,VERWENDETE RUNDEN,RONDAS USADAS,ZUZYTE TURY,KULLANILAN TUR,已用回合
+recap.required,MINIMUM EXIGE,REQUIRED MINIMUM,MINIMO RICHIESTO,ERFORDERLICHES MINIMUM,MINIMO EXIGIDO,WYMAGANE MINIMUM,GEREKEN ASGARI,所需最少
+recap.losses,PERTES,LOSSES,PERDITE,VERLUSTE,BAJAS,STRATY,KAYIPLAR,损失
+recap.continue,CLIC POUR CONTINUER,CLICK TO CONTINUE,CLIC PER CONTINUARE,KLICK ZUM FORTFAHREN,CLIC PARA CONTINUAR,KLIKNIJ ABY KONTYNUOWAC,DEVAM ICIN TIKLA,点击继续
+recap.continue_gp,A : CONTINUER,A : CONTINUE,A: CONTINUA,A: WEITER,A: CONTINUAR,A: KONTYNUUJ,A: DEVAM,A：继续
+boss.brief_goal,VAINCRE LE BOSS POUR GAGNER LE COMBAT,DEFEAT THE BOSS TO WIN THE BATTLE,SCONFIGGI IL BOSS PER VINCERE LA BATTAGLIA,BESIEGE DEN BOSS UM DEN KAMPF ZU GEWINNEN,DERROTA AL BOSS PARA GANAR LA BATALLA,POKONAJ BOSSA ABY WYGRAC BITWE,SAVASI KAZANMAK ICIN BOSSU YEN,击败BOSS赢得战斗
+placement.title,PLACEMENT,DEPLOYMENT,SCHIERAMENTO,AUFSTELLUNG,DESPLIEGUE,ROZSTAWIENIE,YERLESTIRME,部署
+placement.inventory,INVENTAIRE,INVENTORY,INVENTARIO,INVENTAR,INVENTARIO,EKWIPUNEK,ENVANTER,库存
+placement.deployed,DEPLOYES {0}/{1},DEPLOYED {0}/{1},SCHIERATI {0}/{1},AUFGESTELLT {0}/{1},DESPLEGADOS {0}/{1},ROZSTAWIENI {0}/{1},YERLESEN {0}/{1},已部署 {0}/{1}
+placement.all_deployed,TOUT DEPLOYE,ALL DEPLOYED,TUTTI SCHIERATI,ALLE AUFGESTELLT,TODOS DESPLEGADOS,WSZYSCY ROZSTAWIENI,HEPSI YERLESTI,全部部署
+placement.hint_gp_terrain,A PRENDRE  LB TERRAIN,A TAKE  LB BOARD,A PRENDI  LB CAMPO,A NEHMEN  LB BRETT,A COGER  LB TABLERO,A WEZ  LB PLANSZA,A AL  LB TAHTA,A 拿取  LB 棋盘
+placement.hint_gp_inventory,A SELECTIONNER  RB INVENTAIRE,A SELECT  RB INVENTORY,A SELEZIONA  RB INVENTARIO,A WAHLEN  RB INVENTAR,A ELEGIR  RB INVENTARIO,A WYBIERZ  RB EKWIPUNEK,A SEC  RB ENVANTER,A 选择  RB 库存
+placement.hint_gp_btn,A VALIDER  B PLATEAU,A CONFIRM  B BOARD,A CONFERMA  B CAMPO,A BESTATIGEN  B BRETT,A CONFIRMAR  B TABLERO,A ZATWIERDZ  B PLANSZA,A ONAY  B TAHTA,A 确认  B 棋盘
+placement.hint_gp_fight,Y : COMBATTRE,Y: FIGHT,Y: COMBATTI,Y: KAMPFEN,Y: LUCHAR,Y: WALCZ,Y: SAVAS,Y：战斗
+placement.hint_drag,GLISSER POUR PLACER,DRAG TO PLACE,TRASCINA PER PIAZZARE,ZIEHEN ZUM PLATZIEREN,ARRASTRA PARA COLOCAR,PRZECIAGNIJ ABY POLOZYC,YERLESTIRMEK ICIN SURUKLE,拖动以放置
+placement.hint_fight,ENTREE : COMBATTRE,ENTER: FIGHT,INVIO: COMBATTI,ENTER: KAMPFEN,ENTER: LUCHAR,ENTER: WALCZ,ENTER: SAVAS,回车：战斗
+placement.fight,COMBATTRE,FIGHT,COMBATTI,KAMPFEN,LUCHAR,WALCZ,SAVAS,战斗
+recrue.join,UNE UNITE VEUT REJOINDRE VOTRE ARMEE,A UNIT WANTS TO JOIN YOUR ARMY,UN'UNITA VUOLE UNIRSI AL TUO ESERCITO,EINE EINHEIT WILL DEINER ARMEE BEITRETEN,UNA UNIDAD QUIERE UNIRSE A TU EJERCITO,JEDNOSTKA CHCE DOLACZYC DO ARMII,BIR BIRIM ORDUNA KATILMAK ISTIYOR,一个单位想加入你的军队
+recrue.continue,CLIQUER POUR CONTINUER,CLICK TO CONTINUE,CLIC PER CONTINUARE,KLICK ZUM FORTFAHREN,CLIC PARA CONTINUAR,KLIKNIJ ABY KONTYNUOWAC,DEVAM ICIN TIKLA,点击继续
+placement.hint_fuse,GLISSER SUR IDENTIQUE : FUSION,DRAG ONTO A TWIN: FUSE,TRASCINA SU UN GEMELLO: FUSIONE,AUF ZWILLING ZIEHEN: FUSION,ARRASTRA SOBRE UN IGUAL: FUSION,PRZECIAGNIJ NA BLIZNIAKA: FUZJA,ESINE SURUKLE: FUZYON,拖到相同单位上：融合
+placement.hint_gp_fuse,X : FUSIONNER,X: FUSE,X: FUSIONE,X: FUSION,X: FUSIONAR,X: FUZJA,X: FUZYON,X：融合
+placement.hint_gp_unfuse,B : DEFUSIONNER,B: UNFUSE,B: ANNULLA FUSIONE,B: FUSION LOSEN,B: DESHACER FUSION,B: COFNIJ FUZJE,B: FUZYONU BOZ,B：取消融合
+placement.hint_gp_hold,A : POSER   B : ANNULER,A: PLACE   B: CANCEL,A: POSA   B: ANNULLA,A: ABLEGEN   B: ABBRECHEN,A: COLOCAR   B: CANCELAR,A: POLOZ   B: ANULUJ,A: KOY   B: IPTAL,A：放置   B：取消
+placement.hint_gp_reroll,X : RELANCER,X: REROLL,X: RILANCIA,X: NEU WURFELN,X: RELANZAR,X: PRZELOSUJ,X: YENIDEN AT,X：重投
 # ── Equipement (sous-phase de placement + coffres) ──────────────────────────
-equip.title,EQUIPEMENT,EQUIPMENT
-equip.inventory,EQUIPEMENTS,EQUIPMENT
-equip.empty,AUCUN EQUIPEMENT,NO EQUIPMENT
-equip.next,SUIVANT,NEXT
-equip.back,RETOUR,BACK
-equip.hint_drag,GLISSER SUR UN PION,DRAG ONTO A PAWN
-equip.hint_gp_equip,A : EQUIPER / RETIRER,A: EQUIP / REMOVE
-equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB: ITEM   Y: FIGHT
-equip.hint_gp_recycle,X : RECYCLER (+1 RELANCE),X: RECYCLE (+1 REROLL)
-equip.found,EQUIPEMENT : {0},EQUIPMENT: {0}
-equip.stat_bonus,+{0} {1},+{0} {1}
-equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR CAVALIERS (EXCEPT MOUNTED ARCHER)
-equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR CAVALIERS
-equip.no_dame,INTERDIT AU DOMAINE DAME,NOT FOR THE QUEEN DOMAIN
-equip.rarity.common,COMMUN,COMMON
-equip.rarity.rare,RARE,RARE
-equip.rarity.legendary,LEGENDAIRE,LEGENDARY
-equip.casque,CASQUE DE VIGUEUR,VIGOR HELMET
-equip.bouclier,ECU DE REMPART,BULWARK SHIELD
-equip.arc,ARC,BOW
-equip.botte,BOTTES,BOOTS
-equip.epee,EPEE,SWORD
-equip.lance,LANCE,SPEAR
-equip.soin,AMULETTE DE SOIN,HEALING AMULET
-equip.esquive,CEINTURE DU KARATEKA,KARATE BELT
-equip.franchissement,PIECE DE CAVALERIE,CAVALRY PIECE
-equip.orage,ORAGE,STORM
-equip.armure,ARMURE,ARMOR
-equip.hache,HACHE,AXE
-equip.static,AMULETTE DE RAHAN,RAHAN'S AMULET
+equip.title,EQUIPEMENT,EQUIPMENT,EQUIPAGGIAMENTO,AUSRUSTUNG,EQUIPO,WYPOSAZENIE,EKIPMAN,装备
+equip.inventory,EQUIPEMENTS,EQUIPMENT,EQUIPAGGIAMENTI,AUSRUSTUNG,EQUIPO,WYPOSAZENIE,EKIPMAN,装备
+equip.empty,AUCUN EQUIPEMENT,NO EQUIPMENT,NESSUN EQUIPAGGIAMENTO,KEINE AUSRUSTUNG,SIN EQUIPO,BRAK WYPOSAZENIA,EKIPMAN YOK,没有装备
+equip.next,SUIVANT,NEXT,AVANTI,WEITER,SIGUIENTE,DALEJ,ILERI,下一个
+equip.back,RETOUR,BACK,INDIETRO,ZURUCK,ATRAS,WSTECZ,GERI,返回
+equip.hint_drag,GLISSER SUR UN PION,DRAG ONTO A PAWN,TRASCINA SU UNA PEDINA,AUF EINE FIGUR ZIEHEN,ARRASTRA SOBRE UN PEON,PRZECIAGNIJ NA PIONEK,BIR PIYONA SURUKLE,拖到棋子上
+equip.hint_gp_equip,A : EQUIPER / RETIRER,A: EQUIP / REMOVE,A: EQUIPAGGIA / RIMUOVI,A: AUSRUSTEN / ENTFERNEN,A: EQUIPAR / QUITAR,A: ZALOZ / ZDEJMIJ,A: KUSAN / CIKAR,A：装备 / 卸下
+equip.hint_gp_cycle,LB/RB : OBJET   Y : COMBAT,LB/RB: ITEM   Y: FIGHT,LB/RB: OGGETTO   Y: COMBATTI,LB/RB: GEGENSTAND   Y: KAMPF,LB/RB: OBJETO   Y: LUCHAR,LB/RB: PRZEDMIOT   Y: WALCZ,LB/RB: ESYA   Y: SAVAS,LB/RB：物品   Y：战斗
+equip.hint_gp_recycle,X : RECYCLER (+1 RELANCE),X: RECYCLE (+1 REROLL),X: RICICLA (+1 RILANCIO),X: RECYCELN (+1 NEUWURF),X: RECICLAR (+1 TIRADA),X: PRZETWORZ (+1 LOS),X: GERI DONUSTUR (+1 ATIS),X：回收 (+1 重投)
+equip.found,EQUIPEMENT : {0},EQUIPMENT: {0},EQUIPAGGIAMENTO: {0},AUSRUSTUNG: {0},EQUIPO: {0},WYPOSAZENIE: {0},EKIPMAN: {0},装备：{0}
+equip.stat_bonus,+{0} {1},+{0} {1},+{0} {1},+{0} {1},+{0} {1},+{0} {1},+{0} {1},+{0} {1}
+equip.no_cavalier,INTERDIT AUX CAVALIERS (SAUF ARCHER MONTE),NOT FOR CAVALIERS (EXCEPT MOUNTED ARCHER),VIETATO AI CAVALIERI (ECCETTO ARCIERE A CAVALLO),NICHT FUR REITER (AUSSER BERITTENER BOGENSCHUTZE),NO PARA JINETES (SALVO ARQUERO MONTADO),NIE DLA JEZDZCOW (OPROCZ LUCZNIKA KONNEGO),SUVARILERE YASAK (ATLI OKCU HARIC),骑手不可用 (骑射手除外)
+equip.no_cavalier_all,INTERDIT AUX CAVALIERS,NOT FOR CAVALIERS,VIETATO AI CAVALIERI,NICHT FUR REITER,NO PARA JINETES,NIE DLA JEZDZCOW,SUVARILERE YASAK,骑手不可用
+equip.no_dame,INTERDIT AU DOMAINE DAME,NOT FOR THE QUEEN DOMAIN,VIETATO AL DOMINIO DONNA,NICHT FUR DIE DAMEN DOMANE,NO PARA EL DOMINIO DAMA,NIE DLA DOMENY HETMANA,VEZIR ALANINA YASAK,后系不可用
+equip.rarity.common,COMMUN,COMMON,COMUNE,GEWOHNLICH,COMUN,POSPOLITY,SIRADAN,普通
+equip.rarity.rare,RARE,RARE,RARO,SELTEN,RARO,RZADKI,NADIR,稀有
+equip.rarity.legendary,LEGENDAIRE,LEGENDARY,LEGGENDARIO,LEGENDAR,LEGENDARIO,LEGENDARNY,EFSANEVI,传说
+equip.casque,CASQUE DE VIGUEUR,VIGOR HELMET,ELMO DEL VIGORE,HELM DER KRAFT,YELMO DE VIGOR,HELM WIGORU,GUC MIGFERI,活力头盔
+equip.bouclier,ECU DE REMPART,BULWARK SHIELD,SCUDO DEL BALUARDO,SCHILD DES BOLLWERKS,ESCUDO DE BALUARTE,TARCZA SZANCA,SIPER KALKANI,壁垒之盾
+equip.arc,ARC,BOW,ARCO,BOGEN,ARCO,LUK,YAY,弓
+equip.botte,BOTTES,BOOTS,STIVALI,STIEFEL,BOTAS,BUTY,CIZMELER,靴子
+equip.epee,EPEE,SWORD,SPADA,SCHWERT,ESPADA,MIECZ,KILIC,剑
+equip.lance,LANCE,SPEAR,LANCIA,SPEER,LANZA,WLOCZNIA,MIZRAK,长枪
+equip.soin,AMULETTE DE SOIN,HEALING AMULET,AMULETO DI CURA,AMULETT DER HEILUNG,AMULETO DE CURACION,AMULET LECZENIA,SIFA TILSIMI,治疗护符
+equip.esquive,CEINTURE DU KARATEKA,KARATE BELT,CINTURA DEL KARATEKA,KARATEGURTEL,CINTURON DE KARATE,PAS KARATEKI,KARATE KEMERI,空手道腰带
+equip.franchissement,PIECE DE CAVALERIE,CAVALRY PIECE,PEZZO DI CAVALLERIA,KAVALLERIE STUCK,PIEZA DE CABALLERIA,ELEMENT KAWALERII,SUVARI PARCASI,骑兵棋子
+equip.orage,ORAGE,STORM,TEMPORALE,GEWITTER,TORMENTA,BURZA,FIRTINA,雷暴
+equip.armure,ARMURE,ARMOR,ARMATURA,RUSTUNG,ARMADURA,ZBROJA,ZIRH,护甲
+equip.hache,HACHE,AXE,ASCIA,AXT,HACHA,TOPOR,BALTA,斧
+equip.static,AMULETTE DE RAHAN,RAHAN'S AMULET,AMULETO DI RAHAN,RAHANS AMULETT,AMULETO DE RAHAN,AMULET RAHANA,RAHAN TILSIMI,拉昂护符
 # Equipements ajoutes (cle = id sans suffixe de rarete, partagee par les variantes commune/rare/legendaire)
-equip.auraPuissance,TOTEM DE PUISSANCE,POWER TOTEM
-equip.auraRempart,TOTEM DE REMPART,BULWARK TOTEM
-equip.Balistique,LUNETTE DU CANONNIER,GUNNER'S SCOPE
-equip.duelliste,EPEES DU DUELLISTE,DUELIST'S SWORDS
-equip.formation,BANNIERE DU REGIMENT,REGIMENT BANNER
-equip.Impact,MASSE D'IMPACT,IMPACT MACE
-equip.Interception,VIGILANCE,VIGILANCE
-equip.rage,CRANE DU BERSERKER,BERSERKER'S SKULL
-equip.Recule,ATTAQUE LOURDE,HEAVY BLOW
-equip.riposte,FLEURET DE RIPOSTE,RIPOSTE FOIL
-equip.seisme,MARTEAU TELLURIQUE,TELLURIC HAMMER
-equip.Tempete,SCEPTRE DE TEMPETE,TEMPEST SCEPTER
-equip.Transpercer,EPIEU PERFORANT,PIERCING PIKE
-equip.vol,BOTTE DE PEGASSE,PEGASUS BOOT
-equip.volVie,LE DENTIER DE FURIOUS,FURIOUS'S DENTURES
+equip.auraPuissance,TOTEM DE PUISSANCE,POWER TOTEM,TOTEM DELLA POTENZA,TOTEM DER STARKE,TOTEM DE PODER,TOTEM MOCY,GUC TOTEMI,力量图腾
+equip.auraRempart,TOTEM DE REMPART,BULWARK TOTEM,TOTEM DEL BALUARDO,TOTEM DES BOLLWERKS,TOTEM DE BALUARTE,TOTEM SZANCA,SIPER TOTEMI,壁垒图腾
+equip.Balistique,LUNETTE DU CANONNIER,GUNNER'S SCOPE,MIRINO DEL CANNONIERE,ZIELFERNROHR DES KANONIERS,MIRA DEL ARTILLERO,LUNETA KANONIERA,TOPCU DURBUNU,炮手瞄具
+equip.duelliste,EPEES DU DUELLISTE,DUELIST'S SWORDS,SPADE DEL DUELLANTE,SCHWERTER DES DUELLANTEN,ESPADAS DEL DUELISTA,MIECZE POJEDYNKOWICZA,DUELLOCU KILICLARI,决斗者之剑
+equip.formation,BANNIERE DU REGIMENT,REGIMENT BANNER,STENDARDO DEL REGGIMENTO,REGIMENTSBANNER,ESTANDARTE DEL REGIMIENTO,SZTANDAR REGIMENTU,ALAY SANCAGI,军团旗帜
+equip.Impact,MASSE D'IMPACT,IMPACT MACE,MAZZA D'IMPATTO,STREITKOLBEN DES AUFPRALLS,MAZA DE IMPACTO,BUZDYGAN UDERZENIA,DARBE TOPUZU,冲击战锤
+equip.Interception,VIGILANCE,VIGILANCE,VIGILANZA,WACHSAMKEIT,VIGILANCIA,CZUJNOSC,TETIKTE,警觉
+equip.rage,CRANE DU BERSERKER,BERSERKER'S SKULL,TESCHIO DEL BERSERKER,SCHADEL DES BERSERKERS,CRANEO DEL BERSERKER,CZASZKA BERSERKERA,BERSERKER KAFATASI,狂战士头骨
+equip.Recule,ATTAQUE LOURDE,HEAVY BLOW,COLPO PESANTE,SCHWERER SCHLAG,GOLPE PESADO,CIEZKI CIOS,AGIR DARBE,重击
+equip.riposte,FLEURET DE RIPOSTE,RIPOSTE FOIL,FIORETTO DI RIPOSTA,FLORETT DER RIPOSTE,FLORETE DE RESPUESTA,FLORET RIPOSTY,MISILLEME FLORESI,反击花剑
+equip.seisme,MARTEAU TELLURIQUE,TELLURIC HAMMER,MARTELLO TELLURICO,TELLURISCHER HAMMER,MARTILLO TELURICO,MLOT TELLURYCZNY,YER SARSAN CEKIC,大地之锤
+equip.Tempete,SCEPTRE DE TEMPETE,TEMPEST SCEPTER,SCETTRO DELLA TEMPESTA,ZEPTER DES STURMS,CETRO DE TORMENTA,BERLO BURZY,FIRTINA ASASI,风暴权杖
+equip.Transpercer,EPIEU PERFORANT,PIERCING PIKE,PICCA PERFORANTE,DURCHBOHRENDER SPIESS,PICA PERFORANTE,PRZEBIJAJACA PIKA,DELEN KARGI,穿刺长矛
+equip.vol,BOTTE DE PEGASSE,PEGASUS BOOT,STIVALE DI PEGASO,PEGASUS STIEFEL,BOTA DE PEGASO,BUT PEGAZA,PEGASUS CIZMESI,飞马之靴
+equip.volVie,LE DENTIER DE FURIOUS,FURIOUS'S DENTURES,LA DENTIERA DI FURIOUS,FURIOUS GEBISS,LA DENTADURA DE FURIOUS,PROTEZA FURIOUSA,FURIOUS TAKMA DISI,狂怒者假牙
 # ── Caracteristiques d'unite ────────────────────────────────────────────────
-stat.power,PUISSANCE,POWER
-stat.movement,MOUVEMENT,MOVEMENT
-stat.range,PORTÉE,RANGE
-stat.hp,PV,HP
-stat.kills,TUÉS : {0},KILLS: {0}
+stat.power,PUISSANCE,POWER,POTENZA,STARKE,PODER,MOC,GUC,力量
+stat.movement,MOUVEMENT,MOVEMENT,MOVIMENTO,BEWEGUNG,MOVIMIENTO,RUCH,HAREKET,移动
+stat.range,PORTÉE,RANGE,GITTATA,REICHWEITE,ALCANCE,ZASIEG,MENZIL,射程
+stat.hp,PV,HP,PV,LP,PV,PZ,CAN,生命
+stat.kills,TUÉS : {0},KILLS: {0},UCCISIONI: {0},BESIEGT: {0},MUERTES: {0},ZABICIA: {0},OLDURME: {0},击杀：{0}
 # ── Environnement (objets de plateau survoles) ──────────────────────────────
-env.bush.name,BUISSON,BUSH
-env.bush.desc,-4 DEGATS RECUS,-4 DAMAGE TAKEN
-env.chest.name,COFFRE,CHEST
-env.chest.desc,OFFRE UN EQUIPEMENT,GIVES AN ITEM
-env.recrue.name,RECRUTEMENT,RECRUITMENT
-env.recrue.desc,RECRUTE UN PION ALEATOIRE,RECRUITS A RANDOM PIECE
-env.paysan.name,PAYSAN,PEASANT
-env.paysan.desc,A PROTEGER DES ENNEMIS,PROTECT FROM ENEMIES
-env.obstacle.name,OBSTACLE,OBSTACLE
-env.obstacle.desc,BLOQUE LE PASSAGE ET LA LIGNE DE VUE,BLOCKS MOVEMENT AND LINE OF SIGHT
+env.bush.name,BUISSON,BUSH,CESPUGLIO,BUSCH,ARBUSTO,KRZAK,CALI,灌木
+env.bush.desc,-4 DEGATS RECUS,-4 DAMAGE TAKEN,-4 DANNI SUBITI,-4 ERLITTENER SCHADEN,-4 DANO RECIBIDO,-4 OTRZYMANE OBRAZENIA,-4 ALINAN HASAR,受到伤害 -4
+env.chest.name,COFFRE,CHEST,FORZIERE,TRUHE,COFRE,SKRZYNIA,SANDIK,宝箱
+env.chest.desc,OFFRE UN EQUIPEMENT,GIVES AN ITEM,OFFRE UN EQUIPAGGIAMENTO,GIBT EINE AUSRUSTUNG,DA UN EQUIPO,DAJE WYPOSAZENIE,BIR EKIPMAN VERIR,提供一件装备
+env.recrue.name,RECRUTEMENT,RECRUITMENT,RECLUTAMENTO,REKRUTIERUNG,RECLUTAMIENTO,REKRUTACJA,ASKER ALMA,招募
+env.recrue.desc,RECRUTE UN PION ALEATOIRE,RECRUITS A RANDOM PIECE,RECLUTA UNA PEDINA CASUALE,REKRUTIERT EINE ZUFALLIGE FIGUR,RECLUTA UN PEON ALEATORIO,REKRUTUJE LOSOWY PIONEK,RASTGELE BIR PIYON ALIR,招募一个随机棋子
+env.paysan.name,PAYSAN,PEASANT,CONTADINO,BAUER,CAMPESINO,CHLOP,KOYLU,农民
+env.paysan.desc,A PROTEGER DES ENNEMIS,PROTECT FROM ENEMIES,DA PROTEGGERE DAI NEMICI,VOR GEGNERN SCHUTZEN,PROTEGER DE ENEMIGOS,CHRON PRZED WROGAMI,DUSMANLARDAN KORU,需保护其免受敌人
+env.obstacle.name,OBSTACLE,OBSTACLE,OSTACOLO,HINDERNIS,OBSTACULO,PRZESZKODA,ENGEL,障碍
+env.obstacle.desc,BLOQUE LE PASSAGE ET LA LIGNE DE VUE,BLOCKS MOVEMENT AND LINE OF SIGHT,BLOCCA PASSAGGIO E LINEA DI VISTA,BLOCKIERT WEG UND SICHTLINIE,BLOQUEA EL PASO Y LA LINEA DE VISION,BLOKUJE PRZEJSCIE I LINIE WZROKU,GECISI VE GORUS HATTINI ENGELLER,阻挡移动和视线
 # ── Noms d'unites (cle = unit.<asset>) ──────────────────────────────────────
-unit.soldat,SOLDAT,SOLDIER
-unit.archer,ARCHER,ARCHER
-unit.arbaletrier,ARBALETRIER,CROSSBOWMAN
-unit.rodeur,RODEUR,RANGER
-unit.spadassin,SPADASSIN,SWORDSMAN
-unit.maitre_armes,MAITRE D'ARMES,WEAPON MASTER
-unit.barbare,BARBARE,BARBARIAN
-unit.mage,MAGE,MAGE
-unit.clerc,CLERC,CLERIC
-unit.pretresse,PRETRESSE,PRIESTESS
-unit.barde,BARDE,BARD
-unit.sorcier,SORCIER,SORCERER
-unit.archimage,ARCHIMAGE,ARCHMAGE
-unit.demoniste,DEMONISTE,WARLOCK
-unit.cavalier,CAVALIER,CAVALIER
-unit.cavalier_lourd,CAVALIER LOURD,HEAVY CAVALIER
-unit.paladin,PALADIN,PALADIN
-unit.cavalier_griffon,CAVALIER GRIFFON,GRIFFON RIDER
-unit.archer_monte,ARCHER MONTE,MOUNTED ARCHER
-unit.archer_griffon,ARCHER GRIFFON,GRIFFON ARCHER
-unit.arbaletrier_monte,ARBALETRIER MONTE,MOUNTED CROSSBOWMAN
-unit.lancier,LANCIER,LANCER
-unit.garde,GARDE,GUARD
-unit.phalange,PHALANGE,PHALANX
-unit.forteresse,FORTERESSE,FORTRESS
-unit.javelinier,JAVELINIER,JAVELINEER
-unit.Dragoon,DRAGOON,DRAGOON
-unit.voltigeur,VOLTIGEUR,VOLTIGEUR
-unit.commandant,COMMANDANT,COMMANDER
+unit.soldat,SOLDAT,SOLDIER,SOLDATO,SOLDAT,SOLDADO,ZOLNIERZ,ASKER,士兵
+unit.archer,ARCHER,ARCHER,ARCIERE,BOGENSCHUTZE,ARQUERO,LUCZNIK,OKCU,弓箭手
+unit.arbaletrier,ARBALETRIER,CROSSBOWMAN,BALESTRIERE,ARMBRUSTSCHUTZE,BALLESTERO,KUSZNIK,ARBALETCI,弩手
+unit.rodeur,RODEUR,RANGER,RANGER,WALDLAUFER,MONTARAZ,ZWIADOWCA,IZCI,游侠
+unit.spadassin,SPADASSIN,SWORDSMAN,SPADACCINO,SCHWERTKAMPFER,ESPADACHIN,SZERMIERZ,SILAHSOR,剑客
+unit.maitre_armes,MAITRE D'ARMES,WEAPON MASTER,MAESTRO D'ARMI,WAFFENMEISTER,MAESTRO DE ARMAS,MISTRZ BRONI,SILAH USTASI,武器大师
+unit.barbare,BARBARE,BARBARIAN,BARBARO,BARBAR,BARBARO,BARBARZYNCA,BARBAR,野蛮人
+unit.mage,MAGE,MAGE,MAGO,MAGIER,MAGO,MAG,BUYUCU,法师
+unit.clerc,CLERC,CLERIC,CHIERICO,KLERIKER,CLERIGO,KAPLAN,RAHIP,牧师
+unit.pretresse,PRETRESSE,PRIESTESS,SACERDOTESSA,PRIESTERIN,SACERDOTISA,KAPLANKA,RAHIBE,女祭司
+unit.barde,BARDE,BARD,BARDO,BARDE,BARDO,BARD,OZAN,吟游诗人
+unit.sorcier,SORCIER,SORCERER,STREGONE,HEXER,HECHICERO,CZARNOKSIEZNIK,SIHIRBAZ,术士
+unit.archimage,ARCHIMAGE,ARCHMAGE,ARCIMAGO,ERZMAGIER,ARCHIMAGO,ARCYMAG,BAS BUYUCU,大法师
+unit.demoniste,DEMONISTE,WARLOCK,DEMONOLOGO,HEXENMEISTER,BRUJO,DEMONOLOG,KARA BUYUCU,恶魔法师
+unit.cavalier,CAVALIER,CAVALIER,CAVALIERE,REITER,JINETE,JEZDZIEC,SUVARI,骑手
+unit.cavalier_lourd,CAVALIER LOURD,HEAVY CAVALIER,CAVALIERE PESANTE,SCHWERER REITER,JINETE PESADO,CIEZKI JEZDZIEC,AGIR SUVARI,重骑兵
+unit.paladin,PALADIN,PALADIN,PALADINO,PALADIN,PALADIN,PALADYN,PALADIN,圣骑士
+unit.cavalier_griffon,CAVALIER GRIFFON,GRIFFON RIDER,CAVALIERE DEL GRIFONE,GREIFENREITER,JINETE DE GRIFO,JEZDZIEC GRYFA,GRIFIN BINICISI,狮鹫骑手
+unit.archer_monte,ARCHER MONTE,MOUNTED ARCHER,ARCIERE A CAVALLO,BERITTENER BOGENSCHUTZE,ARQUERO MONTADO,LUCZNIK KONNY,ATLI OKCU,骑射手
+unit.archer_griffon,ARCHER GRIFFON,GRIFFON ARCHER,ARCIERE DEL GRIFONE,GREIFENSCHUTZE,ARQUERO DE GRIFO,LUCZNIK GRYFA,GRIFIN OKCUSU,狮鹫弓手
+unit.arbaletrier_monte,ARBALETRIER MONTE,MOUNTED CROSSBOWMAN,BALESTRIERE A CAVALLO,BERITTENER ARMBRUSTSCHUTZE,BALLESTERO MONTADO,KUSZNIK KONNY,ATLI ARBALETCI,骑弩手
+unit.lancier,LANCIER,LANCER,LANCIERE,LANZENREITER,LANCERO,KOPIJNIK,MIZRAKCI,长枪兵
+unit.garde,GARDE,GUARD,GUARDIA,WACHE,GUARDIA,STRAZNIK,MUHAFIZ,卫兵
+unit.phalange,PHALANGE,PHALANX,FALANGE,PHALANX,FALANGE,FALANGA,FALANKS,方阵兵
+unit.forteresse,FORTERESSE,FORTRESS,FORTEZZA,FESTUNG,FORTALEZA,FORTECA,HISAR,堡垒
+unit.javelinier,JAVELINIER,JAVELINEER,GIAVELLOTTISTA,SPEERWERFER,JABALINERO,OSZCZEPNIK,CIRITCI,标枪兵
+unit.Dragoon,DRAGOON,DRAGOON,DRAGONE,DRAGONER,DRAGON,DRAGON,DRAGON,龙骑兵
+unit.voltigeur,VOLTIGEUR,VOLTIGEUR,VOLTEGGIATORE,VOLTIGEUR,VOLTIGEUR,WOLTYZER,VOLTIJOR,散兵
+unit.commandant,COMMANDANT,COMMANDER,COMANDANTE,KOMMANDANT,COMANDANTE,DOWODCA,KOMUTAN,指挥官
 # unit.boss : PAS un asset de units.json. C'est le boss du repli codé (Bosses.Defaults) affiché
 # seulement si units.json ne charge pas. Ne pas supprimer en croyant à une clé orpheline.
-unit.boss,BOSS,BOSS
+unit.boss,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS,BOSS
 # Noms des boss (cle = unit.<asset>, casse exacte de l'asset PNG)
-unit.Commandant_brute,LE BROYEUR,THE CRUSHER
-unit.Commandant_guerrier,LE FOUDROYEUR,THE THUNDERER
-unit.Commandant_lancier,LE BASTION,THE BASTION
+unit.Commandant_brute,LE BROYEUR,THE CRUSHER,IL FRANTUMATORE,DER ZERMALMER,EL TRITURADOR,MIAZDZYCIEL,EZICI,碾碎者
+unit.Commandant_guerrier,LE FOUDROYEUR,THE THUNDERER,IL FOLGORANTE,DER DONNERER,EL ATRONADOR,GROMOWLADCA,YILDIRIM,雷霆者
+unit.Commandant_lancier,LE BASTION,THE BASTION,IL BASTIONE,DIE BASTION,EL BASTION,BASTION,TABYA,壁垒
 # ── Codex ───────────────────────────────────────────────────────────────────
-codex.title,CODEX,CODEX
-codex.tab_units,PIONS,PAWNS
-codex.tab_equipment,EQUIPEMENT,EQUIPMENT
-codex.close,FERMER,CLOSE
-codex.progress,{0}/{1},{0}/{1}
-codex.undiscovered,NON DECOUVERT,UNDISCOVERED
-codex.hint,ECHAP POUR FERMER,ESC TO CLOSE
-codex.hint_gp,B FERMER   LB/RB ONGLET   A SELECTION,B CLOSE   LB/RB TAB   A SELECT
+codex.title,CODEX,CODEX,CODEX,CODEX,CODEX,CODEX,CODEX,图鉴
+codex.tab_units,PIONS,PAWNS,PEDINE,FIGUREN,PEONES,PIONKI,PIYONLAR,棋子
+codex.tab_equipment,EQUIPEMENT,EQUIPMENT,EQUIPAGGIAMENTO,AUSRUSTUNG,EQUIPO,WYPOSAZENIE,EKIPMAN,装备
+codex.close,FERMER,CLOSE,CHIUDI,SCHLIESSEN,CERRAR,ZAMKNIJ,KAPAT,关闭
+codex.progress,{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1}
+codex.undiscovered,NON DECOUVERT,UNDISCOVERED,NON SCOPERTO,UNENTDECKT,NO DESCUBIERTO,NIEODKRYTE,KESFEDILMEDI,未发现
+codex.hint,ECHAP POUR FERMER,ESC TO CLOSE,ESC PER CHIUDERE,ESC ZUM SCHLIESSEN,ESC PARA CERRAR,ESC ABY ZAMKNAC,KAPATMAK ICIN ESC,按ESC关闭
+codex.hint_gp,B FERMER   LB/RB ONGLET   A SELECTION,B CLOSE   LB/RB TAB   A SELECT,B CHIUDI   LB/RB SCHEDA   A SELEZIONA,B SCHLIESSEN   LB/RB REITER   A WAHLEN,B CERRAR   LB/RB PESTANA   A ELEGIR,B ZAMKNIJ   LB/RB KARTA   A WYBIERZ,B KAPAT   LB/RB SEKME   A SEC,B 关闭   LB/RB 标签   A 选择
 # Noms des domaines (mouvement facon piece d'echecs) : cle domaine.<enum en minuscules>
-domaine.dame,DAME,QUEEN
-domaine.fou,FOU,BISHOP
-domaine.cavalier,CAVALIER,KNIGHT
-domaine.tour,TOUR,ROOK
+domaine.dame,DAME,QUEEN,DONNA,DAME,DAMA,HETMAN,VEZIR,后
+domaine.fou,FOU,BISHOP,ALFIERE,LAUFER,ALFIL,GONIEC,FIL,象
+domaine.cavalier,CAVALIER,KNIGHT,CAVALLO,SPRINGER,CABALLO,SKOCZEK,AT,马
+domaine.tour,TOUR,ROOK,TORRE,TURM,TORRE,WIEZA,KALE,车
 # ── HUD / commandes ─────────────────────────────────────────────────────────
-hud.toggle_grid,GRILLE,GRID
-hud.danger_zones,ZONES DE DANGER,DANGER ZONES
-hud.replay_ai,REVOIR ACTION IA,REPLAY AI ACTION
+hud.toggle_grid,GRILLE,GRID,GRIGLIA,GITTER,REJILLA,SIATKA,IZGARA,网格
+hud.danger_zones,ZONES DE DANGER,DANGER ZONES,ZONE DI PERICOLO,GEFAHRENZONEN,ZONAS DE PELIGRO,STREFY ZAGROZENIA,TEHLIKE BOLGELERI,危险区域
+hud.replay_ai,REVOIR ACTION IA,REPLAY AI ACTION,RIVEDI AZIONE IA,KI AKTION WIEDERHOLEN,REVER ACCION IA,POWTORZ RUCH SI,YZ HAMLESINI TEKRAR,重看AI行动
 # ── Recrutement ─────────────────────────────────────────────────────────────
-recruit.title,RECRUTEMENT,RECRUITMENT
-recruit.subtitle,CHOISIS PARMI LES TROIS DERNIERS ENNEMIS VAINCUS,CHOOSE FROM THE LAST THREE DEFEATED ENEMIES
-recruit.army,TON ARMEE,YOUR ARMY
-recruit.hold_prompt,RESERVE PLEINE : LIBERE UNE PLACE OU ABANDONNE,RESERVE FULL : FREE A SLOT OR DISCARD
-recruit.abandon,ABANDONNER LE PION,DISCARD THE UNIT
-reward.title,PAYSANS SAUVES,PEASANTS SAVED
-reward.subtitle,COCHE LES PIONS A GARDER,CHECK THE UNITS TO KEEP
-reward.collect,RECUPERER ({0}),COLLECT ({0})
-reserve.count,RESERVE {0}/{1},RESERVE {0}/{1}
-reserve.hint_fuse,GLISSE 3 IDENTIQUES : FUSION,DRAG 3 ALIKE: FUSE
-reserve.hint_del,CLIC DROIT : SUPPRIMER,RIGHT-CLICK: DELETE
-reserve.delete,SUPPRIMER,DELETE
-reserve.fuse,FUSIONNER,FUSE
-reserve.full_hint,PLEINE : FUSIONNE OU SUPPRIME,FULL : FUSE OR DELETE
-reserve.no_room,PLUS DE PLACE : FUSIONNE OU SUPPRIME,NO ROOM : FUSE OR DELETE
-reserve.hint_enter,RB : GERER RESERVE,RB: MANAGE RESERVE
-reserve.hint_pick,A : CHOISIR   B : RETOUR,A: PICK   B: BACK
-reserve.hint_act,A : VALIDER   B : RETOUR,A: CONFIRM   B: BACK
+recruit.title,RECRUTEMENT,RECRUITMENT,RECLUTAMENTO,REKRUTIERUNG,RECLUTAMIENTO,REKRUTACJA,ASKER ALMA,招募
+recruit.subtitle,CHOISIS PARMI LES TROIS DERNIERS ENNEMIS VAINCUS,CHOOSE FROM THE LAST THREE DEFEATED ENEMIES,SCEGLI FRA GLI ULTIMI TRE NEMICI SCONFITTI,WAHLE AUS DEN LETZTEN DREI BESIEGTEN GEGNERN,ELIGE ENTRE LOS TRES ULTIMOS ENEMIGOS VENCIDOS,WYBIERZ Z TRZECH OSTATNICH POKONANYCH WROGOW,SON UC YENILEN DUSMANDAN SEC,从最近击败的三个敌人中选择
+recruit.army,TON ARMEE,YOUR ARMY,LA TUA ARMATA,DEINE ARMEE,TU EJERCITO,TWOJA ARMIA,ORDUN,你的军队
+recruit.hold_prompt,RESERVE PLEINE : LIBERE UNE PLACE OU ABANDONNE,RESERVE FULL : FREE A SLOT OR DISCARD,RISERVA PIENA: LIBERA UN POSTO O SCARTA,RESERVE VOLL: PLATZ SCHAFFEN ODER VERWERFEN,RESERVA LLENA: LIBERA UN HUECO O DESCARTA,REZERWA PELNA: ZWOLNIJ MIEJSCE LUB ODRZUC,YEDEK DOLU: YER AC YA DA AT,预备队已满：腾出位置或舍弃
+recruit.abandon,ABANDONNER LE PION,DISCARD THE UNIT,SCARTA LA PEDINA,FIGUR VERWERFEN,DESCARTAR EL PEON,ODRZUC PIONEK,PIYONU AT,舍弃棋子
+reward.title,PAYSANS SAUVES,PEASANTS SAVED,CONTADINI SALVATI,GERETTETE BAUERN,CAMPESINOS SALVADOS,URATOWANI CHLOPI,KURTARILAN KOYLU,已拯救农民
+reward.subtitle,COCHE LES PIONS A GARDER,CHECK THE UNITS TO KEEP,SPUNTA LE PEDINE DA TENERE,EINHEITEN ZUM BEHALTEN ANKREUZEN,MARCA LOS PEONES A CONSERVAR,ZAZNACZ PIONKI DO ZATRZYMANIA,TUTULACAK PIYONLARI ISARETLE,勾选要保留的棋子
+reward.collect,RECUPERER ({0}),COLLECT ({0}),RACCOGLI ({0}),EINSAMMELN ({0}),RECOGER ({0}),ODBIERZ ({0}),AL ({0}),收取 ({0})
+reserve.count,RESERVE {0}/{1},RESERVE {0}/{1},RISERVA {0}/{1},RESERVE {0}/{1},RESERVA {0}/{1},REZERWA {0}/{1},YEDEK {0}/{1},预备队 {0}/{1}
+reserve.hint_fuse,GLISSE 3 IDENTIQUES : FUSION,DRAG 3 ALIKE: FUSE,TRASCINA 3 UGUALI: FUSIONE,3 GLEICHE ZIEHEN: FUSION,ARRASTRA 3 IGUALES: FUSION,PRZECIAGNIJ 3 TAKIE SAME: FUZJA,AYNI 3 TANEYI SURUKLE: FUZYON,拖入3个相同：融合
+reserve.hint_del,CLIC DROIT : SUPPRIMER,RIGHT-CLICK: DELETE,TASTO DESTRO: ELIMINA,RECHTSKLICK: LOSCHEN,CLIC DERECHO: BORRAR,PRAWY KLIK: USUN,SAG TIK: SIL,右键：删除
+reserve.delete,SUPPRIMER,DELETE,ELIMINA,LOSCHEN,BORRAR,USUN,SIL,删除
+reserve.fuse,FUSIONNER,FUSE,FUSIONE,FUSION,FUSIONAR,FUZJA,FUZYON,融合
+reserve.full_hint,PLEINE : FUSIONNE OU SUPPRIME,FULL : FUSE OR DELETE,PIENA: FONDI O ELIMINA,VOLL: FUSION ODER LOSCHEN,LLENA: FUSIONA O BORRA,PELNA: FUZJA LUB USUN,DOLU: FUZYON YA DA SIL,已满：融合或删除
+reserve.no_room,PLUS DE PLACE : FUSIONNE OU SUPPRIME,NO ROOM : FUSE OR DELETE,NIENTE POSTO: FONDI O ELIMINA,KEIN PLATZ: FUSION ODER LOSCHEN,SIN HUECO: FUSIONA O BORRA,BRAK MIEJSCA: FUZJA LUB USUN,YER YOK: FUZYON YA DA SIL,没有空位：融合或删除
+reserve.hint_enter,RB : GERER RESERVE,RB: MANAGE RESERVE,RB: GESTISCI RISERVA,RB: RESERVE VERWALTEN,RB: GESTIONAR RESERVA,RB: ZARZADZAJ REZERWA,RB: YEDEGI YONET,RB：管理预备队
+reserve.hint_pick,A : CHOISIR   B : RETOUR,A: PICK   B: BACK,A: SCEGLI   B: INDIETRO,A: WAHLEN   B: ZURUCK,A: ELEGIR   B: ATRAS,A: WYBIERZ   B: WSTECZ,A: SEC   B: GERI,A：选择   B：返回
+reserve.hint_act,A : VALIDER   B : RETOUR,A: CONFIRM   B: BACK,A: CONFERMA   B: INDIETRO,A: BESTATIGEN   B: ZURUCK,A: CONFIRMAR   B: ATRAS,A: ZATWIERDZ   B: WSTECZ,A: ONAY   B: GERI,A：确认   B：返回
 # ── Relance ─────────────────────────────────────────────────────────────────
-relance.count,RELANCES : {0},REROLLS: {0}
-relance.recycle,RECYCLER,RECYCLE
-relance.title,RELANCE,REROLL
-relance.tt_unit,ECHANGE UN PION CONTRE UN AUTRE DU MÊME TIER.,SWAP A PAWN FOR ANOTHER OF THE SAME TIER.
-relance.tt_equip,CASSE UN ÉQUIPEMENT POUR GAGNER UNE RELANCE.,BREAK AN ITEM TO GAIN A REROLL.
+relance.count,RELANCES : {0},REROLLS: {0},RILANCI: {0},NEUWURFE: {0},TIRADAS: {0},LOSOWANIA: {0},ATISLAR: {0},重投：{0}
+relance.recycle,RECYCLER,RECYCLE,RICICLA,RECYCELN,RECICLAR,PRZETWORZ,GERI DONUSTUR,回收
+relance.title,RELANCE,REROLL,RILANCIO,NEUWURF,TIRADA,PRZELOSOWANIE,YENIDEN ATIS,重投
+relance.tt_unit,ECHANGE UN PION CONTRE UN AUTRE DU MÊME TIER.,SWAP A PAWN FOR ANOTHER OF THE SAME TIER.,SCAMBIA UNA PEDINA CON UN'ALTRA DELLO STESSO LIVELLO.,TAUSCHE EINE FIGUR GEGEN EINE ANDERE GLEICHER STUFE.,CAMBIA UN PEON POR OTRO DEL MISMO NIVEL.,WYMIEN PIONEK NA INNY TEGO SAMEGO POZIOMU.,BIR PIYONU AYNI SEVIYEDEN BIRIYLE DEGISTIR.,将一个棋子换成同阶的另一个。
+relance.tt_equip,CASSE UN ÉQUIPEMENT POUR GAGNER UNE RELANCE.,BREAK AN ITEM TO GAIN A REROLL.,ROMPI UN EQUIPAGGIAMENTO PER OTTENERE UN RILANCIO.,ZERSTORE EINE AUSRUSTUNG FUR EINEN NEUWURF.,ROMPE UN EQUIPO PARA GANAR UNA TIRADA.,ZNISZCZ WYPOSAZENIE ABY ZYSKAC LOSOWANIE.,BIR ATIS KAZANMAK ICIN BIR EKIPMANI KIR.,破坏一件装备以获得一次重投。
 # ── Fusion ──────────────────────────────────────────────────────────────────
-fusion.title,FUSION,FUSION
-fusion.subtitle,CHOISIS UNE EVOLUTION,CHOOSE AN EVOLUTION
-fusion.cancel,ANNULER,CANCEL
-fusion.continue,CLIC POUR RANGER LA PIECE,CLICK TO STORE THE UNIT
-fusion.continue_gp,A POUR RANGER LA PIECE,A TO STORE THE UNIT
+fusion.title,FUSION,FUSION,FUSIONE,FUSION,FUSION,FUZJA,FUZYON,融合
+fusion.subtitle,CHOISIS UNE EVOLUTION,CHOOSE AN EVOLUTION,SCEGLI UN'EVOLUZIONE,WAHLE EINE EVOLUTION,ELIGE UNA EVOLUCION,WYBIERZ EWOLUCJE,BIR EVRIM SEC,选择一种进化
+fusion.cancel,ANNULER,CANCEL,ANNULLA,ABBRECHEN,CANCELAR,ANULUJ,IPTAL,取消
+fusion.continue,CLIC POUR RANGER LA PIECE,CLICK TO STORE THE UNIT,CLIC PER RIPORRE LA PEDINA,KLICK UM DIE FIGUR ZU VERSTAUEN,CLIC PARA GUARDAR EL PEON,KLIKNIJ ABY SCHOWAC PIONEK,PIYONU YERLESTIRMEK ICIN TIKLA,点击收起棋子
+fusion.continue_gp,A POUR RANGER LA PIECE,A TO STORE THE UNIT,A PER RIPORRE LA PEDINA,A UM DIE FIGUR ZU VERSTAUEN,A PARA GUARDAR EL PEON,A ABY SCHOWAC PIONEK,PIYONU YERLESTIRMEK ICIN A,按A收起棋子
 # ── Fin de partie ───────────────────────────────────────────────────────────
-defeat.army_destroyed,ARMEE DETRUITE,ARMY DESTROYED
-defeat.commander_fallen,COMMANDANT TOMBE,COMMANDER FALLEN
-defeat.paysans,PAYSANS SAUVES : {0} SUR {1} EXIGES,PEASANTS SAVED: {0} OF {1} REQUIRED
-end.victory,VICTOIRE,VICTORY
-end.defeat,DEFAITE,DEFEAT
-end.boss_defeated,BOSS VAINCU,BOSS DEFEATED
-end.replay,CLIC POUR REJOUER,CLICK TO REPLAY
+defeat.army_destroyed,ARMEE DETRUITE,ARMY DESTROYED,ARMATA DISTRUTTA,ARMEE VERNICHTET,EJERCITO DESTRUIDO,ARMIA ZNISZCZONA,ORDU YOK EDILDI,军队覆灭
+defeat.commander_fallen,COMMANDANT TOMBE,COMMANDER FALLEN,COMANDANTE CADUTO,KOMMANDANT GEFALLEN,COMANDANTE CAIDO,DOWODCA POLEGL,KOMUTAN DUSTU,指挥官阵亡
+defeat.paysans,PAYSANS SAUVES : {0} SUR {1} EXIGES,PEASANTS SAVED: {0} OF {1} REQUIRED,CONTADINI SALVATI: {0} SU {1} RICHIESTI,GERETTETE BAUERN: {0} VON {1} NOTIG,CAMPESINOS SALVADOS: {0} DE {1} EXIGIDOS,URATOWANI CHLOPI: {0} Z {1} WYMAGANYCH,KURTARILAN KOYLU: {0} / {1} GEREKLI,已拯救农民：所需 {1} 名中的 {0} 名
+end.victory,VICTOIRE,VICTORY,VITTORIA,SIEG,VICTORIA,ZWYCIESTWO,ZAFER,胜利
+end.defeat,DEFAITE,DEFEAT,SCONFITTA,NIEDERLAGE,DERROTA,PORAZKA,YENILGI,失败
+end.boss_defeated,BOSS VAINCU,BOSS DEFEATED,BOSS SCONFITTO,BOSS BESIEGT,BOSS DERROTADO,BOSS POKONANY,BOSS YENILDI,BOSS已击败
+end.replay,CLIC POUR REJOUER,CLICK TO REPLAY,CLIC PER RIGIOCARE,KLICK ZUM NEU SPIELEN,CLIC PARA REJUGAR,KLIKNIJ ABY ZAGRAC PONOWNIE,TEKRAR OYNAMAK ICIN TIKLA,点击重玩
 # ── Recap de fin de run (victoire ou defaite) ───────────────────────────────
-recap.run_combat,COMBAT {0}/{1},BATTLE {0}/{1}
-recap.run_bilan,BILAN,SUMMARY
-recap.run_kills,ENNEMIS TUES,ENEMIES KILLED
-recap.run_lost,UNITES PERDUES,UNITS LOST
-recap.run_damage_total,DEGATS INFLIGES,DAMAGE DEALT
-recap.run_fusions,FUSIONS,FUSIONS
-recap.run_time,TEMPS DE JEU,PLAY TIME
-recap.run_paysans,PAYSANS SAUVES,PEASANTS SAVED
-recap.run_equipment,EQUIPEMENTS,EQUIPMENT
-recap.run_damage,DEGATS PAR TYPE,DAMAGE BY TYPE
-recap.run_mvp,MVP : {0} ({1} TUES),MVP: {0} ({1} KILLS)
-recap.run_unlocks,COMMANDANT DEBLOQUE,COMMANDER UNLOCKED
-recap.run_unlock_sub,NOUVEAU COMMANDANT JOUABLE,NEW PLAYABLE COMMANDER
-recap.run_back,CLIC POUR REVENIR AU MENU,CLICK TO RETURN TO MENU
-recap.run_back_gp,A : MENU,A: MENU
+recap.run_combat,COMBAT {0}/{1},BATTLE {0}/{1},BATTAGLIA {0}/{1},KAMPF {0}/{1},BATALLA {0}/{1},BITWA {0}/{1},SAVAS {0}/{1},战斗 {0}/{1}
+recap.run_bilan,BILAN,SUMMARY,RESOCONTO,UBERSICHT,RESUMEN,PODSUMOWANIE,OZET,总结
+recap.run_kills,ENNEMIS TUES,ENEMIES KILLED,NEMICI UCCISI,GETOTETE GEGNER,ENEMIGOS MUERTOS,ZABICI WROGOWIE,OLDURULEN DUSMAN,击杀敌人
+recap.run_lost,UNITES PERDUES,UNITS LOST,UNITA PERSE,VERLORENE EINHEITEN,UNIDADES PERDIDAS,STRACONE JEDNOSTKI,KAYBEDILEN BIRIM,损失单位
+recap.run_damage_total,DEGATS INFLIGES,DAMAGE DEALT,DANNI INFLITTI,VERURSACHTER SCHADEN,DANO INFLIGIDO,ZADANE OBRAZENIA,VERILEN HASAR,造成伤害
+recap.run_fusions,FUSIONS,FUSIONS,FUSIONI,FUSIONEN,FUSIONES,FUZJE,FUZYONLAR,融合次数
+recap.run_time,TEMPS DE JEU,PLAY TIME,TEMPO DI GIOCO,SPIELZEIT,TIEMPO DE JUEGO,CZAS GRY,OYUN SURESI,游戏时间
+recap.run_paysans,PAYSANS SAUVES,PEASANTS SAVED,CONTADINI SALVATI,GERETTETE BAUERN,CAMPESINOS SALVADOS,URATOWANI CHLOPI,KURTARILAN KOYLU,已拯救农民
+recap.run_equipment,EQUIPEMENTS,EQUIPMENT,EQUIPAGGIAMENTI,AUSRUSTUNG,EQUIPO,WYPOSAZENIE,EKIPMAN,装备
+recap.run_damage,DEGATS PAR TYPE,DAMAGE BY TYPE,DANNI PER TIPO,SCHADEN NACH TYP,DANO POR TIPO,OBRAZENIA WG TYPU,TURE GORE HASAR,按类型的伤害
+recap.run_mvp,MVP : {0} ({1} TUES),MVP: {0} ({1} KILLS),MVP: {0} ({1} UCCISIONI),MVP: {0} ({1} KILLS),MVP: {0} ({1} MUERTES),MVP: {0} ({1} ZABIC),MVP: {0} ({1} OLDURME),MVP：{0} ({1} 击杀)
+recap.run_unlocks,COMMANDANT DEBLOQUE,COMMANDER UNLOCKED,COMANDANTE SBLOCCATO,KOMMANDANT FREIGESCHALTET,COMANDANTE DESBLOQUEADO,DOWODCA ODBLOKOWANY,KOMUTAN ACILDI,指挥官已解锁
+recap.run_unlock_sub,NOUVEAU COMMANDANT JOUABLE,NEW PLAYABLE COMMANDER,NUOVO COMANDANTE GIOCABILE,NEUER SPIELBARER KOMMANDANT,NUEVO COMANDANTE JUGABLE,NOWY GRYWALNY DOWODCA,YENI OYNANABILIR KOMUTAN,新的可玩指挥官
+recap.run_back,CLIC POUR REVENIR AU MENU,CLICK TO RETURN TO MENU,CLIC PER TORNARE AL MENU,KLICK ZURUCK ZUM MENU,CLIC PARA VOLVER AL MENU,KLIKNIJ ABY WROCIC DO MENU,MENUYE DONMEK ICIN TIKLA,点击返回菜单
+recap.run_back_gp,A : MENU,A: MENU,A: MENU,A: MENU,A: MENU,A: MENU,A: MENU,A：菜单
 # ── Mots-cles d'unite (label + description) ─────────────────────────────────
-kw.rempart.label,REMPART,BULWARK
-kw.rempart.desc,RÉDUIT DE {0} LES DÉGÂTS SAUF AU CONTACT DIRECT,REDUCES DAMAGE BY {0} EXCEPT FROM DIRECT CONTACT
-kw.soin.label,SOIN,HEAL
-kw.soin.desc,SOIGNE L'ALLIÉ CIBLE DE LA MOITIÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR HALF ITS POWER
-kw.franchissement.label,FRANCHISSEMENT,VAULTING
-kw.franchissement.desc,SE DÉPLACE EN IGNORANT LES UNITÉS ET LES OBSTACLES SUR SON CHEMIN,MOVES IGNORING UNITS AND TERRAIN OBSTACLES IN ITS PATH
-kw.transpercement.label,TRANSPERCER,PIERCING
-kw.transpercement.desc,TRAVERSE LA CIBLE ET TOUCHE L'UNITÉ JUSTE DERRIÈRE,PIERCES THE TARGET AND HITS THE UNIT JUST BEHIND
-kw.interception.label,INTERCEPTION,INTERCEPT
-kw.interception.desc,UN ENNEMI QUI ENTRE DANS LA ZONE D'ATTAQUE SUBIT UNE ATTAQUE D'OPPORTUNITÉ,AN ENEMY ENTERING THE ATTACK ZONE SUFFERS AN OPPORTUNITY ATTACK
-kw.aura_rempart.label,AURA DE REMPART,BULWARK AURA
-kw.aura_rempart.desc,LE BONUS DE REMPART S'APPLIQUE AUX UNITÉS ADJACENTES,THE BULWARK BONUS APPLIES TO ADJACENT UNITS
-kw.aura_puissance.label,AURA DE PUISSANCE,POWER AURA
-kw.aura_puissance.desc,AUGMENTE LA PUISSANCE DES ALLIÉS ADJACENTS DE 3,INCREASES ADJACENT ALLIES' POWER BY 3
-kw.aura_celerite.label,AURA DE CÉLÉRITÉ,CELERITY AURA
-kw.aura_celerite.desc,LES ALLIÉS AU CONTACT DIRECT (PAS EN DIAGONALE) EN DÉBUT DE TOUR GAGNENT +1 EN DÉPLACEMENT,ALLIES IN DIRECT CONTACT (NOT DIAGONAL) AT THE START OF THEIR TURN GAIN +1 MOVEMENT
-kw.riposte.label,RIPOSTE,RIPOSTE
-kw.riposte.desc,CONTRE-ATTAQUE SI ELLE SURVIT ET PEUT ATTEINDRE L'ASSAILLANT,COUNTERS IF IT SURVIVES AND CAN REACH THE ATTACKER
-kw.duelliste.label,DUELLISTE,DUELIST
-kw.duelliste.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES AU CORPS À CORPS,REDUCES BY 4 DAMAGE FROM MELEE ATTACKS
-kw.berserk.label,BERSERK,BERSERK
-kw.berserk.desc,GAGNE +1 PUISSANCE PAR ENNEMI TUÉ SUR LA PARTIE,GAINS +1 POWER PER ENEMY KILLED THIS RUN
-kw.rage.label,RAGE,RAGE
-kw.rage.desc,GAGNE +7 PUISSANCE À LA PREMIÈRE MORT D'UN ALLIÉ (UNE FOIS PAR COMBAT),GAINS +7 POWER ON THE FIRST ALLY DEATH (ONCE PER COMBAT)
-kw.soin_parfait.label,SOIN PARFAIT,PERFECT HEAL
-kw.soin_parfait.desc,SOIGNE L'ALLIÉ CIBLE DE LA TOTALITÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR ITS FULL POWER
-kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLIES
-kw.pierce_allies.desc,ATTAQUE À TRAVERS SES ALLIÉS SANS LES TOUCHER,ATTACKS THROUGH ALLIES WITHOUT HITTING THEM
-kw.dead_zone.label,ZONE MORTE,DEAD ZONE
-kw.dead_zone.desc,NE FRAPPE PAS AU CORPS À CORPS DIRECT EN LIGNE DROITE (TIR EN DIAGONALE POSSIBLE),CANNOT STRIKE IN DIRECT MELEE IN A STRAIGHT LINE (DIAGONAL SHOT POSSIBLE)
-kw.drain_vie.label,DRAIN DE VIE,LIFE DRAIN
-kw.drain_vie.desc,RESTAURE DES PV ÉGAUX À 50 POURCENT DES DÉGÂTS INFLIGÉS,RESTORES HP EQUAL TO 50 PERCENT OF DAMAGE DEALT
-kw.balistique.label,BALISTIQUE,BALLISTIC
-kw.balistique.desc,TIR INDIRECT IGNORE LES OBSTACLES SUR LA LIGNE DE TIR,INDIRECT FIRE IGNORES OBSTACLES ON THE LINE OF FIRE
-kw.vol.label,VOL,FLIGHT
-kw.vol.desc,SE DÉPLACE EN IGNORANT LES OBSTACLES DE TERRAIN,MOVES IGNORING TERRAIN OBSTACLES
-kw.formation.label,FORMATION,FORMATION
-kw.formation.desc,AUGMENTE LA PUISSANCE DE {0} PAR ALLIÉ ADJACENT,INCREASES POWER BY {0} PER ADJACENT ALLY
-kw.esquive.label,ESQUIVE,DODGE
-kw.esquive.desc,{0} POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE,{0} PERCENT CHANCE TO DODGE AN ATTACK
-kw.orage.label,ORAGE,STORM
-kw.orage.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 3,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 3
-kw.tempete.label,TEMPETE,TEMPEST
-kw.tempete.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 6,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 6
-kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM
-kw.attaque_libre.desc,TIRE AUSSI COMME UNE DAME (8 DIRECTIONS EN LIGNE) EN PLUS DE SON ATTAQUE NORMALE,ALSO SHOOTS LIKE A QUEEN (8 DIRECTIONS IN LINE) ON TOP OF ITS NORMAL ATTACK
-kw.statique.label,STATIQUE,STATIC
-kw.statique.desc,NE PREND JAMAIS LA PLACE DE SA CIBLE EN LA TUANT (RESTE SUR SA CASE),NEVER TAKES THE TARGET'S PLACE ON A KILL (STAYS PUT)
-kw.seisme.label,SÉISME,EARTHQUAKE
-kw.seisme.desc,À LA FIN DU TOUR ENNEMI FRAPPE LES ENNEMIS ADJACENTS POUR SA PUISSANCE,AT THE END OF THE ENEMY TURN STRIKES ADJACENT ENEMIES FOR ITS POWER
-kw.impact.label,IMPACT,IMPACT
-kw.impact.desc,INFLIGE 5 DÉGÂTS AUTOUR DE LUI QUAND IL SE DÉPLACE OU ATTAQUE,DEALS 5 DAMAGE AROUND ITSELF WHEN IT MOVES OR ATTACKS
-kw.recule.label,RECULE,KNOCKBACK
-kw.recule.desc,REPOUSSE LA CIBLE D'UNE CASE ET INFLIGE +5 DÉGÂTS SI ELLE EST CONTRE UN OBSTACLE,PUSHES THE TARGET BACK ONE TILE AND DEALS +5 DAMAGE IF IT IS AGAINST AN OBSTACLE
-kw.renaissance.label,RENAISSANCE,REBIRTH
-kw.renaissance.desc,À LA MORT RESSUSCITE À 1 PV ET BRISE L'ÉQUIPEMENT (UNE FOIS),ON DEATH REVIVES AT 1 HP AND BREAKS THE EQUIPMENT (ONCE)
-kw.tueur_geants.label,TUEUR DE GÉANTS,GIANT SLAYER
-kw.tueur_geants.desc,GAGNE +{0} DE PUISSANCE SI LA CIBLE A PLUS DE PV QUE LUI,GAINS +{0} POWER IF THE TARGET HAS MORE HP THAN ITSELF
+kw.rempart.label,REMPART,BULWARK,BALUARDO,BOLLWERK,BALUARTE,SZANIEC,SIPER,壁垒
+kw.rempart.desc,RÉDUIT DE {0} LES DÉGÂTS SAUF AU CONTACT DIRECT,REDUCES DAMAGE BY {0} EXCEPT FROM DIRECT CONTACT,RIDUCE I DANNI DI {0} TRANNE AL CONTATTO DIRETTO,VERRINGERT SCHADEN UM {0} AUSSER BEI DIREKTEM KONTAKT,REDUCE EL DANO EN {0} SALVO EN CONTACTO DIRECTO,ZMNIEJSZA OBRAZENIA O {0} POZA BEZPOSREDNIM KONTAKTEM,DOGRUDAN TEMAS DISINDA HASARI {0} AZALTIR,除直接接触外将伤害减少 {0}
+kw.soin.label,SOIN,HEAL,CURA,HEILUNG,CURACION,LECZENIE,SIFA,治疗
+kw.soin.desc,SOIGNE L'ALLIÉ CIBLE DE LA MOITIÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR HALF ITS POWER,CURA L'ALLEATO BERSAGLIO DI META DELLA SUA POTENZA,HEILT DEN ZIELVERBUNDETEN UM DIE HALFTE SEINER STARKE,CURA AL ALIADO OBJETIVO LA MITAD DE SU PODER,LECZY WSKAZANEGO SOJUSZNIKA O POLOWE JEGO MOCY,HEDEF MUTTEFIKI GUCUNUN YARISI KADAR IYILESTIRIR,为目标友军治疗其力量的一半
+kw.franchissement.label,FRANCHISSEMENT,VAULTING,SCAVALCAMENTO,UBERSPRUNG,SALTO,PRZESKOK,ATLAMA,跨越
+kw.franchissement.desc,SE DÉPLACE EN IGNORANT LES UNITÉS ET LES OBSTACLES SUR SON CHEMIN,MOVES IGNORING UNITS AND TERRAIN OBSTACLES IN ITS PATH,SI MUOVE IGNORANDO UNITA E OSTACOLI SUL SUO CAMMINO,BEWEGT SICH UND IGNORIERT EINHEITEN UND HINDERNISSE IM WEG,SE MUEVE IGNORANDO UNIDADES Y OBSTACULOS EN SU CAMINO,PORUSZA SIE IGNORUJAC JEDNOSTKI I PRZESZKODY NA DRODZE,YOLUNDAKI BIRIMLERI VE ENGELLERI YOK SAYARAK HAREKET EDER,移动时无视路径上的单位和障碍
+kw.transpercement.label,TRANSPERCER,PIERCING,PERFORAZIONE,DURCHBOHREN,PERFORACION,PRZEBICIE,DELME,穿刺
+kw.transpercement.desc,TRAVERSE LA CIBLE ET TOUCHE L'UNITÉ JUSTE DERRIÈRE,PIERCES THE TARGET AND HITS THE UNIT JUST BEHIND,TRAPASSA IL BERSAGLIO E COLPISCE L'UNITA DIETRO,DURCHBOHRT DAS ZIEL UND TRIFFT DIE EINHEIT DAHINTER,ATRAVIESA EL OBJETIVO Y GOLPEA A LA UNIDAD DETRAS,PRZEBIJA CEL I TRAFIA JEDNOSTKE TUZ ZA NIM,HEDEFI DELER VE HEMEN ARKASINDAKI BIRIME VURUR,穿透目标并击中其正后方的单位
+kw.interception.label,INTERCEPTION,INTERCEPT,INTERCETTAZIONE,ABFANGEN,INTERCEPCION,PRZECHWYT,ONLEME,拦截
+kw.interception.desc,UN ENNEMI QUI ENTRE DANS LA ZONE D'ATTAQUE SUBIT UNE ATTAQUE D'OPPORTUNITÉ,AN ENEMY ENTERING THE ATTACK ZONE SUFFERS AN OPPORTUNITY ATTACK,UN NEMICO CHE ENTRA NELLA ZONA D'ATTACCO SUBISCE UN ATTACCO D'OPPORTUNITA,EIN GEGNER DER DIE ANGRIFFSZONE BETRITT ERLEIDET EINEN GELEGENHEITSANGRIFF,UN ENEMIGO QUE ENTRA EN LA ZONA DE ATAQUE SUFRE UN ATAQUE DE OPORTUNIDAD,WROG WCHODZACY W STREFE ATAKU OBERWIE ATAK OKAZYJNY,SALDIRI BOLGESINE GIREN DUSMAN FIRSAT SALDIRISI YER,进入攻击范围的敌人会遭受一次借机攻击
+kw.aura_rempart.label,AURA DE REMPART,BULWARK AURA,AURA DI BALUARDO,BOLLWERK AURA,AURA DE BALUARTE,AURA SZANCA,SIPER AURASI,壁垒光环
+kw.aura_rempart.desc,LE BONUS DE REMPART S'APPLIQUE AUX UNITÉS ADJACENTES,THE BULWARK BONUS APPLIES TO ADJACENT UNITS,IL BONUS BALUARDO VALE PER LE UNITA ADIACENTI,DER BOLLWERK BONUS GILT FUR ANGRENZENDE EINHEITEN,EL BONO DE BALUARTE SE APLICA A UNIDADES ADYACENTES,PREMIA SZANCA OBEJMUJE SASIEDNIE JEDNOSTKI,SIPER BONUSU BITISIK BIRIMLERE UYGULANIR,壁垒加成适用于相邻单位
+kw.aura_puissance.label,AURA DE PUISSANCE,POWER AURA,AURA DI POTENZA,STARKE AURA,AURA DE PODER,AURA MOCY,GUC AURASI,力量光环
+kw.aura_puissance.desc,AUGMENTE LA PUISSANCE DES ALLIÉS ADJACENTS DE 3,INCREASES ADJACENT ALLIES' POWER BY 3,AUMENTA DI 3 LA POTENZA DEGLI ALLEATI ADIACENTI,ERHOHT DIE STARKE ANGRENZENDER VERBUNDETER UM 3,AUMENTA EN 3 EL PODER DE ALIADOS ADYACENTES,ZWIEKSZA MOC SASIEDNICH SOJUSZNIKOW O 3,BITISIK MUTTEFIKLERIN GUCUNU 3 ARTIRIR,使相邻友军力量增加3
+kw.aura_celerite.label,AURA DE CÉLÉRITÉ,CELERITY AURA,AURA DI CELERITA,TEMPO AURA,AURA DE CELERIDAD,AURA SZYBKOSCI,SURAT AURASI,迅捷光环
+kw.aura_celerite.desc,LES ALLIÉS AU CONTACT DIRECT (PAS EN DIAGONALE) EN DÉBUT DE TOUR GAGNENT +1 EN DÉPLACEMENT,ALLIES IN DIRECT CONTACT (NOT DIAGONAL) AT THE START OF THEIR TURN GAIN +1 MOVEMENT,GLI ALLEATI A CONTATTO DIRETTO (NON IN DIAGONALE) A INIZIO TURNO OTTENGONO +1 MOVIMENTO,VERBUNDETE IN DIREKTEM KONTAKT (NICHT DIAGONAL) ERHALTEN ZU RUNDENBEGINN +1 BEWEGUNG,LOS ALIADOS EN CONTACTO DIRECTO (NO DIAGONAL) AL INICIO DEL TURNO GANAN +1 MOVIMIENTO,SOJUSZNICY W BEZPOSREDNIM KONTAKCIE (NIE NA UKOS) NA POCZATKU TURY ZYSKUJA +1 RUCHU,TUR BASINDA DOGRUDAN TEMASTAKI (CAPRAZ DEGIL) MUTTEFIKLER +1 HAREKET KAZANIR,回合开始时直接接触(非对角)的友军获得 +1 移动
+kw.riposte.label,RIPOSTE,RIPOSTE,RIPOSTA,RIPOSTE,RESPUESTA,RIPOSTA,MISILLEME,反击
+kw.riposte.desc,CONTRE-ATTAQUE SI ELLE SURVIT ET PEUT ATTEINDRE L'ASSAILLANT,COUNTERS IF IT SURVIVES AND CAN REACH THE ATTACKER,CONTRATTACCA SE SOPRAVVIVE E PUO RAGGIUNGERE L'ASSALITORE,KONTERT WENN SIE UBERLEBT UND DEN ANGREIFER ERREICHT,CONTRAATACA SI SOBREVIVE Y ALCANZA AL ATACANTE,KONTRUJE JESLI PRZETRWA I DOSIEGNIE NAPASTNIKA,HAYATTA KALIRSA VE SALDIRGANA ULASIRSA KARSILIK VERIR,若存活且能够到攻击者则进行反击
+kw.duelliste.label,DUELLISTE,DUELIST,DUELLANTE,DUELLANT,DUELISTA,POJEDYNKOWICZ,DUELLOCU,决斗者
+kw.duelliste.desc,RÉDUIT DE 4 LES DÉGÂTS DES ATTAQUES AU CORPS À CORPS,REDUCES BY 4 DAMAGE FROM MELEE ATTACKS,RIDUCE DI 4 I DANNI DEGLI ATTACCHI IN MISCHIA,VERRINGERT NAHKAMPFSCHADEN UM 4,REDUCE EN 4 EL DANO DE ATAQUES CUERPO A CUERPO,ZMNIEJSZA O 4 OBRAZENIA ATAKOW WRECZ,YAKIN DOVUS SALDIRI HASARINI 4 AZALTIR,将近战攻击伤害减少4
+kw.berserk.label,BERSERK,BERSERK,BERSERK,BERSERKER,BERSERK,BERSERK,BERSERK,狂暴
+kw.berserk.desc,GAGNE +1 PUISSANCE PAR ENNEMI TUÉ SUR LA PARTIE,GAINS +1 POWER PER ENEMY KILLED THIS RUN,OTTIENE +1 POTENZA PER OGNI NEMICO UCCISO NELLA PARTITA,ERHALT +1 STARKE PRO IM LAUF GETOTETEM GEGNER,GANA +1 PODER POR ENEMIGO MUERTO EN LA PARTIDA,ZYSKUJE +1 MOCY ZA WROGA ZABITEGO W TEJ GRZE,OYUNDA OLDURULEN HER DUSMAN ICIN +1 GUC KAZANIR,本局每击杀一个敌人获得 +1 力量
+kw.rage.label,RAGE,RAGE,IRA,ZORN,FURIA,WSCIEKLOSC,OFKE,狂怒
+kw.rage.desc,GAGNE +7 PUISSANCE À LA PREMIÈRE MORT D'UN ALLIÉ (UNE FOIS PAR COMBAT),GAINS +7 POWER ON THE FIRST ALLY DEATH (ONCE PER COMBAT),OTTIENE +7 POTENZA ALLA PRIMA MORTE DI UN ALLEATO (UNA VOLTA PER COMBATTIMENTO),ERHALT +7 STARKE BEIM ERSTEN TOD EINES VERBUNDETEN (EINMAL PRO KAMPF),GANA +7 PODER CON LA PRIMERA MUERTE DE UN ALIADO (UNA VEZ POR COMBATE),ZYSKUJE +7 MOCY PRZY PIERWSZEJ SMIERCI SOJUSZNIKA (RAZ NA WALKE),BIR MUTTEFIGIN ILK OLUMUNDE +7 GUC KAZANIR (SAVAS BASINA BIR KEZ),首个友军死亡时获得 +7 力量 (每场战斗一次)
+kw.soin_parfait.label,SOIN PARFAIT,PERFECT HEAL,CURA PERFETTA,PERFEKTE HEILUNG,CURACION PERFECTA,DOSKONALE LECZENIE,KUSURSUZ SIFA,完美治疗
+kw.soin_parfait.desc,SOIGNE L'ALLIÉ CIBLE DE LA TOTALITÉ DE SA PUISSANCE,HEALS THE TARGETED ALLY FOR ITS FULL POWER,CURA L'ALLEATO BERSAGLIO DELL'INTERA SUA POTENZA,HEILT DEN ZIELVERBUNDETEN UM SEINE VOLLE STARKE,CURA AL ALIADO OBJETIVO TODO SU PODER,LECZY WSKAZANEGO SOJUSZNIKA O CALA JEGO MOC,HEDEF MUTTEFIKI GUCUNUN TAMAMI KADAR IYILESTIRIR,为目标友军治疗其全部力量
+kw.pierce_allies.label,TRAVERSE ALLIE,PIERCE ALLIES,ATTRAVERSA ALLEATI,VERBUNDETE DURCHDRINGEN,ATRAVIESA ALIADOS,PRZEZ SOJUSZNIKOW,MUTTEFIKTEN GECER,穿越友军
+kw.pierce_allies.desc,ATTAQUE À TRAVERS SES ALLIÉS SANS LES TOUCHER,ATTACKS THROUGH ALLIES WITHOUT HITTING THEM,ATTACCA ATTRAVERSO GLI ALLEATI SENZA COLPIRLI,GREIFT DURCH VERBUNDETE HINDURCH OHNE SIE ZU TREFFEN,ATACA A TRAVES DE SUS ALIADOS SIN GOLPEARLOS,ATAKUJE PRZEZ SOJUSZNIKOW NIE TRAFIAJAC ICH,MUTTEFIKLERINE VURMADAN ONLARIN ICINDEN SALDIRIR,攻击穿过友军而不伤及他们
+kw.dead_zone.label,ZONE MORTE,DEAD ZONE,ZONA MORTA,TOTE ZONE,ZONA MUERTA,MARTWA STREFA,OLU BOLGE,死区
+kw.dead_zone.desc,NE FRAPPE PAS AU CORPS À CORPS DIRECT EN LIGNE DROITE (TIR EN DIAGONALE POSSIBLE),CANNOT STRIKE IN DIRECT MELEE IN A STRAIGHT LINE (DIAGONAL SHOT POSSIBLE),NON COLPISCE IN MISCHIA DIRETTA IN LINEA RETTA (TIRO IN DIAGONALE POSSIBILE),SCHLAGT NICHT IM DIREKTEN NAHKAMPF GERADEAUS (DIAGONALER SCHUSS MOGLICH),NO GOLPEA EN CUERPO A CUERPO DIRECTO EN LINEA RECTA (DISPARO DIAGONAL POSIBLE),NIE UDERZA WRECZ WPROST W LINII PROSTEJ (STRZAL NA UKOS MOZLIWY),DUZ HATTA DOGRUDAN YAKIN DOVUSTE VURMAZ (CAPRAZ ATIS MUMKUN),不在直线正前方进行近战 (可对角射击)
+kw.drain_vie.label,DRAIN DE VIE,LIFE DRAIN,DRENAGGIO VITALE,LEBENSRAUB,DRENAJE DE VIDA,WYSYSANIE ZYCIA,CAN EMME,生命汲取
+kw.drain_vie.desc,RESTAURE DES PV ÉGAUX À 50 POURCENT DES DÉGÂTS INFLIGÉS,RESTORES HP EQUAL TO 50 PERCENT OF DAMAGE DEALT,RECUPERA PV PARI AL 50 PERCENTO DEI DANNI INFLITTI,STELLT LP IN HOHE VON 50 PROZENT DES SCHADENS WIEDER HER,RECUPERA PV IGUAL AL 50 POR CIENTO DEL DANO INFLIGIDO,PRZYWRACA PZ ROWNE 50 PROCENT ZADANYCH OBRAZEN,VERILEN HASARIN YUZDE 50 SI KADAR CAN YENILER,恢复相当于造成伤害50%的生命
+kw.balistique.label,BALISTIQUE,BALLISTIC,BALISTICA,BALLISTIK,BALISTICA,BALISTYKA,BALISTIK,弹道
+kw.balistique.desc,TIR INDIRECT IGNORE LES OBSTACLES SUR LA LIGNE DE TIR,INDIRECT FIRE IGNORES OBSTACLES ON THE LINE OF FIRE,IL TIRO INDIRETTO IGNORA GLI OSTACOLI SULLA LINEA DI TIRO,INDIREKTER BESCHUSS IGNORIERT HINDERNISSE IN DER SCHUSSLINIE,EL DISPARO INDIRECTO IGNORA OBSTACULOS EN LA LINEA DE TIRO,STRZAL POSREDNI IGNORUJE PRZESZKODY NA LINII OGNIA,DOLAYLI ATIS ATIS HATTINDAKI ENGELLERI YOK SAYAR,间接射击无视射线上的障碍
+kw.vol.label,VOL,FLIGHT,VOLO,FLUG,VUELO,LOT,UCUS,飞行
+kw.vol.desc,SE DÉPLACE EN IGNORANT LES OBSTACLES DE TERRAIN,MOVES IGNORING TERRAIN OBSTACLES,SI MUOVE IGNORANDO GLI OSTACOLI DEL TERRENO,BEWEGT SICH UND IGNORIERT GELANDEHINDERNISSE,SE MUEVE IGNORANDO LOS OBSTACULOS DEL TERRENO,PORUSZA SIE IGNORUJAC PRZESZKODY TERENU,ARAZI ENGELLERINI YOK SAYARAK HAREKET EDER,移动时无视地形障碍
+kw.formation.label,FORMATION,FORMATION,FORMAZIONE,FORMATION,FORMACION,FORMACJA,DUZEN,阵型
+kw.formation.desc,AUGMENTE LA PUISSANCE DE {0} PAR ALLIÉ ADJACENT,INCREASES POWER BY {0} PER ADJACENT ALLY,AUMENTA LA POTENZA DI {0} PER OGNI ALLEATO ADIACENTE,ERHOHT DIE STARKE UM {0} PRO ANGRENZENDEM VERBUNDETEN,AUMENTA EL PODER EN {0} POR ALIADO ADYACENTE,ZWIEKSZA MOC O {0} ZA KAZDEGO SASIEDNIEGO SOJUSZNIKA,BITISIK HER MUTTEFIK ICIN GUCU {0} ARTIRIR,每个相邻友军使力量增加 {0}
+kw.esquive.label,ESQUIVE,DODGE,SCHIVATA,AUSWEICHEN,ESQUIVA,UNIK,KACINMA,闪避
+kw.esquive.desc,{0} POURCENT DE CHANCE D'ESQUIVER UNE ATTAQUE,{0} PERCENT CHANCE TO DODGE AN ATTACK,{0} PERCENTO DI PROBABILITA DI SCHIVARE UN ATTACCO,{0} PROZENT CHANCE EINEN ANGRIFF AUSZUWEICHEN,{0} POR CIENTO DE PROBABILIDAD DE ESQUIVAR UN ATAQUE,{0} PROCENT SZANSY NA UNIK ATAKU,BIR SALDIRIYI SAVUSTURMA SANSI YUZDE {0},有 {0}% 几率闪避一次攻击
+kw.orage.label,ORAGE,STORM,TEMPORALE,GEWITTER,TORMENTA,BURZA,FIRTINA,雷暴
+kw.orage.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 3,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 3,ALL'ATTACCO FULMINA 3 NEMICI A CASO DI 3,BEIM ANGRIFF TRIFFT 3 ZUFALLIGE GEGNER MIT 3,AL ATACAR FULMINA A 3 ENEMIGOS AL AZAR CON 3,PRZY ATAKU RAZI 3 LOSOWYCH WROGOW ZA 3,SALDIRIDA RASTGELE 3 DUSMANI 3 HASARLA VURUR,攻击时随机雷击3个敌人各3点
+kw.tempete.label,TEMPETE,TEMPEST,TEMPESTA,STURM,TEMPESTAD,NAWALNICA,KASIRGA,风暴
+kw.tempete.desc,À L'ATTAQUE FOUDROIE 3 ENNEMIS AU HASARD DE 6,ON ATTACK STRIKES 3 RANDOM ENEMIES FOR 6,ALL'ATTACCO FULMINA 3 NEMICI A CASO DI 6,BEIM ANGRIFF TRIFFT 3 ZUFALLIGE GEGNER MIT 6,AL ATACAR FULMINA A 3 ENEMIGOS AL AZAR CON 6,PRZY ATAKU RAZI 3 LOSOWYCH WROGOW ZA 6,SALDIRIDA RASTGELE 3 DUSMANI 6 HASARLA VURUR,攻击时随机雷击3个敌人各6点
+kw.attaque_libre.label,ATTAQUE LIBRE,FREE AIM,MIRA LIBERA,FREIES ZIELEN,PUNTERIA LIBRE,WOLNY OSTRZAL,SERBEST NISAN,自由瞄准
+kw.attaque_libre.desc,TIRE AUSSI COMME UNE DAME (8 DIRECTIONS EN LIGNE) EN PLUS DE SON ATTAQUE NORMALE,ALSO SHOOTS LIKE A QUEEN (8 DIRECTIONS IN LINE) ON TOP OF ITS NORMAL ATTACK,SPARA ANCHE COME UNA DONNA (8 DIREZIONI IN LINEA) OLTRE AL SUO ATTACCO NORMALE,SCHIESST AUCH WIE EINE DAME (8 RICHTUNGEN IN LINIE) ZUSATZLICH ZUM NORMALEN ANGRIFF,DISPARA TAMBIEN COMO UNA DAMA (8 DIRECCIONES EN LINEA) ADEMAS DE SU ATAQUE NORMAL,STRZELA TAKZE JAK HETMAN (8 KIERUNKOW W LINII) OPROCZ ZWYKLEGO ATAKU,NORMAL SALDIRISINA EK OLARAK VEZIR GIBI DE ATES EDER (HAT UZERINDE 8 YON),除普通攻击外还能像后一样射击 (直线8个方向)
+kw.statique.label,STATIQUE,STATIC,STATICO,STATISCH,ESTATICO,STATYCZNY,SABIT,静止
+kw.statique.desc,NE PREND JAMAIS LA PLACE DE SA CIBLE EN LA TUANT (RESTE SUR SA CASE),NEVER TAKES THE TARGET'S PLACE ON A KILL (STAYS PUT),NON PRENDE MAI IL POSTO DEL BERSAGLIO UCCIDENDOLO (RESTA SULLA SUA CASELLA),NIMMT NIE DEN PLATZ DES ZIELS BEIM TOTEN EIN (BLEIBT STEHEN),NUNCA OCUPA EL LUGAR DEL OBJETIVO AL MATARLO (SE QUEDA EN SU CASILLA),NIGDY NIE ZAJMUJE MIEJSCA CELU PO ZABICIU (ZOSTAJE NA POLU),OLDURDUGUNDE HEDEFIN YERINI ALMAZ (KARESINDE KALIR),击杀时从不占据目标的位置 (留在原格)
+kw.seisme.label,SÉISME,EARTHQUAKE,TERREMOTO,ERDBEBEN,TERREMOTO,TRZESIENIE,DEPREM,地震
+kw.seisme.desc,À LA FIN DU TOUR ENNEMI FRAPPE LES ENNEMIS ADJACENTS POUR SA PUISSANCE,AT THE END OF THE ENEMY TURN STRIKES ADJACENT ENEMIES FOR ITS POWER,A FINE TURNO NEMICO COLPISCE I NEMICI ADIACENTI PER LA SUA POTENZA,AM ENDE DER GEGNERRUNDE TRIFFT ANGRENZENDE GEGNER MIT SEINER STARKE,AL FINAL DEL TURNO ENEMIGO GOLPEA A ENEMIGOS ADYACENTES CON SU PODER,NA KONIEC TURY WROGA UDERZA SASIEDNICH WROGOW ZA SWOJA MOC,DUSMAN TURUNUN SONUNDA BITISIK DUSMANLARA GUCU KADAR VURUR,敌方回合结束时以其力量打击相邻敌人
+kw.impact.label,IMPACT,IMPACT,IMPATTO,AUFPRALL,IMPACTO,UDERZENIE,DARBE,冲击
+kw.impact.desc,INFLIGE 5 DÉGÂTS AUTOUR DE LUI QUAND IL SE DÉPLACE OU ATTAQUE,DEALS 5 DAMAGE AROUND ITSELF WHEN IT MOVES OR ATTACKS,INFLIGGE 5 DANNI INTORNO A SE QUANDO SI MUOVE O ATTACCA,FUGT BEIM BEWEGEN ODER ANGREIFEN 5 SCHADEN IM UMKREIS ZU,INFLIGE 5 DE DANO A SU ALREDEDOR AL MOVERSE O ATACAR,ZADAJE 5 OBRAZEN WOKOL SIEBIE GDY SIE RUSZA LUB ATAKUJE,HAREKET EDINCE YA DA SALDIRINCA ETRAFINA 5 HASAR VERIR,移动或攻击时对周围造成5点伤害
+kw.recule.label,RECULE,KNOCKBACK,RESPINTA,RUCKSTOSS,RETROCESO,ODRZUT,GERI ITME,击退
+kw.recule.desc,REPOUSSE LA CIBLE D'UNE CASE ET INFLIGE +5 DÉGÂTS SI ELLE EST CONTRE UN OBSTACLE,PUSHES THE TARGET BACK ONE TILE AND DEALS +5 DAMAGE IF IT IS AGAINST AN OBSTACLE,RESPINGE IL BERSAGLIO DI UNA CASELLA E INFLIGGE +5 DANNI SE E CONTRO UN OSTACOLO,STOSST DAS ZIEL UM EIN FELD ZURUCK UND FUGT +5 SCHADEN ZU WENN ES AN EINEM HINDERNIS IST,EMPUJA AL OBJETIVO UNA CASILLA Y CAUSA +5 DE DANO SI ESTA CONTRA UN OBSTACULO,ODPYCHA CEL O JEDNO POLE I ZADAJE +5 OBRAZEN JESLI JEST PRZY PRZESZKODZIE,HEDEFI BIR KARE GERI ITER VE BIR ENGELE DAYALIYSA +5 HASAR VERIR,将目标击退一格。若其紧贴障碍则额外造成5点伤害
+kw.renaissance.label,RENAISSANCE,REBIRTH,RINASCITA,WIEDERGEBURT,RENACIMIENTO,ODRODZENIE,YENIDEN DOGUS,重生
+kw.renaissance.desc,À LA MORT RESSUSCITE À 1 PV ET BRISE L'ÉQUIPEMENT (UNE FOIS),ON DEATH REVIVES AT 1 HP AND BREAKS THE EQUIPMENT (ONCE),ALLA MORTE RISORGE A 1 PV E ROMPE L'EQUIPAGGIAMENTO (UNA VOLTA),BEIM TOD WIEDERBELEBT MIT 1 LP UND ZERSTORT DIE AUSRUSTUNG (EINMAL),AL MORIR REVIVE CON 1 PV Y ROMPE EL EQUIPO (UNA VEZ),PO SMIERCI WSKRZESZA Z 1 PZ I NISZCZY WYPOSAZENIE (RAZ),OLUNCE 1 CAN ILE DIRILIR VE EKIPMANI KIRAR (BIR KEZ),死亡时以1点生命复活并破坏装备 (一次)
+kw.tueur_geants.label,TUEUR DE GÉANTS,GIANT SLAYER,UCCISORE DI GIGANTI,RIESENTOTER,MATAGIGANTES,POGROMCA OLBRZYMOW,DEV AVCISI,巨人杀手
+kw.tueur_geants.desc,GAGNE +{0} DE PUISSANCE SI LA CIBLE A PLUS DE PV QUE LUI,GAINS +{0} POWER IF THE TARGET HAS MORE HP THAN ITSELF,OTTIENE +{0} POTENZA SE IL BERSAGLIO HA PIU PV DI LUI,ERHALT +{0} STARKE WENN DAS ZIEL MEHR LP HAT ALS ES SELBST,GANA +{0} PODER SI EL OBJETIVO TIENE MAS PV QUE EL,ZYSKUJE +{0} MOCY JESLI CEL MA WIECEJ PZ NIZ ON,HEDEFIN CANI KENDISINDEN COKSA +{0} GUC KAZANIR,若目标生命高于自身则获得 +{0} 力量
 # ── Effets de combat ─────────────────────────────────────────────────────────
-fx.dodge,ESQUIVE !,DODGE!
-fx.riposte,RIPOSTE !,RIPOSTE!
-fx.interception,INTERCEPTION !,INTERCEPT!
-fx.phenix,PHÉNIX !,PHOENIX!
-fx.command_point,+{0} COMMANDEMENT,+{0} COMMAND
-fx.transpercer,TRANSPERCER !,PIERCE!
-fx.seisme,SÉISME !,EARTHQUAKE!
+fx.dodge,ESQUIVE !,DODGE!,SCHIVATA!,AUSGEWICHEN!,ESQUIVA!,UNIK!,SAVUSTURMA!,闪避！
+fx.riposte,RIPOSTE !,RIPOSTE!,RIPOSTA!,RIPOSTE!,RESPUESTA!,RIPOSTA!,MISILLEME!,反击！
+fx.interception,INTERCEPTION !,INTERCEPT!,INTERCETTAZIONE!,ABGEFANGEN!,INTERCEPCION!,PRZECHWYT!,ONLEME!,拦截！
+fx.phenix,PHÉNIX !,PHOENIX!,FENICE!,PHONIX!,FENIX!,FENIKS!,ANKA!,凤凰！
+fx.command_point,+{0} COMMANDEMENT,+{0} COMMAND,+{0} COMANDO,+{0} KOMMANDO,+{0} MANDO,+{0} DOWODZENIE,+{0} KOMUTA,+{0} 指挥
+fx.transpercer,TRANSPERCER !,PIERCE!,PERFORAZIONE!,DURCHBOHRT!,PERFORACION!,PRZEBICIE!,DELME!,穿刺！
+fx.seisme,SÉISME !,EARTHQUAKE!,TERREMOTO!,ERDBEBEN!,TERREMOTO!,TRZESIENIE!,DEPREM!,地震！
 # ── Tutoriel (combat zero) ──────────────────────────────────────────────────
 # Les TITRES restent en capitales (libelles d'UI) ; les consignes et les corps de texte sont des PHRASES,
 # rendues telles quelles (preserveCase) : minuscules accentuees, majuscule en debut de phrase.
-tuto.intro_title,TUTORIEL,TUTORIAL
-tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) puis combat puis récompense.,A battle has 3 phases: preparation (placement) then battle then reward.
-tuto.intro_continue,Clic pour commencer,Click to begin
-tuto.pick_soldier,Clique sur le soldat dans l'inventaire pour le prendre en main.,Click the soldier in the inventory to pick it up.
-tuto.place_soldier,Pose le soldat sur une case libre de ta zone (les rangées du bas).,Drop the soldier on a free tile in your zone (the bottom rows).
-tuto.start_combat,Tes pièces sont en place. Clique sur COMBATTRE en bas du panneau (ou Entrée).,Your pieces are ready. Click FIGHT at the bottom of the panel (or Enter).
-tuto.start_combat_gp,Tes pièces sont en place. Descends sur COMBATTRE et valide avec A (ou Y).,Your pieces are ready. Move down to FIGHT and confirm with A (or Y).
-tuto.chest,Ce coffre cache un équipement. Déplace ton soldat dessus pour l'ouvrir. L'ennemi attend.,This chest hides a piece of equipment. Move your soldier onto it to open it. The enemy waits.
-tuto.move,A chaque tour tu ne fais qu'une action : déplacer une pièce. Rapproche la tienne de l'ennemi.,Each turn you do only one action: move a piece. Bring yours closer to the enemy.
-tuto.enemy_plays,Ton action est faite. C'est au tour de l'adversaire (l'IA) de jouer.,Your action is done. Now the opponent (the AI) takes its turn.
-tuto.attack,Pour attaquer : déplace ta pièce directement sur l'ennemi.,To attack: move your piece straight onto the enemy.
-tuto.counter,L'ennemi a survécu. A son tour il riposte et frappe ta pièce.,The enemy survived. On its turn it strikes back at your piece.
-tuto.attack2,Achève-le : déplace-toi à nouveau sur lui. S'il meurt ta pièce prend sa case.,Finish it: move onto it again. If it dies your piece takes its tile.
-tuto.commander,La pièce au liseré doré est ton commandant. S'il meurt tu perds. Garde-le en vie !,The gold-outlined piece is your commander. If it dies you lose. Keep it alive!
-tuto.camera,Déplace la caméra avec les flèches ou ZQSD ou en glissant au clic molette pour observer tout le plateau.,Move the camera with the arrow keys or WASD or by dragging with the middle mouse button to look around the board.
-tuto.camera_gp,Déplace la caméra avec le stick droit pour observer tout le plateau.,Move the camera with the right stick to look around the whole board.
-tuto.danger,Maintiens ESPACE pour voir toutes les cases menacées par l'ennemi.,Hold SPACE to see every tile the enemy threatens.
-tuto.danger_gp,Maintiens la gâchette droite (RT) pour voir toutes les cases menacées par l'ennemi.,Hold the right trigger (RT) to see every tile the enemy threatens.
-tuto.replay,Appuie sur R pour revoir la dernière action de l'IA.,Press R to replay the AI last action.
-tuto.replay_gp,Appuie sur RB pour revoir la dernière action de l'IA.,Press RB to replay the AI last action.
-tuto.next,Clic pour continuer,Click to continue
-tuto.card_title,LA CARTE DE TON UNITE,YOUR UNIT CARD
-tuto.card_hp,Points de vie : la pièce meurt quand ils tombent à zéro.,Health: the piece dies when it reaches zero.
-tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power: the damage it deals on each attack.
-tuto.card_move,Mouvement : le nombre de cases franchies en un tour.,Movement: how many tiles it crosses in one turn.
-tuto.card_range,Portée : la distance max à laquelle elle peut attaquer.,Range: the max distance at which it can attack.
-tuto.card_domaine,Déplacement : cette icône montre dans quelles directions elle peut aller.,Movement pattern: this icon shows which directions it can go.
-tuto.card_continue,Clic pour la suite,Click for next
-tuto.card_continue_gp,A pour la suite,A for next
-tuto.skip,PASSER LE TUTO,SKIP TUTORIAL
-tuto.victory_title,BRAVO !,WELL DONE!
-tuto.continue,Clic pour commencer à jouer,Click to start playing
+tuto.intro_title,TUTORIEL,TUTORIAL,TUTORIAL,TUTORIAL,TUTORIAL,SAMOUCZEK,OGRETICI,教程
+tuto.intro_body,Un combat se déroule en 3 phases : préparation (le placement) puis combat puis récompense.,A battle has 3 phases: preparation (placement) then battle then reward.,Una battaglia si svolge in 3 fasi: preparazione (lo schieramento) poi combattimento poi ricompensa.,Ein Kampf läuft in 3 Phasen ab: Vorbereitung (die Aufstellung) dann Kampf dann Belohnung.,Una batalla tiene 3 fases: preparación (el despliegue) luego combate luego recompensa.,Bitwa przebiega w 3 fazach: przygotowanie (rozstawienie) potem walka potem nagroda.,Bir savaş 3 aşamada geçer: hazırlık (yerleştirme) sonra savaş sonra ödül.,一场战斗分为3个阶段：准备(部署)然后战斗然后奖励。
+tuto.intro_continue,Clic pour commencer,Click to begin,Clic per iniziare,Klick zum Beginnen,Clic para empezar,Kliknij aby zacząć,Başlamak için tıkla,点击开始
+tuto.pick_soldier,Clique sur le soldat dans l'inventaire pour le prendre en main.,Click the soldier in the inventory to pick it up.,Clicca sul soldato nell'inventario per prenderlo.,Klicke im Inventar auf den Soldaten um ihn aufzunehmen.,Haz clic en el soldado del inventario para cogerlo.,Kliknij żołnierza w ekwipunku aby go wziąć.,Askeri eline almak için envanterdeki askere tıkla.,点击库存中的士兵将其拿起。
+tuto.place_soldier,Pose le soldat sur une case libre de ta zone (les rangées du bas).,Drop the soldier on a free tile in your zone (the bottom rows).,Posiziona il soldato su una casella libera della tua zona (le file in basso).,Setze den Soldaten auf ein freies Feld in deiner Zone (die unteren Reihen).,Coloca al soldado en una casilla libre de tu zona (las filas de abajo).,Postaw żołnierza na wolnym polu w swojej strefie (dolne rzędy).,Askeri kendi bölgendeki boş bir kareye koy (alt sıralar).,将士兵放到你区域内的空格上(底部几行)。
+tuto.start_combat,Tes pièces sont en place. Clique sur COMBATTRE en bas du panneau (ou Entrée).,Your pieces are ready. Click FIGHT at the bottom of the panel (or Enter).,Le tue pedine sono pronte. Clicca su COMBATTI in fondo al pannello (o Invio).,Deine Figuren stehen bereit. Klicke unten im Panel auf KAMPFEN (oder Enter).,Tus piezas están listas. Haz clic en LUCHAR abajo del panel (o Enter).,Twoje pionki są gotowe. Kliknij WALCZ na dole panelu (lub Enter).,Piyonların hazır. Panelin altındaki SAVAS a tıkla (ya da Enter).,你的棋子已就位。点击面板底部的战斗(或回车)。
+tuto.start_combat_gp,Tes pièces sont en place. Descends sur COMBATTRE et valide avec A (ou Y).,Your pieces are ready. Move down to FIGHT and confirm with A (or Y).,Le tue pedine sono pronte. Scendi su COMBATTI e conferma con A (o Y).,Deine Figuren stehen bereit. Gehe runter zu KAMPFEN und bestätige mit A (oder Y).,Tus piezas están listas. Baja hasta LUCHAR y confirma con A (o Y).,Twoje pionki są gotowe. Zejdź na WALCZ i zatwierdź A (lub Y).,Piyonların hazır. SAVAS a in ve A ile onayla (ya da Y).,你的棋子已就位。移到战斗并用A确认(或Y)。
+tuto.chest,Ce coffre cache un équipement. Déplace ton soldat dessus pour l'ouvrir. L'ennemi attend.,This chest hides a piece of equipment. Move your soldier onto it to open it. The enemy waits.,Questo forziere nasconde un equipaggiamento. Sposta il tuo soldato sopra per aprirlo. Il nemico aspetta.,Diese Truhe verbirgt eine Ausrüstung. Ziehe deinen Soldaten darauf um sie zu öffnen. Der Gegner wartet.,Este cofre esconde un equipo. Mueve tu soldado encima para abrirlo. El enemigo espera.,Ta skrzynia kryje wyposażenie. Przesuń na nią żołnierza aby ją otworzyć. Wróg czeka.,Bu sandık bir ekipman saklıyor. Açmak için askerini üzerine getir. Düşman bekliyor.,这个宝箱藏着一件装备。把士兵移上去打开它。敌人在等待。
+tuto.move,A chaque tour tu ne fais qu'une action : déplacer une pièce. Rapproche la tienne de l'ennemi.,Each turn you do only one action: move a piece. Bring yours closer to the enemy.,Ogni turno fai una sola azione: muovere una pedina. Avvicina la tua al nemico.,Pro Runde machst du nur eine Aktion: eine Figur bewegen. Bring deine näher an den Gegner.,Cada turno haces una sola acción: mover una pieza. Acerca la tuya al enemigo.,W każdej turze wykonujesz jedną akcję: ruch pionkiem. Przybliż swój do wroga.,Her tur tek bir eylem yaparsın: bir piyonu oynatmak. Kendininkini düşmana yaklaştır.,每回合你只做一个动作：移动一个棋子。让你的靠近敌人。
+tuto.enemy_plays,Ton action est faite. C'est au tour de l'adversaire (l'IA) de jouer.,Your action is done. Now the opponent (the AI) takes its turn.,La tua azione è fatta. Ora tocca all'avversario (l'IA).,Deine Aktion ist erledigt. Jetzt ist der Gegner (die KI) am Zug.,Tu acción está hecha. Ahora juega el rival (la IA).,Twoja akcja wykonana. Teraz gra przeciwnik (SI).,Eylemin tamam. Sıra rakibe geçti (yapay zeka).,你的动作完成了。轮到对手(AI)行动。
+tuto.attack,Pour attaquer : déplace ta pièce directement sur l'ennemi.,To attack: move your piece straight onto the enemy.,Per attaccare: sposta la tua pedina direttamente sul nemico.,Zum Angreifen: ziehe deine Figur direkt auf den Gegner.,Para atacar: mueve tu pieza directamente sobre el enemigo.,Aby zaatakować: przesuń pionek prosto na wroga.,Saldırmak için: piyonunu doğrudan düşmanın üzerine getir.,攻击方法：把棋子直接移动到敌人身上。
+tuto.counter,L'ennemi a survécu. A son tour il riposte et frappe ta pièce.,The enemy survived. On its turn it strikes back at your piece.,Il nemico è sopravvissuto. Al suo turno risponde e colpisce la tua pedina.,Der Gegner hat überlebt. In seiner Runde schlägt er zurück.,El enemigo sobrevivió. En su turno responde y golpea tu pieza.,Wróg przeżył. W swojej turze kontruje i uderza twój pionek.,Düşman hayatta kaldı. Sırası gelince karşılık verip piyonuna vurur.,敌人幸存了。轮到它时会反击并打击你的棋子。
+tuto.attack2,Achève-le : déplace-toi à nouveau sur lui. S'il meurt ta pièce prend sa case.,Finish it: move onto it again. If it dies your piece takes its tile.,Finiscilo: spostati di nuovo su di lui. Se muore la tua pedina prende la sua casella.,Erledige ihn: ziehe erneut auf ihn. Stirbt er nimmt deine Figur sein Feld.,Acábalo: muévete de nuevo sobre él. Si muere tu pieza toma su casilla.,Dobij go: przesuń się na niego znowu. Gdy zginie twój pionek zajmuje jego pole.,Onu bitir: tekrar üzerine gel. Ölürse piyonun karesini alır.,终结它：再次移动到它身上。若它死亡你的棋子占据其格子。
+tuto.commander,La pièce au liseré doré est ton commandant. S'il meurt tu perds. Garde-le en vie !,The gold-outlined piece is your commander. If it dies you lose. Keep it alive!,La pedina dal bordo dorato è il tuo comandante. Se muore perdi. Tienilo in vita!,Die goldumrandete Figur ist dein Kommandant. Stirbt er verlierst du. Halte ihn am Leben!,La pieza con borde dorado es tu comandante. Si muere pierdes. Mantenlo con vida!,Pionek ze złotą obwódką to twój dowódca. Gdy zginie przegrywasz. Chroń jego życie!,Altın kenarlı piyon komutanındır. Ölürse kaybedersin. Onu hayatta tut!,带金色边框的棋子是你的指挥官。它死你就输。让它活着！
+tuto.camera,Déplace la caméra avec les flèches ou ZQSD ou en glissant au clic molette pour observer tout le plateau.,Move the camera with the arrow keys or WASD or by dragging with the middle mouse button to look around the board.,Muovi la telecamera con le frecce o WASD o trascinando col tasto centrale per osservare tutto il campo.,Bewege die Kamera mit den Pfeiltasten oder WASD oder durch Ziehen mit der mittleren Maustaste um das Brett zu überblicken.,Mueve la cámara con las flechas o WASD o arrastrando con el botón central para ver todo el tablero.,Poruszaj kamerą strzałkami lub WASD lub przeciągając środkowym przyciskiem aby zobaczyć całą planszę.,Tüm tahtayı görmek için kamerayı ok tuşları veya WASD ile ya da orta tuşla sürükleyerek oynat.,用方向键或WASD或按住鼠标中键拖动来移动镜头观察整个棋盘。
+tuto.camera_gp,Déplace la caméra avec le stick droit pour observer tout le plateau.,Move the camera with the right stick to look around the whole board.,Muovi la telecamera con lo stick destro per osservare tutto il campo.,Bewege die Kamera mit dem rechten Stick um das ganze Brett zu sehen.,Mueve la cámara con el stick derecho para ver todo el tablero.,Poruszaj kamerą prawą gałką aby zobaczyć całą planszę.,Tüm tahtayı görmek için kamerayı sağ çubukla oynat.,用右摇杆移动镜头观察整个棋盘。
+tuto.danger,Maintiens ESPACE pour voir toutes les cases menacées par l'ennemi.,Hold SPACE to see every tile the enemy threatens.,Tieni premuto SPAZIO per vedere tutte le caselle minacciate dal nemico.,Halte LEERTASTE um alle vom Gegner bedrohten Felder zu sehen.,Manten pulsado ESPACIO para ver todas las casillas que amenaza el enemigo.,Przytrzymaj SPACJĘ aby zobaczyć wszystkie pola zagrożone przez wroga.,Düşmanın tehdit ettiği tüm kareleri görmek için BOSLUK tuşunu basılı tut.,按住空格查看敌人威胁的所有格子。
+tuto.danger_gp,Maintiens la gâchette droite (RT) pour voir toutes les cases menacées par l'ennemi.,Hold the right trigger (RT) to see every tile the enemy threatens.,Tieni premuto il grilletto destro (RT) per vedere tutte le caselle minacciate dal nemico.,Halte den rechten Auslöser (RT) um alle bedrohten Felder zu sehen.,Manten el gatillo derecho (RT) para ver todas las casillas amenazadas.,Przytrzymaj prawy spust (RT) aby zobaczyć wszystkie zagrożone pola.,Tehdit edilen tüm kareleri görmek için sağ tetiği (RT) basılı tut.,按住右扳机(RT)查看敌人威胁的所有格子。
+tuto.replay,Appuie sur R pour revoir la dernière action de l'IA.,Press R to replay the AI last action.,Premi R per rivedere l'ultima azione dell'IA.,Drücke R um die letzte KI Aktion zu wiederholen.,Pulsa R para volver a ver la última acción de la IA.,Naciśnij R aby powtórzyć ostatni ruch SI.,Yapay zekanın son hamlesini tekrar görmek için R ye bas.,按R重看AI的上一个动作。
+tuto.replay_gp,Appuie sur RB pour revoir la dernière action de l'IA.,Press RB to replay the AI last action.,Premi RB per rivedere l'ultima azione dell'IA.,Drücke RB um die letzte KI Aktion zu wiederholen.,Pulsa RB para volver a ver la última acción de la IA.,Naciśnij RB aby powtórzyć ostatni ruch SI.,Yapay zekanın son hamlesini tekrar görmek için RB ye bas.,按RB重看AI的上一个动作。
+tuto.next,Clic pour continuer,Click to continue,Clic per continuare,Klick zum Fortfahren,Clic para continuar,Kliknij aby kontynuować,Devam için tıkla,点击继续
+tuto.card_title,LA CARTE DE TON UNITE,YOUR UNIT CARD,LA CARTA DELLA TUA UNITA,DEINE EINHEITENKARTE,TU CARTA DE UNIDAD,KARTA TWOJEJ JEDNOSTKI,BIRIM KARTIN,你的单位卡牌
+tuto.card_hp,Points de vie : la pièce meurt quand ils tombent à zéro.,Health: the piece dies when it reaches zero.,Punti vita: la pedina muore quando arrivano a zero.,Lebenspunkte: die Figur stirbt wenn sie auf null fallen.,Puntos de vida: la pieza muere cuando llegan a cero.,Punkty zdrowia: pionek ginie gdy spadną do zera.,Can puanı: sıfıra düşünce piyon ölür.,生命值：降到零时棋子死亡。
+tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power: the damage it deals on each attack.,Potenza: i danni che infligge a ogni attacco.,Stärke: der Schaden den sie pro Angriff verursacht.,Poder: el daño que causa en cada ataque.,Moc: obrażenia zadawane przy każdym ataku.,Güç: her saldırıda verdiği hasar.,力量：每次攻击造成的伤害。
+tuto.card_move,Mouvement : le nombre de cases franchies en un tour.,Movement: how many tiles it crosses in one turn.,Movimento: il numero di caselle percorse in un turno.,Bewegung: wie viele Felder sie pro Runde überquert.,Movimiento: cuántas casillas recorre en un turno.,Ruch: ile pól pokonuje w jednej turze.,Hareket: bir turda kaç kare geçtiği.,移动：一回合跨越的格子数。
+tuto.card_range,Portée : la distance max à laquelle elle peut attaquer.,Range: the max distance at which it can attack.,Gittata: la distanza massima a cui può attaccare.,Reichweite: die maximale Distanz auf die sie angreifen kann.,Alcance: la distancia máxima a la que puede atacar.,Zasięg: maksymalny dystans ataku.,Menzil: saldırabildiği en uzak mesafe.,射程：能够攻击的最大距离。
+tuto.card_domaine,Déplacement : cette icône montre dans quelles directions elle peut aller.,Movement pattern: this icon shows which directions it can go.,Movimento: questa icona mostra in quali direzioni può andare.,Bewegungsmuster: dieses Symbol zeigt in welche Richtungen sie gehen kann.,Movimiento: este icono muestra en qué direcciones puede ir.,Ruch: ta ikona pokazuje w jakich kierunkach może iść.,Hareket: bu simge hangi yönlere gidebildiğini gösterir.,移动方式：这个图标显示它能往哪些方向走。
+tuto.card_continue,Clic pour la suite,Click for next,Clic per continuare,Klick für weiter,Clic para seguir,Kliknij dalej,Devam için tıkla,点击继续
+tuto.card_continue_gp,A pour la suite,A for next,A per continuare,A für weiter,A para seguir,A aby dalej,Devam için A,按A继续
+tuto.skip,PASSER LE TUTO,SKIP TUTORIAL,SALTA IL TUTORIAL,TUTORIAL UBERSPRINGEN,SALTAR TUTORIAL,POMIN SAMOUCZEK,OGRETICIYI GEC,跳过教程
+tuto.victory_title,BRAVO !,WELL DONE!,BRAVO!,GUT GEMACHT!,BIEN HECHO!,BRAWO!,AFERIN!,干得好！
+tuto.continue,Clic pour commencer à jouer,Click to start playing,Clic per iniziare a giocare,Klick um zu spielen,Clic para empezar a jugar,Kliknij aby zacząć grać,Oynamaya başlamak için tıkla,点击开始游戏
 # Preparation guidee : fusion -> equipement -> arbre de commandement. Ce que le tuto prete est rendu a la fin.
-tuto.fusion_title,LA FUSION,FUSION
-tuto.fusion_body,Pendant la phase de placement (avant chaque combat) tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase (before each battle) you can fuse three identical pawns into an evolved unit. You just received a third soldier.
-tuto.fusion_do,Glisse tes trois soldats l'un sur l'autre pour les fusionner.,Drag your three soldiers onto each other to fuse them.
-tuto.reroll,Glisse un pion sur l'icône de relance pour l'échanger contre un autre. Casser un équipement redonne une relance.,Drag a pawn onto the reroll icon to swap it for another. Breaking equipment grants a reroll.
-tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board: a pawn can only be equipped once deployed.
-tuto.equip_title,LES EQUIPEMENTS,EQUIPMENT
-tuto.equip_body,Voici l'épée trouvée dans le coffre. Un équipement reste collé au pion qui le porte.,Here is the sword found in the chest. Equipment stays stuck to the pawn that carries it.
-tuto.equip_do,Glisse l'épée sur ton unité pour l'équiper.,Drag the sword onto your unit to equip it.
-tuto.tree_title,L'ARBRE DE COMMANDEMENT,THE COMMAND TREE
-tuto.tree_body,Chaque mission réussie et chaque fusion rapportent des points de commandement. Dépense-les pour renforcer toute ton armée.,Each mission won and each fusion earn command points. Spend them to strengthen your whole army.
-tuto.tree_open,Clique sur COMMANDEMENT en bas du panneau pour ouvrir ton arbre. Il te reste des points de ta fusion.,Click COMMAND at the bottom of the panel to open your tree. You have points left from your fusion.
-tuto.tree_open_gp,Descends sur COMMANDEMENT dans le panneau et valide avec A pour ouvrir ton arbre.,Move down to COMMAND in the panel and confirm with A to open your tree.
-tuto.tree_do,Clique une amélioration de la rangée du bas pour l'acheter.,Click an upgrade on the bottom row to buy it.
-tuto.tree_do_gp,Choisis une amélioration de la rangée du bas et valide avec A.,Pick an upgrade on the bottom row and confirm with A.
-tuto.recap_body,Tu sais combattre et fusionner. Tu sais aussi équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight and fuse. You can also equip and command. The real campaign begins: your army starts fresh.
+tuto.fusion_title,LA FUSION,FUSION,LA FUSIONE,DIE FUSION,LA FUSION,FUZJA,FUZYON,融合
+tuto.fusion_body,Pendant la phase de placement (avant chaque combat) tu peux fusionner trois pions identiques en une unité évoluée. Tu viens de recevoir un troisième soldat.,During the placement phase (before each battle) you can fuse three identical pawns into an evolved unit. You just received a third soldier.,Durante la fase di schieramento (prima di ogni battaglia) puoi fondere tre pedine identiche in un'unità evoluta. Hai appena ricevuto un terzo soldato.,Während der Aufstellungsphase (vor jedem Kampf) kannst du drei gleiche Figuren zu einer weiterentwickelten Einheit fusionieren. Du hast gerade einen dritten Soldaten erhalten.,Durante la fase de despliegue (antes de cada batalla) puedes fusionar tres peones idénticos en una unidad evolucionada. Acabas de recibir un tercer soldado.,Podczas fazy rozstawienia (przed każdą bitwą) możesz połączyć trzy identyczne pionki w rozwiniętą jednostkę. Właśnie dostałeś trzeciego żołnierza.,Yerleştirme aşamasında (her savaştan önce) aynı üç piyonu birleştirip gelişmiş bir birime dönüştürebilirsin. Az önce üçüncü bir asker aldın.,在部署阶段(每场战斗前)你可以把三个相同的棋子融合成一个进化单位。你刚刚得到了第三个士兵。
+tuto.fusion_do,Glisse tes trois soldats l'un sur l'autre pour les fusionner.,Drag your three soldiers onto each other to fuse them.,Trascina i tuoi tre soldati uno sull'altro per fonderli.,Ziehe deine drei Soldaten aufeinander um sie zu fusionieren.,Arrastra tus tres soldados uno sobre otro para fusionarlos.,Przeciągnij trzech żołnierzy na siebie aby ich połączyć.,Üç askerini birleştirmek için üst üste sürükle.,把三个士兵互相拖到一起来融合它们。
+tuto.reroll,Glisse un pion sur l'icône de relance pour l'échanger contre un autre. Casser un équipement redonne une relance.,Drag a pawn onto the reroll icon to swap it for another. Breaking equipment grants a reroll.,Trascina una pedina sull'icona di rilancio per scambiarla con un'altra. Rompere un equipaggiamento ridà un rilancio.,Ziehe eine Figur auf das Neuwurf Symbol um sie zu tauschen. Eine Ausrüstung zu zerstören gibt einen Neuwurf.,Arrastra un peón sobre el icono de tirada para cambiarlo por otro. Romper un equipo da una tirada.,Przeciągnij pionek na ikonę losowania aby wymienić go na inny. Zniszczenie wyposażenia daje losowanie.,Bir piyonu başkasıyla değiştirmek için yeniden atış simgesine sürükle. Bir ekipmanı kırmak bir atış verir.,把棋子拖到重投图标上换成另一个。破坏装备会返还一次重投。
+tuto.deploy_fused,Pose ton unité évoluée sur le plateau : un pion ne s'équipe qu'une fois déployé.,Place your evolved unit on the board: a pawn can only be equipped once deployed.,Posiziona la tua unità evoluta sul campo: una pedina si equipaggia solo una volta schierata.,Setze deine weiterentwickelte Einheit aufs Brett: eine Figur lässt sich erst nach dem Aufstellen ausrüsten.,Coloca tu unidad evolucionada en el tablero: un peón solo se equipa una vez desplegado.,Postaw rozwiniętą jednostkę na planszy: pionek można wyposażyć dopiero po rozstawieniu.,Gelişmiş birimini tahtaya koy: bir piyon ancak yerleştirilince kuşanabilir.,把你的进化单位放到棋盘上：棋子只有部署后才能装备。
+tuto.equip_title,LES EQUIPEMENTS,EQUIPMENT,GLI EQUIPAGGIAMENTI,DIE AUSRUSTUNG,EL EQUIPO,WYPOSAZENIE,EKIPMAN,装备
+tuto.equip_body,Voici l'épée trouvée dans le coffre. Un équipement reste collé au pion qui le porte.,Here is the sword found in the chest. Equipment stays stuck to the pawn that carries it.,Ecco la spada trovata nel forziere. Un equipaggiamento resta legato alla pedina che lo porta.,Hier ist das Schwert aus der Truhe. Eine Ausrüstung bleibt an der Figur die sie trägt.,Aquí está la espada del cofre. Un equipo queda pegado al peón que lo lleva.,Oto miecz znaleziony w skrzyni. Wyposażenie zostaje przy pionku który je nosi.,İşte sandıktan çıkan kılıç. Bir ekipman onu taşıyan piyona yapışık kalır.,这是宝箱里找到的剑。装备会一直附在携带它的棋子上。
+tuto.equip_do,Glisse l'épée sur ton unité pour l'équiper.,Drag the sword onto your unit to equip it.,Trascina la spada sulla tua unità per equipaggiarla.,Ziehe das Schwert auf deine Einheit um es auszurüsten.,Arrastra la espada sobre tu unidad para equiparla.,Przeciągnij miecz na jednostkę aby ją wyposażyć.,Kılıcı kuşanmak için birimine sürükle.,把剑拖到你的单位上来装备。
+tuto.tree_title,L'ARBRE DE COMMANDEMENT,THE COMMAND TREE,L'ALBERO DI COMANDO,DER KOMMANDOBAUM,EL ARBOL DE MANDO,DRZEWO DOWODZENIA,KOMUTA AGACI,指挥树
+tuto.tree_body,Chaque mission réussie et chaque fusion rapportent des points de commandement. Dépense-les pour renforcer toute ton armée.,Each mission won and each fusion earn command points. Spend them to strengthen your whole army.,Ogni missione vinta e ogni fusione danno punti comando. Spendili per rinforzare tutta la tua armata.,Jede gewonnene Mission und jede Fusion bringen Kommandopunkte. Gib sie aus um deine ganze Armee zu stärken.,Cada misión ganada y cada fusión dan puntos de mando. Gástalos para reforzar todo tu ejército.,Każda wygrana misja i każda fuzja dają punkty dowodzenia. Wydaj je aby wzmocnić całą armię.,Kazanılan her görev ve her füzyon komuta puanı verir. Tüm ordunu güçlendirmek için harca.,每胜利一个任务和每次融合都会带来指挥点。花费它们来强化你的整支军队。
+tuto.tree_open,Clique sur COMMANDEMENT en bas du panneau pour ouvrir ton arbre. Il te reste des points de ta fusion.,Click COMMAND at the bottom of the panel to open your tree. You have points left from your fusion.,Clicca su COMANDO in fondo al pannello per aprire il tuo albero. Ti restano punti dalla fusione.,Klicke unten im Panel auf KOMMANDO um deinen Baum zu öffnen. Du hast noch Punkte aus deiner Fusion.,Haz clic en MANDO abajo del panel para abrir tu árbol. Te quedan puntos de tu fusión.,Kliknij DOWODZENIE na dole panelu aby otworzyć drzewo. Zostały ci punkty z fuzji.,Ağacını açmak için panelin altındaki KOMUTA ya tıkla. Füzyondan puanların kaldı.,点击面板底部的指挥打开你的树。融合还给你留了一些点数。
+tuto.tree_open_gp,Descends sur COMMANDEMENT dans le panneau et valide avec A pour ouvrir ton arbre.,Move down to COMMAND in the panel and confirm with A to open your tree.,Scendi su COMANDO nel pannello e conferma con A per aprire il tuo albero.,Gehe im Panel runter zu KOMMANDO und bestätige mit A um deinen Baum zu öffnen.,Baja hasta MANDO en el panel y confirma con A para abrir tu árbol.,Zejdź na DOWODZENIE w panelu i zatwierdź A aby otworzyć drzewo.,Panelde KOMUTA ya in ve ağacını açmak için A ile onayla.,移到面板里的指挥并用A确认来打开你的树。
+tuto.tree_do,Clique une amélioration de la rangée du bas pour l'acheter.,Click an upgrade on the bottom row to buy it.,Clicca un potenziamento della fila in basso per comprarlo.,Klicke eine Verbesserung in der unteren Reihe um sie zu kaufen.,Haz clic en una mejora de la fila de abajo para comprarla.,Kliknij ulepszenie w dolnym rzędzie aby je kupić.,Alt sıradaki bir yükseltmeyi almak için tıkla.,点击底行的一项升级来购买。
+tuto.tree_do_gp,Choisis une amélioration de la rangée du bas et valide avec A.,Pick an upgrade on the bottom row and confirm with A.,Scegli un potenziamento della fila in basso e conferma con A.,Wähle eine Verbesserung in der unteren Reihe und bestätige mit A.,Elige una mejora de la fila de abajo y confirma con A.,Wybierz ulepszenie w dolnym rzędzie i zatwierdź A.,Alt sıradan bir yükseltme seç ve A ile onayla.,选择底行的一项升级并用A确认。
+tuto.recap_body,Tu sais combattre et fusionner. Tu sais aussi équiper et commander. La vraie campagne commence : ton armée repart de zéro.,You can fight and fuse. You can also equip and command. The real campaign begins: your army starts fresh.,Sai combattere e fondere. Sai anche equipaggiare e comandare. La vera campagna inizia: la tua armata riparte da zero.,Du kannst kämpfen und fusionieren. Du kannst auch ausrüsten und befehligen. Die echte Kampagne beginnt: deine Armee fängt neu an.,Sabes luchar y fusionar. También sabes equipar y mandar. La verdadera campaña empieza: tu ejército parte de cero.,Umiesz walczyć i łączyć. Umiesz też wyposażać i dowodzić. Prawdziwa kampania się zaczyna: twoja armia rusza od zera.,Savaşmayı ve birleştirmeyi biliyorsun. Kuşanmayı ve komuta etmeyi de biliyorsun. Gerçek sefer başlıyor: ordun sıfırdan başlıyor.,你会战斗和融合了。你也会装备和指挥了。真正的战役开始了：你的军队从零开始。
 
 # ── Arbre de commandement (placement) ───────────────────────────────────────
-tree.button,COMMANDEMENT : {0},COMMAND: {0}
-tree.title,COMMANDEMENT,COMMAND
-tree.points,POINTS DISPONIBLES : {0},AVAILABLE POINTS: {0}
+tree.button,COMMANDEMENT : {0},COMMAND: {0},COMANDO: {0},KOMMANDO: {0},MANDO: {0},DOWODZENIE: {0},KOMUTA: {0},指挥：{0}
+tree.title,COMMANDEMENT,COMMAND,COMANDO,KOMMANDO,MANDO,DOWODZENIE,KOMUTA,指挥
+tree.points,POINTS DISPONIBLES : {0},AVAILABLE POINTS: {0},PUNTI DISPONIBILI: {0},VERFUGBARE PUNKTE: {0},PUNTOS DISPONIBLES: {0},DOSTEPNE PUNKTY: {0},MEVCUT PUAN: {0},可用点数：{0}
 # Sources de points : la mission (commune) puis celle propre au commandant (cle tree.<idArbre>.income).
 # Ecrites en minuscules : elles sont rendues telles quelles (preserveCase) pour se detacher des libelles.
-tree.income_mission,+{0} points à chaque mission réussie,+{0} points for each mission won
-tree.commandant.income,+{0} points à chaque fusion,+{0} points for each fusion
-tree.close,FERMER,CLOSE
-tree.hint,CLIC : ACHETER   ECHAP : FERMER,CLICK: BUY   ESC: CLOSE
-tree.hint_gp,A : ACHETER   B : FERMER,A: BUY   B: CLOSE
+tree.income_mission,+{0} points à chaque mission réussie,+{0} points for each mission won,+{0} punti a ogni missione vinta,+{0} Punkte pro gewonnener Mission,+{0} puntos por cada misión ganada,+{0} punktów za każdą wygraną misję,kazanılan her görev için +{0} puan,每胜利一个任务 +{0} 点
+tree.commandant.income,+{0} points à chaque fusion,+{0} points for each fusion,+{0} punti a ogni fusione,+{0} Punkte pro Fusion,+{0} puntos por cada fusión,+{0} punktów za każdą fuzję,her füzyon için +{0} puan,每次融合 +{0} 点
+tree.close,FERMER,CLOSE,CHIUDI,SCHLIESSEN,CERRAR,ZAMKNIJ,KAPAT,关闭
+tree.hint,CLIC : ACHETER   ECHAP : FERMER,CLICK: BUY   ESC: CLOSE,CLIC: COMPRA   ESC: CHIUDI,KLICK: KAUFEN   ESC: SCHLIESSEN,CLIC: COMPRAR   ESC: CERRAR,KLIK: KUP   ESC: ZAMKNIJ,TIK: SATIN AL   ESC: KAPAT,点击：购买   ESC：关闭
+tree.hint_gp,A : ACHETER   B : FERMER,A: BUY   B: CLOSE,A: COMPRA   B: CHIUDI,A: KAUFEN   B: SCHLIESSEN,A: COMPRAR   B: CERRAR,A: KUP   B: ZAMKNIJ,A: SATIN AL   B: KAPAT,A：购买   B：关闭
 # Libellés de branche (clé = tree.<idArbre>.branch<N>)
-tree.commandant.branch0,COMMANDANT,COMMANDER
-tree.commandant.branch1,TROUPES,TROOPS
-tree.commandant.branch2,LOGISTIQUE,LOGISTICS
+tree.commandant.branch0,COMMANDANT,COMMANDER,COMANDANTE,KOMMANDANT,COMANDANTE,DOWODCA,KOMUTAN,指挥官
+tree.commandant.branch1,TROUPES,TROOPS,TRUPPE,TRUPPEN,TROPAS,ODDZIALY,BIRLIKLER,部队
+tree.commandant.branch2,LOGISTIQUE,LOGISTICS,LOGISTICA,LOGISTIK,LOGISTICA,LOGISTYKA,LOJISTIK,后勤
 # Noeuds : branche COMMANDANT
-tree.cmd_Esquive,ESQUIVE,DODGE
-tree.cmd_Esquive.desc,le commandant a 25 pourcent de chance d'esquiver une attaque.,the commander has a 25 percent chance to dodge an attack.
-tree.cmd_puissance,PUISSANCE DU MENEUR,LEADER POWER
-tree.cmd_puissance.desc,+2 puissance au commandant par paire de classes différentes en réserve ou en jeu.,+2 power to the commander for each pair of distinct classes in reserve or in play.
-tree.cmd_vie,VIGUEUR DU MENEUR,LEADER VIGOR
-tree.cmd_vie.desc,+2 pv au commandant par paire de classes différentes en réserve ou en jeu.,+2 hp to the commander for each pair of distinct classes in reserve or in play.
-tree.cmd_mouvement,FOULEE DU MENEUR,LEADER STRIDE
-tree.cmd_mouvement.desc,+1 déplacement au commandant.,+1 movement to the commander.
-tree.cmd_Orage,ORAGE,STORM
-tree.cmd_Orage.desc,à l'attaque le commandant foudroie tous les autres ennemis de 3.,on attack the commander strikes all other enemies for 3.
-tree.cmd_portee,ALLONGE DU MENEUR,LEADER REACH
-tree.cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.
+tree.cmd_Esquive,ESQUIVE,DODGE,SCHIVATA,AUSWEICHEN,ESQUIVA,UNIK,KACINMA,闪避
+tree.cmd_Esquive.desc,le commandant a 25 pourcent de chance d'esquiver une attaque.,the commander has a 25 percent chance to dodge an attack.,il comandante ha il 25 percento di probabilità di schivare un attacco.,der Kommandant hat 25 Prozent Chance einem Angriff auszuweichen.,el comandante tiene un 25 por ciento de esquivar un ataque.,dowódca ma 25 procent szansy na unik ataku.,komutanın bir saldırıyı savuşturma şansı yüzde 25.,指挥官有25%的几率闪避一次攻击。
+tree.cmd_puissance,PUISSANCE DU MENEUR,LEADER POWER,POTENZA DEL CAPO,ANFUHRER STARKE,PODER DEL LIDER,MOC PRZYWODCY,LIDER GUCU,领袖之力
+tree.cmd_puissance.desc,+2 puissance au commandant par paire de classes différentes en réserve ou en jeu.,+2 power to the commander for each pair of distinct classes in reserve or in play.,+2 potenza al comandante per ogni coppia di classi diverse in riserva o in gioco.,+2 Stärke für den Kommandanten je Paar verschiedener Klassen in Reserve oder im Spiel.,+2 poder al comandante por cada par de clases distintas en reserva o en juego.,+2 mocy dla dowódcy za każdą parę różnych klas w rezerwie lub w grze.,yedekte ya da oyunda her farklı sınıf çifti için komutana +2 güç.,预备队或场上每有一对不同职业指挥官 +2 力量。
+tree.cmd_vie,VIGUEUR DU MENEUR,LEADER VIGOR,VIGORE DEL CAPO,ANFUHRER KRAFT,VIGOR DEL LIDER,WIGOR PRZYWODCY,LIDER DAYANIKLILIGI,领袖之魄
+tree.cmd_vie.desc,+2 pv au commandant par paire de classes différentes en réserve ou en jeu.,+2 hp to the commander for each pair of distinct classes in reserve or in play.,+2 pv al comandante per ogni coppia di classi diverse in riserva o in gioco.,+2 LP für den Kommandanten je Paar verschiedener Klassen in Reserve oder im Spiel.,+2 pv al comandante por cada par de clases distintas en reserva o en juego.,+2 pz dla dowódcy za każdą parę różnych klas w rezerwie lub w grze.,yedekte ya da oyunda her farklı sınıf çifti için komutana +2 can.,预备队或场上每有一对不同职业指挥官 +2 生命。
+tree.cmd_mouvement,FOULEE DU MENEUR,LEADER STRIDE,FALCATA DEL CAPO,ANFUHRER SCHRITT,ZANCADA DEL LIDER,KROK PRZYWODCY,LIDER ADIMI,领袖步伐
+tree.cmd_mouvement.desc,+1 déplacement au commandant.,+1 movement to the commander.,+1 movimento al comandante.,+1 Bewegung für den Kommandanten.,+1 movimiento al comandante.,+1 ruch dla dowódcy.,komutana +1 hareket.,指挥官 +1 移动。
+tree.cmd_Orage,ORAGE,STORM,TEMPORALE,GEWITTER,TORMENTA,BURZA,FIRTINA,雷暴
+tree.cmd_Orage.desc,à l'attaque le commandant foudroie tous les autres ennemis de 3.,on attack the commander strikes all other enemies for 3.,all'attacco il comandante fulmina tutti gli altri nemici di 3.,beim Angriff trifft der Kommandant alle anderen Gegner mit 3.,al atacar el comandante fulmina a todos los demás enemigos con 3.,przy ataku dowódca razi wszystkich pozostałych wrogów za 3.,saldırıda komutan diğer tüm düşmanları 3 hasarla vurur.,攻击时指挥官对所有其他敌人雷击3点。
+tree.cmd_portee,ALLONGE DU MENEUR,LEADER REACH,ALLUNGO DEL CAPO,ANFUHRER REICHWEITE,ALCANCE DEL LIDER,ZASIEG PRZYWODCY,LIDER MENZILI,领袖臂展
+tree.cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.,+1 gittata al comandante.,+1 Reichweite für den Kommandanten.,+1 alcance al comandante.,+1 zasięg dla dowódcy.,komutana +1 menzil.,指挥官 +1 射程。
 # Noeuds : branche TROUPES
-tree.troupe_vie,ENDURANCE,ENDURANCE
-tree.troupe_vie.desc,+2 pv à toutes les unités sauf le commandant.,+2 hp to every unit except the commander.
-tree.troupe_puissance,TACTIQUE COMBINEE,COMBINED TACTICS
-tree.troupe_puissance.desc,+1 puissance aux unités par paire de classes différentes en réserve ou en jeu.,+1 power to every unit for each pair of distinct classes in reserve or in play.
-tree.troupe_vie_paire,COHESION,COHESION
-tree.troupe_vie_paire.desc,+1 pv aux unités par paire de classes différentes en réserve ou en jeu.,+1 hp to every unit for each pair of distinct classes in reserve or in play.
-tree.troupe_fusion,LEVEE EN MASSE,MASS LEVY
-tree.troupe_fusion.desc,chaque fusion recrute en plus une unité de base au hasard.,each fusion also recruits one random basic unit.
-tree.troupe_releve,RELEVE,REPLACEMENTS
-tree.troupe_releve.desc,à la mort d'une unité de tier 2 ou 3 : un pion de base aléatoire rejoint la réserve.,when a tier 2 or 3 unit dies a random basic unit joins the reserve.
-tree.troupe_mouvement,MARCHE FORCEE,FORCED MARCH
-tree.troupe_mouvement.desc,+1 déplacement à toutes les unités sauf le commandant.,+1 movement to every unit except the commander.
+tree.troupe_vie,ENDURANCE,ENDURANCE,RESISTENZA,AUSDAUER,RESISTENCIA,WYTRZYMALOSC,DAYANIKLILIK,耐力
+tree.troupe_vie.desc,+2 pv à toutes les unités sauf le commandant.,+2 hp to every unit except the commander.,+2 pv a tutte le unità tranne il comandante.,+2 LP für alle Einheiten außer dem Kommandanten.,+2 pv a todas las unidades salvo el comandante.,+2 pz dla wszystkich jednostek oprócz dowódcy.,komutan hariç tüm birimlere +2 can.,除指挥官外所有单位 +2 生命。
+tree.troupe_puissance,TACTIQUE COMBINEE,COMBINED TACTICS,TATTICA COMBINATA,KOMBINIERTE TAKTIK,TACTICA COMBINADA,TAKTYKA LACZONA,BIRLESIK TAKTIK,联合战术
+tree.troupe_puissance.desc,+1 puissance aux unités par paire de classes différentes en réserve ou en jeu.,+1 power to every unit for each pair of distinct classes in reserve or in play.,+1 potenza alle unità per ogni coppia di classi diverse in riserva o in gioco.,+1 Stärke für Einheiten je Paar verschiedener Klassen in Reserve oder im Spiel.,+1 poder a las unidades por cada par de clases distintas en reserva o en juego.,+1 mocy jednostkom za każdą parę różnych klas w rezerwie lub w grze.,yedekte ya da oyunda her farklı sınıf çifti için birimlere +1 güç.,预备队或场上每有一对不同职业所有单位 +1 力量。
+tree.troupe_vie_paire,COHESION,COHESION,COESIONE,ZUSAMMENHALT,COHESION,SPOJNOSC,UYUM,凝聚
+tree.troupe_vie_paire.desc,+1 pv aux unités par paire de classes différentes en réserve ou en jeu.,+1 hp to every unit for each pair of distinct classes in reserve or in play.,+1 pv alle unità per ogni coppia di classi diverse in riserva o in gioco.,+1 LP für Einheiten je Paar verschiedener Klassen in Reserve oder im Spiel.,+1 pv a las unidades por cada par de clases distintas en reserva o en juego.,+1 pz jednostkom za każdą parę różnych klas w rezerwie lub w grze.,yedekte ya da oyunda her farklı sınıf çifti için birimlere +1 can.,预备队或场上每有一对不同职业所有单位 +1 生命。
+tree.troupe_fusion,LEVEE EN MASSE,MASS LEVY,LEVA DI MASSA,MASSENAUSHEBUNG,LEVA EN MASA,POSPOLITE RUSZENIE,TOPYEKUN SEFERBERLIK,全民动员
+tree.troupe_fusion.desc,chaque fusion recrute en plus une unité de base au hasard.,each fusion also recruits one random basic unit.,ogni fusione recluta in più un'unità base a caso.,jede Fusion rekrutiert zusätzlich eine zufällige Basiseinheit.,cada fusión recluta además una unidad básica al azar.,każda fuzja dodatkowo rekrutuje losową podstawową jednostkę.,her füzyon ayrıca rastgele bir temel birim alır.,每次融合额外招募一个随机基础单位。
+tree.troupe_releve,RELEVE,REPLACEMENTS,RIMPIAZZI,ABLOSUNG,RELEVOS,UZUPELNIENIA,TAKVIYE,补充
+tree.troupe_releve.desc,à la mort d'une unité de tier 2 ou 3 : un pion de base aléatoire rejoint la réserve.,when a tier 2 or 3 unit dies a random basic unit joins the reserve.,alla morte di un'unità di livello 2 o 3: una pedina base casuale entra in riserva.,beim Tod einer Einheit der Stufe 2 oder 3: eine zufällige Basisfigur kommt in die Reserve.,al morir una unidad de nivel 2 o 3: un peón básico aleatorio entra en la reserva.,po śmierci jednostki poziomu 2 lub 3: losowy podstawowy pionek dołącza do rezerwy.,seviye 2 ya da 3 bir birim ölünce: rastgele bir temel piyon yedeğe katılır.,一个2阶或3阶单位死亡时：一个随机基础棋子加入预备队。
+tree.troupe_mouvement,MARCHE FORCEE,FORCED MARCH,MARCIA FORZATA,GEWALTMARSCH,MARCHA FORZADA,FORSOWNY MARSZ,ZORLU YURUYUS,强行军
+tree.troupe_mouvement.desc,+1 déplacement à toutes les unités sauf le commandant.,+1 movement to every unit except the commander.,+1 movimento a tutte le unità tranne il comandante.,+1 Bewegung für alle Einheiten außer dem Kommandanten.,+1 movimiento a todas las unidades salvo el comandante.,+1 ruch wszystkim jednostkom oprócz dowódcy.,komutan hariç tüm birimlere +1 hareket.,除指挥官外所有单位 +1 移动。
 # Noeuds : branche LOGISTIQUE
-tree.logi_deploiement_1,AVANT-GARDE,VANGUARD
-tree.logi_deploiement_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
-tree.logi_reserve_1,INTENDANCE,QUARTERMASTER
-tree.logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
-tree.logi_deploiement_2,RENFORTS,REINFORCEMENTS
-tree.logi_deploiement_2.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
-tree.logi_reserve_2,CONVOI,SUPPLY TRAIN
-tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.
-tree.logi_deploiement_3,GRANDE ARMEE,GRAND ARMY
-tree.logi_deploiement_3.desc,+4 places en réserve.,+4 reserve slots.
-tree.amalgame,AMALGAME,AMALGAM
-tree.amalgame.desc,fusionner un tier 1 en tier 2 ne demande que 2 pions au lieu de 3.,fusing a tier 1 into a tier 2 needs only 2 pawns instead of 3.
+tree.logi_deploiement_1,AVANT-GARDE,VANGUARD,AVANGUARDIA,VORHUT,VANGUARDIA,AWANGARDA,ONCU,前锋
+tree.logi_deploiement_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.,+1 unità schierabile sul campo.,+1 einsetzbare Einheit auf dem Brett.,+1 unidad desplegable en el tablero.,+1 jednostka do rozstawienia na planszy.,tahtaya +1 yerleştirilebilir birim.,棋盘上可部署单位 +1。
+tree.logi_reserve_1,INTENDANCE,QUARTERMASTER,INTENDENZA,QUARTIERMEISTER,INTENDENCIA,KWATERMISTRZ,LEVAZIM,军需官
+tree.logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.,+2 posti in riserva.,+2 Plätze in der Reserve.,+2 huecos en la reserva.,+2 miejsca w rezerwie.,yedekte +2 yer.,预备队 +2 个位置。
+tree.logi_deploiement_2,RENFORTS,REINFORCEMENTS,RINFORZI,VERSTARKUNGEN,REFUERZOS,POSILKI,TAKVIYELER,增援
+tree.logi_deploiement_2.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.,+2 unità schierabili sul campo.,+2 einsetzbare Einheiten auf dem Brett.,+2 unidades desplegables en el tablero.,+2 jednostki do rozstawienia na planszy.,tahtaya +2 yerleştirilebilir birim.,棋盘上可部署单位 +2。
+tree.logi_reserve_2,CONVOI,SUPPLY TRAIN,CONVOGLIO,NACHSCHUB,CONVOY,TABOR,IKMAL KOLU,辎重队
+tree.logi_reserve_2.desc,+2 places en réserve.,+2 reserve slots.,+2 posti in riserva.,+2 Plätze in der Reserve.,+2 huecos en la reserva.,+2 miejsca w rezerwie.,yedekte +2 yer.,预备队 +2 个位置。
+tree.logi_deploiement_3,GRANDE ARMEE,GRAND ARMY,GRANDE ARMATA,GROSSE ARMEE,GRAN EJERCITO,WIELKA ARMIA,BUYUK ORDU,大军
+tree.logi_deploiement_3.desc,+4 places en réserve.,+4 reserve slots.,+4 posti in riserva.,+4 Plätze in der Reserve.,+4 huecos en la reserva.,+4 miejsca w rezerwie.,yedekte +4 yer.,预备队 +4 个位置。
+tree.amalgame,AMALGAME,AMALGAM,AMALGAMA,AMALGAM,AMALGAMA,AMALGAMAT,BIRLESIM,合并
+tree.amalgame.desc,fusionner un tier 1 en tier 2 ne demande que 2 pions au lieu de 3.,fusing a tier 1 into a tier 2 needs only 2 pawns instead of 3.,fondere un livello 1 in livello 2 richiede solo 2 pedine invece di 3.,eine Stufe 1 zu Stufe 2 zu fusionieren braucht nur 2 Figuren statt 3.,fusionar un nivel 1 en nivel 2 solo requiere 2 peones en vez de 3.,połączenie poziomu 1 w poziom 2 wymaga tylko 2 pionków zamiast 3.,bir seviye 1 i seviye 2 ye birleştirmek 3 yerine sadece 2 piyon ister.,将1阶融合为2阶只需2个棋子而非3个。
 # ── Arbre du commandant LANCIER (tree "commandantLancier") ──
-tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat)
-tree.commandantLancier.branch0,COMMANDANT,COMMANDER
-tree.commandantLancier.branch1,LANCIERS,SPEARMEN
-tree.commandantLancier.branch2,LOGISTIQUE,LOGISTICS
+tree.commandantLancier.income,+{0} point quand le commandant est touché ({1} max par combat),+{0} point when the commander is hit ({1} max per combat),+{0} punto quando il comandante è colpito ({1} max per combattimento),+{0} Punkt wenn der Kommandant getroffen wird ({1} max pro Kampf),+{0} punto cuando el comandante es golpeado ({1} max por combate),+{0} punkt gdy dowódca oberwie ({1} max na walkę),komutan vurulduğunda +{0} puan (savaş başına {1} max),指挥官被击中时 +{0} 点 (每场战斗最多 {1})
+tree.commandantLancier.branch0,COMMANDANT,COMMANDER,COMANDANTE,KOMMANDANT,COMANDANTE,DOWODCA,KOMUTAN,指挥官
+tree.commandantLancier.branch1,LANCIERS,SPEARMEN,LANCIERI,LANZENTRAGER,LANCEROS,KOPIJNICY,MIZRAKCILAR,长枪兵
+tree.commandantLancier.branch2,LOGISTIQUE,LOGISTICS,LOGISTICA,LOGISTIK,LOGISTICA,LOGISTYKA,LOJISTIK,后勤
 # Noeuds : branche COMMANDANT (Lancier)
-tree.lan_cmd_rempart,REMPART DU MENEUR,LEADER BULWARK
-tree.lan_cmd_rempart.desc,le commandant réduit de 4 les dégâts des attaques à portée 2 ou plus.,the commander reduces by 4 the damage of attacks at range 2 or more.
-tree.lan_cmd_portee,ALLONGE DU MENEUR,LEADER REACH
-tree.lan_cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.
-tree.lan_cmd_pv_tour,MENEUR DE LANCIERS,SPEAR CAPTAIN
-tree.lan_cmd_pv_tour.desc,+3 pv au commandant par unité du domaine de la tour en réserve ou en jeu.,+3 hp to the commander for each rook-domain unit in reserve or in play.
-tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA
-tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficient de rempart.,units adjacent to the commander gain bulwark.
-tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE
-tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.
-tree.lan_cmd_seisme,SEISME,EARTHQUAKE
-tree.lan_cmd_seisme.desc,à la fin du tour ennemi le commandant déclenche un séisme qui frappe les ennemis adjacents de sa puissance.,at the end of the enemy turn the commander triggers an earthquake that strikes adjacent enemies for its power.
+tree.lan_cmd_rempart,REMPART DU MENEUR,LEADER BULWARK,BALUARDO DEL CAPO,ANFUHRER BOLLWERK,BALUARTE DEL LIDER,SZANIEC PRZYWODCY,LIDER SIPERI,领袖壁垒
+tree.lan_cmd_rempart.desc,le commandant réduit de 4 les dégâts des attaques à portée 2 ou plus.,the commander reduces by 4 the damage of attacks at range 2 or more.,il comandante riduce di 4 i danni degli attacchi a gittata 2 o più.,der Kommandant verringert Schaden von Angriffen ab Reichweite 2 um 4.,el comandante reduce en 4 el daño de ataques a alcance 2 o más.,dowódca zmniejsza o 4 obrażenia ataków z zasięgu 2 lub więcej.,komutan menzil 2 ve üzeri saldırıların hasarını 4 azaltır.,指挥官将射程2及以上攻击的伤害减少4。
+tree.lan_cmd_portee,ALLONGE DU MENEUR,LEADER REACH,ALLUNGO DEL CAPO,ANFUHRER REICHWEITE,ALCANCE DEL LIDER,ZASIEG PRZYWODCY,LIDER MENZILI,领袖臂展
+tree.lan_cmd_portee.desc,+1 portée au commandant.,+1 attack range to the commander.,+1 gittata al comandante.,+1 Reichweite für den Kommandanten.,+1 alcance al comandante.,+1 zasięg dla dowódcy.,komutana +1 menzil.,指挥官 +1 射程。
+tree.lan_cmd_pv_tour,MENEUR DE LANCIERS,SPEAR CAPTAIN,CAPO DEI LANCIERI,LANZENHAUPTMANN,CAPITAN DE LANCEROS,KAPITAN KOPIJNIKOW,MIZRAK KOMUTANI,长枪队长
+tree.lan_cmd_pv_tour.desc,+3 pv au commandant par unité du domaine de la tour en réserve ou en jeu.,+3 hp to the commander for each rook-domain unit in reserve or in play.,+3 pv al comandante per ogni unità del dominio della torre in riserva o in gioco.,+3 LP für den Kommandanten je Einheit der Turm Domäne in Reserve oder im Spiel.,+3 pv al comandante por cada unidad del dominio de la torre en reserva o en juego.,+3 pz dla dowódcy za każdą jednostkę domeny wieży w rezerwie lub w grze.,yedekte ya da oyunda her kale alanı birimi için komutana +3 can.,预备队或场上每有一个车系单位指挥官 +3 生命。
+tree.lan_cmd_aura_rempart,AURA DE REMPART,BULWARK AURA,AURA DI BALUARDO,BOLLWERK AURA,AURA DE BALUARTE,AURA SZANCA,SIPER AURASI,壁垒光环
+tree.lan_cmd_aura_rempart.desc,les unités adjacentes au commandant bénéficient de rempart.,units adjacent to the commander gain bulwark.,le unità adiacenti al comandante beneficiano di baluardo.,Einheiten neben dem Kommandanten erhalten Bollwerk.,las unidades adyacentes al comandante reciben baluarte.,jednostki sąsiadujące z dowódcą zyskują szaniec.,komutana bitişik birimler siper kazanır.,与指挥官相邻的单位获得壁垒。
+tree.lan_cmd_riposte,RIPOSTE DU MENEUR,LEADER RIPOSTE,RIPOSTA DEL CAPO,ANFUHRER RIPOSTE,RESPUESTA DEL LIDER,RIPOSTA PRZYWODCY,LIDER MISILLEMESI,领袖反击
+tree.lan_cmd_riposte.desc,le commandant contre-attaque s'il survit et peut atteindre l'assaillant.,the commander counter-attacks if it survives and can reach the attacker.,il comandante contrattacca se sopravvive e può raggiungere l'assalitore.,der Kommandant kontert wenn er überlebt und den Angreifer erreicht.,el comandante contraataca si sobrevive y alcanza al atacante.,dowódca kontruje jeśli przetrwa i dosięgnie napastnika.,komutan hayatta kalırsa ve saldırgana ulaşırsa karşılık verir.,指挥官若存活且能够到攻击者则反击。
+tree.lan_cmd_seisme,SEISME,EARTHQUAKE,TERREMOTO,ERDBEBEN,TERREMOTO,TRZESIENIE,DEPREM,地震
+tree.lan_cmd_seisme.desc,à la fin du tour ennemi le commandant déclenche un séisme qui frappe les ennemis adjacents de sa puissance.,at the end of the enemy turn the commander triggers an earthquake that strikes adjacent enemies for its power.,a fine turno nemico il comandante scatena un terremoto che colpisce i nemici adiacenti per la sua potenza.,am Ende der Gegnerrunde löst der Kommandant ein Erdbeben aus das angrenzende Gegner mit seiner Stärke trifft.,al final del turno enemigo el comandante desata un terremoto que golpea a enemigos adyacentes con su poder.,na koniec tury wroga dowódca wywołuje trzęsienie które uderza sąsiednich wrogów za jego moc.,düşman turunun sonunda komutan bitişik düşmanlara gücü kadar vuran bir deprem tetikler.,敌方回合结束时指挥官引发地震以其力量打击相邻敌人。
 # Noeuds : branche LANCIERS (domaine de la tour)
-tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD
-tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.
-tree.lan_tour_pv_tour,REMPART RENFORCE,REINFORCED BULWARK
-tree.lan_tour_pv_tour.desc,la réduction de dégâts du trait rempart passe à 6.,the bulwark trait's damage reduction is raised to 6.
-tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA
-tree.lan_tour_aura_puissance.desc,les unités du domaine de la tour augmentent de 3 la puissance des alliés adjacents.,units of the rook domain increase adjacent allies' power by 3.
-tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS
-tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.
-tree.lan_formation_renforce,FORMATION RENFORCÉE,REINFORCED FORMATION
-tree.lan_formation_renforce.desc,la puissance par allié du trait formation passe de 2 à 3.,the formation trait's power per ally is raised from 2 to 3.
-tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH
-tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.
+tree.lan_tour_pv,GARDE RAPPROCHEE,CLOSE GUARD,GUARDIA RAVVICINATA,LEIBWACHE,GUARDIA CERCANA,STRAZ PRZYBOCZNA,YAKIN KORUMA,贴身护卫
+tree.lan_tour_pv.desc,+4 pv aux unités du domaine de la tour.,+4 hp to units of the rook domain.,+4 pv alle unità del dominio della torre.,+4 LP für Einheiten der Turm Domäne.,+4 pv a las unidades del dominio de la torre.,+4 pz jednostkom domeny wieży.,kale alanı birimlerine +4 can.,车系单位 +4 生命。
+tree.lan_tour_pv_tour,REMPART RENFORCE,REINFORCED BULWARK,BALUARDO RINFORZATO,VERSTARKTES BOLLWERK,BALUARTE REFORZADO,WZMOCNIONY SZANIEC,GUCLENDIRILMIS SIPER,强化壁垒
+tree.lan_tour_pv_tour.desc,la réduction de dégâts du trait rempart passe à 6.,the bulwark trait's damage reduction is raised to 6.,la riduzione danni del tratto baluardo sale a 6.,die Schadensreduktion der Bollwerk Eigenschaft steigt auf 6.,la reducción de daño del rasgo baluarte sube a 6.,redukcja obrażeń cechy szaniec wzrasta do 6.,siper özelliğinin hasar azaltması 6 ya çıkar.,壁垒特性的伤害减免提升到6。
+tree.lan_tour_aura_puissance,AURA DE PUISSANCE,POWER AURA,AURA DI POTENZA,STARKE AURA,AURA DE PODER,AURA MOCY,GUC AURASI,力量光环
+tree.lan_tour_aura_puissance.desc,les unités du domaine de la tour augmentent de 3 la puissance des alliés adjacents.,units of the rook domain increase adjacent allies' power by 3.,le unità del dominio della torre aumentano di 3 la potenza degli alleati adiacenti.,Einheiten der Turm Domäne erhöhen die Stärke angrenzender Verbundeter um 3.,las unidades del dominio de la torre aumentan en 3 el poder de aliados adyacentes.,jednostki domeny wieży zwiększają o 3 moc sąsiednich sojuszników.,kale alanı birimleri bitişik müttefiklerin gücünü 3 artırır.,车系单位使相邻友军力量增加3。
+tree.lan_tour_releve,RELEVE DES LANCIERS,SPEAR REPLACEMENTS,RIMPIAZZI DEI LANCIERI,LANZEN ABLOSUNG,RELEVOS DE LANCEROS,UZUPELNIENIA KOPIJNIKOW,MIZRAK TAKVIYESI,长枪补充
+tree.lan_tour_releve.desc,à la mort d'une unité de tier 2 ou 3 un lancier rejoint la réserve.,when a tier 2 or 3 unit dies a spearman joins the reserve.,alla morte di un'unità di livello 2 o 3 un lanciere entra in riserva.,beim Tod einer Einheit der Stufe 2 oder 3 kommt ein Lanzenträger in die Reserve.,al morir una unidad de nivel 2 o 3 un lancero entra en la reserva.,po śmierci jednostki poziomu 2 lub 3 kopijnik dołącza do rezerwy.,seviye 2 ya da 3 bir birim ölünce bir mızrakçı yedeğe katılır.,一个2阶或3阶单位死亡时一个长枪兵加入预备队。
+tree.lan_formation_renforce,FORMATION RENFORCÉE,REINFORCED FORMATION,FORMAZIONE RINFORZATA,VERSTARKTE FORMATION,FORMACION REFORZADA,WZMOCNIONA FORMACJA,GUCLENDIRILMIS DUZEN,强化阵型
+tree.lan_formation_renforce.desc,la puissance par allié du trait formation passe de 2 à 3.,the formation trait's power per ally is raised from 2 to 3.,la potenza per alleato del tratto formazione sale da 2 a 3.,die Stärke pro Verbundetem der Formation Eigenschaft steigt von 2 auf 3.,el poder por aliado del rasgo formación sube de 2 a 3.,moc za sojusznika cechy formacja rośnie z 2 do 3.,düzen özelliğinin müttefik başına gücü 2 den 3 e çıkar.,阵型特性每友军的力量从2提升到3。
+tree.lan_tour_pm,MARCHE DES LANCIERS,SPEAR MARCH,MARCIA DEI LANCIERI,LANZENMARSCH,MARCHA DE LANCEROS,MARSZ KOPIJNIKOW,MIZRAK YURUYUSU,长枪行军
+tree.lan_tour_pm.desc,+1 déplacement aux unités du domaine de la tour.,+1 movement to units of the rook domain.,+1 movimento alle unità del dominio della torre.,+1 Bewegung für Einheiten der Turm Domäne.,+1 movimiento a las unidades del dominio de la torre.,+1 ruch jednostkom domeny wieży.,kale alanı birimlerine +1 hareket.,车系单位 +1 移动。
 # Noeuds : branche LOGISTIQUE
-tree.lan_logi_deploy_1,AVANT-GARDE,VANGUARD
-tree.lan_logi_deploy_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
-tree.lan_logi_fusion,APPEL AUX LANCIERS,SPEAR CALL
-tree.lan_logi_fusion.desc,chaque fusion recrute en plus un lancier.,each fusion also recruits one spearman.
-tree.lan_logi_deploy_2,RENFORTS,REINFORCEMENTS
-tree.lan_logi_deploy_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.
-tree.lan_logi_reserve_1,INTENDANCE,QUARTERMASTER
-tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.
-tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE
-tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.
-tree.lan_logi_reserve_2,AMALGAME,AMALGAM
-tree.lan_logi_reserve_2.desc,fusionner un tier 1 en tier 2 du domaine de la tour ne demande que 2 pions.,fusing a rook-domain tier 1 into a tier 2 needs only 2 pawns.
+tree.lan_logi_deploy_1,AVANT-GARDE,VANGUARD,AVANGUARDIA,VORHUT,VANGUARDIA,AWANGARDA,ONCU,前锋
+tree.lan_logi_deploy_1.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.,+1 unità schierabile sul campo.,+1 einsetzbare Einheit auf dem Brett.,+1 unidad desplegable en el tablero.,+1 jednostka do rozstawienia na planszy.,tahtaya +1 yerleştirilebilir birim.,棋盘上可部署单位 +1。
+tree.lan_logi_fusion,APPEL AUX LANCIERS,SPEAR CALL,CHIAMATA AI LANCIERI,LANZENRUF,LLAMADA A LANCEROS,WEZWANIE KOPIJNIKOW,MIZRAK CAGRISI,召集长枪兵
+tree.lan_logi_fusion.desc,chaque fusion recrute en plus un lancier.,each fusion also recruits one spearman.,ogni fusione recluta in più un lanciere.,jede Fusion rekrutiert zusätzlich einen Lanzenträger.,cada fusión recluta además un lancero.,każda fuzja dodatkowo rekrutuje kopijnika.,her füzyon ayrıca bir mızrakçı alır.,每次融合额外招募一个长枪兵。
+tree.lan_logi_deploy_2,RENFORTS,REINFORCEMENTS,RINFORZI,VERSTARKUNGEN,REFUERZOS,POSILKI,TAKVIYELER,增援
+tree.lan_logi_deploy_2.desc,+1 unité déployable sur le plateau.,+1 unit deployable on the board.,+1 unità schierabile sul campo.,+1 einsetzbare Einheit auf dem Brett.,+1 unidad desplegable en el tablero.,+1 jednostka do rozstawienia na planszy.,tahtaya +1 yerleştirilebilir birim.,棋盘上可部署单位 +1。
+tree.lan_logi_reserve_1,INTENDANCE,QUARTERMASTER,INTENDENZA,QUARTIERMEISTER,INTENDENCIA,KWATERMISTRZ,LEVAZIM,军需官
+tree.lan_logi_reserve_1.desc,+2 places en réserve.,+2 reserve slots.,+2 posti in riserva.,+2 Plätze in der Reserve.,+2 huecos en la reserva.,+2 miejsca w rezerwie.,yedekte +2 yer.,预备队 +2 个位置。
+tree.lan_logi_deploy_3,BATAILLE RANGEE,PITCHED BATTLE,BATTAGLIA CAMPALE,FELDSCHLACHT,BATALLA CAMPAL,BITWA WALNA,MEYDAN SAVASI,会战
+tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units deployable on the board.,+2 unità schierabili sul campo.,+2 einsetzbare Einheiten auf dem Brett.,+2 unidades desplegables en el tablero.,+2 jednostki do rozstawienia na planszy.,tahtaya +2 yerleştirilebilir birim.,棋盘上可部署单位 +2。
+tree.lan_logi_reserve_2,AMALGAME,AMALGAM,AMALGAMA,AMALGAM,AMALGAMA,AMALGAMAT,BIRLESIM,合并
+tree.lan_logi_reserve_2.desc,fusionner un tier 1 en tier 2 du domaine de la tour ne demande que 2 pions.,fusing a rook-domain tier 1 into a tier 2 needs only 2 pawns.,fondere un livello 1 in livello 2 del dominio della torre richiede solo 2 pedine.,eine Stufe 1 zu Stufe 2 der Turm Domäne zu fusionieren braucht nur 2 Figuren.,fusionar un nivel 1 en nivel 2 del dominio de la torre solo requiere 2 peones.,połączenie poziomu 1 w poziom 2 domeny wieży wymaga tylko 2 pionków.,kale alanının seviye 1 ini seviye 2 ye birleştirmek sadece 2 piyon ister.,将车系1阶融合为2阶只需2个棋子。

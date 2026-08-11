@@ -19,13 +19,15 @@ public sealed class PauseMenuRenderer
     private static readonly Color TitleColor = Palette.Yellow2;
 
     private readonly Texture2D _pixel;
-    private readonly PixelFont _font;
     private readonly UiStyle _style;
 
-    public PauseMenuRenderer(Texture2D pixel, PixelFont font, UiStyle style)
+    // Police ACTIVE lue à chaque frame (jamais mise en cache) : le sélecteur de langue vit DANS ce menu,
+    // donc passer en chinois doit rebasculer la police du menu lui-même immédiatement.
+    private static ITextFont Font => Fonts.Active;
+
+    public PauseMenuRenderer(Texture2D pixel, UiStyle style)
     {
         _pixel = pixel;
-        _font = font;
         _style = style;
     }
 
@@ -44,7 +46,7 @@ public sealed class PauseMenuRenderer
 
         if (menu.Panel == MenuPanel.Root)
         {
-            _font.DrawCentered(sb, Loc.T("menu.pause"), l.Title, 2, TitleColor);
+            Font.DrawCentered(sb, Loc.T("menu.pause"), l.Title, 2, TitleColor);
             Button(sb, l.Resume, Loc.T("menu.resume"), p, pointerDown, focus);
             Button(sb, l.Codex, Loc.T("menu.codex"), p, pointerDown, focus);
             Button(sb, l.Options, Loc.T("menu.options"), p, pointerDown, focus);
@@ -56,7 +58,7 @@ public sealed class PauseMenuRenderer
         }
         else
         {
-            _font.DrawCentered(sb, Loc.T("options.title"), l.Title, 2, TitleColor);
+            Font.DrawCentered(sb, Loc.T("options.title"), l.Title, 2, TitleColor);
 
             Label(sb, l.ResRow, Loc.T("options.resolution"));
             Stepper(sb, l.ResLeft, l.ResValue, l.ResRight, menu.ResolutionText, p, pointerDown, focus);
@@ -87,7 +89,7 @@ public sealed class PauseMenuRenderer
         bool hover = r.Contains(pointer) || (focus?.Contains(r.Center) ?? false);
         int dy = _style.DrawButton(sb, r, UiStyle.StateOf(hover, pointerDown));
         var area = r; area.Offset(0, dy);
-        _font.DrawCentered(sb, label, area, 1, Text);
+        Font.DrawCentered(sb, label, area, 1, Text);
     }
 
     private void Stepper(SpriteBatch sb, Rectangle left, Rectangle value, Rectangle right,
@@ -95,14 +97,14 @@ public sealed class PauseMenuRenderer
     {
         Button(sb, left, "<", pointer, pointerDown, focus);
         _style.DrawRecessed(sb, value);
-        _font.DrawCentered(sb, text, value, 1, Text);
+        Font.DrawCentered(sb, text, value, 1, Text);
         Button(sb, right, ">", pointer, pointerDown, focus);
     }
 
     /// <summary>Libellé d'une ligne d'option, aligné à gauche et centré verticalement.</summary>
     private void Label(SpriteBatch sb, Rectangle row, string text)
     {
-        int y = row.Y + (row.Height - _font.LineHeight()) / 2;
-        _font.Draw(sb, text, new Vector2(row.X + 18, y), 1, TextDim);
+        int y = row.Y + (row.Height - Font.LineHeight()) / 2;
+        Font.Draw(sb, text, new Vector2(row.X + 18, y), 1, TextDim);
     }
 }

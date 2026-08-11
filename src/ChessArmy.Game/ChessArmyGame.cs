@@ -178,13 +178,25 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         // Ressources UI pixel-art partagées (aucun pipeline de contenu requis).
         var pixel = Textures.CreatePixel(GraphicsDevice);
-        var font = new PixelFont(pixel);
+        var pixelFont = new PixelFont(pixel);
+        Fonts.Pixel = pixelFont;
+        // Police CJK (chinois) : bitmap Fusion Pixel 12px (OFL) en police COMPOSITE — le latin/chiffres passent
+        // par la PixelFont (7px) et seuls les idéogrammes par le BDF. Absente/illisible => Cjk reste null et le
+        // chinois retombe sur la PixelFont sans planter. Chargée depuis Assets/Fonts (copie Assets/**).
+        try
+        {
+            var bdf = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Fonts/fusion-zh.bdf");
+            if (System.IO.File.Exists(bdf))
+                Fonts.Cjk = new BdfFont(pixel, bdf, pixelFont);
+        }
+        catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine($"police CJK ignorée : {ex.Message}"); }
+
         var ditherTile = Textures.CreateDitherTile(GraphicsDevice, 8, Palette.Black3, Palette.Black2);
         var style = new UiStyle(pixel, ditherTile);
         _cursor = Textures.CreateCursor(GraphicsDevice, Palette.White, Palette.Black1);
 
         _context = new GameContext(
-            GraphicsDevice, _spriteBatch, Content, pixel, font, style,
+            GraphicsDevice, _spriteBatch, Content, pixel, style,
             _input, _scenes, Window, _settings, _audio, _sounds, _music, this, _saves, Exit);
 
         ConfigureVirtualScreen();

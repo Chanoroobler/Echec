@@ -137,7 +137,7 @@ internal sealed class DamagePopups
         return new Vector2(top.X + size / 2f, top.Y + size * 0.18f - rise);
     }
 
-    public void Draw(SpriteBatch sb, PixelFont font, GridLayout layout)
+    public void Draw(SpriteBatch sb, ITextFont font, GridLayout layout)
     {
         if (_active.Count == 0)
             return;

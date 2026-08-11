@@ -76,7 +76,7 @@ internal static class Program
 
         if (req.HttpMethod == "GET" && route == "/api/rows")
         {
-            WriteJson(ctx.Response, 200, new { path, rows = doc.Rows.Select(ToDto) });
+            WriteJson(ctx.Response, 200, new { path, langs = doc.Langs, rows = doc.Rows.Select(r => ToDto(r, doc.Langs.Count)) });
             return;
         }
 
@@ -88,7 +88,7 @@ internal static class Program
 
             // Garde-fou : une virgule dans une valeur casserait le format → on refuse d'écrire (protège le fichier).
             var offenders = rows
-                .Where(r => r.Kind == "entry" && (HasComma(r.Key) || HasComma(r.Fr) || HasComma(r.En)))
+                .Where(r => r.Kind == "entry" && (HasComma(r.Key) || (r.Values ?? new()).Any(HasComma)))
                 .Select(r => r.Key)
                 .ToList();
             if (offenders.Count > 0)
@@ -115,14 +115,20 @@ internal static class Program
 
     // ── Sérialisation des lignes ──────────────────────────────────────────────────
 
-    private static object ToDto(LocRow r) => new
+    // Les valeurs sont complétées à la longueur de l'en-tête pour que la grille ait une cellule par langue,
+    // même si une ligne mal formée en avait moins.
+    private static object ToDto(LocRow r, int langCount)
     {
-        kind = r.Kind.ToString().ToLowerInvariant(),
-        key = r.Key,
-        fr = r.Fr,
-        en = r.En,
-        raw = r.Raw,
-    };
+        var vals = new List<string>(r.Values);
+        while (vals.Count < langCount) vals.Add("");
+        return new
+        {
+            kind = r.Kind.ToString().ToLowerInvariant(),
+            key = r.Key,
+            values = vals,
+            raw = r.Raw,
+        };
+    }
 
     private static LocRow FromDto(RowDto d) => new()
     {
@@ -134,8 +140,7 @@ internal static class Program
             _ => RowKind.Entry,
         },
         Key = (d.Key ?? "").Trim(),
-        Fr = d.Fr ?? "",
-        En = d.En ?? "",
+        Values = d.Values ?? new(),
         Raw = d.Raw ?? "",
     };
 
@@ -200,7 +205,6 @@ internal sealed class RowDto
 {
     public string Kind { get; set; } = "entry";
     public string? Key { get; set; }
-    public string? Fr { get; set; }
-    public string? En { get; set; }
+    public List<string>? Values { get; set; }
     public string? Raw { get; set; }
 }

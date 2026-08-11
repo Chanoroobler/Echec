@@ -126,9 +126,10 @@ public sealed class CodexView
         var panel = new Rectangle(Margin, Margin, vp.Width - 2 * Margin, vp.Height - 2 * Margin);
         var l = new Layout { Panel = panel };
 
-        // Onglets tout en haut (pas de titre « CODEX », pour gagner de la hauteur).
+        // Onglets tout en haut (pas de titre « CODEX », pour gagner de la hauteur). Hauteur ≥ celle du texte
+        // d'onglet (échelle 2) + marge : inchangée en latin (26), agrandie en chinois (glyphe 12px = 24 à l'échelle 2).
         var tabW = 150;
-        var tabH = 26;
+        var tabH = System.Math.Max(26, _ctx.Font.LineHeight(2) + 8);
         var tabsY = panel.Y + 10;
         l.TabUnits = new Rectangle(panel.Center.X - tabW - 6, tabsY, tabW, tabH);
         l.TabEquip = new Rectangle(panel.Center.X + 6, tabsY, tabW, tabH);
@@ -141,7 +142,9 @@ public sealed class CodexView
         if (_tab == Tab.Units)
         {
             // Région disponible pour le bloc « sélecteur de domaine + arbre », entre le bas des onglets et le pied.
-            const int selH = 22, selGap = 8;
+            // Hauteur du sélecteur ≥ nom de domaine (échelle 2) + marge : 22 en latin, agrandie en chinois.
+            var selH = System.Math.Max(22, _ctx.Font.LineHeight(2) + 6);
+            const int selGap = 8;
             var regionTop = tabsY + tabH + 6;
             var regionH = footerTop - regionTop;
 
@@ -687,8 +690,10 @@ public sealed class CodexView
 
         DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
 
-        _ctx.Font.DrawCentered(sb, UnitName(c), new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
-        y += 22;
+        // Boîte de titre à la hauteur réelle du nom (14 latin / 24 cjk) : pas de débordement vers l'en-tête.
+        var titleH = _ctx.Font.LineHeight(2);
+        _ctx.Font.DrawCentered(sb, UnitName(c), new Rectangle(rect.X, y, rect.Width, titleH), 2, Palette.White);
+        y += titleH + 8;
 
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
         var front = Tex($"Units/{c.Asset}_front") ?? Tex($"Units/{c.Asset}");
@@ -841,18 +846,21 @@ public sealed class CodexView
         {
             lines.Add((Loc.T("codex.undiscovered"), Palette.Grey));
         }
-        DrawTooltipPanel(sb, revealed ? e.Name : "???", revealed ? Palette.Yellow2 : Palette.Grey, lines, anchor, bounds);
+        DrawTooltipPanel(sb, revealed ? EquipmentNames.Localized(e) : "???", revealed ? Palette.Yellow2 : Palette.Grey, lines, anchor, bounds);
     }
 
     private void DrawTooltipPanel(SpriteBatch sb, string title, Color titleColor,
         List<(string Text, Color Color)> lines, Rectangle anchor, Rectangle bounds)
     {
-        const int pad = 8, lineH = 11;
+        const int pad = 8;
+        // Espacements dérivés de la police active (titre CJK plus haut) ; identiques au latin (titre 20 / ligne 11).
+        var lineH = _ctx.Font.GlyphHeight + 4;
+        var titleBlock = _ctx.Font.LineHeight(2) + 6;
         var w = _ctx.Font.Measure(title, 2);
         foreach (var (text, _) in lines)
             w = Math.Max(w, _ctx.Font.Measure(text, 1));
         w += 2 * pad;
-        var h = pad + 16 + 4 + lines.Count * lineH + pad;
+        var h = pad + titleBlock + lines.Count * lineH + pad;
 
         var x = Math.Clamp(anchor.Center.X - w / 2, bounds.X, Math.Max(bounds.X, bounds.Right - w));
         var y = anchor.Bottom + 6;
@@ -863,7 +871,7 @@ public sealed class CodexView
         var box = new Rectangle(x, y, w, h);
         _ctx.Style.DrawPanel(sb, box);
         _ctx.Font.Draw(sb, title, new Vector2(box.X + pad, box.Y + pad), 2, titleColor);
-        var ty = box.Y + pad + 16 + 4;
+        var ty = box.Y + pad + titleBlock;
         foreach (var (text, color) in lines)
         {
             _ctx.Font.Draw(sb, text, new Vector2(box.X + pad, ty), 1, color, preserveCase: true);

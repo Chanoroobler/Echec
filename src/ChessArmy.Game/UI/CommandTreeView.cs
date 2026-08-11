@@ -459,13 +459,13 @@ public sealed class CommandTreeView
     /// Le jeton est aligné sur la hauteur du texte (7 px de glyphe contre 8 px d'icône) et peut être teinté
     /// (nœud verrouillé) pour rester cohérent avec le libellé.
     /// </summary>
-    public void DrawPointTotal(SpriteBatch sb, PixelFont font, string text, Rectangle area, Color color,
+    public void DrawPointTotal(SpriteBatch sb, ITextFont font, string text, Rectangle area, Color color,
         Color? iconTint = null)
     {
         const int gap = 4;
         var textW = font.Measure(text, 1);
         var x = area.X + (area.Width - (textW + gap + PointIconSize)) / 2;
-        var y = area.Y + (area.Height - PixelFont.GlyphH) / 2;
+        var y = area.Y + (area.Height - font.GlyphHeight) / 2;
         font.Draw(sb, text, new Vector2(x, y), 1, color);
         DrawPointIcon(sb, x + textW + gap, y, iconTint);
     }
@@ -490,8 +490,17 @@ public sealed class CommandTreeView
         var name = Loc.T(node.NameKey);
         var lines = Wrap(Capitalize(Loc.T(node.DescKey)), 260);
 
-        var w = System.Math.Max(_ctx.Font.Measure(name, 2), lines.Max(l => _ctx.Font.Measure(l, 1))) + 24;
-        var h = 22 + lines.Count * 12 + 16;
+        // Espacements dérivés de la police ACTIVE (et non figés en 7px) : le titre CJK fait 12px de glyphe
+        // (24 à l'échelle 2) contre 7 (14) en latin, sinon il chevauche la description. Reproduit le latin :
+        // titleH=14 gap=8 lineH=12 comme avant, et grandit en chinois.
+        const int titleTop = 10, gap = 8, botPad = 12;
+        var titleH = _ctx.Font.LineHeight(2);
+        var lineH = _ctx.Font.GlyphHeight + 5;
+        var descTop = titleTop + titleH + gap;
+
+        var w = System.Math.Max(_ctx.Font.Measure(name, 2),
+            lines.Count > 0 ? lines.Max(l => _ctx.Font.Measure(l, 1)) : 0) + 24;
+        var h = descTop + lines.Count * lineH + botPad;
 
         var anchor = _rects[node.Id];
         var x = System.Math.Clamp(anchor.Center.X - w / 2, 8, vp.Width - w - 8);
@@ -501,9 +510,9 @@ public sealed class CommandTreeView
 
         var box = new Rectangle(x, y, w, h);
         _ctx.Style.DrawPanel(sb, box);
-        _ctx.Font.Draw(sb, name, new Vector2(box.X + 12, box.Y + 10), 2, Palette.Yellow2);
+        _ctx.Font.Draw(sb, name, new Vector2(box.X + 12, box.Y + titleTop), 2, Palette.Yellow2);
         for (var i = 0; i < lines.Count; i++)
-            _ctx.Font.Draw(sb, lines[i], new Vector2(box.X + 12, box.Y + 32 + i * 12), 1, Palette.White,
+            _ctx.Font.Draw(sb, lines[i], new Vector2(box.X + 12, box.Y + descTop + i * lineH), 1, Palette.White,
                 preserveCase: true);   // descriptions en minuscules (les libellés/nom restent en capitales)
     }
 

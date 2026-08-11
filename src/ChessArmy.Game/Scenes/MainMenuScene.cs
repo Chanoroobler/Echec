@@ -87,7 +87,7 @@ public sealed class MainMenuScene : Scene
     {
         var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
         _menu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height));
-        _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Font, Context.Style);
+        _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Style);
         _codex = new CodexView(Context);
         _units = new UnitCardRenderer(Context);
         RefreshSlots();
@@ -409,8 +409,10 @@ public sealed class MainMenuScene : Scene
         // Lignée de pions du décor, DERRIÈRE le titre et le panneau (posée sur le fond, non interactive).
         DrawDecor(sb, lay.Panel);
 
-        var titleArea = new Rectangle(0, 20, w, PixelFont.GlyphH * TitleScale + 12);
-        Context.Font.DrawCenteredGradient(sb, Loc.T("game.title"), titleArea, TitleScale, TitleRamp);
+        // Le logo est toujours le latin CHESS ARMY : on force la PixelFont (dégradé doré tramé) dans TOUTES
+        // les langues, y compris le chinois, pour garder l'identité de marque (la police CJK n'a pas le dégradé).
+        var titleArea = new Rectangle(0, 20, w, Fonts.Pixel.GlyphHeight * TitleScale + 12);
+        Fonts.Pixel.DrawCenteredGradient(sb, Loc.T("game.title"), titleArea, TitleScale, TitleRamp);
 
         Context.Style.DrawPanel(sb, lay.Panel);
         for (var i = 0; i < _slots.Length; i++)

@@ -209,6 +209,12 @@ public sealed class PauseMenu
     public string LanguageText => _s.Language switch
     {
         Language.English => Loc.T("lang.english"),
+        Language.Italiano => Loc.T("lang.italiano"),
+        Language.Deutsch => Loc.T("lang.deutsch"),
+        Language.Espanol => Loc.T("lang.espanol"),
+        Language.Polski => Loc.T("lang.polski"),
+        Language.Turkce => Loc.T("lang.turkce"),
+        Language.ChineseSimplified => Loc.T("lang.chinese"),
         _ => Loc.T("lang.francais"),
     };
 

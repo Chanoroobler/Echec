@@ -14,7 +14,7 @@ namespace ChessArmy.Engine.UI.Text;
 /// caractères inconnus (espace…) avancent simplement le curseur.
 /// (Portée depuis CosyFarmer.)
 /// </summary>
-public sealed class PixelFont
+public sealed class PixelFont : ITextFont
 {
     public const int GlyphW = 5;
     public const int GlyphH = 7;
@@ -28,6 +28,9 @@ public sealed class PixelFont
         _pixel = pixel;
         _glyphs = BuildGlyphs();
     }
+
+    /// <summary>Hauteur d'un glyphe (7 px) — expose la constante via l'interface <see cref="ITextFont"/>.</summary>
+    public int GlyphHeight => GlyphH;
 
     public int LineHeight(int scale = 1) => GlyphH * scale;
 
@@ -44,6 +47,15 @@ public sealed class PixelFont
                 DrawGlyph(sb, rows!, cx, cy, scale, color);
             cx += (GlyphW + Spacing) * scale;
         }
+    }
+
+    /// <summary>Dessine UN caractère à sa taille pixel (7 px). Utilisé par la police composite CJK
+    /// (<see cref="BdfFont"/>) pour rendre le latin et les CHIFFRES à la taille normale plutôt qu'en gros
+    /// glyphe CJK. Ne dessine rien si le glyphe est absent (le curseur est avancé par l'appelant).</summary>
+    public void DrawChar(SpriteBatch sb, char ch, Vector2 pos, int scale, Color color, bool preserveCase = false)
+    {
+        if (TryResolveGlyph(ch, preserveCase, out var rows))
+            DrawGlyph(sb, rows!, (int)pos.X, (int)pos.Y, scale, color);
     }
 
     /// <summary>
@@ -273,6 +285,32 @@ public sealed class PixelFont
         ['ù'] = G(".#...", "..#..", "#...#", "#...#", "#...#", "#...#", ".####"),
         ['û'] = G("..#..", ".#.#.", "#...#", "#...#", "#...#", "#...#", ".####"),
         ['ü'] = G(".#.#.", ".....", "#...#", "#...#", "#...#", "#...#", ".####"),
+
+        // ── Latin étendu (autres langues UI) : polonais (Ł ł), turc (ı ş ğ), allemand (ß ä ö),
+        //    espagnol (ñ ä ö). Ł/ł/ı/ß N'ONT PAS de repli sans accent (glyphe absent = rien dessiné),
+        //    les autres retombent proprement sur la lettre nue en MAJUSCULE (ş→S, ğ→G, ñ→N, ä→A, ö→O)
+        //    et ne s'affichent en accentué qu'en minuscule (descriptions). İ turc retombe sur I. ────────
+        ['Ł'] = G("#....", "#....", "#....", "###..", "#....", "#....", "#####"),
+        ['ł'] = G(".#...", ".#...", ".#...", "###..", ".#...", ".#...", ".##.."),
+        ['ı'] = G(".....", ".....", ".....", "..#..", "..#..", "..#..", "..#.."),
+        ['ş'] = G(".....", ".####", "#....", ".###.", "....#", "####.", "..#.."),
+        ['ğ'] = G("#...#", ".###.", ".####", "#...#", ".####", "....#", ".###."),
+        ['ß'] = G(".##..", "#..#.", "#..#.", "#.#..", "#..#.", "#..#.", "#.#.."),
+        ['ñ'] = G("..##.", ".##..", "####.", "#...#", "#...#", "#...#", "#...#"),
+        ['ä'] = G(".#.#.", ".....", ".###.", "....#", ".####", "#...#", ".####"),
+        ['ö'] = G(".#.#.", ".....", ".###.", "#...#", "#...#", "#...#", ".###."),
+
+        // ── Polonais (minuscules accentuées, rendues dans les descriptions) : accent aigu / point / ogonek.
+        //    ą ę portent une queue (ogonek) sous la lettre : glyphe remonté d'une rangée pour lui laisser la
+        //    dernière rangée (même astuce que ç/ş). Sans glyphe dédié ces lettres retomberaient sur a/e/o/…
+        ['ó'] = G("...#.", "..#..", ".###.", "#...#", "#...#", "#...#", ".###."),
+        ['ś'] = G("...#.", "..#..", ".####", "#....", ".###.", "....#", "####."),
+        ['ż'] = G("..#..", ".....", "#####", "...#.", "..#..", ".#...", "#####"),
+        ['ź'] = G("...#.", "..#..", "#####", "...#.", "..#..", ".#...", "#####"),
+        ['ć'] = G("...#.", "..#..", ".###.", "#...#", "#....", "#...#", ".###."),
+        ['ń'] = G("...#.", "..#..", "####.", "#...#", "#...#", "#...#", "#...#"),
+        ['ą'] = G(".....", ".###.", "....#", ".####", "#...#", ".####", "...#."),
+        ['ę'] = G(".....", ".###.", "#...#", "#####", "#....", ".###.", "...#."),
 
         ['%'] = G("##..#", "##.#.", "..#..", ".#...", "#.#..", "#..##", "...##"),
         [':'] = G(".....", "..#..", "..#..", ".....", "..#..", "..#..", "....."),

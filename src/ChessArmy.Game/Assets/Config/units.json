@@ -25,7 +25,7 @@
             ]
           },
           {
-            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
+            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 12, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
             "evolutions": [
               { "name": "Maître d'armes", "asset": "maitre_arme", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
               { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Berserk"] }
@@ -91,7 +91,7 @@
             ]
           },
           {
-            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 15, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation"],
+            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 13, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation"],
             "evolutions": [
               { "name": "Dragoon", "asset": "Dragoon", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Tueur de géants", "Formation"] },
               { "name": "Voltigeur", "asset": "voltigeur", "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation", "Riposte"] }

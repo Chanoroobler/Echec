@@ -23,7 +23,6 @@ public sealed class GameContext
         SpriteBatch spriteBatch,
         ContentManager content,
         Texture2D pixel,
-        PixelFont font,
         UiStyle style,
         InputManager input,
         SceneManager scenes,
@@ -40,7 +39,6 @@ public sealed class GameContext
         SpriteBatch = spriteBatch;
         Content = content;
         Pixel = pixel;
-        Font = font;
         Style = style;
         Input = input;
         Scenes = scenes;
@@ -69,8 +67,8 @@ public sealed class GameContext
     /// <summary>Texture 1×1 blanche partagée (rectangles, police pixel).</summary>
     public Texture2D Pixel { get; }
 
-    /// <summary>Police bitmap pixel-art partagée.</summary>
-    public PixelFont Font { get; }
+    /// <summary>Police de texte ACTIVE (latine PixelFont ou CJK BdfFont selon la langue), via <see cref="Fonts.Active"/>.</summary>
+    public ITextFont Font => Fonts.Active;
 
     /// <summary>Style d'UI partagé (panneaux/boutons en relief).</summary>
     public UiStyle Style { get; }

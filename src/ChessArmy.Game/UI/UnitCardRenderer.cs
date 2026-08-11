@@ -53,8 +53,11 @@ public sealed class UnitCardRenderer
 
         DrawTierAndDomaine(sb, c.Tier, domaine, rect);
 
-        _ctx.Font.DrawCentered(sb, NameOf(c), new Rectangle(rect.X, y, rect.Width, 14), 2, Palette.White);
-        y += 22;
+        // Boîte de titre à la hauteur réelle du nom (14 latin / 24 cjk) : le nom remplit la boîte au lieu de
+        // déborder vers le haut sur l'en-tête tier/domaine.
+        var titleH = _ctx.Font.LineHeight(2);
+        _ctx.Font.DrawCentered(sb, NameOf(c), new Rectangle(rect.X, y, rect.Width, titleH), 2, Palette.White);
+        y += titleH + 8;
 
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
         if (Sprite(c) is { } front)

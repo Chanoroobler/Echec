@@ -56,7 +56,7 @@
   .toggle{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12.5px; cursor:pointer; user-select:none}
 
   .gridhead,.row{
-    display:grid; grid-template-columns:260px 1fr 1fr 36px; gap:10px; align-items:start;
+    display:grid; grid-template-columns:var(--cols,260px 1fr 1fr 36px); gap:10px; align-items:start;
     padding:7px 18px;
   }
   .gridhead{
@@ -107,15 +107,13 @@
   </header>
 
   <div class="toolbar">
-    <input class="search" id="search" type="search" placeholder="Rechercher (clé, FR, EN)…">
+    <input class="search" id="search" type="search" placeholder="Rechercher (clé, texte)…">
     <div class="chips" id="chips"></div>
     <label class="toggle"><input type="checkbox" id="untranslated"> Non traduits</label>
     <button class="btn" id="add">+ Ligne</button>
   </div>
 
-  <div class="gridhead">
-    <div>Clé</div><div>Français</div><div>Anglais</div><div></div>
-  </div>
+  <div class="gridhead" id="gridhead"></div>
   <div id="rows"></div>
   <div class="toast" id="toast"></div>
 
@@ -130,10 +128,16 @@ const LABELS = {
   domaine:"Domaines", reward:"Récompenses", mission:"Missions", display:"Affichage", defeat:"Défaite",
   combat:"Combat", recrue:"Recrue", lang:"Langues", common:"Commun", game:"Jeu", boss:"Boss",
 };
+// Noms d'affichage des colonnes de langue (le code du CSV sert de repli).
+const LANG_NAMES = {
+  FR:"Français", EN:"Anglais", IT:"Italien", DE:"Allemand", ES:"Espagnol",
+  PL:"Polonais", TR:"Turc", ZH:"Chinois",
+};
 const label = c => LABELS[c] || (c ? c[0].toUpperCase()+c.slice(1) : "?");
 const catOf = r => (r.key.split(".")[0] || "");
 
 let rows = [];
+let langs = ["FR","EN"];
 let activeCat = null;
 let dirty = false;
 
@@ -143,10 +147,24 @@ async function load(){
   const res = await fetch("/api/rows");
   const data = await res.json();
   rows = data.rows;
+  langs = data.langs && data.langs.length ? data.langs : ["FR","EN"];
   $("path").textContent = data.path;
+  buildHead();
   setDirty(false);
   buildChips();
   render();
+}
+
+// En-tête + gabarit de grille dynamiques selon le nombre de langues.
+function buildHead(){
+  const cols = "260px " + langs.map(()=>"minmax(0,1fr)").join(" ") + " 36px";
+  document.documentElement.style.setProperty("--cols", cols);
+  const head = $("gridhead");
+  head.replaceChildren();
+  head.appendChild(Object.assign(document.createElement("div"), { textContent:"Clé" }));
+  for(const l of langs)
+    head.appendChild(Object.assign(document.createElement("div"), { textContent:LANG_NAMES[l] || l }));
+  head.appendChild(document.createElement("div"));
 }
 
 function buildChips(){
@@ -179,9 +197,10 @@ function visible(r, q, only){
     return r.kind==="comment" && !activeCat && !q && !only;
   }
   if(activeCat && catOf(r)!==activeCat) return false;
-  if(only && (r.en||"").length>0) return false;
+  // Non traduits : au moins une colonne de langue vide.
+  if(only && !(r.values||[]).some(v => (v||"").length===0)) return false;
   if(q){
-    const s=(r.key+" "+r.fr+" "+r.en).toLowerCase();
+    const s=(r.key+" "+(r.values||[]).join(" ")).toLowerCase();
     if(!s.includes(q)) return false;
   }
   return true;
@@ -218,18 +237,24 @@ function render(){
 function entryRow(r, dups){
   const row = document.createElement("div");
   row.className = "row";
+  if(!r.values) r.values = [];
+  while(r.values.length < langs.length) r.values.push("");
 
-  const key = mkCell("input", r.key, v => { r.key=v.trim(); markEdit(); }, "key");
-  const fr  = mkCell("textarea", r.fr, v => { r.fr=v; markEdit(); }, null, () => recolor(row, r, dups));
-  const en  = mkCell("textarea", r.en, v => { r.en=v; markEdit(); }, null, () => recolor(row, r, dups));
+  const key = mkCell("input", r.key, v => { r.key=v.trim(); markEdit(); }, "key", () => recolor(row, r, dups));
+  row.appendChild(key.cell);
+  for(let i=0;i<langs.length;i++){
+    const idx = i;
+    const c = mkCell("textarea", r.values[idx], v => { r.values[idx]=v; markEdit(); }, null, () => recolor(row, r, dups));
+    row.appendChild(c.cell);
+  }
 
   const delWrap = document.createElement("div");
   const del = document.createElement("button");
   del.className="del"; del.title="Supprimer"; del.textContent="×";
   del.onclick = () => { rows.splice(rows.indexOf(r),1); markEdit(); buildChips(); render(); };
   delWrap.appendChild(del);
+  row.appendChild(delWrap);
 
-  row.append(key.cell, fr.cell, en.cell, delWrap);
   row._recolor = () => recolor(row, r, dups);
   recolor(row, r, dups);
   return row;
@@ -255,12 +280,12 @@ function mkCell(tag, value, onInput, cls, onInputExtra){
 
 function recolorParent(cell){ let el=cell.closest(".row"); if(el&&el._recolor) el._recolor(); }
 
-// Recolore les 3 cellules d'une ligne selon la validation.
+// Recolore les cellules d'une ligne selon la validation (clé + une cellule par langue).
 function recolor(row, r, dups){
-  const [kc, fc, ec] = row.querySelectorAll(".cell");
-  flag(kc, r.key, "key", dups.has(r.key));
-  flag(fc, r.fr, "fr", false);
-  flag(ec, r.en, "en", false);
+  const cells = row.querySelectorAll(".cell");
+  flag(cells[0], r.key, "key", dups.has(r.key));
+  for(let i=0;i<langs.length;i++)
+    flag(cells[i+1], r.values[i]||"", "val", false);
 }
 function flag(cell, val, which, isDup){
   cell.classList.remove("err","warn","dup","empty");
@@ -272,7 +297,7 @@ function flag(cell, val, which, isDup){
   else if(dash){ cell.classList.add("warn"); msg.textContent="tiret cadratin interdit"; }
   else if(which==="key" && val.length===0){ cell.classList.add("err"); msg.textContent="clé vide"; }
   else if(which==="key" && isDup){ cell.classList.add("dup"); msg.textContent="clé en double"; }
-  else if(which==="en" && val.length===0){ cell.classList.add("empty"); }
+  else if(which==="val" && val.length===0){ cell.classList.add("empty"); }
 }
 
 function grow(t){ t.style.height="auto"; t.style.height = Math.max(32, t.scrollHeight)+"px"; }
@@ -281,7 +306,7 @@ function markEdit(){ setDirty(true); }
 function setDirty(v){ dirty=v; $("save").disabled=!v; document.title=(v?"* ":"")+"ChessArmy — Traductions"; }
 
 function addRow(){
-  const row = { kind:"entry", key:"", fr:"", en:"", raw:"" };
+  const row = { kind:"entry", key:"", values:Array(langs.length).fill(""), raw:"" };
   let at = rows.length;
   if(activeCat){
     for(let i=0;i<rows.length;i++) if(rows[i].kind==="entry" && catOf(rows[i])===activeCat) at=i+1;
@@ -295,7 +320,7 @@ function addRow(){
 }
 
 async function save(){
-  const payload = rows.map(r => ({ kind:r.kind, key:r.key, fr:r.fr, en:r.en, raw:r.raw }));
+  const payload = rows.map(r => ({ kind:r.kind, key:r.key, values:r.values, raw:r.raw }));
   const res = await fetch("/api/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
   if(res.ok){ setDirty(false); toast("Enregistré ✓"); }
   else{
