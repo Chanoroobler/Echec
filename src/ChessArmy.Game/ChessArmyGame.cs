@@ -219,7 +219,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
     protected override void Update(GameTime gameTime)
     {
         UpdateInactiveThrottle();
-        _input.Update(gameTime);
+        _input.Update(gameTime, IsActive);   // hors focus : entrée gelée (pas de clic « à travers » une fenêtre devant)
         if (_input.WasKeyPressed(Keys.F3))
             _showFps = !_showFps;   // bascule l'overlay de diagnostic FPS / ms
         if (_input.WasKeyPressed(Keys.F10))

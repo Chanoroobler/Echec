@@ -35,6 +35,9 @@ public sealed class InputManager
     // Dernier périphérique utilisé : pilote l'affichage (curseur souris vs focus/curseur de case).
     private bool _usingGamepad;
 
+    // La fenêtre avait-elle le focus à la frame précédente (pour neutraliser le clic de retour au focus).
+    private bool _hadFocus = true;
+
     // Transformation écran réel → espace virtuel (letterbox du rendu pixel-perfect).
     private Point _viewOffset = Point.Zero;
     private float _viewScale = 1f;
@@ -49,16 +52,47 @@ public sealed class InputManager
         _viewScale = scale <= 0f ? 1f : scale;
     }
 
-    public void Update(GameTime gameTime)
+    /// <summary>
+    /// Capture l'état des périphériques pour la frame. <paramref name="hasFocus"/> = la fenêtre du jeu
+    /// est-elle au premier plan (<c>Game.IsActive</c>). HORS focus, l'entrée est gelée : la position de
+    /// la souris est conservée (survol du curseur logiciel) mais boutons et touches sont forcés au repos,
+    /// pour qu'un clic « à travers » une fenêtre posée devant le jeu n'agisse jamais dessus.
+    /// </summary>
+    public void Update(GameTime gameTime, bool hasFocus)
     {
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
         _previousKeyboard = _currentKeyboard;
-        _currentKeyboard = Keyboard.GetState();
         _previousMouse = _currentMouse;
-        _currentMouse = Mouse.GetState();
         _previousPad = _currentPad;
-        _currentPad = GamePad.GetState(PlayerIndex.One);
+
+        if (hasFocus)
+        {
+            _currentKeyboard = Keyboard.GetState();
+            _currentMouse = Mouse.GetState();
+            _currentPad = GamePad.GetState(PlayerIndex.One);
+
+            // Frame de RETOUR au focus : on aligne l'état précédent sur le courant pour n'émettre aucun
+            // front. Le clic qui a ramené la fenêtre au premier plan ne doit pas se propager au jeu.
+            if (!_hadFocus)
+            {
+                _previousKeyboard = _currentKeyboard;
+                _previousMouse = _currentMouse;
+                _previousPad = _currentPad;
+            }
+        }
+        else
+        {
+            // Hors focus : on garde la position (et la molette figée) mais tous les boutons au repos.
+            var m = Mouse.GetState();
+            _currentMouse = new MouseState(m.X, m.Y, _previousMouse.ScrollWheelValue,
+                ButtonState.Released, ButtonState.Released, ButtonState.Released,
+                ButtonState.Released, ButtonState.Released);
+            _currentKeyboard = default;
+            _currentPad = default;
+        }
+
+        _hadFocus = hasFocus;
 
         UpdateNav(dt);
         UpdateActiveDevice();

@@ -467,7 +467,8 @@ public sealed class CommandTreeView
         var x = area.X + (area.Width - (textW + gap + PointIconSize)) / 2;
         var y = area.Y + (area.Height - font.GlyphHeight) / 2;
         font.Draw(sb, text, new Vector2(x, y), 1, color);
-        DrawPointIcon(sb, x + textW + gap, y, iconTint);
+        // Icône centrée sur la HAUTEUR du texte (police active) : sans ça elle flotte en haut du texte CJK 12px.
+        DrawPointIcon(sb, x + textW + gap, y + (font.GlyphHeight - PointIconSize) / 2, iconTint);
     }
 
     /// <summary>Repli sans PNG : aplat coloré par branche + initiale, pour que l'arbre reste jouable.</summary>
