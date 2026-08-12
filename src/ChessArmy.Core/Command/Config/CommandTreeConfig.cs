@@ -26,7 +26,14 @@ public sealed class NodeEntry
     /// <summary>Niveau 1..<see cref="CommandTree.MaxLevel"/>, du bas vers le haut.</summary>
     public int Level { get; set; }
 
-    /// <summary>PNG 32×32 <c>Assets/CommandTree/&lt;icon&gt;.png</c>. Absent → l'<see cref="Id"/> du nœud.</summary>
+    /// <summary>
+    /// PNG 32×32 <c>Assets/CommandTree/&lt;asset&gt;.png</c>, OPTIONNEL — à préciser seulement si l'asset diffère
+    /// de l'<see cref="Id"/> du nœud (nom aligné sur units.json). Prioritaire sur <see cref="Icon"/>.
+    /// Absent → repli sur <see cref="Icon"/> puis sur l'<see cref="Id"/>.
+    /// </summary>
+    public string? Asset { get; set; }
+
+    /// <summary>Alias hérité de <see cref="Asset"/> (même rôle). Ignoré si <see cref="Asset"/> est présent.</summary>
     public string? Icon { get; set; }
 
     public List<EffectEntry> Effects { get; set; } = new();

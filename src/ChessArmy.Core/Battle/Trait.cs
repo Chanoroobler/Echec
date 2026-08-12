@@ -41,6 +41,8 @@ public static class Trait
     public const string Renaissance = "Renaissance";         // ÉQUIPEMENT « Queue de phénix » : à la mort, ressuscite à 1 PV et se brise (une fois)
     public const string TueurDeGeants = "Tueur de géants";   // à l'attaque : +5 dégâts si la cible a PLUS de PV ACTUELS que l'attaquant (attaquant plus blessé)
     public const string Rage = "Rage";                       // combat : +7 puissance à la PREMIÈRE mort d'un allié (non cumulable, une seule fois par combat, cf. Unit.RagePower)
+    public const string LienDePuissance = "Lien de puissance"; // +LienPuissanceBonus de puissance par allié dans sa PORTÉE DE DÉPLACEMENT (contextuel au placement, cf. Match)
+    public const string RepositionnementStrategique = "Repositionnement stratégique"; // déplacement : ajoute un pas d'UNE case à gauche/droite quel que soit le domaine
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
@@ -49,5 +51,6 @@ public static class Trait
         AuraDeRempart, AuraDePuissance, AuraDeCelerite, Riposte, Duelliste, Berserk,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Orage, Tempete, AttaqueLibre,
         Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
+        LienDePuissance, RepositionnementStrategique,
     };
 }

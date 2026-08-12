@@ -233,6 +233,33 @@ public class TraitsTests
         Assert.Equal(0, shielded.UnitAt(new Cell(0, 2))!.TimesHit);   // donc pas un coup reçu
     }
 
+    // ── Coups à distance (Unit.RangedHits) : source de points du commandant du Fou ──
+
+    [Fact]
+    public void RecordRangedHit_CountsHitAtDistanceThreeOrMore_NotCloser_NorAbsorbed()
+    {
+        // Coup DIRECT qui touche à portée 3 → compté sur l'attaquant.
+        var far = Board();
+        far.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, attackRange: 3));
+        far.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, None));
+        far.TryAttack(new Cell(0, 0), new Cell(0, 3));
+        Assert.Equal(1, far.UnitAt(new Cell(0, 0))!.RangedHits);
+
+        // Même coup à portée 2 → PAS un coup à distance.
+        var near = Board();
+        near.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, attackRange: 3));
+        near.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        near.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        Assert.Equal(0, near.UnitAt(new Cell(0, 0))!.RangedHits);
+
+        // Coup à portée 3 mais ABSORBÉ (dégâts nets 0 par Rempart) → ne compte pas (comme un coup reçu).
+        var shielded = Board();
+        shielded.Place(new Cell(0, 0), Make(Faction.Player, 20, 4, None, attackRange: 3));
+        shielded.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        shielded.TryAttack(new Cell(0, 0), new Cell(0, 3));
+        Assert.Equal(0, shielded.UnitAt(new Cell(0, 0))!.RangedHits);
+    }
+
     [Fact]
     public void RecordDamage_CreditsLandedDamageToAttacker()
     {
@@ -621,6 +648,77 @@ public class TraitsTests
         m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));   // pas de trait Formation
         m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, None));   // allié adjacent
         Assert.Equal(0, m.FormationPowerBonus(new Cell(0, 0)));
+    }
+
+    // ── Lien de puissance : +2 puissance par allié dans la portée de déplacement ───
+
+    [Fact]
+    public void LienDePuissance_AddsTwoPowerPerAllyInMoveRange()
+    {
+        var m = Board();
+        // Porteur TOUR (lignes droites) au centre, portée de déplacement 2, portée de tir 3.
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.LienDePuissance }, moveRange: 2));
+        m.Place(new Cell(2, 3), Make(Faction.Player, 20, 5, None));   // allié dans la portée (gauche, 1 case)
+        m.Place(new Cell(3, 2), Make(Faction.Player, 20, 5, None));   // allié dans la portée (bas, 1 case)
+        m.Place(new Cell(6, 3), Make(Faction.Player, 20, 5, None));   // même ligne mais à 3 cases : hors portée
+        m.Place(new Cell(3, 5), Make(Faction.Enemy, 20, 5, None));    // cible (tir vertical libre)
+
+        // 2 alliés dans la portée de déplacement → +4 puissance ; l'UI affiche la même valeur.
+        Assert.Equal(4, m.LienPuissancePowerBonus(new Cell(3, 3)));
+        Assert.Equal(4, m.ContextualPowerBonus(new Cell(3, 3)));
+
+        m.TryAttack(new Cell(3, 3), new Cell(3, 5));
+        Assert.Equal(10, m.UnitAt(new Cell(3, 5))!.Hp);   // 20 - (6 + 2×2)
+    }
+
+    [Fact]
+    public void LienDePuissance_ZeroWithoutTrait()
+    {
+        var m = Board();
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, None, moveRange: 2));   // pas le trait
+        m.Place(new Cell(2, 3), Make(Faction.Player, 20, 5, None));
+        Assert.Equal(0, m.LienPuissancePowerBonus(new Cell(3, 3)));
+        Assert.Equal(0, m.ContextualPowerBonus(new Cell(3, 3)));
+    }
+
+    // ── Repositionnement stratégique : un pas gauche/droite quel que soit le domaine ─
+
+    [Fact]
+    public void RepositionnementStrategique_AddsLeftRightMove_RegardlessOfDomain()
+    {
+        // Un FOU se déplace en diagonale : il ne peut normalement PAS atteindre les cases orthogonales
+        // gauche/droite. Le trait les ajoute (déplacement seulement).
+        var m = Board();
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 6,
+            new[] { Trait.RepositionnementStrategique }, domaine: Domaine.Fou));
+        var moves = m.LegalMoves(new Cell(2, 2));
+
+        Assert.Contains(new Cell(1, 2), moves);          // un pas à gauche
+        Assert.Contains(new Cell(3, 2), moves);          // un pas à droite
+        Assert.DoesNotContain(new Cell(2, 1), moves);    // aucun pas vertical ajouté
+        Assert.DoesNotContain(new Cell(2, 3), moves);
+
+        // Sans le trait : les cases orthogonales restent hors de portée d'un Fou.
+        var normal = Board();
+        normal.Place(new Cell(2, 2), Make(Faction.Player, 20, 6, None, domaine: Domaine.Fou));
+        Assert.DoesNotContain(new Cell(1, 2), normal.LegalMoves(new Cell(2, 2)));
+        Assert.DoesNotContain(new Cell(3, 2), normal.LegalMoves(new Cell(2, 2)));
+    }
+
+    [Fact]
+    public void RepositionnementStrategique_DoesNotStepOntoOccupiedOrObstacle()
+    {
+        // Case de gauche occupée par un allié, case de droite = eau : aucune des deux n'est ajoutée.
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(3, 2)] = new Tile(BuiltInTiles.Water);   // à droite du porteur (2,2)
+        var m = new Match(8, 8, field);
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 6,
+            new[] { Trait.RepositionnementStrategique }, domaine: Domaine.Fou));
+        m.Place(new Cell(1, 2), Make(Faction.Player, 20, 5, None));   // allié à gauche
+
+        var moves = m.LegalMoves(new Cell(2, 2));
+        Assert.DoesNotContain(new Cell(1, 2), moves);   // occupée
+        Assert.DoesNotContain(new Cell(3, 2), moves);   // obstacle
     }
 
     // ── Esquive : 25 % d'annuler l'attaque (RNG injecté) ──────────────────────────

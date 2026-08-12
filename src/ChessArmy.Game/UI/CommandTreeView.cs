@@ -316,6 +316,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.OnHitPoints > 0)
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.OnHitPoints, run.CommanderDef.OnHitCap));
+        else if (run.CommanderDef.RangedHitPoints > 0)
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.RangedHitPoints, run.CommanderDef.RangedHitCap));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>

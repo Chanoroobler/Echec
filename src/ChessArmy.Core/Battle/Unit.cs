@@ -71,6 +71,17 @@ public sealed class Unit
     public void RecordHit() => TimesHit++;
 
     /// <summary>
+    /// Nombre de coups DIRECTS que cette unité a portés à DISTANCE (touche réelle sur un ennemi à portée
+    /// &gt;= <see cref="Match.CommanderRangedHitDistance"/>) durant le combat courant. Amorcé à 0 au spawn et
+    /// NON persisté : chaque combat repart d'une unité neuve. Incrémenté par <see cref="Match"/>. Sert à la
+    /// source de points « sur coup à distance » d'un commandant (cf. <c>CommandeDef.RangedHitPoints</c>).
+    /// </summary>
+    public int RangedHits { get; private set; }
+
+    /// <summary>Comptabilise un coup DIRECT porté à distance (&gt;= 3, touche réelle). Appelé par le moteur de combat.</summary>
+    public void RecordRangedHit() => RangedHits++;
+
+    /// <summary>
     /// Total des dégâts RÉELLEMENT infligés par cette unité durant le combat courant (esquive/bouclier
     /// déduits). Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
     /// <see cref="Match"/>. Sert au récap de fin de run (dégâts par type de pion).

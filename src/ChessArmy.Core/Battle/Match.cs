@@ -202,6 +202,23 @@ public sealed class Match
         var vectors = Movement.Vectors(unit.Domaine);
         var flies = unit.HasTrait(Trait.Vol);   // Vol : les obstacles de terrain (eau/montagne) ne bloquent plus
 
+        // « Repositionnement stratégique » : ajoute un pas d'UNE case à gauche ET à droite (orthogonal), quel
+        // que soit le domaine, EN PLUS du motif natif. Déplacement SEULEMENT (jamais l'attaque) ; mêmes règles
+        // d'arrivée que le reste (case libre, non-obstacle sauf Vol, hors case protégée, sans doublon).
+        void AddRepositionnement()
+        {
+            if (!unit.HasTrait(Trait.RepositionnementStrategique))
+                return;
+            for (var dc = -1; dc <= 1; dc += 2)
+            {
+                var side = new Cell(from.Column + dc, from.Row);
+                if (InBounds(side) && _units[side.Column, side.Row] == null
+                    && (flies || !BlocksMovement(side)) && !BlocksPlayerLanding(side, unit)
+                    && !result.Contains(side))
+                    result.Add(side);
+            }
+        }
+
         if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
@@ -211,6 +228,7 @@ public sealed class Match
                     && !BlocksPlayerLanding(to, unit))   // le joueur ne se pose pas sur un paysan (mission « protéger »)
                     result.Add(to);
             }
+            AddRepositionnement();
             return;
         }
 
@@ -243,6 +261,7 @@ public sealed class Match
                 result.Add(to);
             }
         }
+        AddRepositionnement();
     }
 
     /// <summary>Cases ennemies à portée de TIR (première unité rencontrée dans chaque direction).</summary>
@@ -428,6 +447,13 @@ public sealed class Match
         if (unit.HasTrait(Trait.DrainDeVie))
             unit.Heal((victimHpBefore - victim.Hp) / 2);
 
+        // Source de points « sur coup à distance » (commandant du Fou) : un coup DIRECT qui TOUCHE vraiment
+        // (dégâts réellement encaissés, esquive/0 exclus) une cible à portée >= CommanderRangedHitDistance
+        // rapporte un point au porteur. Compté sur TOUTE unité (comme TimesHit) ; seul un commandant dont
+        // c'est la source en tire des points, crédités à la clôture (cf. Run.GrantCommanderRangedHitPoints).
+        if (victim.Hp < victimHpBefore && ChebyshevDistance(from, target) >= CommanderRangedHitDistance)
+            unit.RecordRangedHit();
+
         // Transpercement : l'unité juste DERRIÈRE la cible (même direction) est aussi touchée.
         if (unit.HasTrait(Trait.Transpercement))
             PierceBehind(from, target, unit);
@@ -509,6 +535,10 @@ public sealed class Match
     private const int TempeteDamage = 6;         // dégât fixe de la tempête (trait « Tempête »)
     private const int ImpactDamage = 5;          // dégât fixe autour du porteur d'« Impact » (déplacement/attaque)
     private const int ReculeSlamDamage = 5;      // dégât bonus quand « Recule » plaque la cible contre un obstacle
+    private const int LienPuissanceBonus = 2;    // +2 puissance par allié dans la PORTÉE DE DÉPLACEMENT (trait « Lien de puissance »)
+    /// <summary>Distance de Chebyshev MINIMALE d'un coup direct pour compter comme « coup à distance » — la
+    /// source de points de commandement du commandant du Fou (cf. <see cref="Unit.RecordRangedHit"/>).</summary>
+    public const int CommanderRangedHitDistance = 3;
 
     /// <summary>Dégât fixe de foudre infligé par <paramref name="unit"/> à l'attaque (Tempête &gt; Orage &gt; 0 si aucun).</summary>
     public static int StormDamageFor(Unit unit) =>
@@ -619,7 +649,7 @@ public sealed class Match
     /// réellement infligés. Le Berserk (kills) et la Rage (alliés morts), eux, dépendent de l'état du pion
     /// (pas du placement) et se calculent à part.
     /// </summary>
-    public int ContextualPowerBonus(Cell cell) => AuraPowerBonus(cell) + FormationPowerBonus(cell);
+    public int ContextualPowerBonus(Cell cell) => AuraPowerBonus(cell) + FormationPowerBonus(cell) + LienPuissancePowerBonus(cell);
 
     /// <summary>Nombre d'unités alliées (même <paramref name="faction"/>) adjacentes à <paramref name="cell"/> (trait « Formation »).</summary>
     private int AdjacentAllyCount(Cell cell, Faction faction)
@@ -632,9 +662,74 @@ public sealed class Match
     }
 
     /// <summary>
+    /// Puissance qu'une unité « Lien de puissance » tient des alliés situés dans sa PORTÉE DE DÉPLACEMENT
+    /// (+<see cref="LienPuissanceBonus"/> par allié), ou 0 si elle n'a pas le trait. « Portée de déplacement »
+    /// = les cases qu'atteint son motif de déplacement jusqu'à sa portée, exactement comme
+    /// <see cref="LegalMoves(Cell, System.Collections.Generic.List{Cell})"/> (obstacles et unités bornent la
+    /// ligne) ; on y compte les ALLIÉS croisés. Effet CONTEXTUEL au placement — comme la Formation et les auras,
+    /// l'UI ne peut pas le déduire de la fiche et doit le demander ici pour afficher la vraie puissance.
+    /// </summary>
+    public int LienPuissancePowerBonus(Cell cell) =>
+        UnitAt(cell) is { } u && u.HasTrait(Trait.LienDePuissance)
+            ? LienPuissanceBonus * AlliesInMoveRange(cell, u)
+            : 0;
+
+    /// <summary>
+    /// Nombre d'alliés (même faction que <paramref name="unit"/>) dans sa PORTÉE DE DÉPLACEMENT depuis
+    /// <paramref name="from"/> : on parcourt ses vecteurs — saut ou glissement — comme
+    /// <see cref="LegalMoves(Cell, System.Collections.Generic.List{Cell})"/>, en comptant les unités alliées
+    /// croisées (trait « Lien de puissance »). Obstacles de terrain et unités bornent la ligne (sauf Vol /
+    /// Franchissement), pour rester fidèle à ce que l'unité peut réellement parcourir.
+    /// </summary>
+    private int AlliesInMoveRange(Cell from, Unit unit)
+    {
+        var vectors = Movement.Vectors(unit.Domaine);
+        var flies = unit.HasTrait(Trait.Vol);
+        var count = 0;
+
+        if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
+        {
+            foreach (var offset in vectors)
+            {
+                var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
+                if (InBounds(to) && _units[to.Column, to.Row] is { } j && j.Faction == unit.Faction)
+                    count++;
+            }
+            return count;
+        }
+
+        var phases = unit.HasTrait(Trait.Franchissement);
+        var range = unit.MoveRange
+                    + (HasAdjacentAlly(from, unit.Faction, Trait.AuraDeCelerite, orthogonalOnly: true) ? AuraCeleriteBonus : 0);
+        foreach (var dir in vectors)
+        {
+            for (var step = 1; step <= range; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to))
+                    break;
+                if (BlocksMovement(to) && !flies)
+                {
+                    if (phases) continue;   // Franchissement : l'obstacle ne borne pas la portée
+                    break;
+                }
+                if (_units[to.Column, to.Row] is { } occ)
+                {
+                    if (occ.Faction == unit.Faction)
+                        count++;            // allié dans la portée de déplacement
+                    if (phases) continue;   // Franchissement : on enjambe l'unité et on poursuit la ligne
+                    break;                  // sinon une unité borne la ligne (comme au déplacement)
+                }
+            }
+        }
+        return count;
+    }
+
+    /// <summary>
     /// PUISSANCE EFFECTIVE de l'unité posée sur <paramref name="cell"/> : sa puissance de base plus TOUS ses
     /// bonus offensifs contextuels — Berserk (+1 par ennemi tué à vie), Rage (+7 à la première mort d'un allié),
-    /// Aura de puissance d'un allié adjacent, Formation (+2 par allié adjacent). C'est la valeur affichée sur
+    /// Aura de puissance d'un allié adjacent, Formation (+2 par allié adjacent), Lien de puissance (+2 par allié
+    /// dans sa portée de déplacement). C'est la valeur affichée sur
     /// sa carte, et la SEULE source de
     /// « puissance » du moteur : tout ce qui se dit « une fraction de la puissance » (<see cref="HealAmount"/>)
     /// en dérive, pour que les bonus profitent partout de la même façon. Les réductions de la CIBLE ne sont
@@ -649,6 +744,7 @@ public sealed class Match
             power += unit.RagePower;  // « Rage » : +7 dès la première mort d'un allié ce combat (non cumulable, cf. Unit.RagePower)
         power += AuraPowerBonus(cell);
         power += FormationPowerBonus(cell);
+        power += LienPuissancePowerBonus(cell);   // « Lien de puissance » : +2 par allié dans la portée de déplacement
         return System.Math.Max(0, power);
     }
 

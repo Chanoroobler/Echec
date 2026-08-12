@@ -48,6 +48,8 @@ public static class UnitKeywords
         ["Recule"] = "kw.recule",
         ["Renaissance"] = "kw.renaissance",
         ["Tueur de géants"] = "kw.tueur_geants",
+        ["Lien de puissance"] = "kw.lien_puissance",
+        ["Repositionnement stratégique"] = "kw.repositionnement",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

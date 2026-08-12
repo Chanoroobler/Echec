@@ -361,6 +361,8 @@ public sealed class GameplayScene : Scene
     // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
     // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
     private int _commanderPtHitsShown;
+    // Idem pour la source « sur coup à distance » (commandant du Fou) : coups à distance DÉJÀ signalés ce combat.
+    private int _commanderPtRangedShown;
     // Tutoriel « combat zéro » : non-null pendant le combat scénarisé de début de campagne.
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
@@ -1159,6 +1161,7 @@ public sealed class GameplayScene : Scene
         _pendingPierce = null;
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
+        _commanderPtRangedShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1301,6 +1304,7 @@ public sealed class GameplayScene : Scene
         _pendingPierce = null;
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
+        _commanderPtRangedShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -3595,7 +3599,7 @@ public sealed class GameplayScene : Scene
         _pierceRecoil.Update(dt);  // le recul du pion transpercé se résorbe (cf. DrawUnit)
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
-        SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point de commandement sur un coup reçu
+        SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point (coup reçu Lancier / coup à distance Fou)
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
         // Paysans (tuiles recrue) :
@@ -4513,31 +4517,54 @@ public sealed class GameplayScene : Scene
     {
         var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential);
         if (commander != null)
-            _run.GrantCommanderHitPoints(commander.TimesHit);
+        {
+            _run.GrantCommanderHitPoints(commander.TimesHit);              // source « sur coup reçu » (Lancier)
+            _run.GrantCommanderRangedHitPoints(commander.RangedHits);     // source « sur coup à distance » (Fou)
+        }
     }
 
     /// <summary>
-    /// Feedback « pendant le combat » de la source de points « sur coup reçu » (commandant Lancier) : à chaque
-    /// coup encaissé par le commandant qui RAPPORTE vraiment un point (sous le plafond <c>OnHitCap</c>), fait
-    /// jaillir un « +N » doré sur sa case + un son. Idempotent (ne resignale jamais un coup déjà montré) : le
-    /// CRÉDIT effectif reste groupé à la clôture (cf. <see cref="GrantCommanderHitPoints"/>) — ce n'est QUE de
-    /// l'affichage. Sans effet pour un commandant dont ce n'est pas la source (<c>OnHitPoints = 0</c>). Appelé
-    /// chaque frame de combat : détecte l'augmentation de <see cref="ChessArmy.Core.Battle.Unit.TimesHit"/>.
+    /// Feedback « pendant le combat » des sources de points PROPRES au commandant : à chaque coup qui RAPPORTE
+    /// vraiment un point (sous le plafond), fait jaillir un « +N » doré sur la case du commandant + un son.
+    /// Couvre les DEUX sources en combat : « sur coup reçu » (Lancier, <see cref="ChessArmy.Core.Battle.Unit.TimesHit"/>)
+    /// et « sur coup à distance » (Fou, <see cref="ChessArmy.Core.Battle.Unit.RangedHits"/>). Idempotent (ne
+    /// resignale jamais un coup déjà montré) : le CRÉDIT effectif reste groupé à la clôture (cf.
+    /// <see cref="GrantCommanderHitPoints"/>) — ce n'est QUE de l'affichage. Sans effet pour un commandant dont
+    /// aucune n'est la source. Appelé chaque frame de combat : détecte l'augmentation des compteurs.
     /// </summary>
     private void SpawnCommanderPointFeedback()
     {
-        if (_run is null || _run.CommanderDef.OnHitPoints <= 0)
+        if (_run is null)
             return;
+        var def = _run.CommanderDef;
+        if (def.OnHitPoints <= 0 && def.RangedHitPoints <= 0)
+            return;   // ce commandant ne gagne pas de points en combat
         var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential && u.IsAlive);
         if (commander is null || _match.CellOf(commander) is not { } cell)
             return;
 
-        var earned = System.Math.Min(commander.TimesHit, _run.CommanderDef.OnHitCap);   // coups qui rapportent (plafonnés)
-        while (_commanderPtHitsShown < earned)
+        // Source « sur coup reçu » (Lancier) : un « +N » par coup ENCAISSÉ qui rapporte (sous le plafond).
+        if (def.OnHitPoints > 0)
         {
-            _commanderPtHitsShown++;
-            _damagePopups.SpawnText(cell, Loc.T("fx.command_point", _run.CommanderDef.OnHitPoints), Palette.Yellow1);
-            Context.Sounds.Play("command_point");
+            var earned = System.Math.Min(commander.TimesHit, def.OnHitCap);
+            while (_commanderPtHitsShown < earned)
+            {
+                _commanderPtHitsShown++;
+                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.OnHitPoints), Palette.Yellow1);
+                Context.Sounds.Play("command_point");
+            }
+        }
+
+        // Source « sur coup à distance » (Fou) : un « +N » par coup PORTÉ à portée >= 3 qui rapporte (sous le plafond).
+        if (def.RangedHitPoints > 0)
+        {
+            var earned = System.Math.Min(commander.RangedHits, def.RangedHitCap);
+            while (_commanderPtRangedShown < earned)
+            {
+                _commanderPtRangedShown++;
+                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.RangedHitPoints), Palette.Yellow1);
+                Context.Sounds.Play("command_point");
+            }
         }
     }
 

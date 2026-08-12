@@ -55,7 +55,8 @@ public static class DomaineCatalog
         return new CommandeDef(CommandeRole.Commander, domaine,
             new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange),
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
-            c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue);
+            c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue,
+            c.RangedHitPoints ?? 0, c.RangedHitCap ?? int.MaxValue);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

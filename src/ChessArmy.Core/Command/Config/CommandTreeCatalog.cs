@@ -50,7 +50,11 @@ public static class CommandTreeCatalog
         if (n.Effects.Count == 0)
             throw new InvalidOperationException($"Nœud '{n.Id}' sans effet.");
 
-        var icon = string.IsNullOrWhiteSpace(n.Icon) ? n.Id : n.Icon!;
+        // Nom du PNG (Assets/CommandTree/<x>.png) : « asset » en priorité (aligné sur units.json), sinon
+        // l'alias hérité « icon », sinon l'id du nœud.
+        var icon = !string.IsNullOrWhiteSpace(n.Asset) ? n.Asset!
+            : !string.IsNullOrWhiteSpace(n.Icon) ? n.Icon!
+            : n.Id;
         return new CommandNode(n.Id, n.Branch, n.Level, icon, n.Effects.Select(e => ToEffect(e, n.Id)).ToList());
     }
 

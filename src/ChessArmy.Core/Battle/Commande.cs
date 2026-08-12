@@ -24,7 +24,8 @@ public sealed class CommandeDef
     public CommandeDef(CommandeRole role, Domaine movement, UnitClass baseClass,
         int deployments = 5, int reserveSize = 8, string treeId = "commandant", int fusionPoints = 0,
         string? id = null, IReadOnlyList<Domaine>? startingUnits = null, bool startsUnlocked = true,
-        int onHitPoints = 0, int onHitCap = int.MaxValue)
+        int onHitPoints = 0, int onHitCap = int.MaxValue,
+        int rangedHitPoints = 0, int rangedHitCap = int.MaxValue)
     {
         StartsUnlocked = startsUnlocked;
         Role = role;
@@ -36,6 +37,8 @@ public sealed class CommandeDef
         FusionPoints = fusionPoints;
         OnHitPoints = onHitPoints;
         OnHitCap = onHitCap;
+        RangedHitPoints = rangedHitPoints;
+        RangedHitCap = rangedHitCap;
         Id = string.IsNullOrWhiteSpace(id) ? baseClass.Asset : id!;
         StartingUnits = startingUnits ?? DefaultStartingUnits;
     }
@@ -102,6 +105,18 @@ public sealed class CommandeDef
 
     /// <summary>COMMANDANT : nombre MAX de coups reçus comptabilisés par combat pour <see cref="OnHitPoints"/>.</summary>
     public int OnHitCap { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à chaque fois que le commandant TOUCHE un ennemi à DISTANCE
+    /// (coup direct porté à portée &gt;= <see cref="Match.CommanderRangedHitDistance"/>), plafonnés à
+    /// <see cref="RangedHitCap"/> par combat. Source de gain alternative à <see cref="FusionPoints"/> /
+    /// <see cref="OnHitPoints"/> (le commandant du Fou). 0 = ce commandant ne gagne pas de points ainsi.
+    /// Cf. <see cref="Campaign.Run.GrantCommanderRangedHitPoints"/>.
+    /// </summary>
+    public int RangedHitPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de coups à distance comptabilisés par combat pour <see cref="RangedHitPoints"/>.</summary>
+    public int RangedHitCap { get; }
 
     public string Name => BaseClass.Name;
 }

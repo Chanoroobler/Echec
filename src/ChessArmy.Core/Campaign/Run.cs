@@ -261,6 +261,19 @@ public sealed class Run
         CommandPoints += Math.Min(commanderHits, CommanderDef.OnHitCap) * CommanderDef.OnHitPoints;
     }
 
+    /// <summary>
+    /// Source de points « sur coup à distance » (commandant du Fou) : crédite <c>CommandeDef.RangedHitPoints</c>
+    /// par coup DIRECT que le COMMANDANT a porté à distance ce combat (<paramref name="commanderRangedHits"/>,
+    /// cf. <see cref="Battle.Unit.RangedHits"/>), plafonné à <c>CommandeDef.RangedHitCap</c>. Sans effet pour un
+    /// commandant dont ce n'est pas la source (RangedHitPoints = 0). À appeler à la clôture d'un combat non perdu.
+    /// </summary>
+    public void GrantCommanderRangedHitPoints(int commanderRangedHits)
+    {
+        if (CommanderDef.RangedHitPoints <= 0 || commanderRangedHits <= 0)
+            return;
+        CommandPoints += Math.Min(commanderRangedHits, CommanderDef.RangedHitCap) * CommanderDef.RangedHitPoints;
+    }
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {

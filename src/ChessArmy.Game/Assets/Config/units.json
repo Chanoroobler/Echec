@@ -145,6 +145,29 @@
       "startingUnits": [ "Tour", "Tour" ],
       "unlocked": false
     },
+    // Commandant du domaine du FOU (mage). Se deplace en diagonale (domaine Fou), thème magie/soutien :
+    // portee, soins, drain, tempete, et les auras/liens de son domaine (arbre "commandantFou"). Fragile mais
+    // a longue portee. Source de points PROPRE : "sur coup a distance" (rangedHitPoints) = +1 point quand le
+    // commandant TOUCHE un ennemi a portee 3 ou plus (max 2 par combat). VERROUILLE : debloque en battant en
+    // derniere phase le boss "Commandant_fou" (unlocksCommander). STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Commander",
+      "id": "Commandant_fou",
+      "domaine": "Fou",
+      "name": "Mage",
+      "asset": "Commandant_fou",
+      "hp": 20,
+      "damage": 15,
+      "moveRange": 2,
+      "attackRange": 3,
+      "deployments": 5,
+      "reserveSize": 8,
+      "tree": "commandantFou",
+      "rangedHitPoints": 1,
+      "rangedHitCap": 2,
+      "startingUnits": [ "Fou", "Fou" ],
+      "unlocked": false
+    },
 
     {
       "role": "Boss",
@@ -234,6 +257,38 @@
           "attackRange": 3,
           "piercesAllies": true,
           "traits": [ "Rempart", "Aura de rempart" ]
+        }
+      }
+    },
+    // Boss FOU : battu en derniere phase il DEBLOQUE le commandant "Commandant_fou" (unlocksCommander).
+    // Boss normal (escortes aleatoires). Domaine Fou (diagonale) + longue portee, thème mage/orage coherent
+    // avec l'arbre du commandant. STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_fou",
+      "asset": "Commandant_fou",
+      "domaine": "Fou",
+      "unlocksCommander": "Commandant_fou",
+      "phases": {
+        "1": {
+          "hp": 30,
+          "damage": 14,
+          "moveRange": 2,
+          "attackRange": 3
+        },
+        "2": {
+          "hp": 44,
+          "damage": 18,
+          "moveRange": 2,
+          "attackRange": 3,
+          "traits": [ "Orage" ]
+        },
+        "3": {
+          "hp": 58,
+          "damage": 22,
+          "moveRange": 2,
+          "attackRange": 3,
+          "traits": [ "Tempête", "Drain de vie" ]
         }
       }
     }

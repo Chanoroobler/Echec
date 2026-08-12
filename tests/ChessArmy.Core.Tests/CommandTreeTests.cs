@@ -434,6 +434,35 @@ public class CommandTreeTests
     }
 
     [Fact]
+    public void NodeAsset_TakesPriorityOverIconAndId()
+    {
+        // « asset » (aligné sur units.json) l'emporte sur « icon » (alias hérité), qui l'emporte sur l'id.
+        const string json = """
+        {
+          "trees": [{
+            "id": "t",
+            "nodes": [
+              { "id": "a", "branch": 0, "level": 1, "asset": "png_a",
+                "effects": [ { "kind": "deploySlots", "amount": 1 } ] },
+              { "id": "b", "branch": 0, "level": 1, "asset": "png_b", "icon": "ignore_moi",
+                "effects": [ { "kind": "deploySlots", "amount": 1 } ] },
+              { "id": "c", "branch": 0, "level": 1, "icon": "png_c",
+                "effects": [ { "kind": "deploySlots", "amount": 1 } ] },
+              { "id": "d", "branch": 0, "level": 1,
+                "effects": [ { "kind": "deploySlots", "amount": 1 } ] }
+            ]
+          }]
+        }
+        """;
+
+        var tree = CommandTreeCatalog.FromJson(json).Single();
+        Assert.Equal("png_a", tree.ById("a")!.Icon);      // asset seul
+        Assert.Equal("png_b", tree.ById("b")!.Icon);      // asset prioritaire sur icon
+        Assert.Equal("png_c", tree.ById("c")!.Icon);      // icon seul (repli hérité)
+        Assert.Equal("d", tree.ById("d")!.Icon);          // rien → l'id du nœud
+    }
+
+    [Fact]
     public void DefaultTree_MatchesTheDocumentedShape()
     {
         Assert.Equal(3, Tree.BranchCount);
@@ -528,6 +557,36 @@ public class CommandTreeTests
             fusionPoints: 2);   // OnHitPoints = 0 (défaut)
         var run = new Run(seed: 1, commander: fusionCmd);
         run.GrantCommanderHitPoints(5);
+        Assert.Equal(0, run.CommandPoints);
+    }
+
+    [Fact]
+    public void GrantCommanderRangedHitPoints_CreditsPerHit_UpToCap()
+    {
+        // Commandant du Fou : +1 point par coup à distance, 2 max par combat.
+        var rangedCmd = new CommandeDef(CommandeRole.Commander, Domaine.Fou,
+            new UnitClass("F", "f", tier: 1, maxHp: 20, damage: 15, moveRange: 2, attackRange: 3),
+            rangedHitPoints: 1, rangedHitCap: 2);
+        var run = new Run(seed: 1, commander: rangedCmd);   // CommandPoints = 0 au départ
+
+        run.GrantCommanderRangedHitPoints(1);
+        Assert.Equal(1, run.CommandPoints);              // 1 coup à distance → 1 point
+
+        run.GrantCommanderRangedHitPoints(5);
+        Assert.Equal(3, run.CommandPoints);              // plafonné à 2 coups → +2 (total 3)
+
+        run.GrantCommanderRangedHitPoints(0);
+        Assert.Equal(3, run.CommandPoints);              // 0 coup → rien
+    }
+
+    [Fact]
+    public void GrantCommanderRangedHitPoints_NoOp_WhenCommanderHasNoRangedSource()
+    {
+        var fusionCmd = new CommandeDef(CommandeRole.Commander, Domaine.Dame,
+            new UnitClass("C", "c", tier: 1, maxHp: 28, damage: 12, moveRange: 1, attackRange: 1),
+            fusionPoints: 2);   // RangedHitPoints = 0 (défaut)
+        var run = new Run(seed: 1, commander: fusionCmd);
+        run.GrantCommanderRangedHitPoints(5);
         Assert.Equal(0, run.CommandPoints);
     }
 
