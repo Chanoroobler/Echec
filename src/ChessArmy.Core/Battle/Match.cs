@@ -547,7 +547,7 @@ public sealed class Match
     private const int LienPuissanceBonus = 2;    // +2 puissance par allié dans la PORTÉE DE DÉPLACEMENT (trait « Lien de puissance »)
     /// <summary>Distance de Chebyshev MINIMALE d'un coup direct pour compter comme « coup à distance » — la
     /// source de points de commandement du commandant du Fou (cf. <see cref="Unit.RecordRangedHit"/>).</summary>
-    public const int CommanderRangedHitDistance = 3;
+    public const int CommanderRangedHitDistance = 2;
 
     /// <summary>Dégât fixe de foudre infligé par <paramref name="unit"/> à l'attaque (Tempête &gt; Orage &gt; 0 si aucun).</summary>
     public static int StormDamageFor(Unit unit) =>

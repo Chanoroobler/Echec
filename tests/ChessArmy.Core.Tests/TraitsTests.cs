@@ -236,27 +236,27 @@ public class TraitsTests
     // ── Coups à distance (Unit.RangedHits) : source de points du commandant du Fou ──
 
     [Fact]
-    public void RecordRangedHit_CountsHitAtDistanceThreeOrMore_NotCloser_NorAbsorbed()
+    public void RecordRangedHit_CountsHitAtDistanceTwoOrMore_NotCloser_NorAbsorbed()
     {
-        // Coup DIRECT qui touche à portée 3 → compté sur l'attaquant.
+        // Coup DIRECT qui touche à portée 2 → compté sur l'attaquant.
         var far = Board();
         far.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, attackRange: 3));
-        far.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, None));
-        far.TryAttack(new Cell(0, 0), new Cell(0, 3));
+        far.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
+        far.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(1, far.UnitAt(new Cell(0, 0))!.RangedHits);
 
-        // Même coup à portée 2 → PAS un coup à distance.
+        // Même coup à portée 1 (au contact) → PAS un coup à distance.
         var near = Board();
         near.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None, attackRange: 3));
-        near.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));
-        near.TryAttack(new Cell(0, 0), new Cell(0, 2));
+        near.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, None));
+        near.TryAttack(new Cell(0, 0), new Cell(0, 1));
         Assert.Equal(0, near.UnitAt(new Cell(0, 0))!.RangedHits);
 
-        // Coup à portée 3 mais ABSORBÉ (dégâts nets 0 par Rempart) → ne compte pas (comme un coup reçu).
+        // Coup à portée 2 mais ABSORBÉ (dégâts nets 0 par Rempart) → ne compte pas (comme un coup reçu).
         var shielded = Board();
         shielded.Place(new Cell(0, 0), Make(Faction.Player, 20, 4, None, attackRange: 3));
-        shielded.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
-        shielded.TryAttack(new Cell(0, 0), new Cell(0, 3));
+        shielded.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
+        shielded.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(0, shielded.UnitAt(new Cell(0, 0))!.RangedHits);
     }
 

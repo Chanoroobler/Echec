@@ -49,7 +49,7 @@ mainmenu.reset_meta_desc3,(TES PARTIES EN COURS NE SONT PAS TOUCHEES),(YOUR ONGO
 commander.commandant,LE FOUDROYEUR,THE THUNDERER,IL FOLGORANTE,DER DONNERER,EL ATRONADOR,GROMOWLADCA,YILDIRIM,雷霆者
 commander.brute,BRUTE,BRUTE,BRUTO,ROHLING,BRUTO,BRUTAL,ZORBA,蛮兵
 commander.Commandant_lancier,LE BASTION,THE BASTION,IL BASTIONE,DIE BASTION,EL BASTION,BASTION,TABYA,壁垒
-commander.Commandant_fou,L'ARCHIMAGE,THE ARCHMAGE,L'ARCIMAGO,DER ERZMAGIER,EL ARCHIMAGO,ARCYMAG,BAS BUYUCU,大法师
+commander.Commandant_fou,LE REDEMPTEUR,THE REDEEMER,IL REDENTORE,DER ERLOSER,EL REDENTOR,ODKUPICIEL,KURTARICI,救赎者
 commander.title,CHOISIR UN COMMANDANT,CHOOSE A COMMANDER,SCEGLI UN COMANDANTE,KOMMANDANT WAHLEN,ELIGE UN COMANDANTE,WYBIERZ DOWODCE,BIR KOMUTAN SEC,选择指挥官
 commander.starting_units,PIONS DE DEPART,STARTING PAWNS,PEDINE INIZIALI,STARTFIGUREN,PEONES INICIALES,POCZATKOWE PIONKI,BASLANGIC PIYONLARI,初始棋子
 # Remplace le titre des pions de depart quand le commandant n'est pas encore debloque
@@ -566,7 +566,7 @@ tree.lan_logi_deploy_3.desc,+2 unités déployables sur le plateau.,+2 units dep
 tree.lan_logi_reserve_2,AMALGAME,AMALGAM,AMALGAMA,AMALGAM,AMALGAMA,AMALGAMAT,BIRLESIM,合并
 tree.lan_logi_reserve_2.desc,fusionner un tier 1 en tier 2 du domaine de la tour ne demande que 2 pions.,fusing a rook-domain tier 1 into a tier 2 needs only 2 pawns.,fondere un livello 1 in livello 2 del dominio della torre richiede solo 2 pedine.,eine Stufe 1 zu Stufe 2 der Turm Domäne zu fusionieren braucht nur 2 Figuren.,fusionar un nivel 1 en nivel 2 del dominio de la torre solo requiere 2 peones.,połączenie poziomu 1 w poziom 2 domeny wieży wymaga tylko 2 pionków.,kale alanının seviye 1 ini seviye 2 ye birleştirmek sadece 2 piyon ister.,将车系1阶融合为2阶只需2个棋子。
 # ── Arbre du commandant FOU (tree "commandantFou") ──
-tree.commandantFou.income,+{0} point quand le commandant touche à portée 3 ou plus ({1} max par combat),+{0} point when the commander hits at range 3 or more ({1} max per combat),+{0} punto quando il comandante colpisce a gittata 3 o più ({1} max per combattimento),+{0} Punkt wenn der Kommandant auf Reichweite 3 oder mehr trifft ({1} max pro Kampf),+{0} punto cuando el comandante golpea a alcance 3 o más ({1} max por combate),+{0} punkt gdy dowódca trafi z zasięgu 3 lub więcej ({1} max na walkę),komutan menzil 3 ve üzeriden vurduğunda +{0} puan (savaş başına {1} max),指挥官在3格及以上射程命中时 +{0} 点 (每场战斗最多 {1})
+tree.commandantFou.income,+{0} point quand le commandant touche à portée 2 ou plus ({1} max par combat),+{0} point when the commander hits at range 2 or more ({1} max per combat),+{0} punto quando il comandante colpisce a gittata 2 o più ({1} max per combattimento),+{0} Punkt wenn der Kommandant auf Reichweite 2 oder mehr trifft ({1} max pro Kampf),+{0} punto cuando el comandante golpea a alcance 2 o más ({1} max por combate),+{0} punkt gdy dowódca trafi z zasięgu 2 lub więcej ({1} max na walkę),komutan menzil 2 ve üzeriden vurduğunda +{0} puan (savaş başına {1} max),指挥官在2格及以上射程命中时 +{0} 点 (每场战斗最多 {1})
 tree.commandantFou.branch0,COMMANDANT,COMMANDER,COMANDANTE,KOMMANDANT,COMANDANTE,DOWODCA,KOMUTAN,指挥官
 tree.commandantFou.branch1,MAGES,MAGES,MAGHI,MAGIER,MAGOS,MAGOWIE,BUYUCULER,法师
 tree.commandantFou.branch2,LOGISTIQUE,LOGISTICS,LOGISTICA,LOGISTIK,LOGISTICA,LOGISTYKA,LOJISTIK,后勤

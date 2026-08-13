@@ -4656,7 +4656,7 @@ public sealed class GameplayScene : Scene
             }
         }
 
-        // Source « sur coup à distance » (Fou) : un « +N » par coup PORTÉ à portée >= 3 qui rapporte (sous le plafond).
+        // Source « sur coup à distance » (Fou) : un « +N » par coup PORTÉ à portée >= 2 qui rapporte (sous le plafond).
         if (def.RangedHitPoints > 0)
         {
             var earned = System.Math.Min(commander.RangedHits, def.RangedHitCap);
