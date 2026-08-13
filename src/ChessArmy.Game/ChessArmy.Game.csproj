@@ -12,6 +12,19 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
   </PropertyGroup>
+  <!-- Build DÉMO : -p:DemoBuild=true (ligne de commande OU profil FolderProfileDemo) grave le symbole DEMO,
+       qui FORCE le mode démo dans le code (cf. ChessArmyGame.ApplyDemoMode). Le joueur ne peut PAS le
+       désactiver, contrairement aux chemins runtime (options.json / -demo / demo.flag) réservés au test
+       dans la build complète. Défini dans une CIBLE (avant CoreCompile) plutôt que dans un PropertyGroup
+       conditionnel : un profil .pubxml est importé APRÈS le corps du csproj, donc sa propriété DemoBuild
+       n'est visible qu'à l'exécution des cibles. Depot complet : dotnet build -c Release. Depot démo :
+       dotnet publish -p:PublishProfile=FolderProfileDemo (ou -p:DemoBuild=true). -->
+  <Target Name="ApplyDemoDefine" BeforeTargets="CoreCompile" Condition="'$(DemoBuild)'=='true'">
+    <PropertyGroup>
+      <DefineConstants>$(DefineConstants);DEMO</DefineConstants>
+    </PropertyGroup>
+    <Message Importance="high" Text="Build DEMO : symbole DEMO grave (IsDemo force au compile, non desactivable par le joueur)." />
+  </Target>
   <ItemGroup>
     <None Remove="Icon.ico" />
     <None Remove="Icon.bmp" />

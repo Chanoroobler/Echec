@@ -99,7 +99,16 @@ public sealed class CommanderSelectScene : Scene
     private CommandeDef Selected => _commanders[Math.Clamp(_index, 0, _commanders.Count - 1)];
 
     private Difficulty SelectedDifficulty =>
-        DifficultySettings.AllLevels[Math.Clamp(_difficultyIndex, 0, DifficultySettings.AllLevels.Count - 1)];
+        AvailableLevels[Math.Clamp(_difficultyIndex, 0, AvailableLevels.Count - 1)];
+
+    /// <summary>
+    /// Niveaux de difficulté SÉLECTIONNABLES : tous, sauf en mode démo où « Difficile » est retiré (réservé au
+    /// jeu complet). C'est un préfixe de <see cref="DifficultySettings.AllLevels"/>, donc l'index reste valide.
+    /// </summary>
+    private System.Collections.Generic.IReadOnlyList<Difficulty> AvailableLevels =>
+        Context.Settings.IsDemo
+            ? DifficultySettings.AllLevels.Where(d => d != Difficulty.Difficile).ToList()
+            : DifficultySettings.AllLevels;
 
     /// <summary>Vrai s'il y a de quoi faire défiler : sinon les flèches sont inertes et grisées.</summary>
     private bool HasChoice => _commanders.Count > 1;
@@ -114,7 +123,11 @@ public sealed class CommanderSelectScene : Scene
     /// profil (méta-progression, en battant son boss lié en dernière phase — cf. <c>SaveService.IsCommanderUnlocked</c>).
     /// </summary>
     private bool IsUnlocked(CommandeDef def) =>
-        UnlockAllForPlaytest || def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id);
+        // Mode démo : SEULS les commandants ouverts d'office sont jouables ; les autres restent en vitrine
+        // (silhouette verrouillée) et le hack playtest comme la méta-progression sont ignorés.
+        Context.Settings.IsDemo
+            ? def.StartsUnlocked
+            : (UnlockAllForPlaytest || def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id));
 
     public override void Load()
     {
@@ -123,7 +136,7 @@ public sealed class CommanderSelectScene : Scene
         _treeIcon = Textures.LoadPngOrNull(Context.GraphicsDevice,
             System.IO.Path.Combine(AppContext.BaseDirectory, "Assets/UI/arbre.png"));
         _commanders = Commandes.Playable;
-        _difficultyIndex = DifficultySettings.AllLevels.ToList().IndexOf(Difficulty.Normal);
+        _difficultyIndex = AvailableLevels.ToList().IndexOf(Difficulty.Normal);
         RebuildPreview();
         // Pas de changement de musique : la piste du menu principal continue jusqu'au lancement de la partie.
     }
@@ -222,7 +235,7 @@ public sealed class CommanderSelectScene : Scene
 
         // Difficulté : un bouton NUMÉROTÉ par niveau ; ce que chacun change sort au survol. Le groupe entier
         // (libellé + boutons) est CENTRÉ, largeur du libellé mesurée pour qu'il colle aux boutons.
-        var levels = DifficultySettings.AllLevels.Count;
+        var levels = AvailableLevels.Count;
         var labelW = Context.Font.Measure(Loc.T("difficulty.label"), 1);
         var groupW = labelW + 12 + levels * DiffBtn + (levels - 1) * DiffGap;
 
@@ -353,7 +366,7 @@ public sealed class CommanderSelectScene : Scene
     /// <summary>Choix direct d'un niveau par son bouton numéroté.</summary>
     private void PickDifficulty(int level)
     {
-        var next = Math.Clamp(level, 0, DifficultySettings.AllLevels.Count - 1);
+        var next = Math.Clamp(level, 0, AvailableLevels.Count - 1);
         if (next == _difficultyIndex)
             return;
         _difficultyIndex = next;
@@ -491,7 +504,8 @@ public sealed class CommanderSelectScene : Scene
 
         // Pions de départ, en bande centrée — en silhouette si le commandant est verrouillé, et le titre
         // de la section cède la place à l'annonce du verrou.
-        Context.Font.DrawCentered(sb, Loc.T(unlocked ? "commander.starting_units" : "commander.locked"),
+        Context.Font.DrawCentered(sb, Loc.T(unlocked ? "commander.starting_units"
+                : Context.Settings.IsDemo ? "commander.locked_demo" : "commander.locked"),
             lay.StartLabel, 1, unlocked ? Palette.Yellow1 : Palette.Grey);
         if (unlocked && lay.StartTiles.Count == 0)
             Context.Font.DrawCentered(sb, Loc.T("commander.alone"),
@@ -576,6 +590,10 @@ public sealed class CommanderSelectScene : Scene
         var sprite = new Rectangle(x - SpriteBox / 2, lay.Sprite.Center.Y - SpriteBox / 2, SpriteBox, SpriteBox);
         _card.DrawScaled(sb, def.BaseClass, sprite.Center, SpriteScale,
             (unlocked ? Color.White : Color.Black) * alpha);
+
+        // En démo, tampon DEMO sur les commandants verrouillés (réservés au jeu complet).
+        if (Context.Settings.IsDemo && !unlocked)
+            Context.Font.DrawCentered(sb, Loc.T("menu.demo"), sprite, 2, Palette.Yellow2 * alpha);
 
         // Le badge de domaine RÉVÈLE une information : on le tait sur un commandant verrouillé. Et il
         // n'accompagne que le pion (quasi) centré, sinon il brouillerait la lecture.

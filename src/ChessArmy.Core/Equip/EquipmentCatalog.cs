@@ -37,7 +37,7 @@ public static class EquipmentCatalog
             ? e.Effects.Select(ef => ToEffect(ef.Stat, ef.Amount, ef.Trait, e.Id)).ToList()
             : new List<EquipEffect> { ToEffect(e.Stat, e.Amount, e.Trait, e.Id) };
 
-        return Equipment.Of(e.Id, e.Name, rarity, effects, e.Icon, e.EnemyAllowed);
+        return Equipment.Of(e.Id, e.Name, rarity, effects, e.Icon, e.EnemyAllowed, e.Demo);
     }
 
     /// <summary>Un effet : TRAIT si <paramref name="trait"/> est renseigné, sinon bonus de la <paramref name="stat"/>.</summary>

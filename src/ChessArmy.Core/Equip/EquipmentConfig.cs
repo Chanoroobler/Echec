@@ -27,6 +27,10 @@ public sealed class EquipmentEntry
     /// <c>false</c> = réservé au joueur, jamais donné à l'IA (sans effet sur les coffres). Cf. Equipment.EnemyAllowed.</summary>
     public bool EnemyAllowed { get; set; } = true;
 
+    /// <summary>Disponible dans la version DÉMO (tirages coffre + ennemi). Défaut <c>true</c> ; <c>false</c> =
+    /// réservé au jeu complet, filtré du pool en mode démo. Cf. Equipment.Demo / Equipments.DemoOnly.</summary>
+    public bool Demo { get; set; } = true;
+
     /// <summary>Effets multiples (prioritaire s'il est présent). Chaque effet = stat+amount OU trait.</summary>
     public List<EquipEffectEntry>? Effects { get; set; }
 

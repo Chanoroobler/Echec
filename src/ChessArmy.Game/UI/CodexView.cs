@@ -580,6 +580,10 @@ public sealed class CodexView
         else if (!revealed)
             Fill(sb, sprite, Palette.Black1);
 
+        // En démo, les pions au-dessus du plafond de tier sont hors démo : tampon DEMO sur la silhouette.
+        if (_ctx.Settings.IsDemo && cls.Tier > ChessArmy.Core.Campaign.Run.MaxUnitTier)
+            _ctx.Font.DrawCentered(sb, Loc.T("menu.demo"), sprite, 2, Palette.Yellow2);
+
         if (highlighted)
             Border(sb, Inflate(frame, 3), Palette.Yellow2, 2);
 
@@ -605,6 +609,10 @@ public sealed class CodexView
             Fill(sb, iconBox, item.GrantsAnyTrait ? Palette.Yellow1 : Palette.Cyan1);
             _ctx.Font.DrawCentered(sb, item.Name.Length > 0 ? item.Name[..1].ToUpperInvariant() : "?", iconBox, 2, Palette.Black1);
         }
+
+        // En démo, tampon DEMO sur les équipements réservés au jeu complet (jamais découvrables en démo).
+        if (_ctx.Settings.IsDemo && !item.Demo)
+            _ctx.Font.DrawCentered(sb, Loc.T("menu.demo"), iconBox, 2, Palette.Yellow2);
 
         Border(sb, rect, revealed ? RarityColor(item.Rarity) : Palette.Black5, revealed ? 2 : 1);
         if (highlighted)

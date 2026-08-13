@@ -28,6 +28,9 @@ public sealed class SettingsDto
     public int Sfx { get; set; } = 80;
     public Language Language { get; set; } = Language.Francais;
 
+    /// <summary>Mode démo persisté (toggle pratique en test ; l'argument -demo et demo.flag l'activent aussi).</summary>
+    public bool IsDemo { get; set; }
+
     public static SettingsDto From(GameSettings s) => new()
     {
         Width = s.Display.Width,
@@ -37,6 +40,7 @@ public sealed class SettingsDto
         Music = s.Audio.Music,
         Sfx = s.Audio.Sfx,
         Language = s.Language,
+        IsDemo = s.IsDemo,
     };
 
     public void ApplyTo(GameSettings s)
@@ -54,5 +58,6 @@ public sealed class SettingsDto
         s.Audio.Music = Music;
         s.Audio.Sfx = Sfx;
         s.Language = Language;
+        s.IsDemo = IsDemo;
     }
 }

@@ -33,12 +33,21 @@ public static class Equipments
 
     public static IReadOnlyList<Equipment> All => _all;
 
+    /// <summary>
+    /// Mode DÉMO : quand vrai, les tirages (coffres + ennemis, via <see cref="OfRarity"/>/<see cref="Roll"/>) ne
+    /// proposent QUE les équipements marqués <see cref="Equipment.Demo"/>. Poussé au boot par la couche Game
+    /// (le Core ne voit pas les réglages). N'affecte ni <see cref="All"/> ni <see cref="ById"/> : le codex et la
+    /// résolution d'une sauvegarde restent complets.
+    /// </summary>
+    public static bool DemoOnly;
+
     /// <summary>Équipement par id, ou null s'il est inconnu (sauvegarde plus à jour que le catalogue).</summary>
     public static Equipment? ById(string id) => _byId.TryGetValue(id, out var e) ? e : null;
 
-    /// <summary>Équipements d'une rareté donnée : pool de tirage d'un coffre.</summary>
+    /// <summary>Équipements d'une rareté donnée : pool de tirage d'un coffre (ou d'une vague ennemie). En mode
+    /// démo (<see cref="DemoOnly"/>), les équipements réservés au jeu complet en sont exclus.</summary>
     public static IReadOnlyList<Equipment> OfRarity(EquipmentRarity rarity) =>
-        _all.Where(e => e.Rarity == rarity).ToList();
+        _all.Where(e => e.Rarity == rarity && (!DemoOnly || e.Demo)).ToList();
 
     /// <summary>
     /// Tire un équipement dans le pool d'une rareté (null si le pool est vide). <paramref name="filter"/>

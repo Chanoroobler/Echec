@@ -44,7 +44,14 @@ public sealed class Run
     /// (vagues, boss, coffres) reste EN PLACE : seule la fin de run est avancée. Réglé sur <see cref="PhaseCount"/>
     /// pour que le boss de phase 3 — et le déblocage de commandant qui en dépend — soit atteignable.
     /// </summary>
-    public const int EndAtPhase = PhaseCount;
+    public static int EndAtPhase = PhaseCount;
+
+    /// <summary>
+    /// Plafond de TIER des unités (IA et fusion). <see cref="MaxTier"/> (3) = aucun plafond. Abaissé à 2
+    /// par le mode DÉMO (cf. GameSettings.IsDemo, poussé au boot par la couche Game) : l'IA ne fielde jamais
+    /// de tier 3 et la fusion T2→T3 est coupée. Réglé côté Game car le Core ne voit pas les réglages.
+    /// </summary>
+    public static int MaxUnitTier = MaxTier;
 
     /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
     public const int MissionsPerPhase = 6;
@@ -1072,6 +1079,7 @@ public sealed class Run
     private UnitSpec PickEnemy(Random rng, IReadOnlyList<Domaine> pool, int tier,
         Func<string, bool>? isSeen, Dictionary<UnitClass, int> counts)
     {
+        tier = Math.Min(tier, MaxUnitTier);   // mode démo : plafonne le tier des ennemis (jamais de T3)
         var metaTier = tier >= 2 && isSeen != null;
         var fresh = metaTier ? AiFreshFor(tier, isSeen!) : Array.Empty<string>();
 
@@ -1291,6 +1299,7 @@ public sealed class Run
         Phase == RunPhase.Placement
         && !spec.Essential
         && !spec.UnitClass.IsLeaf
+        && spec.UnitClass.Tier < MaxUnitTier   // mode démo : coupe la fusion qui dépasserait le plafond (T2→T3)
         && CountFusable(spec) >= FusionSizeFor(spec);
 
     /// <summary>Les évolutions proposées au choix pour fusionner <paramref name="spec"/> (vide si impossible).</summary>
@@ -1331,6 +1340,8 @@ public sealed class Run
 
         var first = group[0];
         if (first.Essential || first.UnitClass.IsLeaf || !first.UnitClass.Evolutions.Contains(evolution))
+            return null;
+        if (evolution.Tier > MaxUnitTier)   // mode démo : jamais d'unité au-dessus du plafond de tier
             return null;
         if (group.Distinct().Count() != size)                             // instances DISTINCTES
             return null;

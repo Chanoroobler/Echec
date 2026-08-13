@@ -42,6 +42,7 @@ public sealed class MainMenuScene : Scene
 
     // Titre : plus imposant qu'avant, en dégradé jaune TRAMÉ (crème clair en haut → or ambré en bas).
     private const int TitleScale = 6;
+    private const int DemoScale = 2;   // mention DÉMO sous le titre (même dégradé, plus petite)
     private static readonly Color[] TitleRamp = { Palette.Yellow2, Palette.Yellow1, Palette.Brown2 };
 
     private PauseMenu _menu = null!;
@@ -197,7 +198,7 @@ public sealed class MainMenuScene : Scene
         var w = Context.VirtualResolution.X;
         var h = Context.VirtualResolution.Y;
         var lay = BuildLayout(w, h);
-        var count = _slots.Length + 3;   // slots… + Codex + Options + Quitter
+        var count = _slots.Length + (Context.Settings.IsDemo ? 4 : 3);   // slots… + Codex + Options + Quitter (+ Wishlist en démo)
         _focus = System.Math.Clamp(_focus, 0, count - 1);
 
         // Manette : navigation haut/bas, A valide, X efface un slot occupé.
@@ -233,6 +234,7 @@ public sealed class MainMenuScene : Scene
         if (lay.Codex.Contains(p)) { _codex.Open(); }
         else if (lay.Options.Contains(p)) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
         else if (lay.Quit.Contains(p)) { Context.Sounds.Play("menu_click"); Context.Quit(); }
+        else if (Context.Settings.IsDemo && lay.Wishlist.Contains(p)) { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }
     }
 
     /// <summary>Active l'élément racine sous le focus (slot → démarrer, Options, Quitter).</summary>
@@ -241,7 +243,8 @@ public sealed class MainMenuScene : Scene
         if (_focus < _slots.Length) { Context.Sounds.Play("menu_click"); StartSlot(_focus); }
         else if (_focus == _slots.Length) { _codex.Open(); }
         else if (_focus == _slots.Length + 1) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
-        else { Context.Sounds.Play("menu_click"); Context.Quit(); }
+        else if (_focus == _slots.Length + 2) { Context.Sounds.Play("menu_click"); Context.Quit(); }
+        else { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }   // wishlist (démo seulement)
     }
 
     /// <summary>Rectangle de l'élément racine focus (surbrillance / pointeur synthétique manette).</summary>
@@ -249,7 +252,8 @@ public sealed class MainMenuScene : Scene
     {
         if (_focus < _slots.Length) return lay.Slots[_focus];
         if (_focus == _slots.Length) return lay.Codex;
-        return _focus == _slots.Length + 1 ? lay.Options : lay.Quit;
+        if (_focus == _slots.Length + 1) return lay.Options;
+        return _focus == _slots.Length + 2 ? lay.Quit : lay.Wishlist;
     }
 
     /// <summary>
@@ -414,6 +418,15 @@ public sealed class MainMenuScene : Scene
         var titleArea = new Rectangle(0, 20, w, Fonts.Pixel.GlyphHeight * TitleScale + 12);
         Fonts.Pixel.DrawCenteredGradient(sb, Loc.T("game.title"), titleArea, TitleScale, TitleRamp);
 
+        // Version DÉMO : même style doré tramé que le logo, aligné à DROITE sous le titre (bord droit du « ARMY »).
+        if (Context.Settings.IsDemo)
+        {
+            var demo = Loc.T("menu.demo");
+            var titleRight = (w + Fonts.Pixel.Measure(Loc.T("game.title"), TitleScale)) / 2;
+            var demoPos = new Vector2(titleRight - Context.Font.Measure(demo, DemoScale), titleArea.Bottom - 4);
+            Context.Font.DrawGradient(sb, demo, demoPos, DemoScale, TitleRamp);
+        }
+
         Context.Style.DrawPanel(sb, lay.Panel);
         for (var i = 0; i < _slots.Length; i++)
             DrawSlot(sb, lay.Slots[i], lay.Dels[i], i, bgPointer, bgDown);
@@ -421,6 +434,8 @@ public sealed class MainMenuScene : Scene
         Button(sb, lay.Codex, Loc.T("menu.codex"), bgPointer, bgDown);
         Button(sb, lay.Options, Loc.T("menu.options"), bgPointer, bgDown);
         Button(sb, lay.Quit, Loc.T("menu.quit"), bgPointer, bgDown);
+        if (Context.Settings.IsDemo)
+            Button(sb, lay.Wishlist, Loc.T("menu.wishlist_add"), bgPointer, bgDown);
         sb.End();
 
         if (_confirmDelete >= 0)
@@ -574,7 +589,8 @@ public sealed class MainMenuScene : Scene
         var panelW = ColW + 2 * Pad;
         // Les trois actions tiennent désormais sur UNE rangée (Codex | Options | Quitter) sous les slots : le
         // panneau y gagne en hauteur, dégageant le haut de l'écran pour la lignée de pions du décor.
-        var panelH = Pad + _slots.Length * (RowH + Gap) + BtnH + Pad;
+        var panelH = Pad + _slots.Length * (RowH + Gap) + BtnH + Pad
+                   + (Context.Settings.IsDemo ? BtnH + Gap : 0);   // rangée wishlist en plus (démo)
         var panelX = (w - panelW) / 2;
         // Panneau dans la moitié basse : le titre et la lignée de pions occupent le haut (façon capture).
         var panelY = (h - panelH) / 2 + 56;
@@ -602,6 +618,8 @@ public sealed class MainMenuScene : Scene
         lay.Codex = new Rectangle(x, y, btnW, BtnH);
         lay.Options = new Rectangle(x + btnW + Gap, y, btnW, BtnH);
         lay.Quit = new Rectangle(x + 2 * (btnW + Gap), y, ColW - 2 * (btnW + Gap), BtnH);
+        if (Context.Settings.IsDemo)   // CTA pleine largeur sous la rangée d'actions
+            lay.Wishlist = new Rectangle(x, y + BtnH + Gap, ColW, BtnH);
         return lay;
     }
 
@@ -666,5 +684,6 @@ public sealed class MainMenuScene : Scene
         public Rectangle Codex;
         public Rectangle Options;
         public Rectangle Quit;
+        public Rectangle Wishlist;   // démo seulement : bouton pleine largeur vers la page Steam
     }
 }

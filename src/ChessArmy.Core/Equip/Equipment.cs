@@ -57,7 +57,7 @@ public sealed class EquipEffect
 public sealed class Equipment
 {
     private Equipment(string id, string name, EquipmentRarity rarity, IReadOnlyList<EquipEffect> effects,
-        string? icon, bool enemyAllowed)
+        string? icon, bool enemyAllowed, bool demo)
     {
         Id = id;
         Name = name;
@@ -65,6 +65,7 @@ public sealed class Equipment
         Effects = effects;
         Icon = string.IsNullOrWhiteSpace(icon) ? id : icon!;
         EnemyAllowed = enemyAllowed;
+        Demo = demo;
     }
 
     /// <summary>Identifiant stable : clé de sauvegarde et de tirage.</summary>
@@ -85,6 +86,13 @@ public sealed class Equipment
     /// </summary>
     public bool EnemyAllowed { get; }
 
+    /// <summary>
+    /// Vrai si cet équipement est disponible dans la version DÉMO (tirages coffre + ennemi). Défaut <c>true</c> ;
+    /// <c>false</c> = réservé au jeu complet, filtré du pool quand <see cref="Equipments.DemoOnly"/> est actif.
+    /// N'affecte ni le jeu complet ni la résolution par Id (chargement de sauvegarde).
+    /// </summary>
+    public bool Demo { get; }
+
     /// <summary>Bonus TOTAL apporté à <paramref name="stat"/> (somme des effets de stat qui la visent ; 0 sinon).</summary>
     public int BonusFor(EquipStat stat) =>
         Effects.Where(e => !e.IsTrait && e.Stat == stat).Sum(e => e.Amount);
@@ -103,16 +111,16 @@ public sealed class Equipment
 
     /// <summary>Crée un équipement à UN effet de STAT (bonus plat sur une stat).</summary>
     public static Equipment OfStat(string id, string name, EquipStat stat, int amount,
-        EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null, bool enemyAllowed = true) =>
-        new(id, name, rarity, new[] { EquipEffect.OfStat(stat, amount) }, icon, enemyAllowed);
+        EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null, bool enemyAllowed = true, bool demo = true) =>
+        new(id, name, rarity, new[] { EquipEffect.OfStat(stat, amount) }, icon, enemyAllowed, demo);
 
     /// <summary>Crée un équipement à UN effet de TRAIT (octroie un trait de combat, cf. <c>Battle.Trait</c>).</summary>
     public static Equipment OfTrait(string id, string name, string trait,
-        EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null, bool enemyAllowed = true) =>
-        new(id, name, rarity, new[] { EquipEffect.OfTrait(trait) }, icon, enemyAllowed);
+        EquipmentRarity rarity = EquipmentRarity.Common, string? icon = null, bool enemyAllowed = true, bool demo = true) =>
+        new(id, name, rarity, new[] { EquipEffect.OfTrait(trait) }, icon, enemyAllowed, demo);
 
     /// <summary>Crée un équipement à PLUSIEURS effets (mélange libre de stats et de traits).</summary>
     public static Equipment Of(string id, string name, EquipmentRarity rarity,
-        IReadOnlyList<EquipEffect> effects, string? icon = null, bool enemyAllowed = true) =>
-        new(id, name, rarity, effects, icon, enemyAllowed);
+        IReadOnlyList<EquipEffect> effects, string? icon = null, bool enemyAllowed = true, bool demo = true) =>
+        new(id, name, rarity, effects, icon, enemyAllowed, demo);
 }

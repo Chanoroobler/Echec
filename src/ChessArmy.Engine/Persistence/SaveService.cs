@@ -38,10 +38,15 @@ public sealed class SaveService
     // Sérialise les écritures de slot en arrière-plan (SaveSlotAsync) pour qu'elles ne se chevauchent pas.
     private readonly object _ioLock = new();
 
-    public SaveService()
+    /// <summary>
+    /// <paramref name="demo"/> : la version DÉMO écrit dans un dossier SÉPARÉ (<c>Echec Demo</c>) pour que sa
+    /// progression (slots, profil, réglages) n'interfère jamais avec celle du jeu complet, et qu'un save du
+    /// jeu complet ne puisse pas être injecté dans la démo.
+    /// </summary>
+    public SaveService(bool demo = false)
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        _dir = Path.Combine(appData, "Echec");
+        _dir = Path.Combine(appData, demo ? "Echec Demo" : "Echec");
         _saveDir = Path.Combine(_dir, "save");
         TryEnsureDir(_dir);
         TryEnsureDir(_saveDir);

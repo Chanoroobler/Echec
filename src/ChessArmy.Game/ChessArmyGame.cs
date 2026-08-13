@@ -33,7 +33,13 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
     private readonly SceneManager _scenes = new();
     private readonly InputManager _input = new();
     private readonly GameSettings _settings = new();
-    private readonly SaveService _saves = new();
+#if DEMO
+    private const bool IsDemoBuild = true;    // version DÉMO (compilée avec -p:DemoBuild=true) : gravé au compile
+#else
+    private const bool IsDemoBuild = false;
+#endif
+    // La démo écrit sa progression dans un dossier SÉPARÉ (cf. SaveService) : isolée du jeu complet.
+    private readonly SaveService _saves = new(demo: IsDemoBuild);
 
     private SpriteBatch _spriteBatch = null!;
     private AudioManager _audio = null!;
@@ -90,9 +96,48 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
         _saves.LoadInto(_settings);
+        ApplyDemoMode();   // mode démo (options.json / -demo / demo.flag) poussé dans le Core AVANT toute run
         Loc.Current = _settings.Language;
         Apply(_settings.Display);
         base.Initialize();
+    }
+
+    // Bornes de la version DÉMO (une seule build : le contenu complet reste présent, seul l'accès est bridé).
+    private const int DemoEndAtPhase = 2;    // la run s'arrête (victoire) au boss de la phase 2
+    private const int DemoMaxUnitTier = 2;   // unités plafonnées au tier 2 (IA + fusion), pas de T3
+
+    /// <summary>
+    /// Active le mode démo et pousse ses bornes dans le Core (qui ne voit pas <see cref="GameSettings"/>).
+    /// Trois sources d'activation, n'importe laquelle suffit : le champ persisté d'options.json (toggle de
+    /// test), l'argument de lancement <c>-demo</c> (option Steam du depot démo), ou un fichier marqueur
+    /// <c>demo.flag</c> posé à côté de l'exécutable (livré dans le depot démo). Les deux dernières ne peuvent
+    /// pas être désactivées par le joueur : ce sont elles qui sécurisent la vraie build démo.
+    /// </summary>
+    private void ApplyDemoMode()
+    {
+#if DEMO
+        // Build DÉMO (compilée avec -p:DemoBuild=true) : le mode est GRAVÉ à la compilation. Aucune source
+        // runtime n'est lue ici, donc le joueur ne peut ni le désactiver ni le contourner (supprimer un
+        // fichier, éditer options.json ou lancer sans argument ne change rien).
+        _settings.IsDemo = true;
+#else
+        // Build COMPLÈTE : le mode démo n'existe que pour le TEST (l'activer ne fait que se restreindre soi
+        // même). Trois sources, n'importe laquelle suffit : options.json, argument -demo, marqueur demo.flag.
+        var args = System.Environment.GetCommandLineArgs();
+        var byArg = System.Array.Exists(args, a =>
+            string.Equals(a, "-demo", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(a, "--demo", System.StringComparison.OrdinalIgnoreCase));
+        var byMarker = System.IO.File.Exists(
+            System.IO.Path.Combine(System.AppContext.BaseDirectory, "demo.flag"));
+        _settings.IsDemo = _settings.IsDemo || byArg || byMarker;
+#endif
+
+        if (!_settings.IsDemo)
+            return;
+
+        ChessArmy.Core.Campaign.Run.EndAtPhase = DemoEndAtPhase;
+        ChessArmy.Core.Campaign.Run.MaxUnitTier = DemoMaxUnitTier;
+        ChessArmy.Core.Equip.Equipments.DemoOnly = true;   // coffres + ennemis : équipements hors démo exclus
     }
 
     /// <summary>Charge les classes depuis Assets/Config/units.json (repli sur les défauts si absent/invalide).</summary>

@@ -2062,10 +2062,30 @@ public sealed class GameplayScene : Scene
             case RunPhase.Recruitment: UpdateRecruitment(gameTime); break;
             case RunPhase.Victory:
             case RunPhase.Defeat:
-                // Run terminée (slot déjà effacé) : le récap est affiché ; clic / A / Entrée ramène au menu.
+            {
+                var demoWin = _run.Phase == RunPhase.Victory && Context.Settings.IsDemo;
+                // Popup de fin de DÉMO (après le recap) : le bouton (souris) ou Y (manette) ouvre Steam sans quitter ;
+                // sinon clic / A / Entrée ramène au menu.
+                if (demoWin && _demoEndShown)
+                {
+                    if (Context.Input.WasQuaternaryPressed
+                        || (Context.Input.WasLeftClicked && _demoEndWishlistRect.Contains(Context.Input.MousePosition)))
+                    {
+                        Store.OpenWishlist();
+                        break;
+                    }
+                    if (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
+                        Context.Scenes.Change(new MainMenuScene(Context));
+                    break;
+                }
+                // Recap (slot déjà effacé) : clic / A / Entrée → popup de fin de démo (démo) ou retour menu.
                 if (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
-                    Context.Scenes.Change(new MainMenuScene(Context));
+                {
+                    if (demoWin) { _demoEndShown = true; Context.Sounds.Play("menu_open"); }
+                    else Context.Scenes.Change(new MainMenuScene(Context));
+                }
                 break;
+            }
         }
     }
 
@@ -3172,8 +3192,16 @@ public sealed class GameplayScene : Scene
         _pending.Count(u => Run.SameClass(u, spec));
 
     /// <summary>Vrai si ce portrait de réserve peut amorcer une fusion (classe non-feuille + 3 en réserve).</summary>
+    /// <summary>
+    /// Une classe est fusionnable si elle a une évolution ET que celle-ci ne dépasse pas le plafond de tier
+    /// (mode démo : coupe le T2 vers T3). Miroir de <see cref="Run.CanFuse"/> pour les portes d'empilement de
+    /// la scène : sans ce test, la popup s'ouvrirait pour la voir échouer au commit et révélerait les T3.
+    /// </summary>
+    private static bool ClassCanFuse(UnitSpec spec) =>
+        !spec.UnitClass.IsLeaf && spec.UnitClass.Tier < Run.MaxUnitTier;
+
     private bool CanFuseFromReserve(UnitSpec spec) =>
-        !spec.Essential && !spec.UnitClass.IsLeaf && PendingSameClassCount(spec) >= FusionSizeOf(spec);
+        !spec.Essential && ClassCanFuse(spec) && PendingSameClassCount(spec) >= FusionSizeOf(spec);
 
     /// <summary>Une pile de fusion est en cours d'assemblage (entre 1 et FusionSize-1 pièces).</summary>
     private bool FusionStacking => _fusionGroup.Count > 0 && _fusionGroup.Count < FusionGroupTarget;
@@ -3281,7 +3309,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool TryStackOnReserve(UnitSpec spec, Point mouse)
     {
-        if (spec.Essential || spec.UnitClass.IsLeaf)
+        if (spec.Essential || !ClassCanFuse(spec))
             return false;
 
         // a) Lâcher sur la pile de RÉSERVE en cours.
@@ -3313,7 +3341,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool TryStackOnBoard(UnitSpec spec, Cell cell)
     {
-        if (spec.Essential || spec.UnitClass.IsLeaf)
+        if (spec.Essential || !ClassCanFuse(spec))
             return false;
 
         // a) Lâcher sur la pile de PLATEAU en cours.
@@ -4001,12 +4029,15 @@ public sealed class GameplayScene : Scene
 
         if (best != from)
         {
+            var mover = _match.UnitAt(from);
             TryMoveWithFx(from, best);
-            if (_match.UnitAt(best) is { } moved) FaceToward(moved, from, best);
-            TriggerLanding(best);
+            // Case RÉELLE (glissade sur glace incluse, cf. TryMoveWithFx) : sinon le replay enregistre un sprite null.
+            var landing = mover != null && _match.CellOf(mover) is { } lc ? lc : best;
+            if (_match.UnitAt(landing) is { } moved) FaceToward(moved, from, landing);
+            TriggerLanding(landing);
             Context.Sounds.Play("unit_move");
-            _tutorial.EnemySoldier = best;     // l'ennemi suit sa nouvelle case
-            RecordAiMoveReplay(from, best);    // ce déplacement est « revoyable » (leçon replay)
+            _tutorial.EnemySoldier = landing;  // l'ennemi suit sa nouvelle case
+            RecordAiMoveReplay(from, landing); // ce déplacement est « revoyable » (leçon replay)
         }
         else
         {
@@ -5029,11 +5060,15 @@ public sealed class GameplayScene : Scene
         }
         else
         {
+            var mover = _match.UnitAt(a.From);
             TryMoveWithFx(a.From, a.To);
-            if (_match.UnitAt(a.To) is { } moved) FaceToward(moved, a.From, a.To);
-            TriggerLanding(a.To);
+            // Case d'arrivée RÉELLE : sur glace le pion dérape AU-DELÀ de a.To (cf. TryMoveWithFx). Sans ça, le
+            // replay (touche R) enregistrait la case intermédiaire et un sprite null → il ne rejouait rien.
+            var landing = mover != null && _match.CellOf(mover) is { } lc ? lc : a.To;
+            if (_match.UnitAt(landing) is { } moved) FaceToward(moved, a.From, landing);
+            TriggerLanding(landing);
             Context.Sounds.Play("unit_move");
-            RecordAiMoveReplay(a.From, a.To);
+            RecordAiMoveReplay(a.From, landing);
         }
         OnEnemyTurnResolved();
     }
@@ -5423,7 +5458,7 @@ public sealed class GameplayScene : Scene
     /// (pas de désync plateau), tout le roster hors combat.
     /// </summary>
     private bool CanFuseReserve(UnitSpec spec, List<UnitSpec> pool) =>
-        !spec.UnitClass.IsLeaf
+        ClassCanFuse(spec)
         && pool.Count(u => !u.Essential && Run.SameClass(u, spec)) >= FusionSizeOf(spec);
 
     /// <summary>Indice de la carte de RÉSERVE (armée hors commandant) sous <paramref name="p"/>, ou null.</summary>
@@ -6374,7 +6409,10 @@ public sealed class GameplayScene : Scene
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawUnits(sb, board);
                 DrawDim(sb, viewport);
-                DrawRunRecap(sb, viewport);
+                if (_run.Phase == RunPhase.Victory && Context.Settings.IsDemo && _demoEndShown)
+                    DrawDemoEndPopup(sb, viewport);
+                else
+                    DrawRunRecap(sb, viewport);
                 sb.End();
                 break;
         }
@@ -11171,6 +11209,11 @@ public sealed class GameplayScene : Scene
     /// dégâts par CLASSE (barres, top 6), MVP survivant, et déblocages de la run le cas échéant. Un clic / A
     /// ramène au menu (le slot est déjà effacé). Données lues sur <see cref="_run"/> + <see cref="Run.Stats"/>.
     /// </summary>
+    // Fin de DÉMO : popup de remerciement affichée APRÈS le recap de victoire. _demoEndShown = la popup a
+    // remplacé le recap ; _demoEndWishlistRect = bouton « liste de souhaits » (hit-test souris).
+    private bool _demoEndShown;
+    private Rectangle _demoEndWishlistRect = Rectangle.Empty;
+
     private void DrawRunRecap(SpriteBatch sb, Viewport viewport)
     {
         var victory = _run.Phase == RunPhase.Victory;
@@ -11332,6 +11375,49 @@ public sealed class GameplayScene : Scene
         }
 
         // Invite pulsée → retour menu.
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+        Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
+    }
+
+    /// <summary>
+    /// Popup de fin de DÉMO, affichée APRÈS le recap de victoire (cf. <see cref="_demoEndShown"/>) : remerciement
+    /// + bouton « liste de souhaits » (ouvre la page Steam). Modale autonome dimensionnée à son contenu, PAS de
+    /// lien en toutes lettres (le bouton fait l'action). Interligne = LineHeight (évite le chevauchement).
+    /// </summary>
+    private void DrawDemoEndPopup(SpriteBatch sb, Viewport viewport)
+    {
+        const int SecGap = 12, InnerW = 360;
+        var title = Loc.T("demo.thanks_title");
+        var body = WrapText(Loc.T("demo.thanks_body"), InnerW, 1);
+        var btnLabel = (Context.Input.UsingGamepad ? "(Y) " : "") + Loc.T("menu.wishlist");
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
+        var lh = Context.Font.LineHeight(1);
+
+        int Meas(string t, int s) => Context.Font.Measure(t, s);
+        var btnW = Meas(btnLabel, 1) + 40;
+        var contentW = new[] { InnerW, Meas(title, 3), btnW, Meas(prompt, 1) }.Max();
+        var boxW = contentW + 2 * ModalPadH;
+        var boxH = ModalPadV + 21 + SecGap + body.Count * lh + SecGap + 20 + SecGap + 7 + ModalPadV;
+        var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+        Context.Style.DrawPanel(sb, box);
+
+        var y = box.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 21), 3, Palette.Yellow2);
+        y += 21 + SecGap;
+        foreach (var l in body)
+        {
+            Context.Font.DrawCentered(sb, l, new Rectangle(box.X, y, box.Width, lh), 1, Palette.White);
+            y += lh;
+        }
+        y += SecGap;
+        var btn = new Rectangle(box.X + (box.Width - btnW) / 2, y, btnW, 20);
+        _demoEndWishlistRect = btn;
+        var hover = btn.Contains(Context.Input.MousePosition);
+        DrawRect(sb, btn, Palette.Yellow2 * (hover ? 0.35f : 0.18f));
+        DrawBorderRect(sb, btn, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, btnLabel, btn, 1, Palette.Yellow2);
+        y += 20 + SecGap;
+
         var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
         Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
     }
