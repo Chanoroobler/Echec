@@ -1,7 +1,7 @@
 {
   "tileSize": 64,
   "thickness": 16,
-  "_comment": "Catalogue + LEGENDE GLOBALE. 'key' = caractere a utiliser dans les grilles 'tiles' des maps (escarmouche_*.json). blocksMove = ni s'arreter ni passer. blocksFire = coupe la ligne de tir. sheet/col/row = cellule dans un tileset (voir 'tilesets', 64x64). col/row PROVISOIRES (rendu a affiner). Une tuile peut lister plusieurs cellules via 'variants': [ {col,row}, ... ] au lieu de col/row : le rendu en tire une au hasard mais STABLE par case (meme motif a chaque partie). Voir 'herbe' pour un exemple.",
+  "_comment": "Catalogue + LEGENDE GLOBALE. 'key' = caractere a utiliser dans les grilles 'tiles' des maps (escarmouche_*.json). blocksMove = ni s'arreter ni passer. blocksFire = coupe la ligne de tir. glisse = tuile GLISSANTE (glace) : un pion qui s'y arrete glisse d'une case dans sa direction d'arrivee, en chaine sur les tuiles glissantes, jusqu'a un obstacle/pion/bord (defaut false partout). sheet/col/row = cellule dans un tileset (voir 'tilesets', 64x64). col/row PROVISOIRES (rendu a affiner). Une tuile peut lister plusieurs cellules via 'variants': [ {col,row}, ... ] au lieu de col/row : le rendu en tire une au hasard mais STABLE par case (meme motif a chaque partie). Voir 'herbe' pour un exemple.",
   "tilesets": {
     "herb": {
       "file": "tiles_herb.png",
@@ -30,6 +30,11 @@
     },
     "eaux3": {
       "file": "tiles_addon_Twater.png",
+      "cellW": 64,
+      "cellH": 80
+    },
+    "neige": {
+      "file": "TileNeige.png",
       "cellW": 64,
       "cellH": 80
     }
@@ -1169,6 +1174,437 @@
       "sheet": "eaux3",
       "col": 1,
       "row": 1
+    },
+    {
+      "_comment": "--- Tileset 'neige' (TileNeige.png), grille 7x7 (64x80). Theme hiver : blocs de glace (haut) + sols geles/rochers (bas). 43 tuiles reelles : rangees 0-5 pleines (7 col) + une seule case en rangee 6 (col0) ; le RESTE de la rangee 6 (col1-6) est VIDE dans la planche, omis. Cles 2-car prefixees par un backtick (`a..`Q) : le parseur lit 2 caracteres en voyant un `. Tout false par defaut (blocksMove/blocksFire/glisse) : a ajuster par tuile dans l'editeur. Coche 'glisse' = glace glissante.",
+      "id": "neige_00",
+      "key": "`a",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "neige_10",
+      "key": "`b",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "id": "neige_20",
+      "key": "`c",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "neige_30",
+      "key": "`d",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "id": "neige_40",
+      "key": "`e",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "id": "neige_50",
+      "key": "`f",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "id": "neige_60",
+      "key": "`g",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "id": "neige_01",
+      "key": "`h",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "id": "neige_11",
+      "key": "`i",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "id": "neige_21",
+      "key": "`j",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "id": "neige_31",
+      "key": "`k",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "id": "neige_41",
+      "key": "`l",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "id": "neige_51",
+      "key": "`m",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "id": "neige_61",
+      "key": "`n",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 6,
+      "row": 1
+    },
+    {
+      "id": "neige_02",
+      "key": "`o",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 0,
+      "row": 2
+    },
+    {
+      "id": "neige_12",
+      "key": "`p",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 1,
+      "row": 2
+    },
+    {
+      "id": "neige_22",
+      "key": "`q",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 2,
+      "row": 2
+    },
+    {
+      "id": "neige_32",
+      "key": "`r",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 3,
+      "row": 2
+    },
+    {
+      "id": "neige_42",
+      "key": "`s",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 4,
+      "row": 2
+    },
+    {
+      "id": "neige_52",
+      "key": "`t",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 5,
+      "row": 2
+    },
+    {
+      "id": "neige_62",
+      "key": "`u",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 6,
+      "row": 2
+    },
+    {
+      "id": "neige_03",
+      "key": "`v",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": true,
+      "sheet": "neige",
+      "col": 0,
+      "row": 3
+    },
+    {
+      "id": "neige_13",
+      "key": "`w",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 1,
+      "row": 3
+    },
+    {
+      "id": "neige_23",
+      "key": "`x",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 2,
+      "row": 3
+    },
+    {
+      "id": "neige_33",
+      "key": "`y",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 3,
+      "row": 3
+    },
+    {
+      "id": "neige_43",
+      "key": "`z",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 4,
+      "row": 3
+    },
+    {
+      "id": "neige_53",
+      "key": "`A",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 5,
+      "row": 3
+    },
+    {
+      "id": "neige_63",
+      "key": "`B",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 6,
+      "row": 3
+    },
+    {
+      "id": "neige_04",
+      "key": "`C",
+      "blocksMove": true,
+      "blocksFire": true,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 0,
+      "row": 4
+    },
+    {
+      "id": "neige_14",
+      "key": "`D",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 1,
+      "row": 4
+    },
+    {
+      "id": "neige_24",
+      "key": "`E",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 2,
+      "row": 4
+    },
+    {
+      "id": "neige_34",
+      "key": "`F",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 3,
+      "row": 4
+    },
+    {
+      "id": "neige_44",
+      "key": "`G",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 4,
+      "row": 4
+    },
+    {
+      "id": "neige_54",
+      "key": "`H",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 5,
+      "row": 4
+    },
+    {
+      "id": "neige_64",
+      "key": "`I",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 6,
+      "row": 4
+    },
+    {
+      "id": "neige_05",
+      "key": "`J",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 0,
+      "row": 5
+    },
+    {
+      "id": "neige_15",
+      "key": "`K",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 1,
+      "row": 5
+    },
+    {
+      "id": "neige_25",
+      "key": "`L",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 2,
+      "row": 5
+    },
+    {
+      "id": "neige_35",
+      "key": "`M",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 3,
+      "row": 5
+    },
+    {
+      "id": "neige_45",
+      "key": "`N",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 4,
+      "row": 5
+    },
+    {
+      "id": "neige_55",
+      "key": "`O",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 5,
+      "row": 5
+    },
+    {
+      "id": "neige_65",
+      "key": "`P",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 6,
+      "row": 5
+    },
+    {
+      "id": "neige_06",
+      "key": "`Q",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "sheet": "neige",
+      "col": 0,
+      "row": 6
     }
   ]
 }

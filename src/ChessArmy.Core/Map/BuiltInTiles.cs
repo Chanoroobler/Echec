@@ -11,4 +11,7 @@ public static class BuiltInTiles
     public static readonly TileDef Grass = new("grass", BlocksMove: false, BlocksFire: false);
     public static readonly TileDef Water = new("water", BlocksMove: true, BlocksFire: false);
     public static readonly TileDef Mountain = new("mountain", BlocksMove: true, BlocksFire: true);
+    /// <summary>Trou laissé par une tuile « chute » effondrée : infranchissable, mais le tir passe au-dessus
+    /// (comme l'eau). Posé sur la case au runtime quand la tuile tombe (cf. GameplayScene).</summary>
+    public static readonly TileDef Hole = new("hole", BlocksMove: true, BlocksFire: false);
 }

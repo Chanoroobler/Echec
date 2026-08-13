@@ -30,6 +30,10 @@ internal sealed class MapDocument
     /// <summary>Limite de tours d'une mission spéciale (0 = valeur par défaut du jeu).</summary>
     public int TurnLimit { get; set; }
 
+    /// <summary>BROUILLON : map en cours de conception, EXCLUE du jeu (le jeu ne la charge pas). Défaut false.
+    /// Écrit dans le JSON (<c>draft: true</c>) uniquement si coché ; omis sinon.</summary>
+    public bool Draft { get; set; }
+
     public int Width { get; private set; }
     public int Height { get; private set; }
 
@@ -91,6 +95,7 @@ internal sealed class MapDocument
             Objective = string.IsNullOrWhiteSpace(dto.Objective) ? "Aucun" : dto.Objective!,
             Phase = dto.Phase ?? 0,
             TurnLimit = dto.TurnLimit ?? 0,
+            Draft = dto.Draft ?? false,
             FilePath = path,
         };
 
@@ -159,6 +164,7 @@ internal sealed class MapDocument
         {
             Name = Name,
             Type = Type,
+            Draft = Draft ? true : null,   // brouillon : écrit UNIQUEMENT si coché (omis sinon)
             // On n'écrit le sous-type que s'il est réellement défini (évite un "objective":"Aucun" partout).
             Objective = string.IsNullOrWhiteSpace(Objective) || Objective == "Aucun" ? null : Objective,
             Phase = Phase == 0 ? null : Phase,   // 0 = toutes phases → champ omis
@@ -230,6 +236,7 @@ internal sealed class MapDocument
     {
         [JsonPropertyName("name")] public string? Name { get; set; }
         [JsonPropertyName("type")] public string? Type { get; set; }
+        [JsonPropertyName("draft")] public bool? Draft { get; set; }
         [JsonPropertyName("objective")] public string? Objective { get; set; }
         [JsonPropertyName("phase")] public int? Phase { get; set; }
         [JsonPropertyName("turnLimit")] public int? TurnLimit { get; set; }

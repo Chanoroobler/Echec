@@ -104,13 +104,17 @@ public sealed class CommanderSelectScene : Scene
     /// <summary>Vrai s'il y a de quoi faire défiler : sinon les flèches sont inertes et grisées.</summary>
     private bool HasChoice => _commanders.Count > 1;
 
+    // ⚠️ HACK PLAYTEST — débloque TOUS les commandants. Pour revenir au comportement normal : mettre à false
+    // (ou supprimer cette ligne + le « UnlockAllForPlaytest || » ci-dessous). Rien d'autre à toucher.
+    private const bool UnlockAllForPlaytest = true;
+
     /// <summary>
     /// SEUL point de vérité du verrouillage d'un commandant : ouvert d'office par la donnée
     /// (<see cref="CommandeDef.StartsUnlocked"/>, champ <c>unlocked</c> de units.json) OU débloqué dans le
     /// profil (méta-progression, en battant son boss lié en dernière phase — cf. <c>SaveService.IsCommanderUnlocked</c>).
     /// </summary>
     private bool IsUnlocked(CommandeDef def) =>
-        def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id);
+        UnlockAllForPlaytest || def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id);
 
     public override void Load()
     {
@@ -650,6 +654,20 @@ public sealed class CommanderSelectScene : Scene
         }
         if (def.FusionPoints > 0)
             foreach (var line in _card.Wrap(Loc.T("commander.points_fusion", def.FusionPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
+        // Source « sur coup reçu » (commandant du Lancier) : +N points quand il se fait toucher.
+        if (def.OnHitPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_onhit", def.OnHitPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
+        // Source « sur coup à distance » (commandant du Fou) : +N points quand il touche une cible à distance.
+        if (def.RangedHitPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_ranged", def.RangedHitPoints), body.Width, 1))
             {
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
                 y += LineH;

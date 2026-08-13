@@ -182,6 +182,14 @@ public sealed class Run
     /// <summary>Définition du commandant du joueur : ses plafonds de base, son arbre, sa source de points.</summary>
     public CommandeDef CommanderDef { get; private set; } = Commandes.Commander;
 
+    /// <summary>
+    /// Remplace le commandant de la run (n'affecte QUE <see cref="CommanderDef"/> ; l'appelant enchaîne un
+    /// <see cref="Reset"/> pour reconstruire le roster). Sert au TUTORIEL : il se joue TOUJOURS avec le
+    /// commandant de départ (le Foudroyeur), puis on rend à la run le commandant réellement choisi avant de
+    /// lancer la campagne. <c>null</c> → commandant par défaut.
+    /// </summary>
+    public void SetCommander(CommandeDef? def) => CommanderDef = def ?? Commandes.Commander;
+
     /// <summary>Arbre de commandement du commandant courant.</summary>
     public CommandTree Tree => CommandTrees.For(CommanderDef);
 

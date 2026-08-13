@@ -55,7 +55,7 @@ public sealed class TileCatalog
         if (dto.Tiles is null || dto.Tiles.Count == 0)
             throw new FormatException("tiles.json ne contient aucune tuile.");
 
-        var tiles = dto.Tiles.Select(t => new TileDef(t.Id ?? "", t.BlocksMove, t.BlocksFire));
+        var tiles = dto.Tiles.Select(t => new TileDef(t.Id ?? "", t.BlocksMove, t.BlocksFire, t.Glisse));
 
         // Légende globale : caractère 'key' → id (ignore les tuiles sans clé).
         var legend = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -84,5 +84,6 @@ public sealed class TileCatalog
         public string? Key { get; set; }
         public bool BlocksMove { get; set; }
         public bool BlocksFire { get; set; }
+        public bool Glisse { get; set; }
     }
 }

@@ -154,17 +154,18 @@ public static class MapLoader
                         case 'k': objects.Add(new MapObject(cell, MapObjectKind.Key)); break;
                         case 'R': objects.Add(new MapObject(cell, MapObjectKind.Recruit)); break;
                         case 'B': objects.Add(new MapObject(cell, MapObjectKind.Bush)); break;
+                        case 'F': objects.Add(new MapObject(cell, MapObjectKind.Chute)); break;
                         case '.':
                         case ' ': break;
                         default:
                             throw new FormatException(
-                                $"Caractère d'objet inconnu '{line[col]}' (ligne {row}). Attendu C, K, k, R, B ou '.'.");
+                                $"Caractère d'objet inconnu '{line[col]}' (ligne {row}). Attendu C, K, k, R, B, F ou '.'.");
                     }
                 }
             }
         }
 
-        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, forcedFacing);
+        return new MapData(dto.Name ?? "", type, width, height, tiles, player, enemy, boss, objects, defensive, objective, phase, turnLimit, offensive, enemyTiers, forcedFacing, dto.Draft);
     }
 
     private static void RequireGrid(IReadOnlyList<string> rows, int width, int height, string label)
@@ -222,6 +223,7 @@ public static class MapLoader
     {
         public string? Name { get; set; }
         public string? Type { get; set; }
+        public bool Draft { get; set; }
         public string? Objective { get; set; }
         public int? Phase { get; set; }
         public int? TurnLimit { get; set; }

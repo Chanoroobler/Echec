@@ -13,15 +13,23 @@ internal enum EditLayer { Terrain, Spawns, Objects }
 /// Zone de dessin de la map : rend les trois calques (terrain découpé des tilesets, spawns, objets)
 /// et peint la case survolée au clic. Reproduit le recouvrement 64×80 du jeu (les rangées du bas
 /// cachent l'épaisseur des rangées du haut). Clic gauche = pinceau courant, clic droit = efface.
-/// PIPETTE : clic MOLETTE (ou Alt+clic gauche) prélève ce qui est posé sous le curseur dans le calque
-/// actif et en fait le pinceau courant (cf. <see cref="PickCell"/> / <see cref="BrushPicked"/>).
+/// PIPETTE : clic MOLETTE (ou Alt+clic gauche) prélève ce qui est posé sous le curseur dans le calque actif.
+/// Un simple clic prélève 1 case et en fait le pinceau (cf. <see cref="PickSingle"/> / <see cref="BrushPicked"/>) ;
+/// un GLISSER prélève tout le rectangle survolé en TAMPON, reposé ensuite en bloc au clic gauche (cf.
+/// <see cref="CaptureStamp"/> / <see cref="StampAt"/> / <see cref="StampPicked"/>).
 /// </summary>
 internal sealed class MapCanvas : Panel
 {
     private MapDocument? _doc;
     private TileRenderCatalog? _catalog;
 
-    public EditLayer Layer { get; set; } = EditLayer.Terrain;
+    private EditLayer _layer = EditLayer.Terrain;
+    /// <summary>Calque édité. Changer de calque annule le tampon multi-cases en cours (il était propre au calque).</summary>
+    public EditLayer Layer
+    {
+        get => _layer;
+        set { if (_layer != value) { _layer = value; _stamp = null; } }
+    }
 
     /// <summary>Pinceau spécial « main » : aucune tuile — le clic n'écrit RIEN (mode inspection/déplacement).</summary>
     public const string HandBrush = "\0";
@@ -32,7 +40,8 @@ internal sealed class MapCanvas : Panel
     public string Brush
     {
         get => _brush;
-        set { _brush = value; Cursor = value == HandBrush ? Cursors.Hand : Cursors.Cross; }
+        // Choisir un pinceau simple (palette / pipette 1 case) annule le tampon multi-cases.
+        set { _brush = value; _stamp = null; Cursor = value == HandBrush ? Cursors.Hand : Cursors.Cross; }
     }
 
     public float Zoom { get; set; } = 1f;
@@ -50,12 +59,38 @@ internal sealed class MapCanvas : Panel
 
     private Point _hover = new(-1, -1);
 
+    // Pipette RECTANGULAIRE en cours (Alt+glisser ou molette+glisser sur plusieurs cases) : coins de la
+    // sélection tant que le bouton est maintenu ; capturée en tampon au relâchement.
+    private bool _picking;
+    private Point _pickStart = new(-1, -1);
+    private Point _pickEnd = new(-1, -1);
+
+    // Tampon = bloc de cases prélevé (pipette multi-cases), reposé en un bloc au clic gauche. Null = pinceau simple.
+    private Stamp? _stamp;
+
+    /// <summary>Dimensions (cases) du tampon multi-cases en cours, ou <c>null</c> si aucun. Pour le statut.</summary>
+    public Size? StampSize => _stamp is { } s ? new Size(s.W, s.H) : null;
+
     public event EventHandler? MapChanged;
 
     /// <summary>Levé après un prélèvement à la pipette : <see cref="Brush"/> (et, sur le calque Spawns,
     /// <see cref="Tier"/>/<see cref="Facing"/>) viennent d'être remplacés par le contenu d'une case. La vue
     /// (MainForm) s'y abonne pour resynchroniser la surbrillance de la palette.</summary>
     public event EventHandler? BrushPicked;
+
+    /// <summary>Levé quand un TAMPON multi-cases vient d'être prélevé (pipette rectangulaire). La vue met à
+    /// jour le statut (« bloc NxM prélevé »).</summary>
+    public event EventHandler? StampPicked;
+
+    /// <summary>Bloc de cases prélevé à la pipette (calque + valeurs brutes), reposé tel quel au clic.</summary>
+    private sealed class Stamp
+    {
+        public EditLayer Layer;
+        public int W, H;
+        public string[,]? Tiles;                   // Terrain
+        public char[,]? Spawns, Tiers, Facing;     // Spawns (+ tier + orientation)
+        public char[,]? Objects;                   // Objets
+    }
 
     public MapCanvas()
     {
@@ -183,12 +218,33 @@ internal sealed class MapCanvas : Panel
             }
 
         // 3) Case survolée.
-        if (_hover.X >= 0 && _hover.X < _doc.Width && _hover.Y >= 0 && _hover.Y < _doc.Height)
+        if (InGrid(_hover))
         {
             using var hoverPen = new Pen(Color.Gold, 2f);
             g.DrawRectangle(hoverPen, _hover.X * surface, _hover.Y * surface, surface, surface);
         }
+
+        // 4) Rectangle de prélèvement en cours (pipette Alt/molette + glisser).
+        if (_picking)
+        {
+            var (x0, y0, x1, y1) = NormalizeRect(_pickStart, _pickEnd);
+            using var pen = new Pen(Color.FromArgb(90, 210, 255), 2f);
+            using var fill = new SolidBrush(Color.FromArgb(40, 90, 210, 255));
+            float rx = x0 * surface, ry = y0 * surface, rw = (x1 - x0 + 1) * surface, rh = (y1 - y0 + 1) * surface;
+            g.FillRectangle(fill, rx, ry, rw, rh);
+            g.DrawRectangle(pen, rx, ry, rw, rh);
+        }
+        // Sinon, empreinte du TAMPON à la case survolée (là où le clic gauche le posera).
+        else if (_stamp is { } s && s.Layer == Layer && InGrid(_hover))
+        {
+            using var pen = new Pen(Color.FromArgb(120, 230, 160), 2f);
+            g.DrawRectangle(pen, _hover.X * surface, _hover.Y * surface, s.W * surface, s.H * surface);
+        }
     }
+
+    /// <summary>Vrai si la case est dans le plateau chargé.</summary>
+    private bool InGrid(Point p) =>
+        _doc is not null && p.X >= 0 && p.X < _doc.Width && p.Y >= 0 && p.Y < _doc.Height;
 
     private void DrawSpawn(Graphics g, float x, float y, float s, char ch)
     {
@@ -218,6 +274,7 @@ internal sealed class MapCanvas : Panel
             'k' => Color.FromArgb(240, 230, 90),
             'R' => Color.FromArgb(70, 200, 210),
             'B' => Color.FromArgb(90, 160, 80),
+            'F' => Color.FromArgb(220, 70, 60),
             _ => Color.Gray,
         };
         int alpha = Layer == EditLayer.Objects ? 220 : 110;
@@ -282,7 +339,8 @@ internal sealed class MapCanvas : Panel
     }
 
     // ---- Souris ----
-    /// <summary>Geste « pipette » : clic MOLETTE, ou Alt maintenu + clic GAUCHE (glisser inclus pour échantillonner).</summary>
+    /// <summary>Geste « pipette » : clic MOLETTE, ou Alt maintenu + clic GAUCHE. Un simple clic prélève 1 case ;
+    /// un GLISSER prélève tout le rectangle survolé en un TAMPON (reposé en bloc au clic gauche).</summary>
     private static bool IsPickGesture(MouseEventArgs e) =>
         e.Button == MouseButtons.Middle
         || (e.Button == MouseButtons.Left && (ModifierKeys & Keys.Alt) == Keys.Alt);
@@ -290,16 +348,21 @@ internal sealed class MapCanvas : Panel
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (IsPickGesture(e)) { PickCell(e); return; }   // pipette : prélève au lieu de peindre
-        PaintCell(e);
+        if (IsPickGesture(e)) { StartPick(e); return; }   // pipette (1 case OU rectangle) : ne peint pas
+        PaintCell(e, drag: false);
     }
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
         var cell = CellAt(e.Location);
         if (cell != _hover) { _hover = cell; Invalidate(); }
-        if (IsPickGesture(e)) { PickCell(e); return; }   // Alt+glisser / molette-glisser = échantillonnage continu
-        if (e.Button is MouseButtons.Left or MouseButtons.Right) PaintCell(e);
+        if (_picking) { _pickEnd = cell; Invalidate(); return; }   // agrandit le rectangle de prélèvement
+        if (e.Button is MouseButtons.Left or MouseButtons.Right) PaintCell(e, drag: true);
+    }
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (_picking) { FinishPick(); _picking = false; Invalidate(); }
     }
     protected override void OnMouseLeave(EventArgs e)
     {
@@ -308,12 +371,21 @@ internal sealed class MapCanvas : Panel
         Invalidate();
     }
 
-    private void PaintCell(MouseEventArgs e)
+    private void PaintCell(MouseEventArgs e, bool drag)
     {
-        if (_doc is null || Brush == HandBrush) return;   // mode main : le clic n'écrit rien
+        if (_doc is null) return;
         var cell = CellAt(e.Location);
         if (cell.X < 0 || cell.X >= _doc.Width || cell.Y < 0 || cell.Y >= _doc.Height) return;
 
+        // TAMPON multi-cases actif : le clic GAUCHE le repose en bloc, ancré sur la case cliquée. Posé au CLIC
+        // (pas en glissant) pour éviter des recouvrements. Le clic droit garde l'effacement case par case.
+        if (_stamp is not null && _stamp.Layer == Layer && e.Button == MouseButtons.Left)
+        {
+            if (!drag) StampAt(cell.X, cell.Y);
+            return;
+        }
+
+        if (Brush == HandBrush) return;   // mode main : le clic n'écrit rien
         bool erase = e.Button == MouseButtons.Right;
 
         // Calque SPAWNS : peindre un ennemi (E/D/O) pose AUSSI le tier courant ; peindre un joueur (P) ou un
@@ -347,41 +419,139 @@ internal sealed class MapCanvas : Panel
         MapChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Pipette : lit ce qui est posé sous le curseur dans le CALQUE ACTIF et en fait le pinceau courant —
-    /// terrain → clé de tuile ; spawns → spawn + son tier (ennemis) + son orientation ; objets → objet.
-    /// Une case VIDE n'est pas prélevée (le pinceau ne change pas). Ne modifie jamais la map (lecture seule) ;
-    /// prévient la vue via <see cref="BrushPicked"/> pour resynchroniser la surbrillance de la palette.
-    /// </summary>
-    private void PickCell(MouseEventArgs e)
+    // ---- Pipette (1 case ou rectangle) ----
+    private void StartPick(MouseEventArgs e)
+    {
+        _picking = true;
+        _pickStart = _pickEnd = CellAt(e.Location);
+        Invalidate();
+    }
+
+    /// <summary>Fin du geste de pipette : 1 seule case → pipette simple (pinceau + surbrillance palette), un
+    /// rectangle de plusieurs cases → TAMPON du calque actif (reposé ensuite en bloc au clic gauche).</summary>
+    private void FinishPick()
     {
         if (_doc is null) return;
-        var cell = CellAt(e.Location);
-        if (cell.X < 0 || cell.X >= _doc.Width || cell.Y < 0 || cell.Y >= _doc.Height) return;
+        var (x0, y0, x1, y1) = NormalizeRect(_pickStart, _pickEnd);
+        int w = x1 - x0 + 1, h = y1 - y0 + 1;
+        if (w <= 1 && h <= 1)
+            PickSingle(x0, y0);
+        else
+            CaptureStamp(x0, y0, w, h);
+    }
+
+    /// <summary>
+    /// Pipette 1 case : lit ce qui est posé dans le CALQUE ACTIF et en fait le pinceau courant — terrain → clé
+    /// de tuile ; spawns → spawn + son tier (ennemis) + son orientation ; objets → objet. Une case VIDE n'est
+    /// pas prélevée. Prévient la vue via <see cref="BrushPicked"/> pour resynchroniser la palette.
+    /// </summary>
+    private void PickSingle(int cx, int cy)
+    {
+        if (_doc is null || cx < 0 || cx >= _doc.Width || cy < 0 || cy >= _doc.Height) return;
 
         if (Layer == EditLayer.Spawns)
         {
-            var spawn = _doc.Spawns[cell.Y, cell.X];
+            var spawn = _doc.Spawns[cy, cx];
             if (spawn == MapDocument.EmptySpawn) return;   // case sans spawn : rien à prélever
             Brush = spawn.ToString();
-            if (IsEnemySpawn(spawn) && _doc.Tiers[cell.Y, cell.X] != MapDocument.EmptyTier)
-                Tier = _doc.Tiers[cell.Y, cell.X];          // récupère aussi le tier posé sur cet ennemi
+            if (IsEnemySpawn(spawn) && _doc.Tiers[cy, cx] != MapDocument.EmptyTier)
+                Tier = _doc.Tiers[cy, cx];                  // récupère aussi le tier posé sur cet ennemi
             if (AcceptsFacing(spawn))
-                Facing = _doc.Facing[cell.Y, cell.X];       // …et son orientation ('.'/v/^)
+                Facing = _doc.Facing[cy, cx];               // …et son orientation ('.'/v/^)
         }
         else if (Layer == EditLayer.Objects)
         {
-            var obj = _doc.Objects[cell.Y, cell.X];
+            var obj = _doc.Objects[cy, cx];
             if (obj == MapDocument.EmptyObject) return;     // case sans objet : rien à prélever
             Brush = obj.ToString();
         }
         else   // Terrain
         {
-            var key = _doc.Tiles[cell.Y, cell.X];
+            var key = _doc.Tiles[cy, cx];
             if (string.IsNullOrWhiteSpace(key)) return;     // case sans tuile : rien à prélever
             Brush = key;
         }
         BrushPicked?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Capture le rectangle (largeur <paramref name="w"/> × hauteur <paramref name="h"/>) du calque
+    /// actif en TAMPON, à partir du coin haut-gauche (<paramref name="x0"/>, <paramref name="y0"/>).</summary>
+    private void CaptureStamp(int x0, int y0, int w, int h)
+    {
+        if (_doc is null) return;
+        var s = new Stamp { Layer = Layer, W = w, H = h };
+        if (Layer == EditLayer.Terrain)
+        {
+            s.Tiles = new string[h, w];
+            for (var r = 0; r < h; r++)
+                for (var c = 0; c < w; c++)
+                    s.Tiles[r, c] = _doc.Tiles[y0 + r, x0 + c];
+        }
+        else if (Layer == EditLayer.Spawns)
+        {
+            s.Spawns = new char[h, w]; s.Tiers = new char[h, w]; s.Facing = new char[h, w];
+            for (var r = 0; r < h; r++)
+                for (var c = 0; c < w; c++)
+                {
+                    s.Spawns[r, c] = _doc.Spawns[y0 + r, x0 + c];
+                    s.Tiers[r, c] = _doc.Tiers[y0 + r, x0 + c];
+                    s.Facing[r, c] = _doc.Facing[y0 + r, x0 + c];
+                }
+        }
+        else
+        {
+            s.Objects = new char[h, w];
+            for (var r = 0; r < h; r++)
+                for (var c = 0; c < w; c++)
+                    s.Objects[r, c] = _doc.Objects[y0 + r, x0 + c];
+        }
+        _stamp = s;
+        StampPicked?.Invoke(this, EventArgs.Empty);
+        Invalidate();
+    }
+
+    /// <summary>Repose le tampon en bloc, coin haut-gauche sur (<paramref name="ax"/>, <paramref name="ay"/>),
+    /// rogné aux bords du plateau. Écrit exactement les cases prélevées (cases vides comprises = efface).</summary>
+    private void StampAt(int ax, int ay)
+    {
+        if (_doc is null || _stamp is not { } s || s.Layer != Layer) return;
+        bool changed = false;
+        for (var r = 0; r < s.H; r++)
+            for (var c = 0; c < s.W; c++)
+            {
+                int x = ax + c, y = ay + r;
+                if (x < 0 || x >= _doc.Width || y < 0 || y >= _doc.Height) continue;
+                if (s.Layer == EditLayer.Terrain)
+                {
+                    if (_doc.Tiles[y, x] != s.Tiles![r, c]) { _doc.Tiles[y, x] = s.Tiles[r, c]; changed = true; }
+                }
+                else if (s.Layer == EditLayer.Spawns)
+                {
+                    if (_doc.Spawns[y, x] != s.Spawns![r, c] || _doc.Tiers[y, x] != s.Tiers![r, c]
+                        || _doc.Facing[y, x] != s.Facing![r, c])
+                    {
+                        _doc.Spawns[y, x] = s.Spawns![r, c];
+                        _doc.Tiers[y, x] = s.Tiers![r, c];
+                        _doc.Facing[y, x] = s.Facing![r, c];
+                        changed = true;
+                    }
+                }
+                else if (_doc.Objects[y, x] != s.Objects![r, c])
+                {
+                    _doc.Objects[y, x] = s.Objects[r, c]; changed = true;
+                }
+            }
+        if (changed) { Invalidate(); MapChanged?.Invoke(this, EventArgs.Empty); }
+    }
+
+    /// <summary>Rectangle normalisé (coin haut-gauche → bas-droite) de deux cases, rogné au plateau.</summary>
+    private (int X0, int Y0, int X1, int Y1) NormalizeRect(Point a, Point b)
+    {
+        int x0 = Math.Clamp(Math.Min(a.X, b.X), 0, _doc!.Width - 1);
+        int x1 = Math.Clamp(Math.Max(a.X, b.X), 0, _doc.Width - 1);
+        int y0 = Math.Clamp(Math.Min(a.Y, b.Y), 0, _doc.Height - 1);
+        int y1 = Math.Clamp(Math.Max(a.Y, b.Y), 0, _doc.Height - 1);
+        return (x0, y0, x1, y1);
     }
 
     private Point CellAt(Point mouse)

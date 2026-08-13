@@ -1,24 +1,21 @@
 {
-  "name": "sauver_1_01",
-  "type": "Speciale",
-  "objective": "SauverPaysans",
-  "phase": 1,
-  "turnLimit": 25,
+  "name": "escarmouche_8_05C",
+  "type": "Escarmouche",
   "width": 8,
   "height": 8,
   "tiles": [
-    "h8h8hh8h",
-    "4z40hh8h",
-    "hhhhhh94",
-    "&@hhhphh",
-    "7(_6hh644",
-    "9447h8hh",
-    "hhhv40hh",
-    "hhh8hhhh"
+    "hhhhhhhh",
+    "7hhhhhh6",
+    "94u44u40",
+    "=<8hh8-=",
+    ":?8hh8;:",
+    "64z44z47",
+    "0hhhhhh9",
+    "hhhhhhhh"
   ],
   "spawns": [
-    "OOOOOOOO",
-    "........",
+    "EEEEEEEE",
+    "EE....EE",
     "........",
     "........",
     "........",
@@ -28,7 +25,7 @@
   ],
   "tiers": [
     "11111111",
-    "........",
+    "11....11",
     "........",
     "........",
     "........",
@@ -38,11 +35,11 @@
   ],
   "objects": [
     "........",
-    "..B.....",
     "........",
-    "..R...CR",
-    "R..R.R..",
-    "......B.",
+    "..F..F..",
+    "...RC...",
+    "........",
+    "..F..F..",
     "........",
     "........"
   ]

@@ -41,6 +41,7 @@ public sealed class Match
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
     private (Cell Cell, int Damage, int Dc, int Dr)? _lastPierce;          // « Transpercement » : ennemi derrière la cible touché + dégâts + direction du coup
     private readonly List<(Cell From, Cell To, int Damage, bool Killed)> _interceptions = new();  // « Interception » : intercepteur → mobile + dégâts + mobile abattu (par ordre de frappe)
+    private IReadOnlyList<Cell>? _lastSlide;                               // « Glace » : chemin de glissade (départ inclus → repos), null si aucune glissade
 
     // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
     // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
@@ -422,11 +423,14 @@ public sealed class Match
 
         ResetActionFx();
         MoveUnit(from, to);
-        TriggerInterceptions(to, unit);   // ennemis avec « Interception » dont la portée couvre la case d'arrivée
-        // « Impact » : à son propre déplacement, le porteur frappe les ennemis autour de sa case d'arrivée
+        // « Glace » : si la case d'arrivée est glissante, l'unité glisse au-delà (peut dépasser sa portée). Les
+        // traits (interception/impact) se déclenchent depuis sa case de REPOS réelle.
+        var landing = SlideOnIce(unit, from, to);
+        TriggerInterceptions(landing, unit);   // ennemis avec « Interception » dont la portée couvre la case de repos
+        // « Impact » : à son propre déplacement, le porteur frappe les ennemis autour de sa case de repos
         // (s'il a survécu à une éventuelle interception).
         if (unit.IsAlive && unit.HasTrait(Trait.Impact))
-            ApplyImpact(unit, to);
+            ApplyImpact(unit, landing);
         EndTurn();
         return MoveKind.Moved;
     }
@@ -479,7 +483,12 @@ public sealed class Match
             // « Statique » : ne prend JAMAIS la place de sa cible — l'attaquant reste sur sa case (la case de
             // la victime reste libre). Sinon, comportement normal : il avance sur la case si l'accès le permet.
             if (!unit.HasTrait(Trait.Statique) && CanTakePlace(from, target))
+            {
                 MoveUnit(from, target);
+                // « Glace » : l'attaquant qui avance sur la case de la victime glisse si elle est glissante
+                // (l'« Impact » plus bas frappe depuis sa case de repos réelle via CellOf).
+                SlideOnIce(unit, from, target);
+            }
             kind = MoveKind.Killed;
         }
         else
@@ -574,6 +583,11 @@ public sealed class Match
     /// réellement infligés (&gt; 0) et direction (dc, dr) du coup ; <c>null</c> si aucun transpercement (ou esquivé).
     /// Pour le feedback : recul + chiffre + mot-clé sur le pion transpercé.</summary>
     public (Cell Cell, int Damage, int Dc, int Dr)? LastPierce => _lastPierce;
+
+    /// <summary>« Glace » : chemin de glissade de la DERNIÈRE action (déplacement ou avance sur un kill) — cases
+    /// traversées, case de DÉPART (là où l'unité s'est arrêtée) incluse en tête et case de REPOS en queue.
+    /// <c>null</c> si aucune glissade. Pour le feedback (glissement + son).</summary>
+    public IReadOnlyList<Cell>? LastSlide => _lastSlide;
 
     private static readonly (int Dc, int Dr)[] Neighbors8 =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
@@ -911,6 +925,47 @@ public sealed class Match
         RemoveDeadAt(behind, attacker);
     }
 
+    /// <summary>
+    /// « Glace » : si <paramref name="landing"/> est une tuile glissante et que l'unité ne vole pas, la fait
+    /// glisser d'une case dans sa direction d'arrivée (signe de <c>landing - from</c> ; diagonale pour un saut
+    /// de cavalier), EN CHAÎNE tant qu'elle atterrit sur une autre tuile glissante. S'arrête AVANT un obstacle,
+    /// un pion ou le bord du plateau. Repositionne l'unité dans <see cref="_units"/> et, si au moins une case a
+    /// été glissée, enregistre le chemin (départ inclus → repos) dans <see cref="_lastSlide"/> pour le feedback.
+    /// Renvoie la case de repos finale (= <paramref name="landing"/> si aucune glissade).
+    /// <paramref name="record"/> = false quand l'appelant gère lui-même le feedback (ex. « Recule » qui a sa
+    /// propre animation de glissement) : la glissade a bien lieu mais <see cref="_lastSlide"/> reste vide.
+    /// </summary>
+    private Cell SlideOnIce(Unit unit, Cell from, Cell landing, bool record = true)
+    {
+        // Pas de terrain (plateau plat), unité volante (survole la glace) ou case non glissante : rien à faire.
+        if (_terrain == null || unit.HasTrait(Trait.Vol) || !Slippery(landing))
+            return landing;
+
+        var dir = new Cell(System.Math.Sign(landing.Column - from.Column), System.Math.Sign(landing.Row - from.Row));
+        if (dir.Column == 0 && dir.Row == 0)
+            return landing;   // aucune direction d'arrivée (ne devrait pas arriver) : pas de glissade
+
+        var current = landing;
+        var path = new List<Cell> { current };
+        while (Slippery(current))
+        {
+            var next = new Cell(current.Column + dir.Column, current.Row + dir.Row);
+            if (!InBounds(next) || BlocksMovement(next) || _units[next.Column, next.Row] != null)
+                break;   // obstacle, pion ou bord : l'unité s'immobilise sur la case courante
+            MoveUnit(current, next);
+            current = next;
+            path.Add(current);
+        }
+
+        if (path.Count > 1 && record)
+            _lastSlide = path;   // au moins une case glissée : départ = path[0], repos = path[^1]
+        return current;
+    }
+
+    /// <summary>Vrai si la case porte une tuile glissante (glace). Faux hors terrain.</summary>
+    private bool Slippery(Cell cell) =>
+        _terrain != null && _terrain[cell].Slippery;
+
     /// <summary>Vide les résultats de feedback (« Impact »/« Recule »/« Riposte ») avant de résoudre une nouvelle action.</summary>
     private void ResetActionFx()
     {
@@ -920,6 +975,7 @@ public sealed class Match
         _lastRiposte = null;
         _lastPierce = null;
         _interceptions.Clear();
+        _lastSlide = null;
     }
 
     /// <summary>
@@ -965,7 +1021,11 @@ public sealed class Match
         if (InBounds(behind) && _units[behind.Column, behind.Row] == null && !BlocksMovement(behind))
         {
             MoveUnit(target, behind);       // la cible glisse d'une case, poussée hors de portée
-            _lastRecule = (behind, 0);
+            // « Glace » : poussée sur une tuile glissante, elle CONTINUE de glisser dans la direction du recul
+            // (mêmes règles : chaîne, arrêt sur obstacle/pion/bord ; les volants ne glissent pas). Feedback via
+            // _lastRecule (le glissement de la victime est déjà animé côté scène), donc record:false.
+            var rest = SlideOnIce(victim, target, behind, record: false);
+            _lastRecule = (rest, 0);
         }
         else
         {

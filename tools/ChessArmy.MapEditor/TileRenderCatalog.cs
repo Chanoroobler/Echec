@@ -16,9 +16,17 @@ internal sealed class TileInfo
     public required string Id { get; init; }
     /// <summary>Clé de légende : 1 OU 2 caractères (une clé de 2 commence par un caractère préfixe, cf. <see cref="TileRenderCatalog.KeyLeads"/>).</summary>
     public required string Key { get; init; }
-    // Modifiables via l'inspecteur (persistés dans tiles.json par TileRenderCatalog.SetBlocking).
+    // Modifiables via l'inspecteur (persistés dans tiles.json par TileRenderCatalog.SetTileRules).
     public bool BlocksMove { get; set; }
     public bool BlocksFire { get; set; }
+    /// <summary>Tuile GLISSANTE (glace) : un pion qui s'y arrête glisse d'une case (cf. jeu).</summary>
+    public bool Slides { get; set; }
+    /// <summary>ONGLET de palette de la tuile (Terrain). Dérivé du tileset via <see cref="TileRenderCatalog.TabFor"/>
+    /// (nom du tileset sans son chiffre final) : ainsi les tilesets d'une même famille — <c>eaux</c>, <c>eaux2</c>,
+    /// <c>eaux3</c> — sont REGROUPÉS sous un seul onglet <c>eaux</c>. N'affecte QUE le regroupement de la palette :
+    /// l'image, elle, est déjà découpée depuis le vrai tileset au chargement (cf. <see cref="TileRenderCatalog.CropTile"/>).
+    /// Null si la tuile n'a pas de tileset.</summary>
+    public string? Sheet { get; init; }
     /// <summary>Cellule découpée du tileset (cellW × cellH), ou null si la tuile n'a pas d'art.</summary>
     public Bitmap? Image { get; init; }
 }
@@ -44,14 +52,14 @@ internal sealed class TileRenderCatalog
     public TileInfo? TileForKey(string key) => ByKey.TryGetValue(key, out var t) ? t : null;
 
     /// <summary>
-    /// Met à jour <c>blocksMove</c>/<c>blocksFire</c> d'une tuile en mémoire ET dans tiles.json, en
-    /// préservant le reste du fichier (tilesets, variants, commentaires, ordre des tuiles). Écrit
+    /// Met à jour <c>blocksMove</c>/<c>blocksFire</c>/<c>glisse</c> d'une tuile en mémoire ET dans tiles.json,
+    /// en préservant le reste du fichier (tilesets, variants, commentaires, ordre des tuiles). Écrit
     /// immédiatement sur le disque : c'est le fichier lu par le jeu et par l'éditeur.
     /// </summary>
-    public void SetBlocking(string id, bool blocksMove, bool blocksFire)
+    public void SetTileRules(string id, bool blocksMove, bool blocksFire, bool slides)
     {
         foreach (var t in Tiles)
-            if (t.Id == id) { t.BlocksMove = blocksMove; t.BlocksFire = blocksFire; }
+            if (t.Id == id) { t.BlocksMove = blocksMove; t.BlocksFire = blocksFire; t.Slides = slides; }
 
         var root = JsonNode.Parse(RawJson, documentOptions: new JsonDocumentOptions
         {
@@ -65,6 +73,7 @@ internal sealed class TileRenderCatalog
                 {
                     obj["blocksMove"] = blocksMove;
                     obj["blocksFire"] = blocksFire;
+                    obj["glisse"] = slides;
                 }
 
         RawJson = root.ToJsonString(WriteOpts);
@@ -174,6 +183,8 @@ internal sealed class TileRenderCatalog
                 Key = t.Key!,
                 BlocksMove = t.BlocksMove,
                 BlocksFire = t.BlocksFire,
+                Slides = t.Glisse,
+                Sheet = TabFor(t.Sheet),   // onglet de palette : familles « eaux/eaux2/eaux3 » regroupées sous « eaux »
                 Image = image,
             };
             tiles.Add(info);
@@ -194,6 +205,22 @@ internal sealed class TileRenderCatalog
             RawJson = raw,
             SourcePath = tilesJsonPath,
         };
+    }
+
+    /// <summary>
+    /// ONGLET de palette d'un tileset : son nom SANS le chiffre final, pour regrouper une famille de feuilles
+    /// sous un même onglet (<c>eaux</c>, <c>eaux2</c>, <c>eaux3</c> → <c>eaux</c>). Sans effet sur les noms sans
+    /// chiffre final (<c>herb</c>, <c>murs</c>, <c>neige</c>…). Un nom entièrement numérique est laissé tel quel
+    /// (jamais d'onglet vide). N'affecte que l'affichage : le découpage de l'image se fait via le vrai tileset.
+    /// </summary>
+    internal static string? TabFor(string? sheet)
+    {
+        if (string.IsNullOrEmpty(sheet))
+            return sheet;
+        var end = sheet.Length;
+        while (end > 0 && char.IsDigit(sheet[end - 1]))
+            end--;
+        return end == 0 ? sheet : sheet[..end];   // nom uniquement numérique : conservé tel quel
     }
 
     private static Bitmap? CropTile(TileDto t, Dictionary<string, TilesetDto>? tilesets,
@@ -264,6 +291,7 @@ internal sealed class TileRenderCatalog
         public string? Key { get; set; }
         public bool BlocksMove { get; set; }
         public bool BlocksFire { get; set; }
+        public bool Glisse { get; set; }
         public string? Sheet { get; set; }
         public int Col { get; set; }
         public int Row { get; set; }

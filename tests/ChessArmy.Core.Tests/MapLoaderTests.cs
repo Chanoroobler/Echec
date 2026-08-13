@@ -339,10 +339,34 @@ public class MapLoaderTests
     }
 
     [Fact]
+    public void Parse_ReadsObjectsLayer_Chute()
+    {
+        var json = Map2x2.TrimEnd().TrimEnd('}') + """
+        , "objects": [ "F.", ".." ] }
+        """;
+        var map = MapLoader.Parse(json, Catalog());
+
+        var chute = Assert.Single(map.Objects);
+        Assert.Equal(MapObjectKind.Chute, chute.Kind);
+        Assert.Equal(new Cell(0, 0), chute.Cell);
+    }
+
+    [Fact]
     public void Parse_NoObjectsLayer_GivesEmpty()
     {
         var map = MapLoader.Parse(Map2x2, Catalog());
         Assert.Empty(map.Objects);
+    }
+
+    [Fact]
+    public void Parse_Draft_DefaultsFalse_AndReadsTrue()
+    {
+        Assert.False(MapLoader.Parse(Map2x2, Catalog()).IsDraft);   // champ absent → false
+
+        var draft = Map2x2.TrimEnd().TrimEnd('}') + """
+        , "draft": true }
+        """;
+        Assert.True(MapLoader.Parse(draft, Catalog()).IsDraft);
     }
 
     [Fact]

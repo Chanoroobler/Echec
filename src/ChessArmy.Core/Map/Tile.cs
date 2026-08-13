@@ -14,4 +14,7 @@ public readonly record struct Tile(TileDef Def)
 
     /// <summary>Vrai si la tuile arrête une ligne de tir (mur ; l'eau laisse passer).</summary>
     public bool BlocksLineOfFire => Def.BlocksFire;
+
+    /// <summary>Vrai si la tuile est glissante (glace) : une unité qui s'y arrête glisse d'une case.</summary>
+    public bool Slippery => Def.Slides;
 }

@@ -74,6 +74,21 @@ public class TileCatalogTests
     }
 
     [Fact]
+    public void FromJson_ParsesGlisse_DefaultsFalse()
+    {
+        var json = """
+        { "tiles": [
+            { "id": "glace",  "key": "g", "blocksMove": false, "blocksFire": false, "glisse": true },
+            { "id": "sol_dur", "key": "d", "blocksMove": false, "blocksFire": false }
+        ]}
+        """;
+        var cat = TileCatalog.FromJson(json);
+
+        Assert.True(cat.Get("glace").Slides);      // glisse: true → tuile glissante
+        Assert.False(cat.Get("sol_dur").Slides);   // glisse absent → false par défaut
+    }
+
+    [Fact]
     public void Ctor_DuplicateId_Throws()
     {
         var dup = new[]

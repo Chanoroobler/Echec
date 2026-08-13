@@ -108,7 +108,7 @@
       "nodes": [
         // ── Branche 0 : le COMMANDANT (Mage) ────────────────────────────────────────────────────
         { "id": "fou_cmd_reposition", "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Repositionnement stratégique" } ] },
-        { "id": "fou_cmd_portee",     "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
+        { "id": "fou_cmd_portee", "asset": "lan_cmd_portee", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
         { "id": "fou_cmd_soin",       "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Soin" } ] },
         { "id": "fou_cmd_drain",      "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Drain de vie" } ] },
         { "id": "fou_cmd_pv_fou",     "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 3, "scale": "perDomaineUnit", "domaine": "Fou" } ] },
@@ -123,11 +123,11 @@
         { "id": "fou_unit_portee",     "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "attackRange", "amount": 1, "domaine": "Fou" } ] },
 
         // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + fusion) ───────────────────────────
-        { "id": "fou_logi_deploy_1",  "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "fou_logi_deploy_1", "asset": "logi_deploiement_1",  "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
         { "id": "fou_logi_fusion",    "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Fou" } ] },
-        { "id": "fou_logi_reserve_1", "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
-        { "id": "fou_logi_deploy_2",  "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
-        { "id": "fou_logi_reserve_2", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
+        { "id": "fou_logi_reserve_1", "asset": "lan_logi_reserve_1", "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "fou_logi_deploy_2", "asset": "logi_deploiement_1",  "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
+        { "id": "fou_logi_reserve_2", "asset": "lan_logi_reserve_1", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
         { "id": "fou_logi_amalgame",  "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Fou" } ] }
       ]
     }

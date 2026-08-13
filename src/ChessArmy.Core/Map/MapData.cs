@@ -15,10 +15,11 @@ public sealed class MapData
         IReadOnlyList<MapObject>? objects = null, IReadOnlyList<Cell>? defensiveEnemySpawns = null,
         SpecialObjective objective = SpecialObjective.Aucun, int phase = 0, int turnLimit = 0,
         IReadOnlyList<Cell>? offensiveEnemySpawns = null, IReadOnlyList<int>? enemyTiers = null,
-        IReadOnlyDictionary<Cell, bool>? forcedFacing = null)
+        IReadOnlyDictionary<Cell, bool>? forcedFacing = null, bool isDraft = false)
     {
         Name = name;
         Type = type;
+        IsDraft = isDraft;
         Width = width;
         Height = height;
         _tiles = tiles;
@@ -39,6 +40,12 @@ public sealed class MapData
 
     public string Name { get; }
     public CombatType Type { get; }
+
+    /// <summary>
+    /// BROUILLON : map en cours de conception, EXCLUE du jeu (le chargement des maps l'ignore). Défaut
+    /// <c>false</c>. Permet de garder un WIP dans <c>Assets/Maps</c> sans qu'il soit tiré en campagne.
+    /// </summary>
+    public bool IsDraft { get; }
 
     /// <summary>Sous-type d'objectif d'une mission <see cref="CombatType.Speciale"/> (sinon <see cref="SpecialObjective.Aucun"/>).</summary>
     public SpecialObjective Objective { get; }

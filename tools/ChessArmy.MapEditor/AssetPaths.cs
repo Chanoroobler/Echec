@@ -18,6 +18,9 @@ internal static class AssetPaths
     public static string TilesetsDir => Path.Combine(AssetsDir, "Tilesets");
     public static string MapsDir     => Path.Combine(AssetsDir, "Maps");
 
+    /// <summary>Plan de campagne du jeu : sert au récap pour connaître les tailles d'escarmouche attendues par phase.</summary>
+    public static string CampaignJson => Path.Combine(AssetsDir, "Config", "campaign.json");
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

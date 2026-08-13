@@ -206,6 +206,19 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _bushCells = new();
     private Texture2D? _bushSprite;                          // PNG du buisson (placeholder dessiné si absent)
 
+    // Objets « chute » (calque "objects") : tuile-piège marchable UNE fois. En combat, quand le pion qui
+    // l'occupait la QUITTE, elle s'effondre en trou infranchissable (BuiltInTiles.Hole, le tir passe). Elle
+    // TREMBLE légèrement tant qu'un pion est dessus (placement compris). Cf. UpdateChuteTiles / DrawTerrain.
+    private readonly List<Cell> _chuteCells = new();         // cases chute encore intactes
+    private readonly HashSet<Cell> _chuteArmed = new();      // chutes ayant été occupées : tomberont une fois vidées (combat)
+    private readonly HashSet<Cell> _fallenCells = new();     // trous (chutes effondrées) : rendus en trou sombre
+    private readonly ChuteFall _chuteFall = new();           // animation de chute en cours
+    private readonly List<Cell> _chuteJustLanded = new();    // tampon : chutes dont l'anim vient de finir (→ trou)
+    private Texture2D? _chuteSprite;                         // PNG du marqueur d'avertissement (triangle) — placeholder dessiné si absent
+    private const float ChuteTrembleFreq = 26f;             // vitesse du tremblement (rad/s)
+    private const float ChuteTrembleAmp = 1.4f;             // amplitude verticale du tremblement (px canvas)
+    private const int ChuteFallDrop = 40;                   // descente max de la tuile pendant sa chute (px)
+
     // Coffres (objet de map, calque "objects") : un allié qui ENTRE dessus en combat l'ouvre → équipement
     // commun tiré en inventaire de run, puis le coffre est consommé (usage unique). Même détection par
     // transition (absent→présent) que les tuiles recrue. Rendu : simple PNG pour l'instant (anim plus tard).
@@ -342,6 +355,11 @@ public sealed class GameplayScene : Scene
     // mot-clé sont reportés à l'impact de l'attaque, comme un coup encaissé normal. Recul directionnel indépendant
     // de la victime directe (cf. HitRecoil), figé à l'impact et résorbé dans la fenêtre des FX.
     private readonly HitRecoil _pierceRecoil = new();
+    // « Glace » : une action (déplacement ou avance sur un kill) s'est arrêtée sur une tuile « glisse » ; le moteur
+    // a déjà fait déraper le pion jusqu'à sa case de repos. On rejoue le TRAJET visuel (dérapage + son) APRÈS toute
+    // anim d'attaque/interception, et on gèle le tour tant qu'il glisse. _pendingSlide = chemin en attente de départ.
+    private readonly SlideGlide _slideGlide = new();
+    private System.Collections.Generic.IReadOnlyList<Cell>? _pendingSlide;
     private (Cell Cell, int Damage, int Dc, int Dr)? _pendingPierce;
     // « Revoir la dernière action de l'IA » (R clavier / RB manette, pendant le tour du joueur) : instantané de la
     // dernière action ennemie, capturé pour REJOUER son animation par-dessus le plateau courant sans re-toucher le
@@ -621,6 +639,7 @@ public sealed class GameplayScene : Scene
         // Objets recrue (pion « ? ») et buisson : PNG optionnels, repli sur un placeholder dessiné.
         LoadRecrueSprites();   // tous les looks recrue (Assets/Objects/*_front.png) : une variante par case
         _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
+        _chuteSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/chute.png"));
         _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
         _rerollIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/relance.png"));
         _recycleIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/recycler.png"));
@@ -667,6 +686,8 @@ public sealed class GameplayScene : Scene
         _recrueLooks.Clear();
         _bushSprite?.Dispose();
         _bushSprite = null;
+        _chuteSprite?.Dispose();
+        _chuteSprite = null;
         _equipSlotBg?.Dispose();
         _equipSlotBg = null;
         foreach (var sprite in _equipSprites.Values)
@@ -726,7 +747,12 @@ public sealed class GameplayScene : Scene
             return;
         foreach (var file in System.IO.Directory.GetFiles(dir, "*.json"))
         {
-            try { _maps.Add(MapLoader.Parse(System.IO.File.ReadAllText(file), _catalog)); }
+            try
+            {
+                var map = MapLoader.Parse(System.IO.File.ReadAllText(file), _catalog);
+                if (!map.IsDraft)                 // BROUILLON : map WIP exclue du jeu (jamais tirée)
+                    _maps.Add(map);
+            }
             catch { /* map mal formée : ignorée, les autres restent chargées */ }
         }
     }
@@ -1022,7 +1048,10 @@ public sealed class GameplayScene : Scene
             var firstRun = !Context.Saves.HasPlayedBefore();
             if (firstRun)
                 Context.Saves.MarkPlayed();
-            _run = new Run(firstRun: firstRun, commander: _chosenCommander, difficulty: _chosenDifficulty);
+            // Le TUTORIEL (combat zéro, joué juste après pour toute nouvelle campagne) se déroule TOUJOURS avec
+            // le commandant de départ (le Foudroyeur), quel que soit le choix du joueur : la run démarre donc
+            // sur le commandant par défaut (commander: null), et EndTutorial rend le commandant CHOISI avant la campagne.
+            _run = new Run(firstRun: firstRun, commander: null, difficulty: _chosenDifficulty);
         }
         _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
         // Priorité de tirage du boss de dernière phase : le jeu privilégie un boss qui débloquerait un
@@ -1072,6 +1101,10 @@ public sealed class GameplayScene : Scene
         _bushCells.Clear();
         _recrueCells.Clear();
         _chestCells.Clear();
+        _chuteCells.Clear();
+        _chuteArmed.Clear();
+        _fallenCells.Clear();
+        _chuteFall.Clear();
         if (_map is { } cm)
             foreach (var o in cm.Objects)
                 switch (o.Kind)
@@ -1079,6 +1112,7 @@ public sealed class GameplayScene : Scene
                     case MapObjectKind.Bush: _bushCells.Add(o.Cell); break;
                     case MapObjectKind.Recruit: _recrueCells.Add(o.Cell); break;
                     case MapObjectKind.ChestCommon: _chestCells.Add(o.Cell); break;
+                    case MapObjectKind.Chute: _chuteCells.Add(o.Cell); break;
                 }
 
         // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
@@ -1154,6 +1188,8 @@ public sealed class GameplayScene : Scene
         _pendingImpactZone = null;
         _pendingReculeSlam = null;
         _reculeSlide = null;
+        _slideGlide.Clear();
+        _pendingSlide = null;
         _pendingRiposte = null;
         _pendingInterceptions.Clear();
         _pendingSlamDissolve = null;
@@ -1275,6 +1311,10 @@ public sealed class GameplayScene : Scene
         _chestCells.Clear();
         _chestConsumed.Clear();
         _chestPrev.Clear();
+        _chuteCells.Clear();
+        _chuteArmed.Clear();
+        _fallenCells.Clear();
+        _chuteFall.Clear();
         // Le seul objet de la map du tuto : le coffre de la leçon « équipement ».
         if (_map is { } withObjects)
             foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
@@ -1297,6 +1337,8 @@ public sealed class GameplayScene : Scene
         _pendingImpactZone = null;
         _pendingReculeSlam = null;
         _reculeSlide = null;
+        _slideGlide.Clear();
+        _pendingSlide = null;
         _pendingRiposte = null;
         _pendingInterceptions.Clear();
         _pendingSlamDissolve = null;
@@ -1348,6 +1390,9 @@ public sealed class GameplayScene : Scene
         _commandTree.Close();
         _equipPhase = false;
         ClearSelection();
+        // Le tuto s'est joué avec le Foudroyeur (commandant de départ) ; la vraie campagne reprend le commandant
+        // réellement CHOISI par le joueur (null → Foudroyeur). Le Reset qui suit reconstruit le roster dessus.
+        _run.SetCommander(_chosenCommander);
         _run.Reset();               // rend les prêts du tuto : roster, équipement, points de commandement
         BeginPlacement();           // 1re sauvegarde de la run a lieu ici (combat réel), jamais pendant le tuto
     }
@@ -1516,6 +1561,32 @@ public sealed class GameplayScene : Scene
             if (allyOn && !_chestPrev.Contains(c))
                 OpenChest(c);
             if (allyOn) _chestPrev.Add(c); else _chestPrev.Remove(c);
+        }
+    }
+
+    /// <summary>
+    /// Tuiles « chute » (piège) EN COMBAT : une case occupée par un pion est AMORCÉE ; une case amorcée qui se
+    /// vide (le pion l'a quittée, quelle qu'en soit la cause) s'EFFONDRE — anim de chute puis trou infranchissable
+    /// (posé côté moteur à la fin de l'anim, cf. UpdateBattle). Appelé seulement quand le combat est posé (aucune
+    /// anim en cours) — donc jamais au placement (autre boucle) : on peut y déplacer les pions sans rien faire tomber.
+    /// </summary>
+    private void UpdateChuteTiles()
+    {
+        if (_chuteCells.Count == 0)
+            return;
+        for (var i = _chuteCells.Count - 1; i >= 0; i--)
+        {
+            var c = _chuteCells[i];
+            if (_match.UnitAt(c) != null)
+            {
+                _chuteArmed.Add(c);            // un pion s'est posé dessus : amorcée
+            }
+            else if (_chuteArmed.Remove(c))
+            {
+                _chuteCells.RemoveAt(i);       // amorcée puis vidée → elle tombe
+                _chuteFall.Start(c);
+                Context.Sounds.Play("chute");
+            }
         }
     }
 
@@ -3596,6 +3667,18 @@ public sealed class GameplayScene : Scene
 
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
         _tremor.Update(dt);        // les tuiles de l'AoE (Séisme/Impact) finissent de trembler (cf. DrawTerrain)
+        _slideGlide.Update(dt);    // le pion qui a dérapé sur la glace rejoint sa case de repos (cf. DrawUnit)
+        _chuteFall.Update(dt, _chuteJustLanded);   // tuiles « chute » en cours d'effondrement (cf. DrawTerrain)
+        if (_chuteJustLanded.Count > 0)
+        {
+            // Chute terminée : la case devient un TROU infranchissable (le moteur la lit via _battlefield).
+            foreach (var c in _chuteJustLanded)
+            {
+                _fallenCells.Add(c);
+                _battlefield[c] = new Tile(BuiltInTiles.Hole);
+            }
+            _chuteJustLanded.Clear();
+        }
         _pierceRecoil.Update(dt);  // le recul du pion transpercé se résorbe (cf. DrawUnit)
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
@@ -3613,7 +3696,8 @@ public sealed class GameplayScene : Scene
         // l'attaquant AVANCE dessus (le moteur l'y place instantanément), la révélation s'ouvrirait AVANT que
         // l'animation d'attaque n'ait fini de jouer. On attend donc la fin des FX : l'attaque se joue, PUIS la
         // découverte. La détection est basée sur l'état (occupation courante) : rien n'est manqué, juste différé.
-        if (!_fx.Active && !_storm.Active && !_tremor.Active && _pendingRiposte is null && _pendingInterceptions.Count == 0
+        if (!_fx.Active && !_storm.Active && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active && _pendingSlide is null
+            && _pendingRiposte is null && _pendingInterceptions.Count == 0
             && _pendingSlamDissolve is null && _pendingPierceDissolve is null)
         {
             if (AiCapturesPaysans)
@@ -3621,6 +3705,7 @@ public sealed class GameplayScene : Scene
             if (!IsProtectMission)
                 CheckRecrueObjects();
             CheckChests();         // ouverture d'un coffre si un allié vient d'entrer dessus
+            UpdateChuteTiles();    // arme les tuiles « chute » occupées ; effondre celles qu'un pion vient de quitter
         }
 
         // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
@@ -3770,6 +3855,22 @@ public sealed class GameplayScene : Scene
             _detailedTooltip = !_detailedTooltip;
             Context.Sounds.Play("menu_click");
         }
+
+        // « Glace » : le pion vient de s'arrêter sur une tuile glissante — on lance son dérapage (+ whoosh) MAINTENANT,
+        // toute anim d'attaque/interception étant terminée, puis on GÈLE le tour tant qu'il glisse (comme le tremblement).
+        // Le glide est mis à jour en tête de frame (cf. _slideGlide.Update) : il s'éteint seul, pas de blocage.
+        if (_pendingSlide is { } slidePath)
+        {
+            _pendingSlide = null;
+            StartSlideGlide(slidePath);
+        }
+        if (_slideGlide.Active)
+            return;
+
+        // Effondrement d'une tuile « chute » en cours : on gèle le tour tant qu'elle tombe (le joueur la voit
+        // s'effondrer avant que le combat n'enchaîne). Le trou est posé côté moteur à la fin de l'anim (cf. plus haut).
+        if (_chuteFall.Active)
+            return;
 
         // Tremblement de zone (« Séisme » / « Impact ») : on GÈLE le jeu (IA comme joueur) tant qu'il joue,
         // pour laisser le temps de LIRE les dégâts avant que le tour suivant n'enchaîne. Le tremor a déjà été
@@ -5577,7 +5678,26 @@ public sealed class GameplayScene : Scene
         // réécrite à l'action suivante).
         foreach (var itc in _match.LastInterceptions)
             _pendingInterceptions.Enqueue((itc.From, itc.To, moverSprite, itc.Killed, itc.Damage));
+        // « Glace » : le pion s'est arrêté sur une tuile glissante et a dérapé. On démarre le glissement TOUT DE
+        // SUITE (dès cette frame) pour qu'aucune image ne le montre à l'arrivée avant qu'il ne glisse (sinon
+        // « flash »). Exception : une interception doit se rejouer d'abord → on diffère la glissade après son
+        // animation (cf. _pendingSlide dans UpdateBattle). Ignoré si l'unité a été tuée en route (case vide).
+        if (_match.LastSlide is { } slidePath && _match.UnitAt(slidePath[^1]) is not null)
+        {
+            if (_pendingInterceptions.Count > 0)
+                _pendingSlide = slidePath;
+            else
+                StartSlideGlide(slidePath);
+        }
         return kind;
+    }
+
+    /// <summary>Démarre l'animation de glissade sur glace (dérapage visuel jusqu'à la case de repos) + le son.
+    /// Le tour reste gelé tant que <c>_slideGlide.Active</c> (cf. UpdateBattle).</summary>
+    private void StartSlideGlide(System.Collections.Generic.IReadOnlyList<Cell> path)
+    {
+        _slideGlide.Start(path);
+        Context.Sounds.Play("unit_slide");
     }
 
     /// <summary>Feedback de l'« Impact » (déplacement comme attaque) : fait trembler les tuiles de l'AoE de
@@ -5658,6 +5778,10 @@ public sealed class GameplayScene : Scene
         if (kind == MoveKind.Invalid)
             return kind;
 
+        // « Glace » : sur un kill, l'attaquant qui a avancé sur la case de la victime a pu déraper (tuile glissante).
+        // Pas de glissement SÉPARÉ ici : il est ABSORBÉ par l'anim d'avance (l'attaquant fente jusqu'à sa case de
+        // repos réelle, cf. attackerCell plus bas) — sinon on verrait un double affichage. Le moteur l'a déjà placé.
+
         // Bilan de la foudre : éclair + dégâts UNIQUEMENT sur les ennemis réellement frappés (esquive/bouclier inclus).
         _pendingStormBolts = null;
         _pendingStormHits = null;
@@ -5716,8 +5840,11 @@ public sealed class GameplayScene : Scene
             && victim.Hp == victimHpBefore && victim.HasTrait(Trait.Esquive);
         if (_tutorial is { Step: TutorialStep.Attack } && killed && victim is { Faction: Faction.Enemy })
             _tutorial.Advance();            // mort de l'ENNEMI → Attack → Commander (pas sur la contre-attaque)
-        var advanced = killed && ReferenceEquals(_match.UnitAt(target), attacker);
-        var attackerCell = advanced ? target : from;
+        // L'attaquant a-t-il quitté sa case en tuant ? Il a pu prendre la case de la victime OU glisser plus loin
+        // sur la glace (« Glace »). On repère sa case de repos RÉELLE : l'anim d'avance l'y mènera d'un trait.
+        var slidRest = _match.LastSlide is { } sp && ReferenceEquals(_match.UnitAt(sp[^1]), attacker) ? sp[^1] : (Cell?)null;
+        var advanced = killed && (slidRest is not null || ReferenceEquals(_match.UnitAt(target), attacker));
+        var attackerCell = !advanced ? from : (slidRest ?? target);
         var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
         Context.Sounds.Play(SoundForStyle(style));   // incantation (mage) / charge (cavalier) / tir (archer) / coup d'arme
         // victimDoomed : la cible va mourir du plaquage « Recule » (déjà retirée) → dessinée solide/statique, sans flash.
@@ -6116,6 +6243,7 @@ public sealed class GameplayScene : Scene
                 if (BoardAssembled) DrawEnemyThreat(sb, board);
                 if (BoardAssembled) DrawAuraHalos(sb, board);   // halos d'aura : c'est au placement qu'on s'y range
                 DrawChests(sb, board);                   // coffres (sous les unités : un allié peut être dessus)
+                DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
@@ -6184,6 +6312,7 @@ public sealed class GameplayScene : Scene
                 DrawEnemyThreat(sb, board);
                 DrawAuraHalos(sb, board);                // halos d'aura, par-dessus les zones mais sous les pions
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
+                DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
@@ -6318,7 +6447,7 @@ public sealed class GameplayScene : Scene
             if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, nb);
             if (BoardAssembled) DrawEnemyThreat(sb, nb);
             if (BoardAssembled) DrawAuraHalos(sb, nb);
-            DrawChests(sb, nb); DrawRecrueObjects(sb, nb);
+            DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
             if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
@@ -6328,7 +6457,7 @@ public sealed class GameplayScene : Scene
         else   // Battle
         {
             DrawHighlights(sb, nb); DrawEnemyThreat(sb, nb); DrawAuraHalos(sb, nb);
-            DrawChests(sb, nb); DrawRecrueObjects(sb, nb);
+            DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
             DrawAllyThreatIcons(sb, nb);
@@ -6576,11 +6705,79 @@ public sealed class GameplayScene : Scene
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
         {
+            var (oy, a) = BoardIntroAnim(cell, layout);
+
+            // Tuile « chute » effondrée : on ne dessine RIEN — la case reste vide et laisse voir l'eau
+            // animée derrière le plateau (le tir passe, on ne marche plus).
+            if (_fallenCells.Contains(cell))
+                continue;
+
             var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
             var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
-            var (oy, a) = BoardIntroAnim(cell, layout);
             rect.Y += oy + _tremor.OffsetY(cell);   // secousse locale de l'AoE (Séisme/Impact)
-            sb.Draw(tex, rect, src, Color.White * a);
+
+            // Tuile « chute » : descend + s'estompe si elle tombe ; sinon tremble légèrement si un pion est dessus.
+            var fade = a;
+            if (_chuteFall.IsFalling(cell))
+            {
+                var p = _chuteFall.Progress(cell);            // 0 → 1
+                rect.Y += (int)(p * p * ChuteFallDrop);        // chute qui accélère
+                fade = a * (1f - p);
+            }
+            else
+            {
+                rect.Y += ChuteTrembleY(cell);
+            }
+            sb.Draw(tex, rect, src, Color.White * fade);
+        }
+    }
+
+    /// <summary>Tremblement vertical (px) d'une tuile « chute » INTACTE quand un pion est dessus (0 sinon).
+    /// Appliqué à la tuile (DrawTerrain), au marqueur et au pion (DrawUnit) pour qu'ils vibrent ensemble.</summary>
+    private int ChuteTrembleY(Cell cell)
+    {
+        if (_chuteCells.Count == 0 || !_chuteCells.Contains(cell) || _match.UnitAt(cell) is null)
+            return 0;
+        return (int)MathF.Round(MathF.Sin(_time * ChuteTrembleFreq) * ChuteTrembleAmp);
+    }
+
+    /// <summary>Marqueurs d'avertissement des tuiles « chute » (triangle) : sous les unités. Vibrent avec la
+    /// tuile quand un pion est dessus, tombent avec elle quand elle s'effondre.</summary>
+    private void DrawChuteMarkers(SpriteBatch sb, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        foreach (var cell in _chuteCells)
+            DrawChuteMarkerAt(sb, layout, cell, size, 0f);
+        if (_chuteFall.Active)
+            foreach (var cell in _battlefield.Cells())
+                if (_chuteFall.IsFalling(cell))
+                    DrawChuteMarkerAt(sb, layout, cell, size, _chuteFall.Progress(cell));
+    }
+
+    private void DrawChuteMarkerAt(SpriteBatch sb, GridLayout layout, Cell cell, int size, float fallProgress)
+    {
+        var (introY, introA) = BoardIntroAnim(cell, layout);
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        int x = (int)top.X, y = (int)top.Y + introY;
+        float a = introA;
+        if (fallProgress > 0f)
+        {
+            y += (int)(fallProgress * fallProgress * ChuteFallDrop);
+            a *= 1f - fallProgress;
+        }
+        else
+        {
+            y += ChuteTrembleY(cell);
+        }
+        if (_chuteSprite != null)
+        {
+            sb.Draw(_chuteSprite, new Rectangle(x, y, size, size), Color.White * a);
+        }
+        else
+        {
+            // Repli (PNG absent) : losange rouge d'avertissement.
+            var m = size / 3;
+            DrawRect(sb, new Rectangle(x + size / 2 - m / 2, y + size / 2 - m / 2, m, m), Palette.Purple5 * a);
         }
     }
 
@@ -7109,8 +7306,11 @@ public sealed class GameplayScene : Scene
         // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU — si elle a été REPOUSSÉE
         // d'une case (« Recule ») — le GLISSEMENT vers sa case d'arrivée : décalage en pixels. Le pion TRANSPERCÉ
         // (derrière la cible) recule dans l'axe du coup en parallèle (cf. HitRecoil).
-        var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
+        var kb = IsFxVictim(cell) ? VictimKnockback(size)
+               : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
+               : ReculeSlideOffset(cell, layout);
         kb += _pierceRecoil.Offset(cell, size);
+        kb.Y += ChuteTrembleY(cell);   // le pion vibre avec la tuile « chute » qu'il occupe
         zx += kb.X;
         zy += kb.Y;
 
@@ -7251,8 +7451,11 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, _) = BoardIntroAnim(cell, layout);
             var animLift = UnitLift(cell, size);
-            var kb = IsFxVictim(cell) ? VictimKnockback(size) : ReculeSlideOffset(cell, layout);
+            var kb = IsFxVictim(cell) ? VictimKnockback(size)
+                   : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
+                   : ReculeSlideOffset(cell, layout);
             kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
+            kb.Y += ChuteTrembleY(cell);              // et le tremblement de la tuile « chute »
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
                 isAimed ? aimedPreview : 0, isHealAimed ? healPreview : 0);
         }
@@ -9400,10 +9603,17 @@ public sealed class GameplayScene : Scene
             return IsProtectMission
                 ? (Loc.T("env.paysan.name"), Loc.T("env.paysan.desc"))
                 : (Loc.T("env.recrue.name"), Loc.T("env.recrue.desc"));
+        // Tuile « chute » encore intacte (piège) : explique qu'elle s'effondre quand le pion la quitte.
+        if (_chuteCells.Contains(cell))
+            return (Loc.T("env.chute.name"), Loc.T("env.chute.desc"));
         // Tuile infranchissable qui coupe AUSSI la ligne de tir (pierre, montagne, mur plein) : obstacle.
         // L'eau (passage bloqué mais tir possible) est volontairement exclue.
         if (_battlefield.Contains(cell) && _battlefield[cell] is { BlocksMovement: true, BlocksLineOfFire: true })
             return (Loc.T("env.obstacle.name"), Loc.T("env.obstacle.desc"));
+        // Tuile GLISSANTE (glace) : explique au joueur que s'arrêter dessus fait déraper l'unité. Priorité la
+        // plus basse (un objet posé dessus — coffre/recrue — reste plus pertinent à décrire).
+        if (_battlefield.Contains(cell) && _battlefield[cell].Slippery)
+            return (Loc.T("env.glace.name"), Loc.T("env.glace.desc"));
         return null;
     }
 
