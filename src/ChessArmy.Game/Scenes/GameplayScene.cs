@@ -3460,6 +3460,9 @@ public sealed class GameplayScene : Scene
             }
         if (FusionOpen)
         {
+            // Le focus réserve reste actif (on y revient après la fusion), mais ses visuels d'aperçu/surbrillance
+            // sont masqués tant que la popup / l'animation d'évolution sont à l'écran (cf. DrawPlacementPreview
+            // et DrawInventoryFocusHighlight) — sinon ils s'affichaient DERRIÈRE la popup.
             _fusionFocus = 0;
             Context.Sounds.Play("menu_open");
         }
@@ -6719,6 +6722,17 @@ public sealed class GameplayScene : Scene
             : null;
     }
 
+    /// <summary>
+    /// Vrai quand une modale ou une révélation COUVRE le plateau (briefing de mission, popup de fusion, morph
+    /// d'évolution, révélation de recrue/coffre, arbre de commandement, pause, codex). Les cartes-tooltips et
+    /// aperçus des pions ne doivent alors PAS être dessinés : ils resteraient DERRIÈRE la modale et
+    /// surchargeraient le rendu, d'autant qu'à la MANETTE le curseur repose en permanence sur un pion, donc une
+    /// carte serait toujours « active » (à la souris le problème ne se pose pas : on ne survole plus le plateau).
+    /// </summary>
+    private bool BoardOverlayActive =>
+        _pauseMenu.IsOpen || _codex.IsOpen || CommandTreeOpen || FusionOpen || EvoPlaying
+        || _recrueReveal != null || ChestRevealActive || _specialBriefOpen;
+
     /// <summary>Vrai quand l'animation d'assemblage du plateau est finie (toutes les tuiles en place).</summary>
     private bool BoardAssembled => _boardIntro >= _boardIntroTotal;
 
@@ -8688,6 +8702,11 @@ public sealed class GameplayScene : Scene
         if (_tutorial is { Step: TutorialStep.ReviewCard })
             return;   // la revue de carte affiche déjà la carte du soldat (pas d'aperçu en double)
 
+        // Une modale couvre le plateau (briefing de mission, fusion, évolution, arbre, pause…) : l'aperçu ne
+        // doit pas rester dessiné DERRIÈRE (le focus réserve reste actif pour y revenir ensuite, cf. UpdateFusionPopup).
+        if (BoardOverlayActive)
+            return;
+
         // Cible de l'aperçu : en manette, slot d'inventaire focus ou case du curseur ; sinon souris.
         if (Context.Input.UsingGamepad)
         {
@@ -9574,6 +9593,11 @@ public sealed class GameplayScene : Scene
 
     private void DrawCombatCards(SpriteBatch sb, GridLayout layout)
     {
+        // Une modale couvre le plateau (briefing, fusion, pause…) : aucune carte-tooltip, sinon elle resterait
+        // dessinée DERRIÈRE la modale (surcharge visible surtout à la manette, curseur toujours posé sur un pion).
+        if (BoardOverlayActive)
+            return;
+
         // Pendant qu'on PORTE un pion (glisser de combat), les cartes-tooltips — amies comme ennemies —
         // masqueraient le plateau juste au moment où on vise : on les efface pour garder la vision. La
         // lecture des dégâts passe alors par la barre de vie de la cible visée (aperçu, cf. DrawUnitHpBars).
@@ -9599,15 +9623,23 @@ public sealed class GameplayScene : Scene
 
         // Chaque carte se cale JUXTE le pion qu'elle décrit (à sa droite, cf. CardRectNearCell). En condensé,
         // la HAUTEUR dépend de l'unité (nombre de traits, cf. CondensedCardHeight).
-        // La carte SÉLECTIONNÉE apparaît d'un coup ; celle d'un pion seulement SURVOLÉ fond en entrée.
         Rectangle? ownCard = null;
         if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
         {
             ownCard = CardRectNearCell(oc, layout,
                 condensed ? CondensedCardW : CombatCardW,
                 condensed ? CondensedCardHeight(own, oc) : CombatCardH);
-            var ownHover = oc != _selected;
-            DrawUnitCard(sb, own, ownCard.Value, showKeywords: ownHover, cell: oc, hover: ownHover, condensed: condensed);
+            // showKeywords : jamais pour le pion SÉLECTIONNÉ (ses popups de mots-clés mangeraient le plateau
+            // pendant la visée) ; seulement au simple survol.
+            var ownSelected = oc == _selected;
+            // Fondu d'entrée de la carte. À la souris : tout pion NON sélectionné fond en arrivant, le
+            // sélectionné apparaît d'un coup (il vient d'un glisser qui masquait les cartes). À la MANETTE :
+            // la carte fond tant que le curseur est POSÉ sur le pion — y compris juste après l'avoir ATTRAPÉ
+            // (A), car le compteur de survol ne se réarme pas quand le curseur ne bouge pas : survol et saisie
+            // s'enchaînent donc SANS à-coup. Dès que le curseur part viser ailleurs, la carte du pion tenu
+            // repasse en dessin direct (pleine), comme avant.
+            var ownFades = Context.Input.UsingGamepad ? hovered == oc : !ownSelected;
+            DrawUnitCard(sb, own, ownCard.Value, showKeywords: !ownSelected, cell: oc, hover: ownFades, condensed: condensed);
         }
 
         // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
@@ -10744,6 +10776,10 @@ public sealed class GameplayScene : Scene
     private void DrawInventoryFocusHighlight(SpriteBatch sb)
     {
         if (!Context.Input.UsingGamepad || !_gpInventory || _pending.Count == 0)
+            return;
+        // Une modale couvre le plateau : on masque la surbrillance réserve (elle restait sinon derrière la
+        // modale) — le focus réserve est conservé pour y revenir une fois la modale fermée.
+        if (BoardOverlayActive)
             return;
 
         var i = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);

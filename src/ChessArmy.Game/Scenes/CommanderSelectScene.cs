@@ -36,8 +36,9 @@ namespace ChessArmy.Game.Scenes;
 /// </summary>
 public sealed class CommanderSelectScene : Scene
 {
-    // Éléments focusables (navigation manette par rangées).
-    private enum Kind { CommanderPrev, CommanderNext, StartTile, DiffLevel, Tree, Back, Start }
+    // Éléments focusables (navigation manette par rangées). Le carrousel de commandants est UN seul focus
+    // (Commander) : gauche/droite y fait défiler les pions au lieu de sauter de flèche en flèche.
+    private enum Kind { Commander, StartTile, DiffLevel, Tree, Back, Start }
 
     private const int Margin = 8;
     /// <summary>TOUS les pions du carrousel sont à cette échelle : 64 → 192 px, facteur ENTIER.</summary>
@@ -312,11 +313,9 @@ public sealed class CommanderSelectScene : Scene
     private void BuildFocusables(Layout lay)
     {
         _focusables.Clear();
-        if (HasChoice)
-        {
-            _focusables.Add((lay.NamePrev, Kind.CommanderPrev, 0));
-            _focusables.Add((lay.NameNext, Kind.CommanderNext, 0));
-        }
+        // Le commandant EN TÊTE (index 0) : le focus reste dessus quand on fait défiler le carrousel, alors même
+        // que la liste se reconstruit à chaque frame (le nombre de pions de départ change d'un commandant à l'autre).
+        _focusables.Add((lay.Portrait, Kind.Commander, 0));
         _focusables.Add((lay.Tree, Kind.Tree, 0));
         for (var i = 0; i < lay.StartTiles.Count; i++)
             _focusables.Add((lay.StartTiles[i].Rect, Kind.StartTile, i));
@@ -330,13 +329,12 @@ public sealed class CommanderSelectScene : Scene
     {
         switch (kind)
         {
-            case Kind.CommanderPrev: StepCommander(-1); break;
-            case Kind.CommanderNext: StepCommander(+1); break;
             case Kind.DiffLevel: PickDifficulty(data); break;
             case Kind.Tree: OpenTree(); break;
             case Kind.Back: Back(); break;
             case Kind.Start: StartGame(); break;
-            // StartTile : rien à activer (le focus suffit à afficher la carte du pion).
+            // Commander : A ne fait rien (le défilement se fait à GAUCHE/DROITE, cf. MoveFocus).
+            // StartTile : rien à activer non plus (le focus suffit à afficher la carte du pion).
         }
     }
 
@@ -403,6 +401,15 @@ public sealed class CommanderSelectScene : Scene
     {
         if (_focusables.Count == 0)
             return;
+
+        // Sur le commandant, GAUCHE/DROITE fait DÉFILER le carrousel (le focus reste sur le commandant, on
+        // enchaîne les pions). Haut/bas quitte normalement la rangée vers les autres éléments.
+        if (_focusables[_focus].Kind == Kind.Commander && (dir == NavDir.Left || dir == NavDir.Right))
+        {
+            StepCommander(dir == NavDir.Right ? +1 : -1);
+            return;
+        }
+
         var rows = BuildFocusRows();
         var (ri, ci) = LocateFocus(rows);
         if (ri < 0)
@@ -486,6 +493,10 @@ public sealed class CommanderSelectScene : Scene
         var hoverIndex = HoverIndex(gp, mouse);
 
         DrawCarousel(sb, lay);
+        // Cadre jaune autour du commandant central quand il est focus à la manette : c'est le « curseur » du
+        // carrousel, qui manquait (on ne voyait pas qu'on pouvait le faire défiler à gauche/droite).
+        if (fk == Kind.Commander)
+            Border(sb, Inflate(lay.Sprite, 6), Palette.Yellow2, 3);
         var unlocked = IsUnlocked(def);
 
         // Nom en grand (masqué si verrouillé) + position dans le carrousel.
@@ -499,8 +510,10 @@ public sealed class CommanderSelectScene : Scene
         if (unlocked)
             DrawTreeIcon(sb, lay.Tree, mouse, gp, fk == Kind.Tree);
 
-        Arrow(sb, lay.NamePrev, "<", mouse, gp, fk == Kind.CommanderPrev);
-        Arrow(sb, lay.NameNext, ">", mouse, gp, fk == Kind.CommanderNext);
+        // Les deux flèches s'allument ensemble quand le commandant est focus : elles montrent que GAUCHE/DROITE
+        // fait défiler le carrousel (elles ne sont plus des focus séparés).
+        Arrow(sb, lay.NamePrev, "<", mouse, gp, fk == Kind.Commander);
+        Arrow(sb, lay.NameNext, ">", mouse, gp, fk == Kind.Commander);
 
         // Pions de départ, en bande centrée — en silhouette si le commandant est verrouillé, et le titre
         // de la section cède la place à l'annonce du verrou.
@@ -608,7 +621,7 @@ public sealed class CommanderSelectScene : Scene
     /// </summary>
     private bool ShowDetails(Layout lay, bool gp, Point mouse, Kind? focused) =>
         IsUnlocked(Selected)   // rien à révéler sur un commandant verrouillé
-        && (gp ? focused is Kind.CommanderPrev or Kind.CommanderNext
+        && (gp ? focused == Kind.Commander
                : lay.Portrait.Contains(mouse));
 
     /// <summary>Sous-panneau gauche : PV (barre) puis puissance / mouvement / portée.</summary>

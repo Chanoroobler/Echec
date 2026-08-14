@@ -254,3 +254,39 @@ Alternatives :
 > Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
 
 `#indiegame #roguelike #pixelart #tacticalrpg #gamedev`
+
+---
+
+## Short — Un pion est perdu : autant qu'il ouvre le coffre
+
+**Texte à l'écran** — une seule phrase, fixe
+🇬🇧 `He's dead anyway, so he loots.`
+🇫🇷 *Il est mort de toute façon, alors il pille.*
+
+Alternative : 🇬🇧 `Dead anyway. So he takes the chest.`
+
+**Titre** — 🇬🇧 A doomed unit still has one turn left
+
+Alternatives :
+- 🇬🇧 He's dead either way, so he opens the chest / 🇫🇷 Il est mort quoi qu'il arrive, alors il ouvre le coffre
+- 🇬🇧 Losing a unit doesn't have to be a waste / 🇫🇷 Perdre une unité n'est pas forcément une perte sèche
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Parfois une unité est perdue quoi que tu fasses : elle est à portée de trois ennemis et aucune case ne la met à l'abri. Le réflexe est de la faire reculer pour gagner un tour. Le bon coup est souvent l'inverse — accepter la perte, et dépenser son dernier tour à quelque chose d'utile. Ici, elle va ouvrir le coffre. Elle meurt de toute façon, autant qu'elle meure sur quelque chose.
+>
+> La mort est définitive dans ce jeu. Elle n'a pas à être gratuite pour autant.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Sometimes a unit is lost no matter what you do: three enemies cover it and no square is safe. The reflex is to pull it back and buy a turn. The better move is usually the opposite — accept the loss, and spend its last turn on something useful. Here, it goes and opens the chest. It dies anyway, so it may as well die on something.
+>
+> Death is permanent in this game. That doesn't mean it has to be wasted.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #tacticalrpg #gamedev`

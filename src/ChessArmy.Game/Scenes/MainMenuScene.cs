@@ -78,9 +78,31 @@ public sealed class MainMenuScene : Scene
     // Confirmation d'effacement de la MÉTA-PROGRESSION (par-dessus le panneau d'options).
     private bool _confirmMetaReset;
 
-    // Navigation manette : focus dans la liste racine [slots…, Options, Quitter] et dans la confirmation.
-    private int _focus;
+    // Navigation manette : focus 2D dans la grille racine.
+    //  • Ligne = slots (une par slot), puis la rangée d'actions (Codex/Options/Quitter), puis la wishlist (démo).
+    //  • Colonne = sur une ligne de slot : 0 = slot, 1 = croix d'effacement (slot occupé seulement) ;
+    //    sur la rangée d'actions : 0 = Codex, 1 = Options, 2 = Quitter.
+    private int _focusRow;
+    private int _focusCol;
     private bool _confirmYes;   // focus de la boîte de confirmation : true = EFFACER, false = ANNULER
+
+    /// <summary>Nombre de lignes navigables : slots + rangée d'actions + wishlist (démo seulement).</summary>
+    private int RowCount => _slots.Length + 1 + (Context.Settings.IsDemo ? 1 : 0);
+
+    /// <summary>Nombre de colonnes d'une ligne : slot(+croix) / rangée d'actions à trois / wishlist à un.</summary>
+    private int ColCount(int row)
+    {
+        if (row < _slots.Length) return _slots[row] != null ? 2 : 1;   // slot + croix si occupé
+        if (row == _slots.Length) return 3;                            // Codex | Options | Quitter
+        return 1;                                                      // Wishlist (démo)
+    }
+
+    /// <summary>Ramène (ligne, colonne) dans les bornes courantes (slots effacés, bascule démo…).</summary>
+    private void ClampFocus()
+    {
+        _focusRow = System.Math.Clamp(_focusRow, 0, RowCount - 1);
+        _focusCol = System.Math.Clamp(_focusCol, 0, ColCount(_focusRow) - 1);
+    }
 
     public MainMenuScene(GameContext context) : base(context) { }
 
@@ -198,16 +220,18 @@ public sealed class MainMenuScene : Scene
         var w = Context.VirtualResolution.X;
         var h = Context.VirtualResolution.Y;
         var lay = BuildLayout(w, h);
-        var count = _slots.Length + (Context.Settings.IsDemo ? 4 : 3);   // slots… + Codex + Options + Quitter (+ Wishlist en démo)
-        _focus = System.Math.Clamp(_focus, 0, count - 1);
+        ClampFocus();
 
-        // Manette : navigation haut/bas, A valide, X efface un slot occupé.
-        if (Context.Input.Nav(NavDir.Up)) { _focus = (_focus - 1 + count) % count; Context.Sounds.Play("menu_click"); }
-        if (Context.Input.Nav(NavDir.Down)) { _focus = (_focus + 1) % count; Context.Sounds.Play("menu_click"); }
+        // Manette : navigation 2D (haut/bas change de ligne, gauche/droite change de colonne :
+        // slot ↔ croix d'effacement, ou Codex ↔ Options ↔ Quitter). A valide, X efface le slot focus.
+        if (Context.Input.Nav(NavDir.Up)) { _focusRow = (_focusRow - 1 + RowCount) % RowCount; ClampFocus(); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Down)) { _focusRow = (_focusRow + 1) % RowCount; ClampFocus(); Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Left) && _focusCol > 0) { _focusCol--; Context.Sounds.Play("menu_click"); }
+        if (Context.Input.Nav(NavDir.Right) && _focusCol < ColCount(_focusRow) - 1) { _focusCol++; Context.Sounds.Play("menu_click"); }
         if (Context.Input.WasConfirmPressed) { ActivateFocus(); return; }
-        if (Context.Input.WasTertiaryPressed && _focus < _slots.Length && _slots[_focus] != null)
+        if (Context.Input.WasTertiaryPressed && _focusRow < _slots.Length && _slots[_focusRow] != null)
         {
-            _confirmDelete = _focus; _confirmYes = false; Context.Sounds.Play("menu_click"); return;
+            _confirmDelete = _focusRow; _confirmYes = false; Context.Sounds.Play("menu_click"); return;
         }
 
         // Souris : clic direct.
@@ -237,23 +261,39 @@ public sealed class MainMenuScene : Scene
         else if (Context.Settings.IsDemo && lay.Wishlist.Contains(p)) { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }
     }
 
-    /// <summary>Active l'élément racine sous le focus (slot → démarrer, Options, Quitter).</summary>
+    /// <summary>
+    /// Active l'élément racine sous le focus : sur une ligne de slot, colonne 0 = démarrer/reprendre,
+    /// colonne 1 = croix d'effacement ; sur la rangée d'actions, Codex/Options/Quitter ; sinon wishlist.
+    /// </summary>
     private void ActivateFocus()
     {
-        if (_focus < _slots.Length) { Context.Sounds.Play("menu_click"); StartSlot(_focus); }
-        else if (_focus == _slots.Length) { _codex.Open(); }
-        else if (_focus == _slots.Length + 1) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
-        else if (_focus == _slots.Length + 2) { Context.Sounds.Play("menu_click"); Context.Quit(); }
-        else { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }   // wishlist (démo seulement)
+        if (_focusRow < _slots.Length)
+        {
+            if (_focusCol == 1 && _slots[_focusRow] != null)   // croix d'effacement
+            {
+                _confirmDelete = _focusRow; _confirmYes = false; Context.Sounds.Play("menu_click");
+            }
+            else { Context.Sounds.Play("menu_click"); StartSlot(_focusRow); }
+            return;
+        }
+        if (_focusRow == _slots.Length)   // rangée d'actions
+        {
+            if (_focusCol == 0) { _codex.Open(); }
+            else if (_focusCol == 1) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
+            else { Context.Sounds.Play("menu_click"); Context.Quit(); }
+            return;
+        }
+        Context.Sounds.Play("menu_click"); Store.OpenWishlist();   // wishlist (démo seulement)
     }
 
     /// <summary>Rectangle de l'élément racine focus (surbrillance / pointeur synthétique manette).</summary>
     private Rectangle FocusedRect(MenuLayout lay)
     {
-        if (_focus < _slots.Length) return lay.Slots[_focus];
-        if (_focus == _slots.Length) return lay.Codex;
-        if (_focus == _slots.Length + 1) return lay.Options;
-        return _focus == _slots.Length + 2 ? lay.Quit : lay.Wishlist;
+        if (_focusRow < _slots.Length)
+            return _focusCol == 1 ? lay.Dels[_focusRow] : lay.Slots[_focusRow];
+        if (_focusRow == _slots.Length)
+            return _focusCol == 0 ? lay.Codex : _focusCol == 1 ? lay.Options : lay.Quit;
+        return lay.Wishlist;
     }
 
     /// <summary>
@@ -351,7 +391,7 @@ public sealed class MainMenuScene : Scene
             RefreshSlots();
         }
         _confirmDelete = -1;
-        _focus = System.Math.Clamp(_focus, 0, _slots.Length + 1);
+        ClampFocus();   // le slot effacé perd sa croix : ramène la colonne dans les bornes
         Context.Sounds.Play("menu_click");
     }
 
