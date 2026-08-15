@@ -20,8 +20,8 @@
           {
             "name": "Archer", "asset": "archer", "hp": 15, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte","Transpercement"],
             "evolutions": [
-              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 15, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte", "Balistique","Transpercement"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 18, "damage": 14, "moveRange": 2, "attackRange": 2, "traits": ["Recule","Transpercement"] }
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte", "Balistique","Transpercement"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Recule","Transpercement"] }
             ]
           },
           {
@@ -69,10 +69,10 @@
             ]
           },
           {
-            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 10, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 12, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
             "evolutions": [
               { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
-              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Vol", "Attaque libre", "Balistique"] }
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 15, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Attaque libre", "Balistique"] }
             ]
           }
         ]
@@ -135,7 +135,7 @@
       "hp": 40,
       "damage": 10,
       "moveRange": 2,
-      "attackRange": 1,
+      "attackRange": 2,
       "deployments": 5,
       "reserveSize": 8,
       "tree": "commandantLancier",

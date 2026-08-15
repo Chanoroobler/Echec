@@ -209,10 +209,12 @@ public class EquipmentTests
     }
 
     [Fact]
-    public void ShippedEquipment_Parses_AndAllEnemyAllowedForNow()
+    public void ShippedEquipment_Parses_AndEnemyFlagIsUsedBothWays()
     {
-        // Charge le VRAI equipment.json (valide JSON + commentaires + accents) et vérifie que TOUS les items
-        // sont enemyAllowed=true pour l'instant (l'utilisateur passera certains à false au cas par cas).
+        // Charge le VRAI equipment.json (valide JSON + commentaires + accents). Le catalogue livré n'est plus
+        // « tout autorisé à l'IA » : une partie des objets est RÉSERVÉE au joueur (enemyAllowed=false, ex. la
+        // Lance ou le Soin). On vérifie donc que le drapeau est bien présent dans les DEUX sens plutôt qu'une
+        // valeur figée, qui casserait à chaque arbitrage d'équilibrage.
         var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
         while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
             dir = dir.Parent;
@@ -221,7 +223,8 @@ public class EquipmentTests
 
         var list = EquipmentCatalog.FromJson(System.IO.File.ReadAllText(path));
         Assert.NotEmpty(list);
-        Assert.All(list, e => Assert.True(e.EnemyAllowed));
+        Assert.Contains(list, e => e.EnemyAllowed);    // l'IA a de quoi s'équiper
+        Assert.Contains(list, e => !e.EnemyAllowed);   // et certains objets restent au joueur seul
     }
 
     [Fact]

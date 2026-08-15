@@ -281,13 +281,9 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Pattern d'ATTAQUE natif de l'unité (peut différer du déplacement : cavalier monté = saut en L).
+        // Pattern d'ATTAQUE de l'unité (peut différer du déplacement : cavalier monté = saut en L ;
+        // « Attaque libre » = tir de Dame qui REMPLACE le pattern natif, cf. Unit.AttackDomaine).
         AppendAttackTargets(from, unit, unit.AttackDomaine, result);
-
-        // « Attaque libre » : AJOUTE le tir « comme une Dame » (8 directions en ligne) EN PLUS de l'attaque
-        // native — un cavalier monté garde son attaque au SAUT (L) et gagne le tir en lignes.
-        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
-            AppendAttackTargets(from, unit, Domaine.Dame, result);
     }
 
     /// <summary>
@@ -322,13 +318,19 @@ public sealed class Match
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
                     break; // hors plateau : la ligne de tir s'arrête
-                if (BlocksLineOfFire(to) && !balistique)
-                    break; // montagne : coupe la ligne (sauf tir balistique ; l'eau laisse toujours passer)
+                var blocked = BlocksLineOfFire(to) && !balistique;   // montagne/mur (l'eau laisse toujours passer)
 
                 var target = _units[to.Column, to.Row];
                 if (target == null)
-                    continue; // case vide (ou eau) : la ligne de tir continue
+                {
+                    if (blocked)
+                        break;    // obstacle NU : coupe la ligne (sauf tir balistique)
+                    continue;     // case vide (ou eau) : la ligne de tir continue
+                }
 
+                // Une unité PERCHÉE sur l'obstacle (elle n'a pu s'y poser qu'avec « Vol ») reste à découvert :
+                // c'est elle qu'on vise, pas le mur, donc l'obstacle ne la protège pas. Le tueur ne prendra pas
+                // sa place pour autant — il faut voler soi-même pour s'y poser (cf. LegalMoves / CanTakePlace).
                 if (target.Faction != unit.Faction)
                 {
                     // Premier ennemi en vue : cible SI au-delà de la zone morte de cette direction.
@@ -338,8 +340,9 @@ public sealed class Match
                     break;
                 }
 
-                // Allié : le LANCIER le traverse sans le toucher (ne borne pas) ; sinon il bloque.
-                if (!piercesAllies)
+                // Allié : le LANCIER le traverse sans le toucher (ne borne pas) ; sinon il bloque. Perché sur un
+                // obstacle il borne QUAND MÊME : c'est le mur qui le porte qui coupe la ligne derrière lui.
+                if (!piercesAllies || blocked)
                     break;
             }
         }
@@ -366,10 +369,9 @@ public sealed class Match
         if (unit == null)
             return;
 
-        // Pattern d'ATTAQUE natif (cavalier monté = saut en L), + « Attaque libre » = menace en lignes de Dame EN PLUS.
+        // Pattern d'ATTAQUE de l'unité (cavalier monté = saut en L ; « Attaque libre » = lignes de Dame à la
+        // PLACE du pattern natif, cf. Unit.AttackDomaine) : la menace affichée suit exactement le tir réel.
         AppendThreatenedCells(from, unit, unit.AttackDomaine, result);
-        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
-            AppendThreatenedCells(from, unit, Domaine.Dame, result);
     }
 
     /// <summary>Ajoute à <paramref name="result"/> les cases MENACÉES selon le pattern <paramref name="attackDomaine"/>
@@ -399,11 +401,14 @@ public sealed class Match
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
                     break; // hors plateau : la menace ne porte pas au-delà
-                if (BlocksLineOfFire(to) && !balistique)
-                    break; // montagne : coupe la ligne (sauf tir balistique ; l'eau laisse passer)
+                var blocked = BlocksLineOfFire(to) && !balistique;   // montagne/mur (l'eau laisse passer)
 
                 var occupant = _units[to.Column, to.Row];
-                if (occupant != null && occupant.Faction == unit.Faction && piercesAllies)
+                if (occupant == null && blocked)
+                    break; // obstacle NU : coupe la ligne (sauf tir balistique)
+                // Occupant PERCHÉ dessus (« Vol ») : il est menacé comme n'importe quelle cible, l'obstacle ne
+                // le couvre pas (même règle qu'AppendAttackTargets) — et il borne la ligne au-delà.
+                if (occupant != null && occupant.Faction == unit.Faction && piercesAllies && !blocked)
                     continue; // lancier : traverse l'allié sans le menacer, la ligne continue
 
                 if (step >= minStep && !result.Contains(to))
@@ -1147,11 +1152,17 @@ public sealed class Match
             for (var step = 1; step <= unit.AttackRange; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
-                if (!InBounds(to) || BlocksLineOfFire(to))
+                if (!InBounds(to))
                     break;
                 var occ = _units[to.Column, to.Row];
                 if (occ == null)
+                {
+                    if (BlocksLineOfFire(to))
+                        break;   // obstacle NU : coupe la ligne
                     continue;
+                }
+                // Allié PERCHÉ sur l'obstacle (« Vol ») : soignable comme les autres — s'il est attaquable
+                // là-haut (cf. AppendAttackTargets), il doit pouvoir être soigné.
                 if (occ.Faction == unit.Faction && occ.Hp < occ.MaxHp)
                     result.Add(to);   // premier allié blessé en vue
                 break;                // toute unité borne la ligne
@@ -1230,9 +1241,7 @@ public sealed class Match
     private bool CanStrike(Cell from, Unit unit, Cell target)
     {
         var reach = new List<Cell>();
-        AppendAttackTargets(from, unit, unit.AttackDomaine, reach);
-        if (unit.HasTrait(Trait.AttaqueLibre) && unit.AttackDomaine != Domaine.Dame)
-            AppendAttackTargets(from, unit, Domaine.Dame, reach);
+        AppendAttackTargets(from, unit, unit.AttackDomaine, reach);   // « Attaque libre » déjà pris en compte
         return reach.Contains(target);
     }
 

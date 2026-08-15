@@ -208,41 +208,41 @@ public class RunTests
     [Fact]
     public void ChestPity_BuildsOnMiss_ResetsOnDrop_Independently()
     {
-        var run = RunAt(1);   // phase 1 : légendaire 2 %, rare 15 %
+        var run = RunAt(1);   // phase 1 : légendaire 5 %, rare 30 %
 
-        // Coffre commun : les deux pitiés montent (légendaire +1, rare +2).
+        // Coffre commun : les deux pitiés montent (légendaire +2, rare +3).
         Assert.Equal(EquipmentRarity.Common, run.ResolveChestRarity(99.0));
-        Assert.Equal(1, run.LegendaryPity);
-        Assert.Equal(2, run.RarePity);
+        Assert.Equal(2, run.LegendaryPity);
+        Assert.Equal(3, run.RarePity);
 
         // Deuxième coffre commun : elles continuent de monter.
         Assert.Equal(EquipmentRarity.Common, run.ResolveChestRarity(99.0));
-        Assert.Equal(2, run.LegendaryPity);
-        Assert.Equal(4, run.RarePity);
+        Assert.Equal(4, run.LegendaryPity);
+        Assert.Equal(6, run.RarePity);
 
-        // Coffre RARE (fenêtre élargie : légendaire 2+2=4, rare 15+4=19 → roll 10) : rare remis à zéro,
-        // légendaire continue (+1).
+        // Coffre RARE (fenêtre élargie : légendaire 5+4=9, rare 30+6=36 → le rare va de 9 à 45, roll 10) :
+        // rare remis à zéro, légendaire continue (+2).
         Assert.Equal(EquipmentRarity.Rare, run.ResolveChestRarity(10.0));
         Assert.Equal(0, run.RarePity);
-        Assert.Equal(3, run.LegendaryPity);
+        Assert.Equal(6, run.LegendaryPity);
 
-        // Coffre LÉGENDAIRE (fenêtre légendaire 2+3=5 → roll 1) : légendaire remis à zéro, rare monte (+2).
+        // Coffre LÉGENDAIRE (fenêtre légendaire 5+6=11 → roll 1) : légendaire remis à zéro, rare monte (+3).
         Assert.Equal(EquipmentRarity.Legendary, run.ResolveChestRarity(1.0));
         Assert.Equal(0, run.LegendaryPity);
-        Assert.Equal(2, run.RarePity);
+        Assert.Equal(3, run.RarePity);
     }
 
     [Fact]
     public void ChestPity_SurvivesSaveRoundTrip()
     {
         var run = RunAt(5);
-        run.ResolveChestRarity(99.0);   // commun → legPity 1, rarePity 2
-        run.ResolveChestRarity(99.0);   // → legPity 2, rarePity 4
+        run.ResolveChestRarity(99.0);   // commun → legPity 2, rarePity 3
+        run.ResolveChestRarity(99.0);   // → legPity 4, rarePity 6
 
         var restored = RunSave.From(run).ToRun();
 
-        Assert.Equal(2, restored.LegendaryPity);
-        Assert.Equal(4, restored.RarePity);
+        Assert.Equal(4, restored.LegendaryPity);
+        Assert.Equal(6, restored.RarePity);
     }
 
     [Fact]

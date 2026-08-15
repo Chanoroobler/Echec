@@ -612,6 +612,47 @@ public class TraitsTests
         Assert.DoesNotContain(new Cell(0, 2), normal.LegalMoves(new Cell(0, 0))); // l'eau borne le déplacement
     }
 
+    [Fact]
+    public void Vol_UnitPerchedOnObstacle_IsAttackable_ButItsCellIsNotTakenWithoutVol()
+    {
+        var perch = new Cell(0, 2);                       // montagne : bloque déplacement ET ligne de tir
+        var field = Battlefield.CreateFlat(8, 8);
+        field[perch] = new Tile(BuiltInTiles.Mountain);
+
+        var m = new Match(8, 8, field);
+        var shooter = new Cell(0, 0);
+        m.Place(shooter, Make(Faction.Player, 20, 6, None, moveRange: 3));
+        m.Place(perch, Make(Faction.Enemy, 20, 5, new[] { Trait.Vol }));   // posé là parce qu'il vole
+
+        // L'obstacle ne couvre pas celui qui est PERCHÉ dessus : il est visé, et affiché comme menacé.
+        Assert.Contains(perch, m.AttackTargets(shooter));
+        Assert.Contains(perch, m.ThreatenedCells(shooter));
+        // Mais sa case reste interdite au déplacement (il faudrait voler soi-même).
+        Assert.DoesNotContain(perch, m.LegalMoves(shooter));
+
+        // Il meurt (20 PV, 6 dégâts x4) : l'attaquant sans Vol ne prend PAS sa place, la case reste vide.
+        for (var i = 0; i < 4; i++)
+        {
+            m.TryAttack(shooter, perch);   // l'attaque passe le tour
+            m.PassTurn();                  // l'ennemi ne joue pas (pas d'IA en test) : on rend la main
+        }
+        Assert.Null(m.UnitAt(perch));
+        Assert.NotNull(m.UnitAt(shooter));
+    }
+
+    [Fact]
+    public void Obstacle_WithoutAnyoneOnIt_StillBlocksLineOfFire()
+    {
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(0, 2)] = new Tile(BuiltInTiles.Mountain);   // montagne NUE entre les deux
+
+        var m = new Match(8, 8, field);
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 6, None));
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, None));
+
+        Assert.DoesNotContain(new Cell(0, 3), m.AttackTargets(new Cell(0, 0)));
+    }
+
     // ── Formation : +2 puissance par allié adjacent ───────────────────────────────
 
     [Fact]
@@ -933,26 +974,38 @@ public class TraitsTests
     }
 
     [Fact]
-    public void AttaqueLibre_OnCavalier_AddsQueenLines_ToKnightJumps()
+    public void AttaqueLibre_OnCavalier_ReplacesKnightJumps_ByQueenLines_ButKeepsLShapedMovement()
     {
-        // Cavalier monté (archer) : attaque en L (saut) COMME UN CAVALIER, ET tire comme une Dame (Attaque libre).
+        // Cavalier avec Attaque libre : il tire COMME UNE DAME et PERD son attaque au saut (le trait REMPLACE
+        // le pattern natif). Son DÉPLACEMENT, lui, reste en L.
         var m = Board();
-        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre }, domaine: Domaine.Cavalier, attackRange: 2));
+        var from = new Cell(3, 3);
+        m.Place(from, Make(Faction.Player, 20, 6, new[] { Trait.AttaqueLibre }, domaine: Domaine.Cavalier, attackRange: 2));
         m.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));   // saut cavalier (dc=2, dr=1), hors des lignes
         m.Place(new Cell(5, 5), Make(Faction.Enemy, 20, 5, None));   // diagonale de Dame (dc=2, dr=2), portée 2
         m.Place(new Cell(3, 5), Make(Faction.Enemy, 20, 5, None));   // ligne droite de Dame (dc=0, dr=2)
 
-        var targets = m.AttackTargets(new Cell(3, 3));
-        Assert.Contains(new Cell(5, 4), targets);   // attaque au SAUT (cavalier)
-        Assert.Contains(new Cell(5, 5), targets);   // + tir en diagonale (dame)
-        Assert.Contains(new Cell(3, 5), targets);   // + tir en ligne droite (dame)
+        var targets = m.AttackTargets(from);
+        Assert.DoesNotContain(new Cell(5, 4), targets);   // plus d'attaque au SAUT
+        Assert.Contains(new Cell(5, 5), targets);         // tir en diagonale (dame)
+        Assert.Contains(new Cell(3, 5), targets);         // tir en ligne droite (dame)
+
+        // La MENACE affichée suit le tir réel (mêmes cases).
+        var threat = m.ThreatenedCells(from);
+        Assert.DoesNotContain(new Cell(5, 4), threat);
+        Assert.Contains(new Cell(3, 5), threat);
+
+        // Déplacement INCHANGÉ : toujours le saut en L, jamais les lignes de la Dame.
+        var moves = m.LegalMoves(from);
+        Assert.Contains(new Cell(4, 5), moves);        // saut en L vers une case vide
+        Assert.DoesNotContain(new Cell(3, 4), moves);  // une Dame irait là, pas un cavalier
 
         // Sans Attaque libre : le cavalier n'attaque QU'au saut (aucune ligne).
         var plain = Board();
-        plain.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, None, domaine: Domaine.Cavalier, attackRange: 2));
+        plain.Place(from, Make(Faction.Player, 20, 6, None, domaine: Domaine.Cavalier, attackRange: 2));
         plain.Place(new Cell(5, 4), Make(Faction.Enemy, 20, 5, None));
         plain.Place(new Cell(3, 5), Make(Faction.Enemy, 20, 5, None));
-        var t2 = plain.AttackTargets(new Cell(3, 3));
+        var t2 = plain.AttackTargets(from);
         Assert.Contains(new Cell(5, 4), t2);          // saut cavalier : oui
         Assert.DoesNotContain(new Cell(3, 5), t2);    // ligne droite : non (pas d'Attaque libre)
     }

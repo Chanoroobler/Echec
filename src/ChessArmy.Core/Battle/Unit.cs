@@ -34,8 +34,13 @@ public sealed class Unit
     /// Domaine du pattern d'ATTAQUE (directions + glissé/sauté) : celui de la classe s'il diffère, sinon le
     /// domaine de DÉPLACEMENT. Cavalier monté (archer) : déplacement en L (<see cref="Domaine"/> Cavalier),
     /// mais tir en lignes (attaque = Dame). Voir <see cref="UnitClass.AttackDomaine"/> et <see cref="Match"/>.
+    ///
+    /// « Attaque libre » REMPLACE ce pattern par celui de la DAME (8 directions en ligne) : le porteur perd
+    /// ses autres possibilités d'attaque. Un cavalier qui le gagne se DÉPLACE toujours en L (le
+    /// <see cref="Domaine"/> ne bouge pas) mais n'attaque plus au saut — il tire en lignes.
     /// </summary>
-    public Domaine AttackDomaine => Class.AttackDomaine ?? Domaine;
+    public Domaine AttackDomaine =>
+        HasTrait(Battle.Trait.AttaqueLibre) ? Domaine.Dame : Class.AttackDomaine ?? Domaine;
 
     /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant. Peut être
     /// BRISÉ en combat (mis à null) par la « Queue de phénix » — cf. <see cref="ReviveConsumingEquipment"/>.</summary>

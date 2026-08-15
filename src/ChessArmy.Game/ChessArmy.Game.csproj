@@ -99,8 +99,12 @@
     <MonoGameContentReference Include="Content\Content.mgcb" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
-    <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.*" />
+    <!-- Version FIGÉE (et non "3.8.*") : avec une version flottante, une nouvelle release MonoGame fait
+         monter un projet au prochain restore pendant que l'autre reste sur l'ancienne resolution, et le jeu
+         ne demarre plus (FileNotFoundException: MonoGame.Framework, Version=X). Garder ce numero IDENTIQUE
+         dans ChessArmy.Engine.csproj lors d'une montee de version. -->
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.5.1" />
+    <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.5.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ChessArmy.Engine\ChessArmy.Engine.csproj" />

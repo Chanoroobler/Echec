@@ -5,7 +5,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
+    <!-- Version FIGÉE, à garder IDENTIQUE à celle de ChessArmy.Game.csproj (cf. le commentaire là-bas :
+         une version flottante desynchronise les deux projets et casse le lancement). -->
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.5.1" />
   </ItemGroup>
 
   <PropertyGroup>

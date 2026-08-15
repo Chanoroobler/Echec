@@ -33,7 +33,7 @@ public static class Trait
     public const string Esquive = "Esquive";                 // EsquiveChance de chance d'annuler une attaque subie
     public const string Orage = "Orage";                     // à l'attaque : foudroie 3 ennemis AU HASARD (dégât fixe)
     public const string Tempete = "Tempête";                 // idem Orage (3 ennemis au hasard), dégât fixe plus élevé
-    public const string AttaqueLibre = "Attaque libre";      // AJOUTE le tir comme une Dame (8 directions en ligne) EN PLUS de l'attaque native (le cavalier garde son saut)
+    public const string AttaqueLibre = "Attaque libre";      // REMPLACE l'attaque native par le tir de Dame (8 directions en ligne) : le cavalier n'attaque plus au saut, mais se DÉPLACE toujours en L
     public const string Statique = "Statique";               // ne prend JAMAIS la place de sa cible en la tuant : reste sur sa case
     public const string Seisme = "Séisme";                   // à la FIN du tour adverse : frappe les ennemis adjacents pour sa puissance
     public const string Impact = "Impact";                   // à son PROPRE déplacement/attaque : 5 dégâts fixes aux ennemis autour de soi (jamais relayé par un autre trait)
