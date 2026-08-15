@@ -187,6 +187,10 @@ public sealed class InputManager
     /// <summary>Gâchette droite MAINTENUE (analogique &gt; 0,5) — ex. révéler les zones de danger.</summary>
     public bool IsRightTriggerDown => _currentPad.Triggers.Right > 0.5f;
 
+    /// <summary>Clics de stick (L3 / R3) — ex. crans de zoom du plateau.</summary>
+    public bool WasLeftStickPressed => PadEdge(Buttons.LeftStick);
+    public bool WasRightStickPressed => PadEdge(Buttons.RightStick);
+
     private bool PadEdge(Buttons b) =>
         _currentPad.IsButtonDown(b) && _previousPad.IsButtonUp(b);
 
@@ -237,7 +241,8 @@ public sealed class InputManager
         var anyButton = b.A == ButtonState.Pressed || b.B == ButtonState.Pressed ||
             b.X == ButtonState.Pressed || b.Y == ButtonState.Pressed ||
             b.Start == ButtonState.Pressed || b.Back == ButtonState.Pressed ||
-            b.LeftShoulder == ButtonState.Pressed || b.RightShoulder == ButtonState.Pressed;
+            b.LeftShoulder == ButtonState.Pressed || b.RightShoulder == ButtonState.Pressed ||
+            b.LeftStick == ButtonState.Pressed || b.RightStick == ButtonState.Pressed;
         var anyDir = _navWasDown[0] || _navWasDown[1] || _navWasDown[2] || _navWasDown[3];
         return anyButton || anyDir || RightStick != Vector2.Zero;   // bouger la caméra = activité manette
     }

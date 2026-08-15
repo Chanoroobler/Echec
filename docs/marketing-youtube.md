@@ -1,12 +1,12 @@
-# Chess Army — Descriptions des shorts
+# Chess Army : descriptions des shorts
 
 > 🇬🇧 L'anglais est ce qui se publie. Le 🇫🇷 est là pour relire le sens.
 
 ---
 
-## Trailer — annonce de la page Steam
+## Trailer : annonce de la page Steam
 
-**Titre** — 🇬🇧 Chess Army - Trailer
+**Titre** : 🇬🇧 Chess Army - Trailer
 
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
@@ -26,12 +26,12 @@
 
 ---
 
-## Short — Tremblement des pièces en danger
+## Short : Tremblement des pièces en danger
 
-**Texte à l'écran** — 🇬🇧 You can finally see which pieces are in danger
+**Texte à l'écran** : 🇬🇧 You can finally see which pieces are in danger
 🇫🇷 *Tu vois enfin quelles pièces sont en danger*
 
-**Titre** — 🇬🇧 You can finally see which pieces are in danger
+**Titre** : 🇬🇧 You can finally see which pieces are in danger
 
 🇫🇷
 > Chess Army est un RPG roguelike au tour par tour, inspiré du jeu d'échecs.
@@ -51,12 +51,12 @@
 
 ---
 
-## Short — Fusion : trois lanciers → un javelinier
+## Short : Fusion : trois lanciers → un javelinier
 
-**Texte à l'écran** — 🇬🇧 Three lancers. One javelineer.
+**Texte à l'écran** : 🇬🇧 Three lancers. One javelineer.
 🇫🇷 *Trois lanciers. Un javelinier.*
 
-**Titre** — 🇬🇧 Stack three identical units and this happens
+**Titre** : 🇬🇧 Stack three identical units and this happens
 
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
@@ -76,16 +76,16 @@
 
 ---
 
-## Short — Le système d'auras
+## Short : Le système d'auras
 
-**Texte à l'écran** — 🇬🇧 Everyone inside this outline takes less damage
+**Texte à l'écran** : 🇬🇧 Everyone inside this outline takes less damage
 🇫🇷 *Tout le monde dans ce contour prend moins de dégâts*
 
 Variante en deux cartes, si tu filmes une unité qui sort de l'aura :
 🇬🇧 `Stay inside the aura.` puis `Or don't.`
 🇫🇷 *Reste dans l'aura.* puis *Ou pas.*
 
-**Titre** — 🇬🇧 Some units protect everyone standing next to them
+**Titre** : 🇬🇧 Some units protect everyone standing next to them
 
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
@@ -105,13 +105,13 @@ Variante en deux cartes, si tu filmes une unité qui sort de l'aura :
 
 ---
 
-## Short — Duel pour un coffre, objet légendaire
+## Short : Duel pour un coffre, objet légendaire
 
-**Texte à l'écran** — deux cartes
+**Texte à l'écran** : deux cartes
 🇬🇧 `We both wanted the same chest.` puis, à l'ouverture, `Legendary.`
 🇫🇷 *On voulait le même coffre.* puis *Légendaire.*
 
-**Titre** — 🇬🇧 We both wanted the same chest
+**Titre** : 🇬🇧 We both wanted the same chest
 
 Alternatives :
 - 🇬🇧 This chest was worth the fight / 🇫🇷 Ce coffre valait le combat
@@ -135,13 +135,13 @@ Alternatives :
 
 ---
 
-## Short — Ajout du zoom et du dézoom
+## Short : Ajout du zoom et du dézoom
 
 **Texte à l'écran**
 🇬🇧 `The boss arena didn't fit on screen. Now it does.`
 🇫🇷 *L'arène du boss ne tenait pas à l'écran. Maintenant si.*
 
-**Titre** — 🇬🇧 You can zoom out now, and the pixels stay sharp
+**Titre** : 🇬🇧 You can zoom out now, and the pixels stay sharp
 
 Alternatives :
 - 🇬🇧 The boss arena finally fits on screen / 🇫🇷 L'arène du boss tient enfin à l'écran
@@ -165,7 +165,7 @@ Alternatives :
 
 ---
 
-## Short — Fusion : trois lanciers → un garde
+## Short : Fusion : trois lanciers → un garde
 
 *Suite du short javelinier. L'angle ici n'est pas la fusion, c'est le **choix** entre deux évolutions.*
 
@@ -173,7 +173,7 @@ Alternatives :
 🇬🇧 `Same three lancers. A different unit.`
 🇫🇷 *Les mêmes trois lanciers. Une autre unité.*
 
-**Titre** — 🇬🇧 The same three units can become two different things
+**Titre** : 🇬🇧 The same three units can become two different things
 
 Alternatives :
 - 🇬🇧 Three lancers again, but this time a guard / 🇫🇷 Trois lanciers encore, mais un garde cette fois
@@ -182,7 +182,7 @@ Alternatives :
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
 >
-> Trois lanciers, encore. Mais cette fois ils deviennent un garde, pas un javelinier. Chaque classe de base ouvre sur deux évolutions au palier 2, puis deux autres au palier 3 — c'est là que se décide le rôle de ton armée. Le garde tient la ligne, le javelinier frappe à distance. Mêmes pièces au départ, deux parties différentes.
+> Trois lanciers, encore. Mais cette fois ils deviennent un garde, pas un javelinier. Chaque classe de base ouvre sur deux évolutions au palier 2, puis deux autres au palier 3. C'est là que se décide le rôle de ton armée. Le garde tient la ligne, le javelinier frappe à distance. Mêmes pièces au départ, deux parties différentes.
 >
 > Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
 
@@ -197,13 +197,13 @@ Alternatives :
 
 ---
 
-## Short — Infobulle compacte, dépliable au besoin
+## Short : Infobulle compacte, dépliable au besoin
 
 **Texte à l'écran**
 🇬🇧 `You don't need every stat. Until you do.`
 🇫🇷 *Tu n'as pas besoin de toutes les stats. Jusqu'au moment où si.*
 
-**Titre** — 🇬🇧 You don't need every stat, until you do
+**Titre** : 🇬🇧 You don't need every stat, until you do
 
 Alternatives :
 - 🇬🇧 I shrank my tooltips, then let you expand them / 🇫🇷 J'ai réduit mes infobulles, puis permis de les déplier
@@ -227,13 +227,13 @@ Alternatives :
 
 ---
 
-## Short — L'IA s'équipe à partir de Normal
+## Short : L'IA s'équipe à partir de Normal
 
-**Texte à l'écran**
-🇬🇧 `From Normal up, the enemy gets equipment too.`
-🇫🇷 *À partir de Normal, l'ennemi aussi s'équipe.*
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Careful: the enemy gets gear too.`
+🇫🇷 *Attention : l'ennemi aussi s'équipe.*
 
-**Titre** — 🇬🇧 From Normal up, the enemy gets equipment too
+**Titre** : 🇬🇧 From Normal up, the enemy gets equipment too
 
 Alternatives :
 - 🇬🇧 Your enemies are wearing gear now / 🇫🇷 Tes ennemis portent de l'équipement maintenant
@@ -242,14 +242,14 @@ Alternatives :
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
 >
-> Il y a trois difficultés. En Facile, l'équipement reste réservé à ton armée. À partir de Normal, l'ennemi en porte aussi, et ça change toute la lecture du plateau : une unité que tu pensais tuer en un coup encaisse et riposte. La difficulté ne se contente pas de gonfler les chiffres — elle pilote la précision de l'IA, le palier des vagues ennemies, leur équipement, et le nombre de paysans à sauver dans les missions spéciales.
+> Il y a trois difficultés. En Facile, l'équipement reste réservé à ton armée. À partir de Normal, l'ennemi en porte aussi, et ça change toute la lecture du plateau : une unité que tu pensais tuer en un coup encaisse et riposte. La difficulté ne se contente pas de gonfler les chiffres. Elle pilote la précision de l'IA, le palier des vagues ennemies, leur équipement, et le nombre de paysans à sauver dans les missions spéciales.
 >
 > Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
 
 🇬🇧
 > Chess Army is a pixel art roguelike RPG built on chess movement.
 >
-> There are three difficulty levels. On Easy, equipment stays yours alone. From Normal up, the enemy carries it too, and that changes how you read the board: a unit you were sure you'd kill in one hit takes the blow and strikes back. Difficulty here doesn't just inflate numbers — it drives the AI's accuracy, the tier of enemy waves, their gear, and how many peasants you have to save in special missions.
+> There are three difficulty levels. On Easy, equipment stays yours alone. From Normal up, the enemy carries it too, and that changes how you read the board: a unit you were sure you'd kill in one hit takes the blow and strikes back. Difficulty here doesn't just inflate numbers. It drives the AI's accuracy, the tier of enemy waves, their gear, and how many peasants you have to save in special missions.
 >
 > Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
 
@@ -257,15 +257,15 @@ Alternatives :
 
 ---
 
-## Short — Un pion est perdu : autant qu'il ouvre le coffre
+## Short : Un pion est perdu : autant qu'il ouvre le coffre
 
-**Texte à l'écran** — une seule phrase, fixe
+**Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `He's dead anyway, so he loots.`
 🇫🇷 *Il est mort de toute façon, alors il pille.*
 
 Alternative : 🇬🇧 `Dead anyway. So he takes the chest.`
 
-**Titre** — 🇬🇧 A doomed unit still has one turn left
+**Titre** : 🇬🇧 A doomed unit still has one turn left
 
 Alternatives :
 - 🇬🇧 He's dead either way, so he opens the chest / 🇫🇷 Il est mort quoi qu'il arrive, alors il ouvre le coffre
@@ -274,7 +274,7 @@ Alternatives :
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
 >
-> Parfois une unité est perdue quoi que tu fasses : elle est à portée de trois ennemis et aucune case ne la met à l'abri. Le réflexe est de la faire reculer pour gagner un tour. Le bon coup est souvent l'inverse — accepter la perte, et dépenser son dernier tour à quelque chose d'utile. Ici, elle va ouvrir le coffre. Elle meurt de toute façon, autant qu'elle meure sur quelque chose.
+> Parfois une unité est perdue quoi que tu fasses : elle est à portée de trois ennemis et aucune case ne la met à l'abri. Le réflexe est de la faire reculer pour gagner un tour. Le bon coup est souvent l'inverse : accepter la perte, et dépenser son dernier tour à quelque chose d'utile. Ici, elle va ouvrir le coffre. Elle meurt de toute façon, autant qu'elle meure sur quelque chose.
 >
 > La mort est définitive dans ce jeu. Elle n'a pas à être gratuite pour autant.
 >
@@ -283,10 +283,238 @@ Alternatives :
 🇬🇧
 > Chess Army is a pixel art roguelike RPG built on chess movement.
 >
-> Sometimes a unit is lost no matter what you do: three enemies cover it and no square is safe. The reflex is to pull it back and buy a turn. The better move is usually the opposite — accept the loss, and spend its last turn on something useful. Here, it goes and opens the chest. It dies anyway, so it may as well die on something.
+> Sometimes a unit is lost no matter what you do: three enemies cover it and no square is safe. The reflex is to pull it back and buy a turn. The better move is usually the opposite: accept the loss, and spend its last turn on something useful. Here, it goes and opens the chest. It dies anyway, so it may as well die on something.
 >
 > Death is permanent in this game. That doesn't mean it has to be wasted.
 >
 > Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
 
 `#indiegame #roguelike #pixelart #tacticalrpg #gamedev`
+
+---
+
+## Short : Le commandant débloque Orage
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Upgrade your king. Then risk him.`
+🇫🇷 *Améliore ton roi. Puis prends des risques avec.*
+
+Alternative : 🇬🇧 `A strong king is worth the risk.`
+
+**Titre** : 🇬🇧 In chess you protect the king. Here you use him.
+
+Alternatives :
+- 🇬🇧 Your commander isn't there to hide / 🇫🇷 Ton commandant n'est pas là pour se cacher
+- 🇬🇧 I gave my commander lightning / 🇫🇷 J'ai donné la foudre à mon commandant
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Aux échecs, le roi se cache derrière ses pièces. Ici, le commandant est ta meilleure unité et il est fait pour être joué. L'arbre de commandement lui débloque des capacités au fil de la run : celui-ci a pris Orage, qui foudroie plusieurs ennemis d'un coup. Le laisser à l'arrière, c'est jouer avec une pièce en moins.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> In chess the king hides behind his pieces. Here the commander is your best unit and it's meant to be played. The command tree unlocks abilities for it as the run goes on: this one took Storm, which hits several enemies at once. Keeping it at the back means playing a piece down.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #chess #tacticalrpg`
+
+---
+
+## Short : Le codex
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Black means I haven't found it yet.`
+🇫🇷 *Noir = pas encore trouvé.*
+
+**Titre** : 🇬🇧 My codex is still mostly silhouettes
+
+Alternatives :
+- 🇬🇧 Black means I haven't found it yet / 🇫🇷 Noir veut dire que je ne l'ai pas encore trouvé
+- 🇬🇧 28 classes, and you only unlock them by playing / 🇫🇷 28 classes, et on ne les débloque qu'en jouant
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le codex répertorie les 28 classes, une page par branche, avec leur arbre d'évolution complet. Tout ce que tu n'as pas encore rencontré reste en silhouette noire : tu sais qu'une évolution existe derrière, mais pas laquelle. Il y a le même onglet pour les équipements. Les découvertes sont conservées d'une run à l'autre. C'est la seule progression qui survit à ta mort.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The codex lists all 28 classes, one page per branch, with the full evolution tree. Anything you haven't met yet stays a black silhouette: you know an evolution is there, you just don't know which one. There's a matching tab for equipment. Discoveries carry over between runs, and that's the only progress that survives your death.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #gamedev`
+
+---
+
+## Short : Fusion : trois soldats → un spadassin
+
+*Troisième clip de fusion. Angle : les doublons ne sont pas de l'encombrement, ce sont des ressources.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Three weak units make one real one.`
+🇫🇷 *Trois unités faibles en font une vraie.*
+
+**Titre** : 🇬🇧 Three soldiers make one swordsman
+
+Alternatives :
+- 🇬🇧 Your weakest units are the raw material / 🇫🇷 Tes unités les plus faibles sont la matière première
+- 🇬🇧 Duplicates aren't clutter, they're currency / 🇫🇷 Les doublons ne sont pas de l'encombrement, c'est de la monnaie
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le soldat se déplace comme la dame, dans les huit directions, et c'est l'unité que tu croises le plus souvent. Ses doublons ne sont pas de l'encombrement : trois soldats identiques fusionnent en un spadassin, qui appartient au palier supérieur. Tes unités les plus faibles sont la matière première des plus fortes.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The soldier moves like the queen, in all eight directions, and it's the unit you run into most. Its duplicates aren't clutter: three identical soldiers fuse into a swordsman, one tier up. Your weakest units are the raw material for your strongest ones.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #chess`
+
+**À vérifier** : le nom anglais du spadassin. J'ai mis « swordsman » ; utilise ce que dit ton `strings.csv`.
+
+---
+
+## Short : Sacrifier une unité pour tuer le boss
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `I traded a soldier for the boss.`
+🇫🇷 *J'ai échangé un soldat contre le boss.*
+
+Alternative : 🇬🇧 `One unit dies. So does the boss.`
+
+**Titre** : 🇬🇧 You don't have to win the fight, just kill the boss
+
+Alternatives :
+- 🇬🇧 Only the boss has to die / 🇫🇷 Seul le boss doit mourir
+- 🇬🇧 I traded a unit to finish him / 🇫🇷 J'ai échangé une unité contre sa mort
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Sur une mission de boss, la condition de victoire n'est pas d'éliminer l'armée ennemie : il suffit de tuer le boss. Ses escortes peuvent rester debout. Ça change tout le calcul. Une unité perdue pour ouvrir une ligne de tir sur lui n'est pas gaspillée, elle achète la fin du combat. La mort est définitive dans ce jeu, mais un combat de boss reste le moment où dépenser une pièce se justifie le plus facilement.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> On a boss mission the win condition isn't wiping out the enemy army: you only have to kill the boss. His escorts can stay standing. That changes the whole calculation. A unit you lose to open a line of fire on him isn't wasted, it buys the end of the fight. Death is permanent in this game, but a boss fight is where spending a piece is easiest to justify.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #tacticalrpg #chess`
+
+---
+
+## Short : Trois kills d'affilée au mage
+
+*Clip de pure satisfaction : rien à expliquer, on regarde.*
+
+**Texte à l'écran** : le plus court possible
+🇬🇧 `Three in a row.`
+🇫🇷 *Trois d'affilée.*
+
+Alternative : 🇬🇧 `My mage is having a good day.`
+
+**Titre** : 🇬🇧 Three kills in a row with one mage
+
+Alternatives :
+- 🇬🇧 My mage cleared the board / 🇫🇷 Mon mage a nettoyé le plateau
+- 🇬🇧 This is why you keep the mage alive / 🇫🇷 Voilà pourquoi il faut garder le mage en vie
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le mage se déplace en diagonale comme le fou, et frappe à distance. C'est une pièce fragile qu'il faut tenir loin de la mêlée, mais bien placée elle nettoie une ligne entière. Trois cibles, aucune riposte. Il évolue ensuite en clerc ou en sorcier, puis en prêtresse, barde, archimage ou démoniste.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The mage moves diagonally like the bishop and strikes at range. It's a fragile piece you keep away from melee, but placed well it clears a whole line. Three targets, no retaliation. It later evolves into a cleric or a sorcerer, then a priestess, bard, archmage or warlock.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #satisfying #gamedev`
+
+**Note de montage** : pas de ralenti, pas d'explication. Garde les trois impacts au rythme naturel, le son à fond, et coupe juste après le troisième pour que ça reboucle proprement.
+
+---
+
+## Short : Nouvelle map de neige et tuiles de glace
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Ice doesn't let you stop.`
+🇫🇷 *La glace ne te laisse pas t'arrêter.*
+
+**Titre** : 🇬🇧 On ice, you don't stop where you want
+
+Alternatives :
+- 🇬🇧 New snow maps, and the ice doesn't let you stop / 🇫🇷 Nouvelles maps de neige, et la glace ne te laisse pas t'arrêter
+- 🇬🇧 I added ice tiles and broke my own game / 🇫🇷 J'ai ajouté des tuiles de glace et cassé mon propre jeu
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouveau décor : la neige, avec ses tuiles de glace. Une pièce qui pose le pied dessus continue de glisser jusqu'à rencontrer un obstacle. Les déplacements restent ceux des échecs, mais la case d'arrivée n'est plus celle que tu avais choisie, et ça vaut aussi pour l'ennemi. C'est le premier terrain qui modifie la règle au lieu de simplement gêner le passage.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New setting: snow, and the ice tiles that come with it. A piece that steps onto one keeps sliding until something stops it. The moves are still chess moves, but the square you land on is no longer the one you picked, and that goes for the enemy too. It's the first terrain that changes the rule instead of just blocking the way.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #gamedev #tacticalrpg`
+
+**À vérifier** : j'ai écrit que la pièce glisse « jusqu'à rencontrer un obstacle ». Si elle ne glisse que d'une case, ou selon une autre règle, corrige la phrase.
+
+---
+
+## Short : tuer une pièce te fait prendre sa case
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Careful: killing moves you.`
+🇫🇷 *Attention : tuer te déplace.*
+
+Alternative : 🇬🇧 `Careful: a kill takes their square.`
+
+**Titre** : 🇬🇧 Kill something and you take its square
+
+Alternatives :
+- 🇬🇧 Attacking moves you, and that can get you killed / 🇫🇷 Attaquer te déplace, et ça peut te tuer
+- 🇬🇧 Careful: a kill puts you where they stood / 🇫🇷 Attention : tuer te met là où ils étaient
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Comme aux échecs, tuer une pièce au corps à corps te fait avancer sur sa case, à condition qu'elle soit à portée de ton déplacement. Les attaques à distance, elles, ne te bougent pas. C'est pratique pour percer une ligne, mais ça veut dire qu'une attaque te déplace, et te met parfois à portée de trois ennemis que tu ne visais pas. Avant de frapper, regarde où tu vas atterrir, pas seulement ce que tu vas tuer.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Like in chess, killing a piece in melee moves you onto its square, as long as that square is within your movement range. Ranged attacks leave you where you are. It's useful for breaking a line, but it also means an attack repositions you, sometimes into range of three enemies you weren't even looking at. Before you strike, check where you'll land, not just what you'll kill.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #chess #tacticalrpg`

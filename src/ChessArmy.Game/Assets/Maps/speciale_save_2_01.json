@@ -9,9 +9,9 @@
   "tiles": [
     "h8hh8hhh",
     "40hh9444",
-    "GGGhhGGG",
-    "JJQmiPJJ",
-    "tosjYosn",
+    "GGhhhhGG",
+    "JQkYjlPJ",
+    "toYjYjsn",
     "kYjYjYjl",
     "mjYjYjYi",
     "cfbYjfbd",
@@ -22,7 +22,7 @@
   ],
   "spawns": [
     "OOOOOOOO",
-    "O......O",
+    "...OO...",
     "........",
     "........",
     "........",
@@ -31,12 +31,12 @@
     "........",
     "........",
     "........",
-    "........",
+    "PPPPPPPP",
     "PPPPPPPP"
   ],
   "tiers": [
     "22211222",
-    "1......1",
+    "...12...",
     "........",
     "........",
     "........",

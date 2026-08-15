@@ -24,7 +24,7 @@ namespace ChessArmy.Game.Scenes;
 /// Placement → Combat → Recrutement → … sur 6 combats, le dernier étant le boss.
 /// Le commandant (mort = game over) est posé d'office ; le joueur déploie le reste de
 /// son inventaire par glisser-déposer depuis le panneau de droite, puis combat l'IA.
-/// Échap = menu pause, F1 = bascule du quadrillage.
+/// Échap = menu pause, F1 = bascule du quadrillage, F2 = bascule du damier.
 /// </summary>
 public sealed class GameplayScene : Scene
 {
@@ -537,6 +537,7 @@ public sealed class GameplayScene : Scene
     private readonly HashSet<Cell> _trembleTargets = new();
     private double _aiTimer;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
+    private bool _showChecker = true;   // damier façon échiquier (une case sur deux assombrie), bascule F2, activé par défaut
 
     // Cache du GridLayout : déterministe selon la résolution virtuelle, donc recalculé seulement
     // au changement de taille (au lieu de plusieurs allocations de GridLayout par frame).
@@ -645,16 +646,19 @@ public sealed class GameplayScene : Scene
         _recycleIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/recycler.png"));
         _water = LoadWater();
 
-        var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
-        // « Recommencer la mission » disparaît du menu pause si la difficulté l'interdit (Difficile : run sans filet).
-        _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height),
-            allowRestart: DifficultySettings.For(_chosenDifficulty).AllowRestart);
         _pauseRenderer = new PauseMenuRenderer(Context.Pixel, Context.Style);
         _commandTree = new CommandTreeView(Context);
         _codex = new CodexView(Context);
         _combatFx = LoadCombatFx();
 
         StartRun();
+
+        // APRÈS StartRun : « Recommencer la mission » disparaît du menu pause quand la difficulté l'interdit
+        // (Difficile = run sans filet), et cette difficulté se lit sur la RUN — sur une partie reprise, le
+        // choix d'écran (_chosenDifficulty) vaut Normal et ne dit rien du niveau réellement joué.
+        var native = Context.GraphicsDevice.Adapter.CurrentDisplayMode;
+        _pauseMenu = new PauseMenu(Context.Settings, new Point(native.Width, native.Height),
+            allowRestart: CanRestartMission);
     }
 
     public override void Unload()
@@ -1272,17 +1276,24 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void RestartMission()
     {
-        // Filet de sécurité : la difficulté peut interdire de recommencer (le bouton est alors absent du menu).
-        if (!DifficultySettings.For(_chosenDifficulty).AllowRestart)
+        // Filet de sécurité : la difficulté peut interdire de recommencer (le bouton est alors absent).
+        if (!CanRestartMission)
             return;
         if (_missionStart is not { } start)
             return;   // tutoriel : aucune phase de placement n'a eu lieu, rien à rejouer
-        // Uniquement TANT QU'ON Y EST : en recrutement, la mission est déjà gagnée et « recommencer »
-        // annulerait la victoire — ce serait ressenti comme un bug plutôt que comme un choix.
-        if (_run.Phase is not (RunPhase.Placement or RunPhase.Battle))
+        // Tant qu'on est DANS la mission, ou après l'avoir PERDUE (récap de défaite : deuxième chance).
+        // Jamais en recrutement/victoire : la mission est gagnée, « recommencer » annulerait la victoire.
+        if (_run.Phase is not (RunPhase.Placement or RunPhase.Battle or RunPhase.Defeat))
             return;
         Context.Scenes.Change(new GameplayScene(Context, _saveSlot, start.ToRun()));
     }
+
+    /// <summary>
+    /// La difficulté de la partie EN COURS autorise-t-elle « Recommencer la mission » ? On lit
+    /// <see cref="Run.Difficulty"/> (la valeur persistée avec la run) et non le choix d'écran
+    /// <see cref="_chosenDifficulty"/>, qui vaut Normal par défaut sur une partie reprise.
+    /// </summary>
+    private bool CanRestartMission => DifficultySettings.For(_run.Difficulty).AllowRestart;
 
     /// <summary>
     /// Prépare le TUTORIEL « combat zéro » : board plat, scénario fixe (commandant + 1 soldat joueur,
@@ -2040,6 +2051,10 @@ public sealed class GameplayScene : Scene
         if (Context.Input.WasKeyPressed(Keys.F1) || Context.Input.WasSelectPressed)
             _showGrid = !_showGrid;
 
+        // Bascule du damier (une case sur deux assombrie) : F2. Indépendante du quadrillage.
+        if (Context.Input.WasKeyPressed(Keys.F2))
+            _showChecker = !_showChecker;
+
         // Zoom (molette) + pan (flèches / ZQSD) uniquement sur les phases avec plateau, et pas pendant
         // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
         // Caméra gelée derrière un modal de placement (briefing / popup de fusion / animation d'évolution).
@@ -2078,11 +2093,23 @@ public sealed class GameplayScene : Scene
                         Context.Scenes.Change(new MainMenuScene(Context));
                     break;
                 }
-                // Recap (slot déjà effacé) : clic / A / Entrée → popup de fin de démo (démo) ou retour menu.
-                if (Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
+                // Récap : deux boutons (cf. DrawRunRecap). « Recommencer la mission » (clic dedans ou Y)
+                // rejoue la mission perdue ; testé EN PREMIER, sinon le clic ferait aussi le retour menu.
+                if (CanRestartFromRecap
+                    && (Context.Input.WasQuaternaryPressed
+                        || (Context.Input.WasLeftClicked && _recapRestartRect.Contains(Context.Input.MousePosition))))
+                {
+                    Context.Sounds.Play("menu_click");
+                    RestartMission();
+                    break;
+                }
+                // « Menu principal » (clic dedans, A ou Entrée) : le slot est déjà effacé. En démo victorieuse,
+                // la popup de remerciement s'intercale avant le retour au menu.
+                if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter)
+                    || (Context.Input.WasLeftClicked && _recapMenuRect.Contains(Context.Input.MousePosition)))
                 {
                     if (demoWin) { _demoEndShown = true; Context.Sounds.Play("menu_open"); }
-                    else Context.Scenes.Change(new MainMenuScene(Context));
+                    else { Context.Sounds.Play("menu_click"); Context.Scenes.Change(new MainMenuScene(Context)); }
                 }
                 break;
             }
@@ -6059,6 +6086,13 @@ public sealed class GameplayScene : Scene
         return hit is null ? null : new Cell(hit.Value.Column, hit.Value.Row);
     }
 
+    /// <summary>
+    /// Case survolée POUR LES CARTES d'unité : comme <see cref="CellUnderMouse"/>, mais null quand la souris
+    /// est sur la frise du HUD (<see cref="TimelineFrameRect"/>). Pointer une icône de mission ne doit pas
+    /// « survoler » le pion qui se trouve derrière : sa carte s'ouvrirait sous l'infobulle de la frise.
+    /// </summary>
+    private Cell? HoverCellForCards() => PointerOverTimeline() ? null : CellUnderMouse();
+
     // ── Caméra (zoom molette + pan clavier) ───────────────────────────────────────
 
     /// <summary>Remet la caméra à l'état par défaut (zoom de cadrage, plateau centré).</summary>
@@ -6091,6 +6125,13 @@ public sealed class GameplayScene : Scene
         // ajoutent Q+A (gauche) / Z+W (haut) pour couvrir les touches physiques des deux claviers. Aller
         // « voir à droite » fait reculer l'origine.
         var input = Context.Input;
+
+        // Zoom MANETTE : clic de stick, mêmes 3 niveaux que la molette — L3 = un cran de dézoom,
+        // R3 = un cran de zoom avant. On change de cadrage avec le stick qu'on tient déjà (gauche =
+        // curseur de case, droit = pan), et ça ne prend aucun bouton utilisé ailleurs.
+        if (input.WasLeftStickPressed) ZoomStep(-1);
+        if (input.WasRightStickPressed) ZoomStep(+1);
+
         var dir = Vector2.Zero;
         if (input.IsKeyDown(Keys.Left) || input.IsKeyDown(Keys.Q) || input.IsKeyDown(Keys.A)) dir.X += 1;
         if (input.IsKeyDown(Keys.Right) || input.IsKeyDown(Keys.D)) dir.X -= 1;
@@ -6168,7 +6209,11 @@ public sealed class GameplayScene : Scene
         float ratio = tile1 / (float)tile0;
 
         // Origine visée pour garder le point monde sous le curseur immobile, puis on en déduit le pan.
-        var m = Context.Input.MousePosition.ToVector2();
+        // Ancrage : le curseur SOURIS, ou — à la manette, où la souris est restée où on l'a laissée (souvent
+        // hors plateau) — le centre de la case sous le curseur de grille, seul point que le joueur regarde.
+        var m = Context.Input.UsingGamepad
+            ? before.CellToScreen(_cursor.Column, _cursor.Row) + new Vector2(tile0 / 2f)
+            : Context.Input.MousePosition.ToVector2();
         var origin1 = m - (m - origin0) * ratio;
 
         var viewport = VirtualViewport;
@@ -6260,6 +6305,8 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
+        if (_showChecker && _run.Phase is RunPhase.Placement or RunPhase.Battle)
+            DrawBoardCheckerboard(sb, board);   // damier échiquier (bascule F2) — sous le quadrillage
         if (_showGrid && BoardAssembled && _run.Phase is RunPhase.Placement or RunPhase.Battle)
             DrawBoardGrid(sb, board, Palette.Green4);   // quadrillage permanent VERT foncé (bascule F1/Select) — masqué pendant l'émergence
         sb.End();
@@ -6324,6 +6371,7 @@ public sealed class GameplayScene : Scene
                     else if (_run.IsBossCombat)
                         DrawBossBriefing(sb, viewport);          // rappel de la condition de victoire (vaincre le boss)
                 }
+                DrawPhaseTimelineTooltip(sb);      // infobulle de la frise : PAR-DESSUS l'encart de briefing
                 // Cartes flottantes + popups : PAR-DESSUS tout le chrome, mais SOUS les modales (tuto, arbre
                 // de commandement, fusion, briefing modal) dessinées juste après.
                 DrawDeferredCards(sb);
@@ -6382,9 +6430,10 @@ public sealed class GameplayScene : Scene
                     sb.End();
                 }
 
-                DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
+                // Pas de frise pendant le COMBAT : c'est un repère de préparation, elle mangeait le haut du
+                // plateau (et son survol) une fois la bataille engagée.
                 if (_specialMission)
-                    DrawSpecialObjective(sb, viewport);   // paysans X/N + tours restants (sous la frise)
+                    DrawSpecialObjective(sb, viewport);   // paysans X/N + tours restants (HUD haut droite)
                 // Cartes flottantes + popups : PAR-DESSUS le chrome, mais SOUS les révélations/overlays
                 // (tuto, recrue, coffre) dessinés juste après.
                 DrawDeferredCards(sb);
@@ -6478,6 +6527,7 @@ public sealed class GameplayScene : Scene
         device.Clear(Microsoft.Xna.Framework.Color.Transparent);
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, nb);
+        if (_showChecker) DrawBoardCheckerboard(sb, nb);
         if (_showGrid && BoardAssembled) DrawBoardGrid(sb, nb, Palette.Green4);
         sb.End();
         DrawCastShadows(sb, nb);   // ombres projetées (batchs cisaillés dédiés)
@@ -6533,6 +6583,7 @@ public sealed class GameplayScene : Scene
                 if (_specialMission) DrawSpecialBriefing(sb, viewport);
                 else if (_run.IsBossCombat) DrawBossBriefing(sb, viewport);
             }
+            DrawPhaseTimelineTooltip(sb);
             DrawDeferredCards(sb);
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
             if (CommandTreeOpen)
@@ -6550,8 +6601,7 @@ public sealed class GameplayScene : Scene
             sb.Begin(samplerState: SamplerState.PointClamp);
             DrawCombatCards(sb, hit);
             sb.End();
-            DrawPhaseTimeline(sb, viewport);
-            if (_specialMission) DrawSpecialObjective(sb, viewport);
+            if (_specialMission) DrawSpecialObjective(sb, viewport);   // pas de frise en combat
             DrawDeferredCards(sb);
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
             if (_recrueReveal != null) DrawRecrueReveal(sb, viewport);
@@ -6841,9 +6891,11 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Légende des commandes en haut à gauche (petit panneau) : bascule grille + zones de danger.
+    /// Légende des commandes (petit panneau) : bascule grille/damier + zones de danger.
     /// Affichée UNIQUEMENT par-dessus le menu pause (plus en permanence pendant le jeu), donc dessinée
-    /// après l'overlay de pause. Les touches suivent le PÉRIPHÉRIQUE actif (clavier/souris vs manette).
+    /// après l'overlay de pause, et collée SOUS le panneau de pause (centrée dessus) pour tomber dans le
+    /// regard du joueur au lieu du coin haut-gauche. Les touches suivent le PÉRIPHÉRIQUE actif
+    /// (clavier/souris vs manette).
     /// </summary>
     private void DrawControlsLegend(SpriteBatch sb, Viewport viewport)
     {
@@ -6853,6 +6905,11 @@ public sealed class GameplayScene : Scene
             $"{(gp ? "SELECT" : "F1")} : {Loc.T("hud.toggle_grid")}",
             $"{(gp ? "RT" : "ESPACE")} : {Loc.T("hud.danger_zones")}",
         };
+        // Le damier n'a pas de raccourci manette : la ligne n'apparaît qu'au clavier (jamais de touche affichée
+        // qui ne correspond pas au périphérique actif).
+        if (!gp)
+            lines.Insert(1, $"F2 : {Loc.T("hud.toggle_checker")}");
+        lines.Add($"{(gp ? "L3 / R3" : "MOLETTE")} : {Loc.T("hud.zoom")}");
         // « Revoir action IA » n'a de sens qu'en combat (l'IA n'a pas joué au placement) : ligne ajoutée alors.
         if (_run.Phase == RunPhase.Battle)
             lines.Add($"{(gp ? "RB" : "R")} : {Loc.T("hud.replay_ai")}");
@@ -6862,7 +6919,18 @@ public sealed class GameplayScene : Scene
         var w = 0;
         foreach (var line in lines)
             w = System.Math.Max(w, Context.Font.Measure(line, 1));
-        var box = new Rectangle(12, 12, w + 2 * pad, pad + lines.Count * lineH + pad - 2);
+        var boxW = w + 2 * pad;
+        var boxH = pad + lines.Count * lineH + pad - 2;
+
+        // Sous le panneau de pause, centré sur lui (même repère : le menu est mis en page dans ce viewport).
+        // Bornée à l'écran pour que la légende reste entière si le panneau descend bas (sous-menu Options).
+        var panel = _pauseMenu.Layout(viewport.Width, viewport.Height).Panel;
+        const int margin = 8;
+        var bx = panel.X + (panel.Width - boxW) / 2;
+        var by = panel.Bottom + 10;
+        bx = MathHelper.Clamp(bx, margin, System.Math.Max(margin, viewport.Width - boxW - margin));
+        by = MathHelper.Clamp(by, margin, System.Math.Max(margin, viewport.Height - boxH - margin));
+        var box = new Rectangle(bx, by, boxW, boxH);
         Context.Style.DrawPanel(sb, box);
 
         var y = box.Y + pad;
@@ -6889,7 +6957,7 @@ public sealed class GameplayScene : Scene
 
         // Sinon, aperçu au SURVOL d'un pion joueur (uniquement pendant son tour : sinon pas de coups).
         if (_match.CurrentTurn == Faction.Player
-            && CellUnderMouse() is { } cell && _match.UnitAt(cell) is { Faction: Faction.Player })
+            && HoverCellForCards() is { } cell && _match.UnitAt(cell) is { Faction: Faction.Player })
         {
             _match.ThreatenedCells(cell, _hoverReach);
             _match.LegalMoves(cell, _hoverMoves);
@@ -6971,8 +7039,8 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Case survolée : curseur en manette, souris sinon.
-        var probe = Context.Input.UsingGamepad ? (Cell?)_cursor : CellUnderMouse();
+        // Case survolée : curseur en manette, souris sinon (hors frise, cf. HoverCellForCards).
+        var probe = Context.Input.UsingGamepad ? (Cell?)_cursor : HoverCellForCards();
         if (probe is not { } hovered || _match.UnitAt(hovered) is not { Faction: Faction.Enemy })
             return;
 
@@ -7291,6 +7359,43 @@ public sealed class GameplayScene : Scene
             _threatIconLoaded = true;
         }
         return _threatIcon;
+    }
+
+    /// <summary>Voile sombre du damier : discret, il doit se lire sans repeindre le terrain.</summary>
+    private static readonly Color CheckerShade = Palette.Black1 * 0.22f;
+
+    /// <summary>
+    /// Damier façon échiquier : une case sur deux légèrement assombrie (bascule F2). Dessiné entre le
+    /// terrain et le quadrillage, donc sous les pions. Suit la case quand elle bouge (secousse d'AoE,
+    /// tremblement/chute d'une tuile « chute ») ; les cases déjà effondrées sont sautées, sinon un carré
+    /// sombre flotterait au-dessus de l'eau.
+    /// </summary>
+    private void DrawBoardCheckerboard(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var cell in _battlefield.Cells())
+        {
+            // Parité impaire : sur un plateau de taille paire (6×6 / 8×8), la case du coin bas-gauche est
+            // sombre, comme sur un échiquier.
+            if ((cell.Row + cell.Column) % 2 == 0 || _fallenCells.Contains(cell))
+                continue;
+
+            var (oy, a) = BoardIntroAnim(cell, layout);
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            var rect = new Rectangle((int)top.X, (int)top.Y + oy + _tremor.OffsetY(cell), layout.TileSize, layout.TileSize);
+
+            var fade = a;
+            if (_chuteFall.IsFalling(cell))
+            {
+                var p = _chuteFall.Progress(cell);
+                rect.Y += (int)(p * p * ChuteFallDrop);
+                fade = a * (1f - p);
+            }
+            else
+            {
+                rect.Y += ChuteTrembleY(cell);
+            }
+            DrawRect(sb, rect, CheckerShade * fade);
+        }
     }
 
     /// <summary>Quadrillage (lignes) sur TOUT le plateau : lignes verticales + horizontales aux frontières de cases.</summary>
@@ -8714,7 +8819,7 @@ public sealed class GameplayScene : Scene
                 DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
             else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
                 DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment, cu.Buffs,
-                    TreeNodesFor(cu), cu.Kills, subject: _cursor);
+                    TreeNodesFor(cu), cu.Kills, subject: _cursor, essential: cu.IsEssential);
             return;
         }
 
@@ -8727,10 +8832,10 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé).
-        if (CellUnderMouse() is { } cell && _match.UnitAt(cell) is { } unit)
+        // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé), hors frise.
+        if (HoverCellForCards() is { } cell && _match.UnitAt(cell) is { } unit)
             DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment, unit.Buffs,
-                TreeNodesFor(unit), unit.Kills, subject: cell);
+                TreeNodesFor(unit), unit.Kills, subject: cell, essential: unit.IsEssential);
     }
 
     /// <summary>
@@ -8741,7 +8846,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
         Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
-        Cell? subject = null)
+        Cell? subject = null, bool essential = false)
     {
         var layout = BuildLayout();
         var board = BoardRect(layout);
@@ -8751,7 +8856,8 @@ public sealed class GameplayScene : Scene
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
         // la frise, le briefing et le panneau, dessinés après elle.
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
-            equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills));
+            equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills,
+            nameOverride: CommanderCardName(essential, faction)));
         _deferredKeywordPopups.Add((c, rect, equip, buffs, null, faction));
     }
 
@@ -8766,7 +8872,7 @@ public sealed class GameplayScene : Scene
                     + (spec.Equipment?.BonusFor(EquipStat.Hp) ?? 0)
                     + buffs.BonusFor(EquipStat.Hp);
         DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipment, buffs,
-            _run.ActiveNodesFor(spec.Essential), spec.Kills);
+            _run.ActiveNodesFor(spec.Essential), spec.Kills, essential: spec.Essential);
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
@@ -9579,7 +9685,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void UpdateTooltipHover(float dt)
     {
-        var hovered = Context.Input.UsingGamepad ? (Cell?)_cursor : CellUnderMouse();
+        var hovered = Context.Input.UsingGamepad ? (Cell?)_cursor : HoverCellForCards();
         var cell = hovered is { } h && _combatDragFrom is null && _match.UnitAt(h) is not null ? hovered : null;
         if (cell != _tooltipHoverCell)
         {
@@ -9605,8 +9711,8 @@ public sealed class GameplayScene : Scene
             return;
 
         var board = BoardRect(layout);
-        // En manette, la « case survolée » est celle du curseur ; sinon celle sous la souris.
-        var hovered = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
+        // En manette, la « case survolée » est celle du curseur ; sinon celle sous la souris (hors frise).
+        var hovered = Context.Input.UsingGamepad ? _cursor : HoverCellForCards();
 
         // Carte de NOTRE pion (à droite) : l'unité sélectionnée tant qu'elle l'est ; sinon le pion
         // joueur survolé.
@@ -9837,19 +9943,33 @@ public sealed class GameplayScene : Scene
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
         var faction = unit.Faction; var domaine = unit.Domaine; var hp = unit.Hp; var maxHp = unit.MaxHp;
         var equip = unit.Equipment; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
+        var title = CommanderCardName(unit.IsEssential, faction);
         if (condensed)
         {
             // Version condensée (combat) : traits en NOMS inline, donc AUCUN popup de mots-clés à différer.
             (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c,
-                domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage, contextualMove));
+                domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage, contextualMove,
+                nameOverride: title));
             return;
         }
         (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
             hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
-            granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove));
+            granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove,
+            nameOverride: title));
         if (showKeywords)
             (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted, faction));
     }
+
+    /// <summary>
+    /// Nom AFFICHÉ en titre de carte pour le COMMANDANT du joueur : son nom de commandant (« LE RÉDEMPTEUR »)
+    /// plutôt que celui de sa classe de base (« MAGE »), qui ne le distingue pas d'un pion ordinaire du même
+    /// domaine. Null pour tout le reste = la carte garde le nom de classe. Le BOSS n'est pas concerné : sa
+    /// classe de profil porte déjà son propre nom.
+    /// </summary>
+    private string? CommanderCardName(bool essential, Faction faction) =>
+        essential && faction == Faction.Player
+            ? Loc.TOr("commander." + _run.CommanderDef.Id, _run.CommanderDef.Name)
+            : null;
 
     /// <summary>Auras dont l'effet se lit sur le BÉNÉFICIAIRE : le pion adjacent en profite sans porter le trait.</summary>
     private static readonly (string Aura, string Shown)[] GrantedAuras =
@@ -9887,7 +10007,8 @@ public sealed class GameplayScene : Scene
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
         Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
         CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
-        IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0)
+        IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0,
+        string? nameOverride = null)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -9916,7 +10037,7 @@ public sealed class GameplayScene : Scene
         // défaut, repliée en 1 si le nom déborde de la carte (« ARBALETRIER MONTE » mesure 202 px pour une
         // carte de 200, et les cartes rétrécissent encore en 1080p). Pas d'échelle intermédiaire : le rendu
         // est pixel-perfect à l'échelle ENTIÈRE. La hauteur réservée ne bouge pas → rien ne se décale dessous.
-        var name = revealed ? UnitName(c).ToUpperInvariant() : unknown;
+        var name = revealed ? (nameOverride ?? UnitName(c)).ToUpperInvariant() : unknown;
         var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CardPad ? 2 : 1;
         // Boîte de titre = hauteur RÉELLE du nom (14 latin / 24 cjk) : centré dans une boîte à sa taille, le
         // titre remplit la boîte au lieu de déborder vers le HAUT sur l'en-tête tier/domaine. Avance idem.
@@ -10011,7 +10132,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawCondensedCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Domaine domaine, int hp, int maxHp,
         Equipment? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
-        int hpPreviewDamage, int contextualMoveBonus = 0)
+        int hpPreviewDamage, int contextualMoveBonus = 0, string? nameOverride = null)
     {
         // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
         var b = buffs ?? CommandBuffs.None;
@@ -10029,7 +10150,7 @@ public sealed class GameplayScene : Scene
         var y = rect.Y + 15;   // sous l'en-tête tier/domaine
 
         // Nom centré, échelle 2 par défaut, repliée en 1 s'il déborde (même règle que la carte détaillée).
-        var name = UnitName(c).ToUpperInvariant();
+        var name = (nameOverride ?? UnitName(c)).ToUpperInvariant();
         var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CondensedPad ? 2 : 1;
         // Boîte de titre à la hauteur réelle du nom (cf. DrawCardLayout) : pas de débordement vers l'en-tête en CJK.
         var titleH = Context.Font.LineHeight(nameScale);
@@ -11250,6 +11371,19 @@ public sealed class GameplayScene : Scene
     private bool _demoEndShown;
     private Rectangle _demoEndWishlistRect = Rectangle.Empty;
 
+    // Boutons du récap de fin de run (hit-test souris) : « recommencer la mission » (défaite rattrapable
+    // uniquement, Y à la manette) et « menu principal » (toujours là, A à la manette).
+    private Rectangle _recapRestartRect = Rectangle.Empty;
+    private Rectangle _recapMenuRect = Rectangle.Empty;
+
+    /// <summary>
+    /// Le récap de DÉFAITE propose-t-il de rejouer la mission ratée ? Seulement si la difficulté l'autorise
+    /// (cf. <see cref="CanRestartMission"/> : Difficile = run sans filet) et si un état d'entrée de mission
+    /// existe (<see cref="_missionStart"/>, absent en tutoriel).
+    /// </summary>
+    private bool CanRestartFromRecap =>
+        _run.Phase == RunPhase.Defeat && _missionStart is not null && CanRestartMission;
+
     private void DrawRunRecap(SpriteBatch sb, Viewport viewport)
     {
         var victory = _run.Phase == RunPhase.Victory;
@@ -11284,7 +11418,13 @@ public sealed class GameplayScene : Scene
         // découverts restent collectés dans RunStats mais ne s'affichent pas ici).
         var unlocks = _run.Stats.UnlockedCommanders.ToList();
 
-        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
+        // Deux BOUTONS pour clore la run (plus d'invite « clic pour revenir au menu ») : « recommencer la
+        // mission » — seulement sur une défaite rattrapable — et « menu principal ». À la manette chacun
+        // porte sa touche (Y / A), à la souris on clique dedans.
+        var gp = Context.Input.UsingGamepad;
+        var canRestart = CanRestartFromRecap;
+        var restartLabel = (gp ? "(Y) " : "") + Loc.T("menu.restart");
+        var menuLabel = (gp ? "(A) " : "") + Loc.T("menu.main_menu");
 
         var hasUnlocks = unlocks.Count > 0;
         var bilanHead = Loc.T("recap.run_bilan");
@@ -11314,9 +11454,13 @@ public sealed class GameplayScene : Scene
         var chipW = hasUnlocks ? System.Math.Max(Meas(unlocks[0], 1), Meas(deblocSub, 1)) + 2 * ChipPadH : 0;
         var chipH = 7 + 6 + 7 + 2 * ChipPadV;
 
+        var restartBtnW = canRestart ? Meas(restartLabel, 1) + 40 : 0;
+        var menuBtnW = Meas(menuLabel, 1) + 40;
+        var btnRowW = menuBtnW + (canRestart ? restartBtnW + RecapBtnGap : 0);
+
         var contentW = new[]
         {
-            columnsW, Meas(title, 3), Meas(sub, 1), Meas(reason, 1), Meas(prompt, 1),
+            columnsW, Meas(title, 3), Meas(sub, 1), Meas(reason, 1), btnRowW,
             mvp != null ? Meas(mvp, 1) : 0, hasUnlocks ? Meas(deblocHead, 2) : 0, hasUnlocks ? chipW : 0,
         }.Max();
         var boxW = contentW + 2 * ModalPadH;
@@ -11329,7 +11473,7 @@ public sealed class GameplayScene : Scene
         boxH += SecGap + DashH + SecGap;                            // filet bas colonnes
         if (hasUnlocks) boxH += HeadH + 6 + chipH + SecGap + DashH + SecGap;   // déblocages + filet
         if (mvp != null) boxH += 7 + SecGap;                        // MVP
-        boxH += 7 + ModalPadV;                                      // prompt + marge basse
+        boxH += RecapBtnH + ModalPadV;                              // rangée de boutons + marge basse
 
         var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
         Context.Style.DrawPanel(sb, box);
@@ -11410,15 +11554,39 @@ public sealed class GameplayScene : Scene
             y += 7 + SecGap;
         }
 
-        // Invite pulsée → retour menu.
-        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
-        Context.Font.DrawCentered(sb, prompt, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Cyan1 * a);
+        // Rangée de boutons, centrée : « recommencer » (deuxième chance après une défaite, hors Difficile)
+        // puis « menu principal ».
+        var bx = box.X + (box.Width - btnRowW) / 2;
+        _recapRestartRect = Rectangle.Empty;
+        if (canRestart)
+        {
+            _recapRestartRect = new Rectangle(bx, y, restartBtnW, RecapBtnH);
+            DrawRecapButton(sb, _recapRestartRect, restartLabel);
+            bx += restartBtnW + RecapBtnGap;
+        }
+        _recapMenuRect = new Rectangle(bx, y, menuBtnW, RecapBtnH);
+        DrawRecapButton(sb, _recapMenuRect, menuLabel);
+    }
+
+    /// <summary>Hauteur d'un bouton du récap (même gabarit que celui de la popup de fin de démo).</summary>
+    private const int RecapBtnH = 20;
+
+    /// <summary>Espace entre les deux boutons de la rangée de fin de run.</summary>
+    private const int RecapBtnGap = 14;
+
+    /// <summary>Bouton du récap : cadre doré, fond plus clair au survol souris.</summary>
+    private void DrawRecapButton(SpriteBatch sb, Rectangle btn, string label)
+    {
+        var hover = !Context.Input.UsingGamepad && btn.Contains(Context.Input.MousePosition);
+        DrawRect(sb, btn, Palette.Yellow2 * (hover ? 0.35f : 0.18f));
+        DrawBorderRect(sb, btn, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, label, btn, 1, Palette.Yellow2);
     }
 
     /// <summary>
     /// Popup de fin de DÉMO, affichée APRÈS le recap de victoire (cf. <see cref="_demoEndShown"/>) : remerciement
     /// + bouton « liste de souhaits » (ouvre la page Steam). Modale autonome dimensionnée à son contenu, PAS de
-    /// lien en toutes lettres (le bouton fait l'action). Interligne = LineHeight (évite le chevauchement).
+    /// lien en toutes lettres (le bouton fait l'action).
     /// </summary>
     private void DrawDemoEndPopup(SpriteBatch sb, Viewport viewport)
     {
@@ -11427,7 +11595,10 @@ public sealed class GameplayScene : Scene
         var body = WrapText(Loc.T("demo.thanks_body"), InnerW, 1);
         var btnLabel = (Context.Input.UsingGamepad ? "(Y) " : "") + Loc.T("menu.wishlist");
         var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
-        var lh = Context.Font.LineHeight(1);
+        // Pas de ligne du corps de texte : LineHeight SEUL = la hauteur du glyphe (7 px en latin), donc
+        // deux lignes empilées se touchent et le bloc devient illisible. Même filet de 3 px que les
+        // encarts de briefing (cf. DrawBriefingBox), et il suit la police active (CJK plus haute).
+        var lh = Context.Font.LineHeight(1) + 3;
 
         int Meas(string t, int s) => Context.Font.Measure(t, s);
         var btnW = Meas(btnLabel, 1) + 40;
@@ -11832,8 +12003,9 @@ public sealed class GameplayScene : Scene
     /// Frise en haut de l'écran : les <see cref="Run.MissionsPerPhase"/> missions de la PHASE courante,
     /// une icône par nature (escarmouche / spéciale / boss). Avancement lisible : missions passées =
     /// liseré vert + connecteur doré ; mission en cours = liseré doré pulsé ; à venir = sombre. Overlay
-    /// dessiné au-dessus du plateau, centré dans la zone à gauche du panneau (jamais sous lui). Masquée
-    /// en tutoriel (ce n'est pas une vraie phase de campagne).
+    /// dessiné au-dessus du plateau, centré dans la zone à gauche du panneau (jamais sous lui). Repère de
+    /// PRÉPARATION : affichée en placement seulement, retirée dès le combat (elle couvrait le haut du
+    /// plateau). Masquée aussi en tutoriel (ce n'est pas une vraie phase de campagne).
     /// </summary>
     private void DrawPhaseTimeline(SpriteBatch sb, Viewport viewport)
     {
@@ -11843,9 +12015,8 @@ public sealed class GameplayScene : Scene
         const int count = Run.MissionsPerPhase;
         const int pitch = TimelineNodeSize + TimelineGap;
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
-        // Même largeur de centrage que le PLATEAU (cf. CenteringWidth) : à gauche du panneau en placement,
-        // plein écran en combat (animée pendant le glissement d'entrée) → la frise suit le plateau au lieu
-        // de rester décalée quand le panneau part.
+        // Même largeur de centrage que le PLATEAU (cf. CenteringWidth) : la frise reste alignée avec lui
+        // dans la zone à gauche du panneau de placement.
         var railW = (int)CenteringWidth();
         var startX = (railW - contentW) / 2;
         var centerY = TimelineTopY + TimelineNodeSize / 2;
@@ -11893,21 +12064,58 @@ public sealed class GameplayScene : Scene
                 DrawRectBorder(sb, area, Palette.Navy1, 1);    // à venir
         }
 
-        // Tooltip au survol souris : nature de la mission + effectif ennemi (escortes + boss éventuel).
-        if (!Context.Input.UsingGamepad)
-        {
-            var mouse = Context.Input.MousePosition;
-            for (var i = 0; i < count; i++)
-            {
-                var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
-                if (!area.Contains(mouse))
-                    continue;
-                DrawMissionTooltip(sb, area, Run.MissionKindAt(_run.PhaseIndex, i + 1), TimelineEnemyCount(_run.PhaseIndex, i + 1));
-                break;
-            }
-        }
-
         sb.End();
+    }
+
+    /// <summary>Rectangle du nœud de rang <paramref name="i"/> (0-based) de la frise.</summary>
+    private Rectangle TimelineNodeRect(int i)
+    {
+        const int count = Run.MissionsPerPhase;
+        const int pitch = TimelineNodeSize + TimelineGap;
+        var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
+        var startX = ((int)CenteringWidth() - contentW) / 2;
+        return new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
+    }
+
+    /// <summary>Cadre tramé de la frise (fond + nœuds), tel que dessiné par <see cref="DrawPhaseTimeline"/>.</summary>
+    private Rectangle TimelineFrameRect()
+    {
+        const int count = Run.MissionsPerPhase;
+        var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
+        var startX = ((int)CenteringWidth() - contentW) / 2;
+        return new Rectangle(startX - 14, 6, contentW + 28, TimelineTopY + TimelineNodeSize + 2);
+    }
+
+    /// <summary>
+    /// Souris posée sur la frise (elle masque le plateau à cet endroit). False dès qu'elle n'est PAS dessinée :
+    /// à la manette, en tutoriel, et hors PLACEMENT (elle disparaît au combat, cf. Draw).
+    /// </summary>
+    private bool PointerOverTimeline() =>
+        _tutorial == null && !Context.Input.UsingGamepad && _run.Phase == RunPhase.Placement
+        && TimelineFrameRect().Contains(Context.Input.MousePosition);
+
+    /// <summary>
+    /// Infobulle au survol souris d'un nœud de frise : nature de la mission + effectif ennemi (escortes et
+    /// boss éventuel). Dessinée À PART de <see cref="DrawPhaseTimeline"/> et APRÈS les encarts de briefing
+    /// (cf. <see cref="DrawBriefingBox"/>), qu'elle recouvre : sinon le briefing, juste sous la frise, la
+    /// masquait presque entièrement.
+    /// </summary>
+    private void DrawPhaseTimelineTooltip(SpriteBatch sb)
+    {
+        if (_tutorial != null || Context.Input.UsingGamepad)
+            return;
+
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < Run.MissionsPerPhase; i++)
+        {
+            var area = TimelineNodeRect(i);
+            if (!area.Contains(mouse))
+                continue;
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            DrawMissionTooltip(sb, area, Run.MissionKindAt(_run.PhaseIndex, i + 1), TimelineEnemyCount(_run.PhaseIndex, i + 1));
+            sb.End();
+            break;
+        }
     }
 
     /// <summary>Carré de côté <paramref name="size"/> centré dans <paramref name="area"/>.</summary>
