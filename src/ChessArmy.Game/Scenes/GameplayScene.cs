@@ -339,9 +339,11 @@ public sealed class GameplayScene : Scene
     // « Transpercement » qui TUE le pion DERRIÈRE la cible : même souci (retiré sans dissolution). On le dessine
     // solide pendant l'anim d'attaque puis on DIFFÈRE sa dissolution après (cf. DrawCombatFx / UpdateBattle).
     private (Cell Cell, Texture2D? Sprite)? _pendingPierceDissolve;
-    // « Recule » qui a GLISSÉ (pas plaqué) : la victime a changé de case dans le moteur ; on l'anime en la
-    // faisant glisser de sa case d'origine (From) vers sa case d'arrivée (To) pendant l'anim d'attaque.
-    private (Cell From, Cell To)? _reculeSlide;
+    // La victime a CHANGÉ DE CASE dans le moteur — « Recule » qui a glissé (repoussée) ou « Esquive » (repli
+    // après le coup encaissé). On l'anime en la faisant glisser de sa case d'origine (From) vers sa case
+    // d'arrivée (To) pendant l'anim d'attaque. Les deux traits s'excluent : une cible repliée n'est plus là
+    // pour être repoussée. À ne pas confondre avec MeleeStrikeFx.VictimSlide, qui en est l'AVANCEMENT [0,1].
+    private (Cell From, Cell To)? _victimMove;
     // « Riposte » : contre-attaque DÉJÀ résolue dans le moteur, rejouée en animation APRÈS l'attaque principale
     // (le pion riposteur fente vers l'assaillant + mot « RIPOSTE »). Réutilise _fx une fois l'anim d'attaque finie.
     // Le sprite de l'ASSAILLANT est figé ici (il peut mourir de la riposte) ; celui du riposteur est repris à vif.
@@ -368,13 +370,15 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Tout ce qu'il faut pour rejouer l'animation de la dernière action de l'IA (cf. <see cref="_lastAiAction"/>).
     /// Une ATTAQUE rejoue l'anim complète + le feedback PRINCIPAL (dégâts / esquive / phénix) ; un DÉPLACEMENT rejoue le
-    /// glissement du pion. Les FX de traits exotiques (orage, impact de zone, transpercement, riposte) ne sont PAS rejoués.</summary>
+    /// glissement du pion. Les FX de traits exotiques (orage, impact de zone, transpercement, riposte) ne sont PAS rejoués.
+    /// <paramref name="Keyword"/> : clé strings.csv d'un mot-clé à faire jaillir au-dessus de l'attaquant au lancement
+    /// (ex. « INTERCEPTION »), <c>null</c> pour une action ordinaire.</summary>
     private readonly record struct AiReplaySnapshot(
         bool IsAttack, Cell From, Cell To, Cell AttackerCell,
         Texture2D? AttackerSprite, Texture2D? VictimSprite,
         bool Killed, bool Advanced, AttackStyle Style, bool Dodged,
         int Damage, int GiantBonus, bool Phenix,
-        (Cell From, Cell To)? ReculeSlide, string Sound);
+        (Cell From, Cell To)? VictimMove, string Sound, string? Keyword = null);
     // Points de commandement « sur coup reçu » (commandant Lancier) : coups DÉJÀ signalés au joueur ce combat.
     // Sert à afficher un « +N » flottant à chaque coup qui RAPPORTE (sous le plafond OnHitCap), sans doublon —
     // le CRÉDIT réel reste groupé à la clôture (cf. GrantCommanderHitPoints).
@@ -535,6 +539,10 @@ public sealed class GameplayScene : Scene
     // par le pion sélectionné/survolé ET les ALLIÉS MENACÉS (à portée d'un ennemi). Rempli à chaque frame par
     // DrawHighlights.
     private readonly HashSet<Cell> _trembleTargets = new();
+    // « Lien de puissance » : alliés qui ALIMENTENT le porteur sous le focus (sélection, sinon survol). Ils
+    // prennent un halo dans la passe des pions pour montrer d'où vient son bonus de puissance. Rempli une fois
+    // par frame dans DrawHighlights, lu par DrawUnit. Vide si le pion focalisé n'a pas le trait.
+    private readonly HashSet<Cell> _lienAllies = new();
     private double _aiTimer;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
     private bool _showChecker = true;   // damier façon échiquier (une case sur deux assombrie), bascule F2, activé par défaut
@@ -1131,10 +1139,10 @@ public sealed class GameplayScene : Scene
         // Mission « protéger » : le joueur ne peut pas se poser sur les cases paysan (il les défend, ne les
         // squatte pas) ; les ennemis, eux, y vont pour les capturer.
         var playerBlocked = IsProtectMission ? _recrueCells : null;
-        // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé » / « Esquive renforcée » (cf. Run + Match).
+        // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé », « Formation renforcée »… (cf. Run + Match).
         _match = new Match(Columns, Rows, _battlefield, _bushCells,
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked,
-            rempartBonus: _run.RempartBonus, esquiveBonusPercent: _run.EsquiveBonusPercent,
+            rempartBonus: _run.RempartBonus,
             tueurGeantsBonus: _run.TueurDeGeantsBonus, formationBonus: _run.FormationBonus);
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
@@ -1191,7 +1199,7 @@ public sealed class GameplayScene : Scene
         _pendingImpactHits = null;
         _pendingImpactZone = null;
         _pendingReculeSlam = null;
-        _reculeSlide = null;
+        _victimMove = null;
         _slideGlide.Clear();
         _pendingSlide = null;
         _pendingRiposte = null;
@@ -1347,7 +1355,7 @@ public sealed class GameplayScene : Scene
         _pendingImpactHits = null;
         _pendingImpactZone = null;
         _pendingReculeSlam = null;
-        _reculeSlide = null;
+        _victimMove = null;
         _slideGlide.Clear();
         _pendingSlide = null;
         _pendingRiposte = null;
@@ -1825,11 +1833,10 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void RespawnPlayerUnitsFromSpecs()
     {
-        // Un nœud acheté en placement peut régler le MOTEUR (Rempart renforcé / Esquive renforcée) : on
+        // Un nœud acheté en placement peut régler le MOTEUR (Rempart renforcé / Formation renforcée…) : on
         // resynchronise les bonus d'arbre du Match (appliqués aux seules unités du joueur) en plus de
         // réinstancier les pions (stats d'arbre). _run peut être null (tutoriel) → aucun bonus d'arbre.
         _match.RempartBonus = _run?.RempartBonus ?? 0;
-        _match.EsquiveBonusPercent = _run?.EsquiveBonusPercent ?? 0;
         _match.TueurDeGeantsBonus = _run?.TueurDeGeantsBonus ?? 0;
         _match.FormationBonus = _run?.FormationBonus ?? 0;
         foreach (var (cell, unit) in _match.Units().Where(u => u.Unit.Faction == Faction.Player).ToList())
@@ -3877,7 +3884,7 @@ public sealed class GameplayScene : Scene
         if (_pendingSlamDissolve is { } sd)
         {
             _pendingSlamDissolve = null;
-            _reculeSlide = null;                     // pas de glissement pour un plaquage (la cible est restée sur place)
+            _victimMove = null;                     // pas de glissement pour un plaquage (la cible est restée sur place)
             _fx.BeginDissolve(sd.Cell, sd.Sprite);
             _impactHandled = true;                   // dissolution pure : aucun chiffre/impact à traiter
             return;
@@ -3888,7 +3895,7 @@ public sealed class GameplayScene : Scene
         if (_pendingPierceDissolve is { } pd)
         {
             _pendingPierceDissolve = null;
-            _reculeSlide = null;
+            _victimMove = null;
             _fx.BeginDissolve(pd.Cell, pd.Sprite);
             _impactHandled = true;
             return;
@@ -4648,6 +4655,11 @@ public sealed class GameplayScene : Scene
     /// par combat de chaque pion), ennemis tués (delta de kills de ce combat) et pions perdus (hors commandant).
     /// À appeler UNE fois par fin de combat et AVANT <see cref="SyncKillsToSpecs"/> / la complétion : le delta
     /// de kills se lit tant que <c>spec.Kills</c> porte encore la valeur d'AVANT ce combat.
+    ///
+    /// La ventilation se fait sur l'ASSET de la classe, pas sur son nom : c'est lui qui identifie une classe de
+    /// façon unique et qui sert de clé de traduction partout ailleurs (cf. <see cref="UnitName"/>). Un COMMANDANT
+    /// a donc sa propre ligne — son asset lui est propre (« Commandant_fou ») là où son nom de classe est celui
+    /// d'une troupe ordinaire (« Mage »), ce qui fondait auparavant ses dégâts dans ceux de ses pions.
     /// </summary>
     private void AccumulateCombatStats()
     {
@@ -4655,7 +4667,7 @@ public sealed class GameplayScene : Scene
         var lost = 0;
         foreach (var (unit, spec) in _playerSpec)
         {
-            _run.Stats.AddDamage(unit.Class.Name, unit.DamageDealt);
+            _run.Stats.AddDamage(unit.Class.Asset, unit.DamageDealt);
             kills += System.Math.Max(0, unit.Kills - spec.Kills);
             if (!unit.IsAlive && !spec.Essential)
                 lost++;
@@ -5109,17 +5121,47 @@ public sealed class GameplayScene : Scene
         _lastAiAction = new AiReplaySnapshot(
             IsAttack: true, From: _fx.From, To: _fx.To, AttackerCell: _fx.Attacker,
             AttackerSprite: _fx.AttackerSprite, VictimSprite: _fx.VictimSprite,
-            Killed: _fx.Killed, Advanced: _fx.Advanced, Style: _fx.Style, Dodged: _fx.Dodged,
+            Killed: _fx.Killed, Advanced: _fx.Advanced, Style: _fx.Style, Dodged: _pendingDodge,
             Damage: _pendingDamage, GiantBonus: _pendingGiantBonus, Phenix: _pendingPhenix,
-            ReculeSlide: _reculeSlide, Sound: SoundForStyle(_fx.Style));
+            VictimMove: _victimMove, Sound: SoundForStyle(_fx.Style));
 
-    /// <summary>Fige le dernier DÉPLACEMENT de l'IA (cases départ/arrivée + sprite du pion) pour pouvoir le REVOIR.</summary>
-    private void RecordAiMoveReplay(Cell from, Cell to) =>
+    /// <summary>
+    /// Fige le dernier DÉPLACEMENT de l'IA (cases départ/arrivée + sprite du pion) pour pouvoir le REVOIR.
+    /// CAS PARTICULIER : si une « Interception » a ABATTU le mobile en chemin, c'est ELLE qu'on fige — l'intercepteur
+    /// qui frappe et le mobile qui se dissout. Sinon le pion mort n'est plus sur le plateau, le sprite capturé serait
+    /// nul et la touche « revoir » ne montrerait RIEN (elle gèlerait le tour sur une animation vide).
+    /// </summary>
+    private void RecordAiMoveReplay(Cell from, Cell to)
+    {
+        if (LethalInterception() is { } kill)
+        {
+            _lastAiAction = new AiReplaySnapshot(
+                IsAttack: true, From: kill.From, To: kill.To, AttackerCell: kill.From,
+                AttackerSprite: _match.UnitAt(kill.From) is { } itc ? UnitSprite(itc) : null,
+                VictimSprite: kill.MoverSprite,   // figé AVANT le déplacement par TryMoveWithFx
+                Killed: true, Advanced: false, Style: AttackStyle.Lunge, Dodged: false,
+                Damage: kill.Damage, GiantBonus: 0, Phenix: false, VictimMove: null,
+                Sound: SoundForStyle(AttackStyle.Lunge), Keyword: "fx.interception");
+            return;
+        }
+
         _lastAiAction = new AiReplaySnapshot(
             IsAttack: false, From: from, To: to, AttackerCell: to,
             AttackerSprite: _match.UnitAt(to) is { } m ? UnitSprite(m) : null, VictimSprite: null,
             Killed: false, Advanced: false, Style: AttackStyle.Lunge, Dodged: false,
-            Damage: 0, GiantBonus: 0, Phenix: false, ReculeSlide: null, Sound: "unit_move");
+            Damage: 0, GiantBonus: 0, Phenix: false, VictimMove: null, Sound: "unit_move");
+    }
+
+    /// <summary>L'« Interception » en attente qui a ABATTU le mobile, ou <c>null</c> s'il a survécu à toutes.
+    /// Il y en a au plus une : le moteur cesse d'intercepter dès le coup mortel (cf. Match.TriggerInterceptions).
+    /// Appelé juste après <see cref="TryMoveWithFx"/>, donc avant que la file ne soit dépilée par les animations.</summary>
+    private (Cell From, Cell To, Texture2D? MoverSprite, bool Killed, int Damage)? LethalInterception()
+    {
+        foreach (var itc in _pendingInterceptions)
+            if (itc.Killed)
+                return itc;
+        return null;
+    }
 
     /// <summary>
     /// Cases des paysans encore EN JEU (tuiles recrue non résolues), passées à l'IA : GARDÉES par les
@@ -5806,7 +5848,6 @@ public sealed class GameplayScene : Scene
         _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
         // Part « Tueur de géants » de ces dégâts (0 sinon) : affichée en « +N » distinct à l'impact.
         _pendingGiantBonus = attacker != null && victim != null ? _match.GiantSlayerBonusFor(from, target) : 0;
-        var victimHpBefore = victim?.Hp ?? 0;       // pour détecter l'esquive (PV inchangés malgré des dégâts attendus)
         if (attacker != null)
             FaceToward(attacker, from, target);     // tourne l'attaquant vers sa cible (avant la capture du sprite)
         var attackerSprite = attacker != null ? UnitSprite(attacker) : null;
@@ -5871,8 +5912,11 @@ public sealed class GameplayScene : Scene
             ? new List<Cell>(_match.LastImpactZone)
             : null;
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
-        // Glissement du recul : la victime a réellement changé de case (To != cible) → on l'anime en glissant.
-        _reculeSlide = _match.LastRecule is { } rc && rc.To != target ? (target, rc.To) : null;
+        // « Esquive » : la cible a encaissé le coup PUIS s'est repliée (le moteur l'a déjà déplacée).
+        var dodge = DodgeFrom(target);
+        // Glissement de la victime : elle a réellement changé de case, par repli (« Esquive ») ou parce que le
+        // « Recule » l'a repoussée (To != cible) → on l'anime en glissant vers son arrivée.
+        _victimMove = dodge ?? (_match.LastRecule is { } rc && rc.To != target ? (target, rc.To) : null);
         // « Recule » qui ACHÈVE : la cible a SURVÉCU au coup direct (kind Attacked, donc flash de survivant) mais le
         // +5 de plaquage l'a tuée (retirée du plateau). Le flash s'est joué sur un futur mort : on DIFFÈRE sa
         // dissolution après l'anim d'attaque ET l'apparition du +5 (cf. UpdateBattle / MeleeStrikeFx.BeginDissolve).
@@ -5899,10 +5943,8 @@ public sealed class GameplayScene : Scene
         _pendingPhenix = victim is { IsAlive: true } && victimEquipBefore != null && victim.Equipment == null;
 
         var killed = kind == MoveKind.Killed;
-        // Esquive : la victime a le trait, des dégâts étaient attendus mais ses PV n'ont pas bougé → coup esquivé.
-        // (Le trait évite de confondre avec un autre « 0 dégât », par exemple une réduction qui absorbe tout.)
-        _pendingDodge = !killed && victim is { IsAlive: true } && _pendingDamage > 0
-            && victim.Hp == victimHpBefore && victim.HasTrait(Trait.Esquive);
+        // Esquive : le coup a bien porté, mais la victime s'est repliée dans la foulée → callout dédié.
+        _pendingDodge = dodge != null;
         if (_tutorial is { Step: TutorialStep.Attack } && killed && victim is { Faction: Faction.Enemy })
             _tutorial.Advance();            // mort de l'ENNEMI → Attack → Commander (pas sur la contre-attaque)
         // L'attaquant a-t-il quitté sa case en tuant ? Il a pu prendre la case de la victime OU glisser plus loin
@@ -5910,14 +5952,28 @@ public sealed class GameplayScene : Scene
         var slidRest = _match.LastSlide is { } sp && ReferenceEquals(_match.UnitAt(sp[^1]), attacker) ? sp[^1] : (Cell?)null;
         var advanced = killed && (slidRest is not null || ReferenceEquals(_match.UnitAt(target), attacker));
         var attackerCell = !advanced ? from : (slidRest ?? target);
+        // Un attaquant porteur d'« Esquive » a pu se REPLIER après une riposte : la passe FX doit masquer son
+        // pion là où le moteur l'a RÉELLEMENT laissé, sinon il serait dessiné deux fois (case d'origine + repli).
+        if (DodgeFrom(attackerCell) is { } attackerDodge)
+            attackerCell = attackerDodge.To;
         var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
         Context.Sounds.Play(SoundForStyle(style));   // incantation (mage) / charge (cavalier) / tir (archer) / coup d'arme
         // victimDoomed : la cible va mourir du plaquage « Recule » (déjà retirée) → dessinée solide/statique, sans flash.
         _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style,
-            dodged: _pendingDodge, victimDoomed: _pendingSlamDissolve != null);
+            victimDoomed: _pendingSlamDissolve != null);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         return kind;
+    }
+
+    /// <summary>Repli d'« Esquive » parti de <paramref name="from"/> lors de la dernière action du moteur
+    /// (case de départ → case d'arrivée), ou <c>null</c> si le pion de cette case ne s'est pas replié.</summary>
+    private (Cell From, Cell To)? DodgeFrom(Cell from)
+    {
+        foreach (var dodge in _match.LastDodges)
+            if (dodge.From == from)
+                return dodge;
+        return null;
     }
 
     /// <summary>
@@ -5929,7 +5985,7 @@ public sealed class GameplayScene : Scene
     private void StartRiposteFx((Cell From, Cell To, Texture2D? AttackerSprite, bool Killed, AttackStyle Style, int Damage) rip)
     {
         _pendingRiposte = null;
-        _reculeSlide = null;   // le glissement du recul est terminé : il ne doit pas se rejouer sur l'anim de riposte
+        _victimMove = null;   // le glissement du recul est terminé : il ne doit pas se rejouer sur l'anim de riposte
         Texture2D? riposterSprite = null;
         if (_match.UnitAt(rip.From) is { } riposter)
         {
@@ -5982,7 +6038,7 @@ public sealed class GameplayScene : Scene
         _pendingImpactZone = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
-        _reculeSlide = null;
+        _victimMove = null;
         _fx.Begin(itc.From, itc.To, itc.From, interceptorSprite, itc.MoverSprite, itc.Killed, advanced: false, style);
         _impactHandled = false;
     }
@@ -6010,10 +6066,14 @@ public sealed class GameplayScene : Scene
             _pendingGiantBonus = snap.GiantBonus;
             _pendingPhenix = snap.Phenix;
             _pendingDodge = snap.Dodged;
-            _reculeSlide = snap.ReculeSlide;
+            _victimMove = snap.VictimMove;
             Context.Sounds.Play(snap.Sound);
+            // Mot-clé du trait qui a produit l'action rejouée (« INTERCEPTION »), au-dessus de l'attaquant : sans lui
+            // le joueur verrait son pion frapper pendant SON tour sans comprendre d'où sort le coup.
+            if (snap.Keyword is { } keyword)
+                _damagePopups.SpawnText(snap.From, Loc.T(keyword), Palette.Cyan2);
             _fx.Begin(snap.From, snap.To, snap.AttackerCell, snap.AttackerSprite, snap.VictimSprite,
-                snap.Killed, snap.Advanced, snap.Style, dodged: snap.Dodged);
+                snap.Killed, snap.Advanced, snap.Style);
         }
         else
         {
@@ -6021,7 +6081,7 @@ public sealed class GameplayScene : Scene
             _pendingGiantBonus = 0;
             _pendingPhenix = false;
             _pendingDodge = false;
-            _reculeSlide = null;
+            _victimMove = null;
             _fx.BeginMove(snap.From, snap.To, snap.AttackerSprite);   // son « unit_move » joué à l'atterrissage
         }
         _impactHandled = false;
@@ -6947,6 +7007,14 @@ public sealed class GameplayScene : Scene
         _trembleTargets.Clear();
         AddThreatenedAlliesToTremble();
 
+        // « Lien de puissance » du pion sous le FOCUS (sélectionné, sinon survolé — même règle que sa carte) :
+        // ses alliés nourriciers pulsent dans la passe des pions. Calculé AVANT le retour anticipé ci-dessous
+        // pour valoir aussi bien à la sélection qu'au survol, et sur un porteur ENNEMI (savoir ce qui le gonfle).
+        _lienAllies.Clear();
+        if ((_selected ?? HoverCellForCards()) is { } focus)
+            foreach (var ally in _match.LienDePuissanceAllies(focus))
+                _lienAllies.Add(ally);
+
         // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
         if (_selected is { } sel)
         {
@@ -7460,12 +7528,12 @@ public sealed class GameplayScene : Scene
         var animLift = UnitLift(cell, size);
         var spriteLift = (int)(size * SpriteLiftFraction);
 
-        // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU — si elle a été REPOUSSÉE
-        // d'une case (« Recule ») — le GLISSEMENT vers sa case d'arrivée : décalage en pixels. Le pion TRANSPERCÉ
+        // Recul de la victime survivante (à l'opposé de l'attaquant, au contact), OU — si elle a CHANGÉ de case
+        // (« Recule » / repli d'« Esquive ») — le GLISSEMENT vers son arrivée : décalage en pixels. Le pion TRANSPERCÉ
         // (derrière la cible) recule dans l'axe du coup en parallèle (cf. HitRecoil).
         var kb = IsFxVictim(cell) ? VictimKnockback(size)
                : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
-               : ReculeSlideOffset(cell, layout);
+               : VictimMoveOffset(cell, layout);
         kb += _pierceRecoil.Offset(cell, size);
         kb.Y += ChuteTrembleY(cell);   // le pion vibre avec la tuile « chute » qu'il occupe
         zx += kb.X;
@@ -7487,6 +7555,10 @@ public sealed class GameplayScene : Scene
         // porteur au contact direct). Même style que la Rage, en jaune et plus posé.
         if (sprite != null && _match.BenefitsFromAura(cell, Trait.AuraDeCelerite))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Yellow2, 3.5f);
+        // « Lien de puissance » : halo CYAN sur les alliés qui nourrissent le porteur focalisé — on voit d'un
+        // coup d'œil d'où sortent ses +2 de puissance (cf. _lienAllies, rempli par DrawHighlights).
+        if (sprite != null && _lienAllies.Contains(cell))
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Cyan2, 2.5f);
         // Trait « Soin » : halo (couleur d'aura) autour des alliés blessés que le pion ATTRAPÉ (soigneur sélectionné) peut soigner.
         if (sprite != null && _healTargets.Contains(cell))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, HealAuraColor, 3f);
@@ -7610,7 +7682,7 @@ public sealed class GameplayScene : Scene
             var animLift = UnitLift(cell, size);
             var kb = IsFxVictim(cell) ? VictimKnockback(size)
                    : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
-                   : ReculeSlideOffset(cell, layout);
+                   : VictimMoveOffset(cell, layout);
             kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
             kb.Y += ChuteTrembleY(cell);              // et le tremblement de la tuile « chute »
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
@@ -7887,11 +7959,12 @@ public sealed class GameplayScene : Scene
         // Ancrages écran (coin haut-gauche du sprite, lift de socle compris) des cases en jeu.
         var fromTop = layout.CellToScreen(_fx.From.Column, _fx.From.Row) - new Vector2(0, spriteLift);
         var toTop = layout.CellToScreen(_fx.To.Column, _fx.To.Row) - new Vector2(0, spriteLift);
-        // Victime : normalement sur sa case (léger recul kb) ; si elle a été REPOUSSÉE d'une case (« Recule »),
-        // elle GLISSE de sa case d'origine vers sa case d'arrivée — le glissement remplace le petit recul.
+        // Victime : normalement sur sa case (léger recul kb) ; si elle a CHANGÉ de case (« Recule » qui la
+        // repousse, ou repli d'« Esquive »), elle GLISSE de sa case d'origine vers sa case d'arrivée — le
+        // glissement remplace le petit recul.
         var kb = VictimKnockback(size);
         var victimTop = toTop;
-        if (_reculeSlide is { } rs)
+        if (_victimMove is { } rs)
         {
             victimTop = Vector2.Lerp(
                 layout.CellToScreen(rs.From.Column, rs.From.Row) - new Vector2(0, spriteLift),
@@ -8086,14 +8159,15 @@ public sealed class GameplayScene : Scene
     private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To;
 
     /// <summary>
-    /// Décalage (px entiers) du GLISSEMENT « Recule » pour la case <paramref name="cell"/> : la victime, déjà
-    /// posée par le moteur sur sa case d'ARRIVÉE, est dessinée partant de sa case d'ORIGINE puis rejoignant
-    /// l'arrivée au fil de <see cref="MeleeStrikeFx.VictimSlide"/>. Point.Zero hors recul-glissé (ou FX inactif).
+    /// Décalage (px entiers) du GLISSEMENT de la victime qui a changé de case (« Recule » ou repli d'« Esquive »)
+    /// pour la case <paramref name="cell"/> : la victime, déjà posée par le moteur sur sa case d'ARRIVÉE, est
+    /// dessinée partant de sa case d'ORIGINE puis rejoignant l'arrivée au fil de
+    /// <see cref="MeleeStrikeFx.VictimSlide"/>. Point.Zero si elle n'a pas bougé (ou FX inactif).
     /// Ancré sur la case RÉELLE (arrivée) : l'offset part de (origine − arrivée) et s'annule à la fin.
     /// </summary>
-    private Point ReculeSlideOffset(Cell cell, GridLayout layout)
+    private Point VictimMoveOffset(Cell cell, GridLayout layout)
     {
-        if (_reculeSlide is not { } rs || !_fx.Active || cell != rs.To)
+        if (_victimMove is not { } rs || !_fx.Active || cell != rs.To)
             return Point.Zero;
         var from = layout.CellToScreen(rs.From.Column, rs.From.Row);
         var to = layout.CellToScreen(rs.To.Column, rs.To.Row);
@@ -8101,10 +8175,9 @@ public sealed class GameplayScene : Scene
         return new Point((int)MathF.Round(off.X), (int)MathF.Round(off.Y));
     }
 
-    /// <summary>
-    /// Décalage (px entiers) de la victime pendant l'anim : recul à l'opposé de l'attaquant au contact, OU —
-    /// en cas d'ESQUIVE — un BOND DE CÔTÉ (perpendiculaire à l'attaque, aller-retour) au lieu d'être touchée.
-    /// </summary>
+    /// <summary>Décalage (px entiers) de la victime pendant l'anim : recul à l'opposé de l'attaquant au contact.
+    /// Une victime qui CHANGE de case (« Recule » / repli d'« Esquive ») ne recule pas : elle glisse
+    /// (cf. <see cref="VictimMoveOffset"/>).</summary>
     private Point VictimKnockback(int size)
     {
         if (!_fx.Active)
@@ -8113,16 +8186,6 @@ public sealed class GameplayScene : Scene
         var dir = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
         if (dir.LengthSquared() > 0f)
             dir.Normalize();
-
-        if (_fx.Dodged)
-        {
-            var d = _fx.DodgeAmount;
-            if (d <= 0f)
-                return Point.Zero;
-            var perp = new Vector2(-dir.Y, dir.X);           // perpendiculaire : côté vers lequel on s'écarte
-            var mag = size * 0.38f * d;                      // amplitude du bond (plus ample que le recul)
-            return new Point((int)MathF.Round(perp.X * mag), (int)MathF.Round(perp.Y * mag));
-        }
 
         var amt = _fx.KnockbackAmount;
         if (amt <= 0f)
@@ -8137,19 +8200,18 @@ public sealed class GameplayScene : Scene
     private void OnImpact()
     {
         _impactHandled = true;
+        _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+        if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
+            _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
+        if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
+            _damagePopups.SpawnText(_fx.To, Loc.T("fx.phenix"), Palette.Brown3);
         if (_pendingDodge)
         {
-            // Esquive : pas de chiffre de dégâts — un « ESQUIVE ! » bleu jaillit et un « whoosh » accompagne le bond.
-            _damagePopups.SpawnText(_fx.To, Loc.T("fx.dodge"), Palette.Cyan1);
+            // Esquive : le coup PORTE (chiffre normal) mais la cible file aussitôt — « ESQUIVE ! » bleu posé
+            // au-dessus du chiffre pour ne pas le recouvrir, et un « whoosh » qui accompagne le repli.
+            _damagePopups.SpawnText(_fx.To, Loc.T("fx.dodge"), Palette.Cyan1, new Vector2(0f, -0.5f));
             Context.Sounds.Play("dodge");
-        }
-        else
-        {
-            _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
-            if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
-                _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
-            if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
-                _damagePopups.SpawnText(_fx.To, Loc.T("fx.phenix"), Palette.Brown3);
+            _pendingDodge = false;
         }
         _pendingGiantBonus = 0;   // consommé (évite un report sur une action ultérieure sans bonus)
 
@@ -10469,7 +10531,7 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Résout la description d'un mot-clé pour l'affichage. Les traits « renforçables » par l'arbre (Rempart,
-    /// Esquive) portent un marqueur <c>{0}</c> dans <c>strings.csv</c> : on y substitue leur valeur EFFECTIVE
+    /// Formation…) portent un marqueur <c>{0}</c> dans <c>strings.csv</c> : on y substitue leur valeur EFFECTIVE
     /// (base + bonus d'arbre de la run courante). Renvoie AUSSI le token à peindre en ROUGE (la valeur montée)
     /// et un drapeau « renforcé » (nom du trait en rouge) — nuls/faux si non renforcé (bonus 0) ou non
     /// renforçable. TOUT rendu de description passe par ici : garantit qu'aucun « {0} » ne fuite à l'écran.
@@ -10480,13 +10542,10 @@ public sealed class GameplayScene : Scene
     private (string Desc, string? Highlight, bool Reinforced) KeywordDisplay(UnitKeywords.Keyword kw, bool reinforcedApplies = true)
     {
         var rempartBonus = reinforcedApplies ? _run?.RempartBonus ?? 0 : 0;
-        var esquiveBonus = reinforcedApplies ? _run?.EsquiveBonusPercent ?? 0 : 0;
         var geantsBonus = reinforcedApplies ? _run?.TueurDeGeantsBonus ?? 0 : 0;
         var formationBonus = reinforcedApplies ? _run?.FormationBonus ?? 0 : 0;
         if (kw.Label == UnitKeywords.For(Trait.Rempart).Label)
             return ResolveReinforced(kw.Description, Match.BaseRempartReduction, rempartBonus);
-        if (kw.Label == UnitKeywords.For(Trait.Esquive).Label)
-            return ResolveReinforced(kw.Description, (int)System.Math.Round(Match.BaseEsquiveChance * 100), esquiveBonus);
         if (kw.Label == UnitKeywords.For(Trait.TueurDeGeants).Label)
             return ResolveReinforced(kw.Description, Match.BaseGiantSlayerBonus, geantsBonus);
         if (kw.Label == UnitKeywords.For(Trait.Formation).Label)
@@ -11405,7 +11464,11 @@ public sealed class GameplayScene : Scene
         if (_run.Stats.PaysansSaved > 0) bilan.Add((Loc.T("recap.run_paysans"), _run.Stats.PaysansSaved.ToString()));
         if (_run.Stats.EquipmentFound > 0) bilan.Add((Loc.T("recap.run_equipment"), _run.Stats.EquipmentFound.ToString()));
 
-        var dmg = _run.Stats.TopDamage(6);
+        // Les dégâts sont ventilés par ASSET de classe (cf. AccumulateCombatStats) : on le traduit ici en nom
+        // affichable, exactement comme les cartes d'unité. Repli sur l'asset brut si la clé manque.
+        var dmg = _run.Stats.TopDamage(6)
+            .Select(e => (Class: Loc.TOr("unit." + e.Class, e.Class).ToUpperInvariant(), e.Damage))
+            .ToList();
         var maxDmg = dmg.Count > 0 ? System.Math.Max(1, dmg[0].Damage) : 1;
 
         // MVP : pion SURVIVANT avec le plus de kills (à vie ; ignoré si personne n'a tué).

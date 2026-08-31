@@ -90,7 +90,7 @@ public static class Domaines
                     N(3, "Paladin", "paladin", 22, 18, 3, 3, traits: new[] { Trait.Franchissement, Trait.AuraDeRempart, Trait.Impact }),
                     N(3, "Cavalier griffon", "cavalier_griffon", 20, 16, 3, 3, traits: new[] { Trait.Vol }),
                 }),
-                N(2, "Archer monté", "archer_monte", 14, 10, 3, 3, pierces: true, traits: new[] { Trait.ZoneMorte, Trait.Franchissement }, evo: new[]
+                N(2, "Archer monté", "archer_monte", 14, 10, 3, 3, traits: new[] { Trait.ZoneMorte, Trait.Franchissement }, evo: new[]
                 {
                     N(3, "Archer griffon", "archer_griffon", 16, 14, 3, 3, pierces: true, traits: new[] { Trait.ZoneMorte, Trait.Vol }),
                     N(3, "Arbalétrier monté", "arbaletrier_monte", 18, 14, 3, 3, traits: new[] { Trait.ZoneMorte, Trait.Vol, Trait.Balistique }),

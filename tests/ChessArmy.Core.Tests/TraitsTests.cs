@@ -712,6 +712,40 @@ public class TraitsTests
         Assert.Equal(10, m.UnitAt(new Cell(3, 5))!.Hp);   // 20 - (6 + 2×2)
     }
 
+    /// <summary>Deux alliés sur le MÊME rayon : le plus proche ne masque plus celui de derrière. Le lien ne
+    /// s'arrête qu'au bord du plateau, contrairement au déplacement réel qui bute sur le premier pion.</summary>
+    [Fact]
+    public void LienDePuissance_CountsEveryAllyOnTheSameRay()
+    {
+        var m = Board();
+        // Porteur FOU (diagonales), portée de déplacement 2 → les 2 premières cases de chaque diagonale.
+        m.Place(new Cell(1, 1), Make(Faction.Player, 20, 6,
+            new[] { Trait.LienDePuissance }, domaine: Domaine.Fou, moveRange: 2));
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 5, None));   // 1re case de la diagonale
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 5, None));   // DERRIÈRE la précédente : compte aussi
+        m.Place(new Cell(4, 4), Make(Faction.Player, 20, 5, None));   // 3e case : hors portée
+
+        Assert.Equal(4, m.LienPuissancePowerBonus(new Cell(1, 1)));   // 2 alliés × 2
+        Assert.Equal(new[] { new Cell(2, 2), new Cell(3, 3) },
+            m.LienDePuissanceAllies(new Cell(1, 1)));                  // ... et l'UI voit les mêmes
+    }
+
+    /// <summary>Rien ne coupe un rayon : ni un ENNEMI interposé ni un obstacle de terrain.</summary>
+    [Fact]
+    public void LienDePuissance_IsNotCutByEnemyNorTerrain()
+    {
+        var field = Battlefield.CreateFlat(8, 8);
+        field[new Cell(1, 3)] = new Tile(BuiltInTiles.Mountain);   // obstacle sur le rayon de gauche
+
+        var m = new Match(8, 8, field);
+        m.Place(new Cell(3, 3), Make(Faction.Player, 20, 6, new[] { Trait.LienDePuissance }, moveRange: 2));
+        m.Place(new Cell(4, 3), Make(Faction.Enemy, 20, 5, None));    // ennemi collé à droite
+        m.Place(new Cell(5, 3), Make(Faction.Player, 20, 5, None));   // allié DERRIÈRE l'ennemi
+        m.Place(new Cell(2, 3), Make(Faction.Player, 20, 5, None));   // allié devant la montagne
+
+        Assert.Equal(4, m.LienPuissancePowerBonus(new Cell(3, 3)));   // les deux alliés comptent
+    }
+
     [Fact]
     public void LienDePuissance_ZeroWithoutTrait()
     {
@@ -762,25 +796,64 @@ public class TraitsTests
         Assert.DoesNotContain(new Cell(3, 2), moves);   // obstacle
     }
 
-    // ── Esquive : 25 % d'annuler l'attaque (RNG injecté) ──────────────────────────
+    // ── Esquive : encaisse puis se replie dans sa portée de déplacement ───────────
 
+    /// <summary>Le coup PORTE (plus d'annulation), puis le porteur quitte sa case pour la seule case de sa
+    /// portée qui n'est menacée par personne — ici (0,3), hors de la ligne de tir de l'attaquant.</summary>
     [Fact]
-    public void Esquive_NegatesAttack_WhenRollUnderChance_HitsOtherwise()
+    public void Esquive_MovesToUnthreatenedCell_AfterTakingDamage()
     {
-        var dodged = new Match(8, 8, rng: new FixedRng(0.0));   // 0 < 0.25 → esquive
-        dodged.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        dodged.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
-        dodged.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(20, dodged.UnitAt(new Cell(0, 2))!.Hp);   // aucun dégât
+        var m = new Match(8, 8);
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));   // menace la colonne 0 jusqu'à la cible
+        var dodger = Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive });
+        m.Place(new Cell(0, 2), dodger);
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 20, 5, None));     // bouche le repli latéral
 
-        var hit = new Match(8, 8, rng: new FixedRng(0.99));     // 0.99 >= 0.25 → touché
-        hit.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        hit.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
-        hit.TryAttack(new Cell(0, 0), new Cell(0, 2));
-        Assert.Equal(10, hit.UnitAt(new Cell(0, 2))!.Hp);      // 20 - 10
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.Equal(10, dodger.Hp);                     // 20 - 10 : les dégâts passent bel et bien
+        Assert.Null(m.UnitAt(new Cell(0, 2)));           // ... et le pion a quitté la case
+        Assert.Equal(new Cell(0, 3), m.CellOf(dodger));  // (0,1) reste sous le tir : il file de l'autre côté
     }
 
-    // ── Renforcement d'arbre (Rempart / Esquive) : réservé aux unités du JOUEUR ────
+    /// <summary>Sans aucune case sûre, le porteur part quand même vers la MOINS menacée : (3,4) n'est couverte
+    /// que par l'assaillant, là où (3,2) l'est par deux tireurs.</summary>
+    [Fact]
+    public void Esquive_PicksLeastThreatenedCell_WhenNoneIsSafe()
+    {
+        var m = new Match(8, 8);
+        var dodger = Make(Faction.Enemy, 30, 5, new[] { Trait.Esquive });
+        m.Place(new Cell(3, 3), dodger);
+        m.Place(new Cell(2, 3), Make(Faction.Enemy, 20, 5, None));    // flancs bouchés : ne restent que (3,2) et (3,4)
+        m.Place(new Cell(4, 3), Make(Faction.Enemy, 20, 5, None));
+        m.Place(new Cell(3, 6), Make(Faction.Player, 20, 10, None));  // assaillant : couvre (3,4) → 1 menace
+        m.Place(new Cell(0, 2), Make(Faction.Player, 20, 5, None));   // les deux couvrent (3,2) → 2 menaces
+        m.Place(new Cell(6, 2), Make(Faction.Player, 20, 5, None));
+
+        m.TryAttack(new Cell(3, 6), new Cell(3, 3));
+
+        Assert.Equal(20, dodger.Hp);
+        Assert.Equal(new Cell(3, 4), m.CellOf(dodger));
+    }
+
+    /// <summary>Aucune case d'arrivée (pion encerclé) : il encaisse et reste sur place.</summary>
+    [Fact]
+    public void Esquive_StaysPut_WhenNoLegalMove()
+    {
+        var m = new Match(8, 8);
+        var dodger = Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive });
+        m.Place(new Cell(0, 0), dodger);
+        m.Place(new Cell(1, 0), Make(Faction.Enemy, 20, 5, None));   // les deux seules cases de sa portée...
+        m.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, None));   // ... sont occupées
+        m.Place(new Cell(2, 2), Make(Faction.Player, 20, 10, None, domaine: Domaine.Fou));
+
+        m.TryAttack(new Cell(2, 2), new Cell(0, 0));
+
+        Assert.Equal(10, dodger.Hp);
+        Assert.Equal(new Cell(0, 0), m.CellOf(dodger));
+    }
+
+    // ── Renforcement d'arbre (Rempart / Tueur de géants / Formation) : réservé au JOUEUR ────
 
     /// <summary>« Rempart renforcé » (bonus +2 → réduction 6) ne s'applique qu'aux pions du JOUEUR ; un Rempart
     /// ENNEMI garde la réduction de base (4).</summary>
@@ -801,27 +874,6 @@ public class TraitsTests
         ev.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, new[] { Trait.Rempart }));
         ev.TryAttack(new Cell(0, 0), new Cell(0, 2));
         Assert.Equal(14, ev.UnitAt(new Cell(0, 2))!.Hp);   // 20 - (10 - 4), et non - 6
-    }
-
-    /// <summary>« Esquive renforcée » (bonus +15 → 40%) ne s'applique qu'au JOUEUR : RNG figé à 0.30 → le pion
-    /// joueur esquive (0.30 &lt; 0.40) mais un Esquive ENNEMI (0.25) encaisse.</summary>
-    [Fact]
-    public void EsquiveReinforcement_AppliesToPlayerOnly()
-    {
-        // Victime JOUEUR : l'ennemi frappe → le joueur ESQUIVE (0.30 < 0.40).
-        var pv = new Match(8, 8, rng: new FixedRng(0.30), esquiveBonusPercent: 15);
-        pv.Place(new Cell(0, 0), Make(Faction.Player, 20, 5, new[] { Trait.Esquive }));
-        pv.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 10, None));
-        pv.PassTurn();
-        pv.TryAttack(new Cell(0, 1), new Cell(0, 0));
-        Assert.Equal(20, pv.UnitAt(new Cell(0, 0))!.Hp);   // esquivé
-
-        // Victime ENNEMIE : le joueur frappe → l'ennemi N'esquive PAS (0.30 >= 0.25 base).
-        var ev = new Match(8, 8, rng: new FixedRng(0.30), esquiveBonusPercent: 15);
-        ev.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, None));
-        ev.Place(new Cell(0, 1), Make(Faction.Enemy, 20, 5, new[] { Trait.Esquive }));
-        ev.TryAttack(new Cell(0, 0), new Cell(0, 1));
-        Assert.Equal(10, ev.UnitAt(new Cell(0, 1))!.Hp);   // 20 - 10, encaissé
     }
 
     /// <summary>« Tueur de géant renforcé » (bonus +2 → +7) ne s'applique qu'au JOUEUR : un ennemi garde +5.</summary>
@@ -922,8 +974,9 @@ public class TraitsTests
         Assert.Equal(2, others.Count(c => m.UnitAt(c)!.Hp == 20));
     }
 
+    /// <summary>La Tempête frappe pour le MÊME dégât fixe que l'Orage (3) : ce qui la distingue est sa largeur.</summary>
     [Fact]
-    public void Tempete_StrikesOtherEnemiesForSix()
+    public void Tempete_StrikesOtherEnemiesForThree()
     {
         var m = Board();
         m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Tempete }));
@@ -933,7 +986,30 @@ public class TraitsTests
         m.TryAttack(new Cell(0, 0), new Cell(0, 2));
 
         Assert.Equal(10, m.UnitAt(new Cell(0, 2))!.Hp);   // 20 - 10
-        Assert.Equal(14, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 6 (tempête)
+        Assert.Equal(17, m.UnitAt(new Cell(5, 5))!.Hp);   // 20 - 3 (tempête)
+    }
+
+    /// <summary>La Tempête porte sur 5 ennemis au hasard là où l'Orage plafonne à 3 (cf.
+    /// <see cref="Orage_StrikesAtMostThreeRandomEnemies"/>, même plateau).</summary>
+    [Fact]
+    public void Tempete_StrikesAtMostFiveRandomEnemies()
+    {
+        var m = new Match(8, 8, rng: new System.Random(1));
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.Tempete }));
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));   // cible directe
+        var others = new[]
+        {
+            new Cell(5, 5), new Cell(6, 6), new Cell(7, 7), new Cell(5, 7), new Cell(7, 5),
+            new Cell(3, 5), new Cell(3, 7),
+        };
+        foreach (var cell in others)
+            m.Place(cell, Make(Faction.Enemy, 20, 5, None));   // 7 AUTRES ennemis (tous à 20 PV)
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        // 5 des 7 sont foudroyés (−3 → 17), les 2 restants intacts. Lesquels = tirage aléatoire.
+        Assert.Equal(5, others.Count(c => m.UnitAt(c)!.Hp == 17));
+        Assert.Equal(2, others.Count(c => m.UnitAt(c)!.Hp == 20));
     }
 
     [Fact]
@@ -1229,13 +1305,5 @@ public class TraitsTests
 
         Assert.Null(m.UnitAt(new Cell(4, 4)));
         Assert.Equal(14, m.UnitAt(new Cell(5, 5))!.Hp);   // repoussée en (5,5), dans l'axe du tir
-    }
-
-    /// <summary>RNG déterministe pour tester « Esquive » : <see cref="System.Random.NextDouble"/> renvoie une constante.</summary>
-    private sealed class FixedRng : System.Random
-    {
-        private readonly double _value;
-        public FixedRng(double value) => _value = value;
-        protected override double Sample() => _value;
     }
 }

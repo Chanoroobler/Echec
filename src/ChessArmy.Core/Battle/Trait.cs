@@ -30,9 +30,9 @@ public static class Trait
     public const string Balistique = "Balistique";           // tir indirect : ignore les obstacles (montagne) sur la ligne
     public const string Vol = "Vol";                         // déplacement : ignore les obstacles de terrain (eau/montagne)
     public const string Formation = "Formation";             // +FormationBonus de puissance par allié adjacent
-    public const string Esquive = "Esquive";                 // EsquiveChance de chance d'annuler une attaque subie
+    public const string Esquive = "Esquive";                 // encaisse puis se replie aussitôt dans sa portée de déplacement, vers une case non menacée
     public const string Orage = "Orage";                     // à l'attaque : foudroie 3 ennemis AU HASARD (dégât fixe)
-    public const string Tempete = "Tempête";                 // idem Orage (3 ennemis au hasard), dégât fixe plus élevé
+    public const string Tempete = "Tempête";                 // idem Orage (même dégât fixe) mais sur 5 ennemis au hasard au lieu de 3
     public const string AttaqueLibre = "Attaque libre";      // REMPLACE l'attaque native par le tir de Dame (8 directions en ligne) : le cavalier n'attaque plus au saut, mais se DÉPLACE toujours en L
     public const string Statique = "Statique";               // ne prend JAMAIS la place de sa cible en la tuant : reste sur sa case
     public const string Seisme = "Séisme";                   // à la FIN du tour adverse : frappe les ennemis adjacents pour sa puissance

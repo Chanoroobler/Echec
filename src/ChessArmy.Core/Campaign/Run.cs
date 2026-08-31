@@ -1271,9 +1271,6 @@ public sealed class Run
     /// <summary>Bonus de réduction du trait « Rempart » apporté par l'arbre (nœud « Rempart renforcé »). 0 = aucun.</summary>
     public int RempartBonus => TotalOf(CommandEffectKind.RempartBonus);
 
-    /// <summary>Bonus (points de %) de chance du trait « Esquive » apporté par l'arbre (nœud « Esquive renforcée »). 0 = aucun.</summary>
-    public int EsquiveBonusPercent => TotalOf(CommandEffectKind.EsquiveBonus);
-
     /// <summary>Bonus de dégâts du trait « Tueur de géants » apporté par l'arbre (nœud « Tueur de géant renforcé »). 0 = aucun.</summary>
     public int TueurDeGeantsBonus => TotalOf(CommandEffectKind.TueurDeGeantsBonus);
 

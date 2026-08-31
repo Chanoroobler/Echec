@@ -64,10 +64,11 @@ savoir pour quand tu rouvriras la phase 3.
 
 Les mécaniques capables de toucher plusieurs unités en **une** action :
 
-- **Orage / Tempête** : attaque normale **+** dégât fixe (3 / 6) sur **3 unités au hasard**,
-  en **ignorant couvert et rempart**. ⚠️ **Aucune classe du catalogue codé ne les porte** :
+- **Orage / Tempête** : attaque normale **+** dégât fixe de **3** sur **3 unités au hasard**
+  (Orage) ou **5** (Tempête — même dégât, plus large depuis 2026-08-16), en **ignorant couvert
+  et rempart**. ⚠️ **Aucune classe du catalogue codé ne les porte** :
   ces traits n'apparaissent que si ton `units.json` les donne à un boss. Si c'est le cas, un
-  seul tour de boss peut abîmer/tuer jusqu'à 4 unités — c'est un amplificateur majeur du
+  seul tour de boss peut abîmer/tuer jusqu'à 6 unités — c'est un amplificateur majeur du
   « d'un coup », mais **hors périmètre du harnais** tant qu'il tourne sur les valeurs codées.
 
 ### 1.4 Poids du motif de déplacement/attaque (diagonale vs toutes directions)
@@ -179,7 +180,7 @@ sur une case mortelle. C'est un adversaire *cohérent*, pas *optimal*.
    c'est le meilleur candidat d'implémentation ensuite.
 3. **Dégâts ennemis** (`--enemy-dmg`) : multiplicateur global. Réduit directement les
    one-shots. Alternative douce : +PV joueur.
-4. **Dompter le burst** : `StormMaxTargets` = 1 en facile, retirer Tempête des
+4. **Dompter le burst** : `OrageMaxTargets`/`TempeteMaxTargets` = 1 en facile, retirer Tempête des
    profils faciles.
 5. **Effectifs / tiers** (`CampaignPlan`) : −1 pion par vague en phase 1, retarder T2/T3.
 
@@ -201,7 +202,7 @@ BalanceSim n'est donc pas affecté et continue de mesurer la baseline en jeu par
 1. Exposer le niveau dans le **menu Options** (`PauseMenu` + `options.json` + `strings.csv`) —
    aujourd'hui `DifficultySettings.Current` se change dans le code, et rien n'est persisté.
 2. Brancher les leviers restants sur `DifficultySettings` : multiplicateur de dégâts,
-   anti-one-shot, `StormMaxTargets`, effectifs de vagues.
+   anti-one-shot, `OrageMaxTargets`/`TempeteMaxTargets`, effectifs de vagues.
 3. Ajouter un `--ai-accuracy` au harnais et **re-mesurer** baseline vs facile pour vérifier les
    cibles ci-dessus (le `--blunder` actuel de BalanceSim est un prototype indépendant, qui
    remplace l'attaque par un coup au hasard — ce n'est pas la même règle que le jeu).

@@ -18,14 +18,14 @@
         "name": "Soldat", "asset": "soldat", "hp": 12, "damage": 10, "moveRange": 1, "attackRange": 1,
         "evolutions": [
           {
-            "name": "Archer", "asset": "archer", "hp": 15, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte","Transpercement"],
+            "name": "Archer", "asset": "archer", "hp": 14, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte","Transpercement"],
             "evolutions": [
               { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte", "Balistique","Transpercement"] },
               { "name": "Rôdeur",      "asset": "rodeur",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Recule","Transpercement"] }
             ]
           },
           {
-            "name": "Spadassin", "asset": "spadassin", "hp": 15, "damage": 12, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste"],
+            "name": "Spadassin", "asset": "spadassin", "hp": 16, "damage": 13, "moveRange": 1, "attackRange": 1, "traits": ["Duelliste"],
             "evolutions": [
               { "name": "Maître d'armes", "asset": "maitre_arme", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 1, "traits": ["Duelliste","Interception"] },
               { "name": "Barbare",        "asset": "barbare",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 1, "traits": ["Berserk"] }
@@ -49,7 +49,7 @@
           {
             "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 3, "traits": ["Orage"],
             "evolutions": [
-              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 3, "attackRange": 3, "traits": ["Tempête"] },
+              { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 2, "attackRange": 3, "traits": ["Tempête"] },
               { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 3, "traits": ["Drain de vie"] }
             ]
           }
@@ -62,14 +62,14 @@
         "name": "Cavalier", "asset": "cavalier", "hp": 12, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
         "evolutions": [
           {
-            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 18, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
+            "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
               { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Impact"] },
               { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
             ]
           },
           {
-            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 12, "moveRange": 3, "attackRange": 2, "piercesAllies": true, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
+            "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 12, "moveRange": 3, "attackRange": 2, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
             "evolutions": [
               { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
               { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 15, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Attaque libre", "Balistique"] }
@@ -91,7 +91,7 @@
             ]
           },
           {
-            "name": "Javelinier", "asset": "javelinier", "hp": 14, "damage": 13, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation"],
+            "name": "Javelinier", "asset": "javelinier", "hp": 16, "damage": 13, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Formation"],
             "evolutions": [
               { "name": "Dragoon", "asset": "Dragoon", "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Tueur de géants", "Formation"] },
               { "name": "Voltigeur", "asset": "voltigeur", "hp": 18, "damage": 18, "moveRange": 2, "attackRange": 3, "piercesAllies": true, "traits": ["Formation", "Riposte"] }
@@ -157,7 +157,7 @@
       "name": "Mage",
       "asset": "Commandant_fou",
       "hp": 20,
-      "damage": 15,
+      "damage": 16,
       "moveRange": 2,
       "attackRange": 3,
       "deployments": 5,

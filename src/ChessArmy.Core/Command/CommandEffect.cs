@@ -39,9 +39,6 @@ public enum CommandEffectKind
     /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> la réduction de dégâts du trait « Rempart » (moteur : base 4).</summary>
     RempartBonus,
 
-    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> points de POURCENTAGE la chance du trait « Esquive » (moteur : base 25).</summary>
-    EsquiveBonus,
-
     /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> le bonus de dégâts du trait « Tueur de géants » (moteur : base 5).</summary>
     TueurDeGeantsBonus,
 
@@ -165,9 +162,6 @@ public sealed class CommandEffect
 
     public static CommandEffect RempartBonus(int amount) =>
         new(CommandEffectKind.RempartBonus, default, amount, null, CommandScale.Flat, null);
-
-    public static CommandEffect EsquiveBonus(int amount) =>
-        new(CommandEffectKind.EsquiveBonus, default, amount, null, CommandScale.Flat, null);
 
     public static CommandEffect TueurDeGeantsBonus(int amount) =>
         new(CommandEffectKind.TueurDeGeantsBonus, default, amount, null, CommandScale.Flat, null);

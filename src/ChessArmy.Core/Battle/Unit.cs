@@ -87,8 +87,8 @@ public sealed class Unit
     public void RecordRangedHit() => RangedHits++;
 
     /// <summary>
-    /// Total des dégâts RÉELLEMENT infligés par cette unité durant le combat courant (esquive/bouclier
-    /// déduits). Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
+    /// Total des dégâts RÉELLEMENT infligés par cette unité durant le combat courant (réductions
+    /// déduites). Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
     /// <see cref="Match"/>. Sert au récap de fin de run (dégâts par type de pion).
     /// </summary>
     public int DamageDealt { get; private set; }

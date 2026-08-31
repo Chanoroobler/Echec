@@ -506,15 +506,151 @@ Alternatives :
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
 >
-> Comme aux échecs, tuer une pièce au corps à corps te fait avancer sur sa case, à condition qu'elle soit à portée de ton déplacement. Les attaques à distance, elles, ne te bougent pas. C'est pratique pour percer une ligne, mais ça veut dire qu'une attaque te déplace, et te met parfois à portée de trois ennemis que tu ne visais pas. Avant de frapper, regarde où tu vas atterrir, pas seulement ce que tu vas tuer.
+> Comme aux échecs, tuer une pièce te fait avancer sur sa case, à condition que cette case soit à portée de ton déplacement. C'est pratique pour percer une ligne, mais ça veut dire qu'une attaque te déplace, et te met parfois à portée de trois ennemis que tu ne visais pas. Avant de frapper, regarde où tu vas atterrir, pas seulement ce que tu vas tuer.
 >
 > Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
 
 🇬🇧
 > Chess Army is a pixel art roguelike RPG built on chess movement.
 >
-> Like in chess, killing a piece in melee moves you onto its square, as long as that square is within your movement range. Ranged attacks leave you where you are. It's useful for breaking a line, but it also means an attack repositions you, sometimes into range of three enemies you weren't even looking at. Before you strike, check where you'll land, not just what you'll kill.
+> Like in chess, killing a piece moves you onto its square, as long as that square is within your movement range. It's useful for breaking a line, but it also means an attack repositions you, sometimes into range of three enemies you weren't even looking at. Before you strike, check where you'll land, not just what you'll kill.
 >
 > Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
 
 `#indiegame #roguelike #pixelart #chess #tacticalrpg`
+
+---
+
+## Short : évolution d'un soldat en archer
+
+*Quatrième clip de fusion. Angle : l'évolution change le rôle de la pièce, pas seulement ses chiffres.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Same soldier, but now it shoots.`
+🇫🇷 *Le même soldat, mais maintenant il tire.*
+
+**Titre** : 🇬🇧 Evolving doesn't just make a unit stronger
+
+Alternatives :
+- 🇬🇧 Same soldier, but now it shoots / 🇫🇷 Le même soldat, mais maintenant il tire
+- 🇬🇧 Three soldiers become an archer / 🇫🇷 Trois soldats deviennent un archer
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois soldats donnent un archer. Ce n'est pas seulement une montée en puissance : le soldat doit venir au contact pour frapper, l'archer touche de loin sans s'exposer. La même pièce de départ ne se joue plus du tout de la même façon. C'est pour ça que le choix entre archer et spadassin compte autant que la fusion elle-même.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three soldiers make an archer. It isn't just a power bump: the soldier has to close in to strike, the archer hits from a distance without exposing itself. The same starting piece plays nothing alike afterwards. That's why choosing between archer and swordsman matters as much as the fusion itself.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+---
+
+## Short : un objet légendaire
+
+*Angle différent du short "duel pour un coffre" : ici le sujet est l'objet et le choix qu'il impose.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `First legendary of the run.`
+🇫🇷 *Premier légendaire de la run.*
+
+Alternative : 🇬🇧 `Legendary. Finally.`
+
+**Titre** : 🇬🇧 First legendary of the run
+
+Alternatives :
+- 🇬🇧 This is what a legendary drop looks like / 🇫🇷 Voilà à quoi ressemble un drop légendaire
+- 🇬🇧 Now I have to decide who wears it / 🇫🇷 Maintenant il faut décider qui le porte
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Les objets se tirent en commun, rare ou légendaire. Un légendaire change vraiment une run, mais il pose aussitôt une question : sur quelle unité le mettre. La mort est définitive ici, et l'équipement disparaît avec son porteur. Le poser sur ta meilleure pièce la rend énorme et te fait risquer de tout perdre d'un seul coup.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Items roll as common, rare or legendary. A legendary genuinely changes a run, but it immediately raises a question: who wears it. Death is permanent here, and equipment dies with its bearer. Putting it on your best piece makes that piece huge and puts everything on one square.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #gamedev`
+
+---
+
+## Short : évolution d'un mage en sorcier
+
+*Cinquième clip de fusion. Angle : l'évolution débloque une capacité, pas seulement des statistiques.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Now he calls lightning.`
+🇫🇷 *Maintenant il appelle la foudre.*
+
+Alternative : 🇬🇧 `Evolving unlocks abilities, not just numbers.`
+
+**Titre** : 🇬🇧 Evolving a mage gives him lightning
+
+Alternatives :
+- 🇬🇧 Now he calls lightning / 🇫🇷 Maintenant il appelle la foudre
+- 🇬🇧 Three mages, one sorcerer, one storm / 🇫🇷 Trois mages, un sorcier, un orage
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le mage devient sorcier, et l'évolution ne se contente pas d'augmenter ses chiffres : elle lui donne Orage, qui frappe plusieurs ennemis en même temps. C'est la vraie récompense de l'arbre de classes. Un palier plus haut, ce n'est pas la même pièce en plus fort, c'est une pièce qui fait quelque chose que l'ancienne ne savait pas faire. Le sorcier évolue ensuite en archimage ou en démoniste.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The mage becomes a sorcerer, and evolving does more than raise its numbers: it grants Storm, which hits several enemies at once. That's the real reward of the class tree. A tier up isn't the same piece with bigger stats, it's a piece that does something the old one couldn't. The sorcerer later evolves into an archmage or a warlock.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À vérifier** : que le sorcier obtienne bien Orage dès le palier 2, et les noms anglais de sorcier, archimage et démoniste dans `strings.csv`.
+
+---
+
+## Short : évolution de trois archers en rôdeur
+
+*Sixième clip de fusion, et le premier sur un palier 3. Angle : le coût cumulé.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `This ranger cost nine soldiers.`
+🇫🇷 *Ce rôdeur a coûté neuf soldats.*
+
+**Titre** : 🇬🇧 This ranger cost nine soldiers
+
+Alternatives :
+- 🇬🇧 Getting one tier 3 unit takes nine base units / 🇫🇷 Une unité de palier 3 coûte neuf unités de base
+- 🇬🇧 The top of the branch / 🇫🇷 Le sommet de la branche
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois archers donnent un rôdeur, palier 3, le sommet de sa branche. Et comme il faut trois soldats pour faire un archer, ce rôdeur représente neuf unités de base accumulées sur une run entière. C'est aussi pour ça que perdre une pièce de palier 3 fait si mal : la mort est définitive, et neuf unités ne se rattrapent pas en deux combats.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three archers make a ranger, tier 3, the top of its branch. And since it takes three soldiers to make one archer, this ranger represents nine base units gathered across a whole run. That's also why losing a tier 3 piece hurts so much: death is permanent, and you don't get nine units back in two fights.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À vérifier** : le nom anglais du rôdeur dans `strings.csv`, et que trois archers donnent bien un rôdeur et non l'autre feuille de la branche.

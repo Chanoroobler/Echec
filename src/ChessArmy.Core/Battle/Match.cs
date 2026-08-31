@@ -32,19 +32,23 @@ public sealed class Match
     // Buffer réutilisé par CanTakePlace (évite d'allouer une liste de coups à chaque kill).
     private readonly List<Cell> _placeBuffer = new();
 
+    // Buffer réutilisé par LienPuissancePowerBonus (appelé à chaque calcul de dégâts : pas d'allocation).
+    private readonly List<Cell> _lienBuffer = new();
+
     // Résultats de la DERNIÈRE action (déplacement/attaque) du porteur, pour le feedback de la scène.
     // Réinitialisés au début de chaque TryMove/TryAttack ; restent vides/null si le trait est absent.
     private readonly List<(Cell Cell, int Damage)> _impactHits = new();   // « Impact » : ennemis touchés autour du porteur
     private readonly List<Cell> _impactZone = new();                      // « Impact » : les 8 cases de l'AoE (touchées ou non) pour le tremblement des tuiles
     private readonly List<Cell> _seismeZone = new();                      // « Séisme » : union des voisinages 3×3 des porteurs, pour le tremblement des tuiles
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
+    private readonly List<(Cell From, Cell To)> _dodges = new();           // « Esquive » : replis déclenchés par l'action (départ → arrivée), dans l'ordre
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
     private (Cell Cell, int Damage, int Dc, int Dr)? _lastPierce;          // « Transpercement » : ennemi derrière la cible touché + dégâts + direction du coup
     private readonly List<(Cell From, Cell To, int Damage, bool Killed)> _interceptions = new();  // « Interception » : intercepteur → mobile + dégâts + mobile abattu (par ordre de frappe)
     private IReadOnlyList<Cell>? _lastSlide;                               // « Glace » : chemin de glissade (départ inclus → repos), null si aucune glissade
 
-    // Source d'aléa du combat : sert AUJOURD'HUI uniquement au trait « Esquive » (25 % d'annuler une
-    // attaque). Injectable pour des tests reproductibles ; sans esquive en jeu, elle n'est jamais tirée.
+    // Source d'aléa du combat : tirage des cibles d'« Orage »/« Tempête » et choix de la case de repli
+    // d'« Esquive » (à égalité de menace). Injectable pour des tests reproductibles.
     private readonly System.Random _rng;
 
     // Vrai (défaut) : éliminer tout un camp décide la partie (escarmouche/boss). Faux : l'élimination des
@@ -59,7 +63,7 @@ public sealed class Match
 
     public Match(int width, int height, Battlefield? terrain = null,
         IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
-        IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0, int esquiveBonusPercent = 0,
+        IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0,
         int tueurGeantsBonus = 0, int formationBonus = 0)
     {
         Width = width;
@@ -71,7 +75,6 @@ public sealed class Match
         _eliminationEndsGame = eliminationEndsGame;
         _playerBlocked = playerBlockedCells is null ? new HashSet<Cell>() : new HashSet<Cell>(playerBlockedCells);
         RempartBonus = rempartBonus;
-        EsquiveBonusPercent = esquiveBonusPercent;
         TueurDeGeantsBonus = tueurGeantsBonus;
         FormationBonus = formationBonus;
     }
@@ -80,10 +83,6 @@ public sealed class Match
     /// Appliqué UNIQUEMENT aux unités du JOUEUR — c'est SON arbre de commandement, l'ennemi n'en profite pas.
     /// Réglable par la scène si un nœud est acheté en cours de placement. Cf. <see cref="RempartReductionFor"/>.</summary>
     public int RempartBonus { get; set; }
-
-    /// <summary>Bonus d'arbre « Esquive renforcée » (points de %, en PLUS de <see cref="BaseEsquiveChance"/>).
-    /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="EsquiveChanceFor"/>.</summary>
-    public int EsquiveBonusPercent { get; set; }
 
     /// <summary>Bonus d'arbre « Tueur de géant renforcé » (dégâts en PLUS de <see cref="BaseGiantSlayerBonus"/>).
     /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="GiantSlayerDamageFor"/>.</summary>
@@ -107,11 +106,6 @@ public sealed class Match
     /// d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
     private int RempartReductionFor(Unit victim) =>
         BaseRempartReduction + (victim.Faction == Faction.Player ? RempartBonus : 0);
-
-    /// <summary>Chance EFFECTIVE (0..1) du trait « Esquive » pour <paramref name="unit"/> : base, plus le bonus
-    /// d'arbre SEULEMENT si c'est une unité du joueur.</summary>
-    private double EsquiveChanceFor(Unit unit) =>
-        BaseEsquiveChance + (unit.Faction == Faction.Player ? EsquiveBonusPercent / 100.0 : 0);
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
     private bool IsCover(Cell cell) => _cover.Contains(cell);
@@ -196,10 +190,15 @@ public sealed class Match
     public void LegalMoves(Cell from, List<Cell> result)
     {
         result.Clear();
-        var unit = ActiveUnitAt(from);
-        if (unit == null)
-            return;
+        if (ActiveUnitAt(from) is { } unit)
+            AppendLegalMoves(from, unit, result);
+    }
 
+    /// <summary>Remplit <paramref name="result"/> (déjà vidé) avec les cases d'arrivée de
+    /// <paramref name="unit"/> posée sur <paramref name="from"/>, INDÉPENDAMMENT du tour courant — le repli
+    /// d'« Esquive » se déclenche pendant le tour ADVERSE (cf. <see cref="ApplyEsquive"/>).</summary>
+    private void AppendLegalMoves(Cell from, Unit unit, List<Cell> result)
+    {
         var vectors = Movement.Vectors(unit.Domaine);
         var flies = unit.HasTrait(Trait.Vol);   // Vol : les obstacles de terrain (eau/montagne) ne bloquent plus
 
@@ -433,9 +432,9 @@ public sealed class Match
         var landing = SlideOnIce(unit, from, to);
         TriggerInterceptions(landing, unit);   // ennemis avec « Interception » dont la portée couvre la case de repos
         // « Impact » : à son propre déplacement, le porteur frappe les ennemis autour de sa case de repos
-        // (s'il a survécu à une éventuelle interception).
-        if (unit.IsAlive && unit.HasTrait(Trait.Impact))
-            ApplyImpact(unit, landing);
+        // (s'il a survécu à une éventuelle interception — et depuis la case où elle a pu le faire se replier).
+        if (unit.HasTrait(Trait.Impact) && CellOf(unit) is { } rest)
+            ApplyImpact(unit, rest);
         EndTurn();
         return MoveKind.Moved;
     }
@@ -452,12 +451,12 @@ public sealed class Match
         var victimHpBefore = victim.Hp;
         ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
 
-        // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (esquive/bouclier inclus).
+        // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (réductions incluses).
         if (unit.HasTrait(Trait.DrainDeVie))
             unit.Heal((victimHpBefore - victim.Hp) / 2);
 
         // Source de points « sur coup à distance » (commandant du Fou) : un coup DIRECT qui TOUCHE vraiment
-        // (dégâts réellement encaissés, esquive/0 exclus) une cible à portée >= CommanderRangedHitDistance
+        // (dégâts réellement encaissés, 0 exclu) une cible à portée >= CommanderRangedHitDistance
         // rapporte un point au porteur. Compté sur TOUTE unité (comme TimesHit) ; seul un commandant dont
         // c'est la source en tire des points, crédités à la clôture (cf. Run.GrantCommanderRangedHitPoints).
         if (victim.Hp < victimHpBefore && ChebyshevDistance(from, target) >= CommanderRangedHitDistance)
@@ -467,7 +466,8 @@ public sealed class Match
         if (unit.HasTrait(Trait.Transpercement))
             PierceBehind(from, target, unit);
 
-        // Orage / Tempête : la foudre frappe 3 ennemis AU HASARD (hors cible directe) pour un dégât fixe.
+        // Orage / Tempête : la foudre frappe des ennemis AU HASARD (hors cible directe) pour un dégât fixe —
+        // 3 cibles pour l'Orage, 5 pour la Tempête (cf. StormTargetsFor).
         if (StormDamageFor(unit) is > 0 and var storm)
             StormStrike(unit, target, storm);
 
@@ -543,10 +543,8 @@ public sealed class Match
     /// <summary>Bonus de puissance du trait « Rage » : accordé UNE fois, à la première mort d'un allié du combat
     /// (non cumulable — les morts suivantes ne l'augmentent pas).</summary>
     public const int RagePowerBonus = 7;
-    /// <summary>Chance de BASE (0..1) du trait « Esquive » (avant bonus d'arbre « Esquive renforcée »).</summary>
-    public const double BaseEsquiveChance = 0.25; // 25 % de chance d'annuler une attaque subie (trait « Esquive »)
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
-    private const int TempeteDamage = 6;         // dégât fixe de la tempête (trait « Tempête »)
+    private const int TempeteDamage = 3;         // dégât fixe de la tempête (trait « Tempête ») — elle frappe PLUS LARGE, pas plus fort
     private const int ImpactDamage = 5;          // dégât fixe autour du porteur d'« Impact » (déplacement/attaque)
     private const int ReculeSlamDamage = 5;      // dégât bonus quand « Recule » plaque la cible contre un obstacle
     private const int LienPuissanceBonus = 2;    // +2 puissance par allié dans la PORTÉE DE DÉPLACEMENT (trait « Lien de puissance »)
@@ -574,6 +572,10 @@ public sealed class Match
     /// <summary>Résultat du « Recule » de la DERNIÈRE attaque : case d'arrivée de la cible + dégât de plaquage
     /// (0 si elle a glissé librement) ; <c>null</c> si aucun recul n'a eu lieu. Pour le feedback.</summary>
     public (Cell To, int SlamDamage)? LastRecule => _lastRecule;
+
+    /// <summary>Replis d'« Esquive » déclenchés par la DERNIÈRE action (case de départ → case d'arrivée), dans
+    /// l'ordre où ils ont eu lieu. Vide si personne ne s'est replié. Pour le feedback.</summary>
+    public IReadOnlyList<(Cell From, Cell To)> LastDodges => _dodges;
 
     /// <summary>Riposte de la DERNIÈRE attaque : case du riposteur (après un éventuel recul) → case de l'assaillant,
     /// dégâts réellement infligés, et si l'assaillant en est mort. <c>null</c> si aucune riposte. Pour le feedback.</summary>
@@ -688,60 +690,62 @@ public sealed class Match
     /// ligne) ; on y compte les ALLIÉS croisés. Effet CONTEXTUEL au placement — comme la Formation et les auras,
     /// l'UI ne peut pas le déduire de la fiche et doit le demander ici pour afficher la vraie puissance.
     /// </summary>
-    public int LienPuissancePowerBonus(Cell cell) =>
-        UnitAt(cell) is { } u && u.HasTrait(Trait.LienDePuissance)
-            ? LienPuissanceBonus * AlliesInMoveRange(cell, u)
-            : 0;
+    public int LienPuissancePowerBonus(Cell cell)
+    {
+        if (UnitAt(cell) is not { } u || !u.HasTrait(Trait.LienDePuissance))
+            return 0;
+        _lienBuffer.Clear();
+        AppendAlliesInMoveRange(cell, u, _lienBuffer);
+        return LienPuissanceBonus * _lienBuffer.Count;
+    }
 
     /// <summary>
-    /// Nombre d'alliés (même faction que <paramref name="unit"/>) dans sa PORTÉE DE DÉPLACEMENT depuis
-    /// <paramref name="from"/> : on parcourt ses vecteurs — saut ou glissement — comme
-    /// <see cref="LegalMoves(Cell, System.Collections.Generic.List{Cell})"/>, en comptant les unités alliées
-    /// croisées (trait « Lien de puissance »). Obstacles de terrain et unités bornent la ligne (sauf Vol /
-    /// Franchissement), pour rester fidèle à ce que l'unité peut réellement parcourir.
+    /// Cases des ALLIÉS qui alimentent le « Lien de puissance » du porteur posé sur <paramref name="cell"/>.
+    /// Liste vide s'il n'a pas le trait. Même calcul que <see cref="LienPuissancePowerBonus"/> — l'UI s'en sert
+    /// pour montrer d'où vient le bonus (halo sur les alliés liés), donc les deux DOIVENT rester d'accord.
     /// </summary>
-    private int AlliesInMoveRange(Cell from, Unit unit)
+    public List<Cell> LienDePuissanceAllies(Cell cell)
+    {
+        var result = new List<Cell>();
+        if (UnitAt(cell) is { } u && u.HasTrait(Trait.LienDePuissance))
+            AppendAlliesInMoveRange(cell, u, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Ajoute à <paramref name="result"/> les alliés (même faction que <paramref name="unit"/>) situés sur les
+    /// rayons de son motif de DÉPLACEMENT depuis <paramref name="from"/>, jusqu'à sa portée (trait « Lien de
+    /// puissance »). RIEN ne borne un rayon à part le bord du plateau : ni le terrain, ni un pion — un allié
+    /// n'en masque donc pas un autre plus loin sur la même ligne, et le joueur peut lire ses liens d'un coup
+    /// d'œil sans simuler les blocages. C'est ce qui distingue ce parcours de
+    /// <see cref="LegalMoves(Cell, System.Collections.Generic.List{Cell})"/>, qui borne au premier obstacle.
+    /// </summary>
+    private void AppendAlliesInMoveRange(Cell from, Unit unit, List<Cell> result)
     {
         var vectors = Movement.Vectors(unit.Domaine);
-        var flies = unit.HasTrait(Trait.Vol);
-        var count = 0;
 
         if (Movement.Kind(unit.Domaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to) && _units[to.Column, to.Row] is { } j && j.Faction == unit.Faction)
-                    count++;
+                if (UnitAt(to) is { } j && j.Faction == unit.Faction)
+                    result.Add(to);
             }
-            return count;
+            return;
         }
 
-        var phases = unit.HasTrait(Trait.Franchissement);
         var range = unit.MoveRange
                     + (HasAdjacentAlly(from, unit.Faction, Trait.AuraDeCelerite, orthogonalOnly: true) ? AuraCeleriteBonus : 0);
         foreach (var dir in vectors)
-        {
             for (var step = 1; step <= range; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
-                    break;
-                if (BlocksMovement(to) && !flies)
-                {
-                    if (phases) continue;   // Franchissement : l'obstacle ne borne pas la portée
-                    break;
-                }
-                if (_units[to.Column, to.Row] is { } occ)
-                {
-                    if (occ.Faction == unit.Faction)
-                        count++;            // allié dans la portée de déplacement
-                    if (phases) continue;   // Franchissement : on enjambe l'unité et on poursuit la ligne
-                    break;                  // sinon une unité borne la ligne (comme au déplacement)
-                }
+                    break;   // seul le bord du plateau arrête le rayon
+                if (_units[to.Column, to.Row] is { } occ && occ.Faction == unit.Faction)
+                    result.Add(to);
             }
-        }
-        return count;
     }
 
     /// <summary>
@@ -799,17 +803,71 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Applique des dégâts. « Esquive » peut annuler entièrement l'attaque (25 %).
+    /// Applique des dégâts. Le porteur d'« Esquive » qui SURVIT au coup se replie aussitôt
+    /// (cf. <see cref="ApplyEsquive"/>) : il encaisse d'abord, puis quitte la case.
     /// </summary>
     private void ApplyDamage(Unit unit, int amount, Unit? attacker)
     {
         if (amount <= 0)
             return;
-        if (unit.HasTrait(Trait.Esquive) && _rng.NextDouble() < EsquiveChanceFor(unit))
-            return;   // attaque esquivée : aucun dégât
         unit.TakeDamage(amount);
-        unit.RecordHit();               // coup RÉELLEMENT encaissé (esquive/0 exclus) — points d'un commandant
+        unit.RecordHit();               // coup RÉELLEMENT encaissé (0 exclu) — points d'un commandant
         attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
+        if (unit.IsAlive && unit.HasTrait(Trait.Esquive))
+            ApplyEsquive(unit);
+    }
+
+    /// <summary>
+    /// « Esquive » : le porteur qui vient d'ENCAISSER un coup (et y a survécu) se replie IMMÉDIATEMENT sur une
+    /// case de sa PORTÉE DE DÉPLACEMENT — mêmes règles qu'un déplacement normal (motif du domaine, obstacles,
+    /// cases interdites), mais HORS DE SON TOUR et sans le consommer. Il vise en PRIORITÉ une case menacée par
+    /// AUCUN ennemi ; s'il n'en existe pas, il file vers la MOINS menacée. À égalité, la case est tirée au sort
+    /// (cf. <see cref="_rng"/>). Le repli est un BOND : il ne déclenche ni « Interception » ni « Impact » et ne
+    /// dérape pas sur la glace. Sans aucune case d'arrivée, le porteur reste sur place.
+    /// Les replis sont notés dans <see cref="_dodges"/> pour le feedback.
+    /// </summary>
+    private void ApplyEsquive(Unit unit)
+    {
+        if (CellOf(unit) is not { } from)
+            return;
+
+        var moves = new List<Cell>();
+        AppendLegalMoves(from, unit, moves);
+        if (moves.Count == 0)
+            return;   // encerclé / bloqué : aucun repli possible
+
+        // Carte de menace des ennemis du porteur, calculée UNE fois : combien de tirs couvrent chaque case.
+        // (Le porteur est encore sur `from` : son corps borne les lignes, comme au moment où il encaisse.)
+        var threat = new Dictionary<Cell, int>();
+        var buffer = new List<Cell>();
+        foreach (var (cell, other) in Units())
+        {
+            if (other.Faction == unit.Faction)
+                continue;
+            ThreatenedCells(cell, buffer);
+            foreach (var cover in buffer)
+                threat[cover] = threat.TryGetValue(cover, out var n) ? n + 1 : 1;
+        }
+
+        // Cases les MOINS menacées (0 si une case sûre existe) ; on tire au sort entre les ex aequo.
+        var best = int.MaxValue;
+        var pool = new List<Cell>();
+        foreach (var move in moves)
+        {
+            var count = threat.TryGetValue(move, out var n) ? n : 0;
+            if (count > best)
+                continue;
+            if (count < best)
+            {
+                best = count;
+                pool.Clear();
+            }
+            pool.Add(move);
+        }
+
+        var to = pool[_rng.Next(pool.Count)];
+        MoveUnit(from, to);
+        _dodges.Add((from, to));
     }
 
     /// <summary>Dégâts EFFECTIFS qu'infligerait l'attaque de <paramref name="from"/> sur
@@ -858,18 +916,29 @@ public sealed class Match
             foreach (var (dc, dr) in Neighbors8)
                 _seismeZone.Add(new Cell(casterCell.Column + dc, casterCell.Row + dr));
 
+        _dodges.Clear();   // les replis d'« Esquive » du séisme (feedback), comme pour une action normale
+
         foreach (var casterCell in casterCells)
         {
             if (UnitAt(casterCell) is not { } caster || !caster.HasTrait(Trait.Seisme))
                 continue;   // porteur tombé entre-temps (cas de bord)
+            // Cibles FIGÉES avant application : une victime qui se replie (« Esquive ») ne doit pas être
+            // frappée deux fois par le MÊME porteur si son bond la ramène dans sa zone.
+            var victims = new List<Unit>();
             foreach (var (dc, dr) in Neighbors8)
             {
                 var c = new Cell(casterCell.Column + dc, casterCell.Row + dr);
-                if (UnitAt(c) is not { } victim || victim.Faction == actor)
+                if (UnitAt(c) is { } victim && victim.Faction != actor)
+                    victims.Add(victim);
+            }
+
+            foreach (var victim in victims)
+            {
+                if (CellOf(victim) is not { } c)
                     continue;
                 var before = victim.Hp;
                 ApplyDamage(victim, EffectiveDamage(caster, casterCell, victim, c), caster);
-                var dealt = before - victim.Hp;   // 0 si esquivé
+                var dealt = before - victim.Hp;
                 if (dealt > 0)
                     hits.Add((c, dealt));
                 RemoveDeadAt(c, caster);
@@ -881,14 +950,24 @@ public sealed class Match
     }
 
 
-    /// <summary>Nombre MAX d'ennemis foudroyés par Orage/Tempête (tirés au hasard s'il y en a davantage).</summary>
-    private const int StormMaxTargets = 3;
+    /// <summary>Nombre MAX d'ennemis foudroyés par « Orage » (tirés au hasard s'il y en a davantage).</summary>
+    private const int OrageMaxTargets = 3;
+
+    /// <summary>Nombre MAX d'ennemis foudroyés par « Tempête » : c'est là qu'elle surpasse l'Orage (même dégât,
+    /// plus de cibles).</summary>
+    private const int TempeteMaxTargets = 5;
+
+    /// <summary>Nombre d'ennemis que la foudre de <paramref name="unit"/> peut frapper (Tempête &gt; Orage &gt; 0 si aucun).</summary>
+    private static int StormTargetsFor(Unit unit) =>
+        unit.HasTrait(Trait.Tempete) ? TempeteMaxTargets
+        : unit.HasTrait(Trait.Orage) ? OrageMaxTargets
+        : 0;
 
     /// <summary>
-    /// « Orage » / « Tempête » : à l'attaque, la foudre frappe jusqu'à <see cref="StormMaxTargets"/> ennemis du
+    /// « Orage » / « Tempête » : à l'attaque, la foudre frappe jusqu'à <see cref="StormTargetsFor"/> ennemis du
     /// porteur TIRÉS AU HASARD (parmi tous, SAUF la cible directe <paramref name="target"/>), chacun pour un
     /// dégât FIXE (<paramref name="amount"/>, ni réduit par Rempart/couvert ni majoré par les traits offensifs —
-    /// mais Esquive s'applique via <see cref="ApplyDamage"/>). Tirage via <see cref="_rng"/>.
+    /// mais un porteur d'« Esquive » foudroyé se replie, via <see cref="ApplyDamage"/>). Tirage via <see cref="_rng"/>.
     /// Les cibles sont figées avant application (la grille change en cours).
     /// </summary>
     private void StormStrike(Unit attacker, Cell target, int amount)
@@ -898,8 +977,8 @@ public sealed class Match
             if (unit.Faction != attacker.Faction && cell != target)
                 victims.Add(cell);
 
-        // Ne foudroie que StormMaxTargets ennemis : mélange partiel (Fisher-Yates) pour en tirer autant au hasard.
-        var count = System.Math.Min(StormMaxTargets, victims.Count);
+        // Ne foudroie qu'un nombre borné d'ennemis : mélange partiel (Fisher-Yates) pour en tirer autant au hasard.
+        var count = System.Math.Min(StormTargetsFor(attacker), victims.Count);
         for (var i = 0; i < count; i++)
         {
             var j = i + _rng.Next(victims.Count - i);
@@ -971,11 +1050,12 @@ public sealed class Match
     private bool Slippery(Cell cell) =>
         _terrain != null && _terrain[cell].Slippery;
 
-    /// <summary>Vide les résultats de feedback (« Impact »/« Recule »/« Riposte ») avant de résoudre une nouvelle action.</summary>
+    /// <summary>Vide les résultats de feedback (« Impact »/« Recule »/« Esquive »/« Riposte ») avant de résoudre une nouvelle action.</summary>
     private void ResetActionFx()
     {
         _impactHits.Clear();
         _impactZone.Clear();
+        _dodges.Clear();
         _lastRecule = null;
         _lastRiposte = null;
         _lastPierce = null;
@@ -987,16 +1067,26 @@ public sealed class Match
     /// « Impact » : le porteur inflige un dégât FIXE (<see cref="ImpactDamage"/>) à TOUS les ennemis des 8 cases
     /// autour de <paramref name="center"/> (sa position finale). Déclenché UNIQUEMENT par sa propre action
     /// (déplacement / attaque), jamais relayé par un autre trait. Fixe : ni Rempart ni couvert ne le réduisent,
-    /// mais Esquive peut l'annuler (via <see cref="ApplyDamage"/>). Les coups réels sont notés dans
-    /// <see cref="_impactHits"/> pour le feedback ; l'appelant a réinitialisé la liste via <see cref="ResetActionFx"/>.
+    /// mais une victime d'« Esquive » se replie après coup (via <see cref="ApplyDamage"/>). Les coups réels sont
+    /// notés dans <see cref="_impactHits"/> pour le feedback ; l'appelant a réinitialisé la liste via
+    /// <see cref="ResetActionFx"/>.
     /// </summary>
     private void ApplyImpact(Unit unit, Cell center)
     {
+        // Cibles FIGÉES avant application : une victime qui se replie (« Esquive ») ne doit pas être frappée
+        // une deuxième fois si son bond la pose sur une autre case de la zone.
+        var victims = new List<Unit>();
         foreach (var (dc, dr) in Neighbors8)
         {
             var c = new Cell(center.Column + dc, center.Row + dr);
             _impactZone.Add(c);   // toute la zone AoE tremble au feedback, même les cases sans cible
-            if (UnitAt(c) is not { } victim || victim.Faction == unit.Faction)
+            if (UnitAt(c) is { } victim && victim.Faction != unit.Faction)
+                victims.Add(victim);
+        }
+
+        foreach (var victim in victims)
+        {
+            if (CellOf(victim) is not { } c)
                 continue;
             var before = victim.Hp;
             ApplyDamage(victim, ImpactDamage, unit);
@@ -1041,22 +1131,26 @@ public sealed class Match
         }
     }
 
-    /// <summary>« Interception » : chaque ennemi du mobile dont la portée couvre la case d'arrivée le frappe.</summary>
+    /// <summary>« Interception » : chaque ennemi du mobile dont la portée couvre sa case d'arrivée le frappe.
+    /// Le mobile peut CHANGER de case entre deux interceptions (repli d'« Esquive ») : chaque intercepteur est
+    /// donc évalué depuis la case où le mobile se trouve RÉELLEMENT à son tour de frapper.</summary>
     private void TriggerInterceptions(Cell movedTo, Unit mover)
     {
         foreach (var (cell, unit) in Units())
         {
             if (unit.Faction == mover.Faction || !unit.HasTrait(Trait.Interception))
                 continue;
-            if (!ThreatenedCells(cell).Contains(movedTo))
+            if (CellOf(mover) is not { } here)
+                return;   // mobile retiré du plateau : plus rien à intercepter
+            if (!ThreatenedCells(cell).Contains(here))
                 continue;
             var before = mover.Hp;
-            ApplyDamage(mover, EffectiveDamage(unit, cell, mover, movedTo), unit);
+            ApplyDamage(mover, EffectiveDamage(unit, cell, mover, here), unit);
             var killed = !mover.IsAlive;
-            _interceptions.Add((cell, movedTo, before - mover.Hp, killed));   // report pour l'animation d'attaque
+            _interceptions.Add((cell, here, before - mover.Hp, killed));   // report pour l'animation d'attaque
             if (killed)
             {
-                RemoveDeadAt(movedTo, unit);   // l'intercepteur abat le mobile : kill crédité
+                RemoveDeadAt(here, unit);   // l'intercepteur abat le mobile : kill crédité
                 return;   // mobile abattu : plus rien à intercepter
             }
         }

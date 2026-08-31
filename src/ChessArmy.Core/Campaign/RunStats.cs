@@ -58,13 +58,15 @@ public sealed class RunStats
     /// <summary>Dégâts infligés cumulés, toutes classes confondues.</summary>
     public int TotalDamage => _damageByClass.Values.Sum();
 
-    /// <summary>Dégâts infligés ventilés par NOM de classe (lecture seule, pour la sauvegarde).</summary>
+    /// <summary>Dégâts infligés ventilés par ASSET de classe (lecture seule, pour la sauvegarde). L'asset plutôt
+    /// que le nom : il identifie la classe de façon unique (un commandant et ses troupes peuvent partager un nom)
+    /// et sert de clé de traduction à l'affichage.</summary>
     public IReadOnlyDictionary<string, int> DamageByClass => _damageByClass;
 
-    public void AddDamage(string className, int amount)
+    public void AddDamage(string classAsset, int amount)
     {
-        if (amount > 0 && !string.IsNullOrEmpty(className))
-            _damageByClass[className] = _damageByClass.GetValueOrDefault(className) + amount;
+        if (amount > 0 && !string.IsNullOrEmpty(classAsset))
+            _damageByClass[classAsset] = _damageByClass.GetValueOrDefault(classAsset) + amount;
     }
 
     public void AddKills(int count) => TotalKills += Math.Max(0, count);
@@ -96,7 +98,7 @@ public sealed class RunStats
         if (!string.IsNullOrEmpty(id)) _discoveredEquipment.Add(id);
     }
 
-    /// <summary>Les <paramref name="n"/> classes ayant infligé le PLUS de dégâts (décroissant, nom en départage).</summary>
+    /// <summary>Les <paramref name="n"/> classes ayant infligé le PLUS de dégâts (décroissant, asset en départage).</summary>
     public IReadOnlyList<(string Class, int Damage)> TopDamage(int n) =>
         _damageByClass.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
             .Take(Math.Max(0, n)).Select(kv => (kv.Key, kv.Value)).ToList();
