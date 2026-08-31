@@ -130,6 +130,44 @@
         { "id": "fou_logi_reserve_2", "asset": "lan_logi_reserve_1", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
         { "id": "fou_logi_amalgame",  "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Fou" } ] }
       ]
+    },
+
+    // ── Arbre du commandant CAVALIER (tree "commandantCavalier") ─────────────────────────────────────
+    // Thème : le domaine du CAVALIER (saut en L) et la CHARGE. Deux nouveaux traits : « Loup solitaire »
+    // (isolé = +3 puissance et -2 dégâts subis) et « Épines » (renvoie la moitié des dégâts subis). Deux
+    // nouveaux effets : "impactBonus" (les dégâts d'« Impact » passent de 5 à 8) et "extraTurnOnKill" (une
+    // unité du domaine qui TUE par son attaque rend la main au joueur — une seule fois entre deux tours
+    // ennemis). L'échelle "perDeployedDomaineUnit" compte les pions du domaine réellement POSÉS sur le
+    // plateau (la réserve ne compte pas), figée au lancement du combat.
+    {
+      "id": "commandantCavalier",
+      "nodes": [
+        // ── Branche 0 : le COMMANDANT (Cavalier) ────────────────────────────────────────────────
+        { "id": "cav_cmd_loup",       "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Loup solitaire" } ] },
+        { "id": "cav_cmd_pv_cavalier","branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 1, "scale": "perDomaineUnit", "domaine": "Cavalier" } ] },
+        { "id": "cav_cmd_impact",     "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Impact" } ] },
+        { "id": "cav_cmd_puissance_cavalier", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDomaineUnit", "domaine": "Cavalier" } ] },
+        { "id": "cav_cmd_vol",        "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Vol" } ] },
+        { "id": "cav_cmd_epines",     "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Épines" } ] },
+
+        // ── Branche 1 : les UNITÉS du domaine CAVALIER ───────────────────────────────────────────
+        { "id": "cav_unit_pv",        "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 5, "domaine": "Cavalier" } ] },
+        { "id": "cav_unit_impact",    "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Impact", "domaine": "Cavalier" } ] },
+        { "id": "cav_unit_releve",    "branch": 1, "level": 2, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Cavalier" } ] },
+        // « Impact renforcé » : les dégâts du trait Impact passent de 5 à 8 (bonus +3, joueur seulement).
+        { "id": "cav_unit_impact_renforce", "branch": 1, "level": 3, "effects": [ { "kind": "impactBonus", "amount": 3 } ] },
+        { "id": "cav_unit_puissance_cavalier", "branch": 1, "level": 3, "effects": [ { "kind": "unitStat", "stat": "damage", "amount": 1, "scale": "perDeployedDomaineUnit", "domaine": "Cavalier" } ] },
+        // « Charge » : un kill PAR L'ATTAQUE d'une unité du domaine rend la main au joueur (1 fois par tour).
+        { "id": "cav_unit_charge",    "branch": 1, "level": 4, "effects": [ { "kind": "extraTurnOnKill", "domaine": "Cavalier" } ] },
+
+        // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + fusion) ───────────────────────────
+        { "id": "cav_logi_deploy_1",  "asset": "logi_deploiement_1",  "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "cav_logi_fusion",    "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Cavalier" } ] },
+        { "id": "cav_logi_reserve_1", "asset": "lan_logi_reserve_1",  "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "cav_logi_deploy_2",  "asset": "logi_deploiement_1",  "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "cav_logi_reserve_2", "asset": "lan_logi_reserve_1",  "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
+        { "id": "cav_logi_amalgame",  "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Cavalier" } ] }
+      ]
     }
   ]
 }

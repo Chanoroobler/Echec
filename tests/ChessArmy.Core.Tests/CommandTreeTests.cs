@@ -259,6 +259,45 @@ public class CommandTreeTests
         Assert.Equal(new[] { "troupe_vie" }, run.ActiveNodesFor(commander: false).Select(n => n.Id));
     }
 
+    /// <summary>
+    /// La carte d'un pion affiche une icône par nœud d'arbre qui le CONCERNE : un nœud restreint à un autre
+    /// domaine ne doit pas y figurer (une icône « domaine du Cavalier » sur un Soldat annonce un bonus qu'il
+    /// ne reçoit pas). Le filtre doit donc coller à celui de <see cref="CommandBuffs.From"/>.
+    /// </summary>
+    [Fact]
+    public void ActiveNodesFor_HidesNodesRestrictedToAnotherDomaine()
+    {
+        try
+        {
+            CommandTrees.Load(new[]
+            {
+                new CommandTree(CommandTrees.DefaultTreeId, new[]
+                {
+                    new CommandNode("tous", 0, 1, "tous", new[] { CommandEffect.UnitStat(EquipStat.Hp, 2) }),
+                    new CommandNode("cavaliers", 1, 1, "cavaliers",
+                        new[] { CommandEffect.UnitStat(EquipStat.Hp, 4, domaine: Domaine.Cavalier) }),
+                }),
+            });
+
+            var run = RunWithPoints(100);
+            run.Unlock(CommandTrees.ById(CommandTrees.DefaultTreeId).ById("tous")!);
+            run.Unlock(CommandTrees.ById(CommandTrees.DefaultTreeId).ById("cavaliers")!);
+
+            // Le pion Cavalier voit les deux ; le Soldat (domaine Dame) ne voit que le nœud non restreint.
+            Assert.Equal(new[] { "tous", "cavaliers" },
+                run.ActiveNodesFor(commander: false, Domaine.Cavalier).Select(n => n.Id));
+            Assert.Equal(new[] { "tous" },
+                run.ActiveNodesFor(commander: false, Domaine.Dame).Select(n => n.Id));
+            // Sans domaine (appelant qui ne le connaît pas) : aucun filtre, comportement historique.
+            Assert.Equal(new[] { "tous", "cavaliers" },
+                run.ActiveNodesFor(commander: false).Select(n => n.Id));
+        }
+        finally
+        {
+            CommandTrees.ResetToDefaults();
+        }
+    }
+
     [Fact]
     public void EnemiesNeverGetBuffs()
     {
@@ -646,5 +685,127 @@ public class CommandTreeTests
         var amalgame = Effect("lan_logi_reserve_2");
         Assert.Equal(CommandEffectKind.FusionSizeReduction, amalgame.Kind);
         Assert.Equal(Domaine.Tour, amalgame.Domaine);
+    }
+
+    /// <summary>
+    /// Le CHIFFRE d'un nœud ne vit que dans commander_trees.json : la description l'injecte via <c>{0}</c>
+    /// (cf. <see cref="CommandNode.DescArgs"/>). Sans ce test, rééquilibrer un nœud (« Meneur de cavalerie »
+    /// passé de +3 à +1) laisse une infobulle qui MENT — le bug ne se voit qu'en survolant le nœud en jeu.
+    /// Ne concerne PAS les nombres qui viennent d'une constante du moteur (orage, réduction de base du rempart,
+    /// taille de fusion) : ils ne sont pas dans le JSON, donc pas dans <c>DescArgs</c>.
+    /// </summary>
+    [Fact]
+    public void ShippedTreeDescriptions_TakeTheirAmountsFromTheJson_NotFromTheText()
+    {
+        var trees = CommandTreeCatalog.FromJson(
+            System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
+
+        var french = new Dictionary<string, string>();
+        foreach (var line in System.IO.File.ReadAllLines(AssetPath("Config", "strings.csv")))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.Length == 0 || trimmed[0] == '#')
+                continue;
+            var parts = line.Split(',');   // les valeurs de strings.csv ne contiennent jamais de virgule
+            if (parts.Length > 1)
+                french[parts[0].Trim()] = parts[1];
+        }
+
+        foreach (var node in trees.SelectMany(t => t.Nodes))
+        {
+            if (!french.TryGetValue(node.DescKey, out var desc))
+                continue;   // la PRÉSENCE de la clé est gardée par ShippedTrees_...
+
+            // Le gabarit doit se formater avec les montants du nœud (pas de {1} sur un nœud à un seul effet).
+            var error = Record.Exception(() => string.Format(desc, node.DescArgs));
+            Assert.True(error is null, $"{node.DescKey} : gabarit incompatible avec ses effets ({error?.Message})");
+
+            // Un bonus chiffré en tête de description doit venir du JSON.
+            Assert.False(System.Text.RegularExpressions.Regex.IsMatch(desc, @"^\+\d"),
+                $"{node.DescKey} : montant écrit en dur (\"{desc}\") — écrire « +{{0}} ».");
+        }
+    }
+
+    // ─── Arbre du CAVALIER : charge (tour bonus), Impact renforcé, échelle « par pion déployé » ───
+
+    [Fact]
+    public void CavalierTree_ChargeAndReinforcedImpact_AreWiredToTheKnightDomaine()
+    {
+        var trees = CommandTreeCatalog.FromJson(
+            System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
+        var cavalier = trees.Single(t => t.Id == "commandantCavalier");
+
+        CommandEffect Effect(string nodeId) => cavalier.ById(nodeId)!.Effects.Single();
+
+        // « Charge » : le tour bonus est restreint au domaine du cavalier.
+        var charge = Effect("cav_unit_charge");
+        Assert.Equal(CommandEffectKind.ExtraTurnOnKill, charge.Kind);
+        Assert.Equal(Domaine.Cavalier, charge.Domaine);
+
+        // « Choc renforcé » : +3 aux dégâts d'Impact (5 → 8), sans domaine (c'est un réglage moteur).
+        var impact = Effect("cav_unit_impact_renforce");
+        Assert.Equal(CommandEffectKind.ImpactBonus, impact.Kind);
+        Assert.Equal(3, impact.Amount);
+        Assert.Equal(8, Match.BaseImpactDamage + impact.Amount);
+
+        // « Ruée » : puissance à l'échelle des seuls pions DÉPLOYÉS du domaine.
+        var ruee = Effect("cav_unit_puissance_cavalier");
+        Assert.Equal(CommandScale.PerDeployedDomaineUnit, ruee.Scale);
+        Assert.Equal(Domaine.Cavalier, ruee.Domaine);
+
+        // Recrues et amalgame ciblent bien le cavalier.
+        Assert.Equal(Domaine.Cavalier, Effect("cav_logi_fusion").Domaine);
+        Assert.Equal(Domaine.Cavalier, Effect("cav_unit_releve").Domaine);
+        Assert.Equal(Domaine.Cavalier, Effect("cav_logi_amalgame").Domaine);
+    }
+
+    /// <summary>
+    /// units.json est chargé de la même façon que les arbres (repli SILENCIEUX sur le codé s'il ne parse pas) :
+    /// on vérifie ici que la config LIVRÉE se lit, que chaque commandant pointe sur un arbre existant, et que
+    /// tout trait écrit à la main (commandant ou profil de boss) est un trait CONNU du moteur — une faute de
+    /// frappe ne se verrait sinon qu'en jouant, sous la forme d'un trait qui ne fait rien.
+    /// </summary>
+    [Fact]
+    public void ShippedCommandes_Parse_AndDeclareKnownTreesAndTraits()
+    {
+        var json = System.IO.File.ReadAllText(AssetPath("Config", "units.json"));
+        var trees = CommandTreeCatalog.FromJson(
+            System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
+        var treeIds = trees.Select(t => t.Id).ToHashSet();
+
+        var commanders = Battle.Config.DomaineCatalog.CommandesFromJson(json);
+        Assert.NotEmpty(commanders);
+        foreach (var c in commanders)
+        {
+            Assert.True(treeIds.Contains(c.TreeId), $"arbre inconnu pour le commandant '{c.Id}' : {c.TreeId}");
+            foreach (var t in c.BaseClass.Traits)
+                Assert.True(Trait.All.Contains(t), $"trait inconnu sur le commandant '{c.Id}' : {t}");
+        }
+
+        var bosses = Battle.Config.DomaineCatalog.BossesFromJson(json);
+        Assert.NotEmpty(bosses);
+        foreach (var b in bosses)
+            foreach (var profile in b.Profiles.Values)
+                foreach (var t in profile.Traits)
+                    Assert.True(Trait.All.Contains(t), $"trait inconnu sur le boss '{b.Name}' : {t}");
+    }
+
+    [Fact]
+    public void PerDeployedDomaineUnit_ScalesOnTheDeployedCounter_NotTheRoster()
+    {
+        var effects = new[]
+        {
+            CommandEffect.UnitStat(EquipStat.Damage, 2, CommandScale.PerDeployedDomaineUnit, Domaine.Cavalier),
+        };
+
+        // 3 cavaliers posés → +6 ; le compteur de ROSTER (domaineCount) ne doit pas être utilisé.
+        var buffs = CommandBuffs.From(effects, commander: false, distinctPairs: 0, Domaine.Cavalier,
+            domaineCount: _ => 99, deployedCount: _ => 3);
+        Assert.Equal(6, buffs.BonusFor(EquipStat.Damage));
+
+        // Sans compteur de déploiement (aperçu hors plateau) : le bonus vaut 0.
+        var none = CommandBuffs.From(effects, commander: false, distinctPairs: 0, Domaine.Cavalier,
+            domaineCount: _ => 99);
+        Assert.Equal(0, none.BonusFor(EquipStat.Damage));
     }
 }

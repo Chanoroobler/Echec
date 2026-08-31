@@ -43,6 +43,8 @@ public static class Trait
     public const string Rage = "Rage";                       // combat : +7 puissance à la PREMIÈRE mort d'un allié (non cumulable, une seule fois par combat, cf. Unit.RagePower)
     public const string LienDePuissance = "Lien de puissance"; // +LienPuissanceBonus de puissance par allié dans sa PORTÉE DE DÉPLACEMENT (contextuel au placement, cf. Match)
     public const string RepositionnementStrategique = "Repositionnement stratégique"; // déplacement : ajoute un pas d'UNE case à gauche/droite quel que soit le domaine
+    public const string LoupSolitaire = "Loup solitaire";    // ISOLÉ (aucun allié sur les 8 cases voisines) : +LoupSolitairePower de puissance et -LoupSolitaireReduction aux dégâts subis
+    public const string Epines = "Épines";                   // renvoie à l'assaillant la MOITIÉ des dégâts réellement encaissés (jamais relayé : le renvoi ne renvoie pas)
 
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
@@ -51,6 +53,6 @@ public static class Trait
         AuraDeRempart, AuraDePuissance, AuraDeCelerite, Riposte, Duelliste, Berserk,
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Orage, Tempete, AttaqueLibre,
         Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
-        LienDePuissance, RepositionnementStrategique,
+        LienDePuissance, RepositionnementStrategique, LoupSolitaire, Epines,
     };
 }

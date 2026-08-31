@@ -227,6 +227,67 @@ public class EquipmentTests
         Assert.Contains(list, e => !e.EnemyAllowed);   // et certains objets restent au joueur seul
     }
 
+    /// <summary>
+    /// Chaque équipement livré doit avoir un NOM localisé dans strings.csv, sous <c>equip.&lt;id&gt;</c> ou, à
+    /// défaut, sous la clé partagée par ses variantes de rareté (<c>equip.&lt;id sans Rare/Legendaire&gt;</c> —
+    /// même règle que <c>UI.EquipmentNames</c>). Sans ce test l'oubli est INVISIBLE : le jeu retombe sur le nom
+    /// FRANÇAIS brut d'equipment.json, donc l'objet reste lisible en français et n'est jamais traduit ailleurs
+    /// (c'est ce qui était arrivé à la queue de phénix et à la fronde de David).
+    /// </summary>
+    [Fact]
+    public void ShippedEquipment_AllHaveALocalizedName()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var assets = System.IO.Path.Combine(dir!.FullName, "src", "ChessArmy.Game", "Assets", "Config");
+
+        var list = EquipmentCatalog.FromJson(System.IO.File.ReadAllText(System.IO.Path.Combine(assets, "equipment.json")));
+        var keys = new HashSet<string>();
+        foreach (var line in System.IO.File.ReadAllLines(System.IO.Path.Combine(assets, "strings.csv")))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.Length == 0 || trimmed[0] == '#')
+                continue;
+            var comma = line.IndexOf(',');
+            if (comma > 0)
+                keys.Add(line[..comma].Trim());
+        }
+
+        // Même dérivation que UI.EquipmentNames.BaseId (le projet Game n'est pas référencé ici).
+        static string BaseId(string id) =>
+            id.EndsWith("Legendaire", StringComparison.Ordinal) ? id[..^"Legendaire".Length]
+            : id.EndsWith("Rare", StringComparison.Ordinal) ? id[..^"Rare".Length]
+            : id;
+
+        foreach (var e in list)
+            Assert.True(keys.Contains("equip." + e.Id) || keys.Contains("equip." + BaseId(e.Id)),
+                $"nom non traduit pour l'équipement '{e.Id}' ({e.Name}) : ajouter equip.{BaseId(e.Id)} dans strings.csv.");
+    }
+
+    /// <summary>
+    /// Chaque TRAIT octroyé par un équipement livré doit être un trait CONNU du moteur (<see cref="Trait.All"/>),
+    /// à l'accent près. Le chargeur d'équipement prend la chaîne telle quelle et <c>Unit.HasTrait</c> compare par
+    /// ÉGALITÉ STRICTE : un « Seisme » sans accent ne correspond à aucun trait et l'objet n'accorde RIEN, sans
+    /// la moindre erreur — c'est exactement ce qui neutralisait le marteau tellurique et le sceptre de tempête.
+    /// </summary>
+    [Fact]
+    public void ShippedEquipment_OnlyGrantsKnownTraits()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var path = System.IO.Path.Combine(dir!.FullName, "src", "ChessArmy.Game", "Assets", "Config", "equipment.json");
+
+        var list = EquipmentCatalog.FromJson(System.IO.File.ReadAllText(path));
+        foreach (var e in list)
+            foreach (var t in e.Traits)
+                Assert.True(Trait.All.Contains(t),
+                    $"trait inconnu sur l'équipement '{e.Id}' : \"{t}\" (accent ou orthographe — cf. Trait.All).");
+    }
+
     [Fact]
     public void Roll_Filter_HardExcludesDisallowedEquipment()
     {

@@ -330,6 +330,7 @@ public sealed class GameplayScene : Scene
     // Impact / Recule (traits d'action) : chiffres de dégâts figés APRÈS l'attaque, déclenchés à l'impact
     // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
+    private List<(Cell Cell, int Damage)>? _pendingThorns;      // assaillants piqués par les « Épines » de leur cible
     private List<Cell>? _pendingImpactZone;                     // zone AoE de l'« Impact » à l'attaque (tremblement des tuiles), reportée à l'impact
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
     private const float ReculeSlamPopupDelay = 0.24f;          // délai (s) avant le « +N » de plaquage, pour le lire APRÈS le chiffre direct
@@ -385,6 +386,8 @@ public sealed class GameplayScene : Scene
     private int _commanderPtHitsShown;
     // Idem pour la source « sur coup à distance » (commandant du Fou) : coups à distance DÉJÀ signalés ce combat.
     private int _commanderPtRangedShown;
+    // Idem pour la source « sur saut » (commandant Cavalier) : sauts par-dessus un obstacle DÉJÀ signalés ce combat.
+    private int _commanderPtJumpsShown;
     // Tutoriel « combat zéro » : non-null pendant le combat scénarisé de début de campagne.
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
@@ -526,6 +529,10 @@ public sealed class GameplayScene : Scene
     private static readonly Color HealColor = Palette.Green2;   // vert #314e3f
     // Couleur du HALO (aura autour des alliés soignables) : distincte de la case.
     private static readonly Color HealAuraColor = Palette.White;   // crème #ede6cb
+    // Couleur du HALO « Loup solitaire » : BLEU clair. Le vert (sauge #9a9f87) a été essayé et REJETÉ — halo vert
+    // sur herbe verte, aucun contraste, même avec un contour sombre. Le bleu est la teinte la plus éloignée du
+    // décor (herbe/terre) tout en restant dans la palette.
+    private static readonly Color LoneWolfAuraColor = Palette.Cyan1;   // bleu clair #699fad
     private readonly List<Cell> _threatCells = new();
     private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
     private readonly List<Cell> _auraCarriers = new();        // porteurs d'une même famille d'aura (barrière fusionnée)
@@ -1144,6 +1151,8 @@ public sealed class GameplayScene : Scene
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked,
             rempartBonus: _run.RempartBonus,
             tueurGeantsBonus: _run.TueurDeGeantsBonus, formationBonus: _run.FormationBonus);
+        _match.ImpactBonus = _run.ImpactBonus;              // « Impact renforcé »
+        _match.ExtraTurnDomaine = _run.ExtraTurnDomaine;   // nœud « charge » : un kill de ce domaine rend la main
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
         _specialBriefOpen = _specialMission;
@@ -1198,6 +1207,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingThorns = null;
         _pendingReculeSlam = null;
         _victimMove = null;
         _slideGlide.Clear();
@@ -1210,6 +1220,7 @@ public sealed class GameplayScene : Scene
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
         _commanderPtRangedShown = 0;
+        _commanderPtJumpsShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1354,6 +1365,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingThorns = null;
         _pendingReculeSlam = null;
         _victimMove = null;
         _slideGlide.Clear();
@@ -1366,6 +1378,7 @@ public sealed class GameplayScene : Scene
         _pierceRecoil.Clear();
         _commanderPtHitsShown = 0;
         _commanderPtRangedShown = 0;
+        _commanderPtJumpsShown = 0;
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
@@ -1818,9 +1831,26 @@ public sealed class GameplayScene : Scene
         Context.Sounds.Play("firework", 0.8f);   // « pop » à chaque salve (crépitement pour le bouquet légendaire)
     }
 
+    /// <summary>
+    /// Bonus d'arbre de <paramref name="spec"/>, en fournissant à la <see cref="Run"/> le nombre de pions
+    /// JOUEUR d'un domaine réellement POSÉS sur le plateau (échelle « par unité déployée » — la Run ne connaît
+    /// que le roster, elle ne voit pas le plateau). Les pions étant réinstanciés au lancement du combat
+    /// (cf. <see cref="RespawnPlayerUnitsFromSpecs"/>), le compte est celui du déploiement final et reste figé
+    /// pour tout le combat ; pendant le placement, la valeur suit les poses en direct sur les fiches.
+    /// </summary>
+    /// <param name="countsItself">Vrai quand <paramref name="spec"/> est sur le POINT d'être posé (il n'est pas
+    /// encore sur le plateau, mais il doit se compter lui-même dans son propre bonus).</param>
+    private CommandBuffs BuffsFor(UnitSpec spec, bool countsItself = false) =>
+        _run.BuffsFor(spec, d => DeployedDomaineCount(d)
+                                 + (countsItself && !spec.Essential && spec.Domaine == d ? 1 : 0));
+
+    /// <summary>Nombre de pions JOUEUR de <paramref name="domaine"/> posés sur le plateau, commandant exclu.</summary>
+    private int DeployedDomaineCount(Domaine domaine) =>
+        _match.Units().Count(u => u.Unit.Faction == Faction.Player && !u.Unit.IsEssential && u.Unit.Domaine == domaine);
+
     private void PlacePlayer(UnitSpec spec, Cell cell)
     {
-        var unit = spec.Spawn(Faction.Player, _run.BuffsFor(spec));
+        var unit = spec.Spawn(Faction.Player, BuffsFor(spec, countsItself: true));
         _match.Place(cell, unit);
         _playerSpec[unit] = spec;
         TriggerLanding(cell);
@@ -1839,6 +1869,8 @@ public sealed class GameplayScene : Scene
         _match.RempartBonus = _run?.RempartBonus ?? 0;
         _match.TueurDeGeantsBonus = _run?.TueurDeGeantsBonus ?? 0;
         _match.FormationBonus = _run?.FormationBonus ?? 0;
+        _match.ImpactBonus = _run?.ImpactBonus ?? 0;
+        _match.ExtraTurnDomaine = _run?.ExtraTurnDomaine;
         foreach (var (cell, unit) in _match.Units().Where(u => u.Unit.Faction == Faction.Player).ToList())
             RespawnAt(cell, unit);
     }
@@ -1862,9 +1894,12 @@ public sealed class GameplayScene : Scene
     {
         if (!_playerSpec.TryGetValue(unit, out var spec))
             return;
+        // Bonus calculés AVANT de retirer le pion : sinon il ne se compterait plus lui-même dans les échelles
+        // « par unité déployée », et chaque pion réinstancié verrait un pion de moins que son voisin.
+        var buffs = BuffsFor(spec);
         _match.Remove(cell);
         _playerSpec.Remove(unit);
-        var fresh = spec.Spawn(Faction.Player, _run.BuffsFor(spec));
+        var fresh = spec.Spawn(Faction.Player, buffs);
         _match.Place(cell, fresh);
         _playerSpec[fresh] = spec;
     }
@@ -4694,14 +4729,16 @@ public sealed class GameplayScene : Scene
         {
             _run.GrantCommanderHitPoints(commander.TimesHit);              // source « sur coup reçu » (Lancier)
             _run.GrantCommanderRangedHitPoints(commander.RangedHits);     // source « sur coup à distance » (Fou)
+            _run.GrantCommanderJumpPoints(commander.ObstacleJumps);       // source « sur saut » (Cavalier)
         }
     }
 
     /// <summary>
     /// Feedback « pendant le combat » des sources de points PROPRES au commandant : à chaque coup qui RAPPORTE
     /// vraiment un point (sous le plafond), fait jaillir un « +N » doré sur la case du commandant + un son.
-    /// Couvre les DEUX sources en combat : « sur coup reçu » (Lancier, <see cref="ChessArmy.Core.Battle.Unit.TimesHit"/>)
-    /// et « sur coup à distance » (Fou, <see cref="ChessArmy.Core.Battle.Unit.RangedHits"/>). Idempotent (ne
+    /// Couvre les TROIS sources en combat : « sur coup reçu » (Lancier, <see cref="ChessArmy.Core.Battle.Unit.TimesHit"/>),
+    /// « sur coup à distance » (Fou, <see cref="ChessArmy.Core.Battle.Unit.RangedHits"/>) et « sur saut »
+    /// (Cavalier, <see cref="ChessArmy.Core.Battle.Unit.ObstacleJumps"/>). Idempotent (ne
     /// resignale jamais un coup déjà montré) : le CRÉDIT effectif reste groupé à la clôture (cf.
     /// <see cref="GrantCommanderHitPoints"/>) — ce n'est QUE de l'affichage. Sans effet pour un commandant dont
     /// aucune n'est la source. Appelé chaque frame de combat : détecte l'augmentation des compteurs.
@@ -4711,7 +4748,7 @@ public sealed class GameplayScene : Scene
         if (_run is null)
             return;
         var def = _run.CommanderDef;
-        if (def.OnHitPoints <= 0 && def.RangedHitPoints <= 0)
+        if (def.OnHitPoints <= 0 && def.RangedHitPoints <= 0 && def.JumpPoints <= 0)
             return;   // ce commandant ne gagne pas de points en combat
         var commander = _playerSpec.Keys.FirstOrDefault(u => u.IsEssential && u.IsAlive);
         if (commander is null || _match.CellOf(commander) is not { } cell)
@@ -4737,6 +4774,18 @@ public sealed class GameplayScene : Scene
             {
                 _commanderPtRangedShown++;
                 _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.RangedHitPoints), Palette.Yellow1);
+                Context.Sounds.Play("command_point");
+            }
+        }
+
+        // Source « sur saut » (Cavalier) : un « +N » par saut par-dessus une unité ou un obstacle (sous le plafond).
+        if (def.JumpPoints > 0)
+        {
+            var earned = System.Math.Min(commander.ObstacleJumps, def.JumpCap);
+            while (_commanderPtJumpsShown < earned)
+            {
+                _commanderPtJumpsShown++;
+                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.JumpPoints), Palette.Yellow1);
                 Context.Sounds.Play("command_point");
             }
         }
@@ -5780,6 +5829,9 @@ public sealed class GameplayScene : Scene
             _damagePopups.Spawn(cell, dmg);
         if (_match.LastImpactHits.Count > 0)   // l'« Impact » a frappé : tuiles de l'AoE + son (instantané sur un déplacement)
             ShakeAoeZone(_match.LastImpactZone);
+        // « Épines » : une cible de l'Impact a renvoyé la moitié du coup au mobile (instantané, comme l'Impact).
+        foreach (var (cell, dmg, _) in _match.LastThorns)
+            SpawnThornsPopup(cell, dmg);
         // Interception(s) : chaque intercepteur rejouera son animation d'attaque sur le mobile, APRÈS le déplacement
         // (différé, gèle le tour comme une riposte — cf. UpdateBattle). On copie les valeurs (la liste moteur est
         // réécrite à l'action suivante).
@@ -5806,6 +5858,11 @@ public sealed class GameplayScene : Scene
         _slideGlide.Start(path);
         Context.Sounds.Play("unit_slide");
     }
+
+    /// <summary>Feedback des « Épines » : le renvoi jaillit sur la case de l'ASSAILLANT, décalé en « +N » pour ne
+    /// pas recouvrir le chiffre de son propre coup, et dans une couleur distincte (vert de la ronce).</summary>
+    private void SpawnThornsPopup(Cell cell, int damage) =>
+        _damagePopups.SpawnBonus(cell, damage, Palette.Green1, new Vector2(0.24f, -0.30f));
 
     /// <summary>Feedback de l'« Impact » (déplacement comme attaque) : fait trembler les tuiles de l'AoE de
     /// haut en bas + joue le son lourd (le même que le « Séisme »). Sans effet si la zone est vide.</summary>
@@ -5912,6 +5969,11 @@ public sealed class GameplayScene : Scene
             ? new List<Cell>(_match.LastImpactZone)
             : null;
         _pendingReculeSlam = _match.LastRecule is { SlamDamage: > 0 } r ? (r.To, r.SlamDamage) : null;
+        // « Épines » : la cible a renvoyé la moitié du coup à son assaillant — chiffre reporté à l'impact
+        // (copie : la liste du moteur est réécrite à l'action suivante).
+        _pendingThorns = _match.LastThorns.Count > 0
+            ? _match.LastThorns.Select(t => (t.Cell, t.Damage)).ToList()
+            : null;
         // « Esquive » : la cible a encaissé le coup PUIS s'est repliée (le moteur l'a déjà déplacée).
         var dodge = DodgeFrom(target);
         // Glissement de la victime : elle a réellement changé de case, par repli (« Esquive ») ou parce que le
@@ -5962,6 +6024,14 @@ public sealed class GameplayScene : Scene
         _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style,
             victimDoomed: _pendingSlamDissolve != null);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
+
+        // Nœud « charge » de l'arbre : ce kill n'a PAS passé le tour — on l'annonce sur la case de l'attaquant
+        // (sinon le joueur croit que l'ennemi n'a pas joué). Léger délai : le mot arrive après le chiffre de dégâts.
+        if (_match.LastGrantedExtraTurn)
+        {
+            _damagePopups.SpawnText(attackerCell, Loc.T("fx.extra_turn"), Palette.Yellow2, new Vector2(0f, -0.55f));
+            Context.Sounds.Play("command_point");
+        }
 
         return kind;
     }
@@ -6036,6 +6106,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingThorns = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
         _victimMove = null;
@@ -6056,6 +6127,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingThorns = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
         _pendingRiposte = null;
@@ -7559,6 +7631,12 @@ public sealed class GameplayScene : Scene
         // coup d'œil d'où sortent ses +2 de puissance (cf. _lienAllies, rempli par DrawHighlights).
         if (sprite != null && _lienAllies.Contains(cell))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Cyan2, 2.5f);
+        // « Loup solitaire » ACTIF : halo VERT lent sur le porteur qui n'a AUCUN allié adjacent — le bonus
+        // s'allume et s'éteint au fil des déplacements, il faut le voir sur le plateau sans ouvrir la fiche.
+        // Le moteur est seul juge de la condition (cf. Match.LoupSolitairePowerBonus).
+        if (sprite != null && _match.LoupSolitairePowerBonus(cell) > 0)
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, LoneWolfAuraColor, 2f,
+                intensity: 1.35f);
         // Trait « Soin » : halo (couleur d'aura) autour des alliés blessés que le pion ATTRAPÉ (soigneur sélectionné) peut soigner.
         if (sprite != null && _healTargets.Contains(cell))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, HealAuraColor, 3f);
@@ -7608,14 +7686,16 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Halo tramé PULSANT derrière un pion (silhouette tramée décalée en anneau, deux passes). Partagé par
     /// la « Rage » (rouge, rapide) et l'« Aura de célérité » (jaune, plus posé). <paramref name="speed"/> = vitesse
-    /// de pulsation, <paramref name="col"/> = teinte.</summary>
-    private void DrawUnitGlow(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade, Color col, float speed)
+    /// de pulsation, <paramref name="col"/> = teinte.
+    /// <paramref name="intensity"/> multiplie l'opacité des deux passes colorées (1 = réglage historique).</summary>
+    private void DrawUnitGlow(SpriteBatch sb, Texture2D sprite, int x, int y, int size, float fade, Color col,
+        float speed, float intensity = 1f)
     {
         var stipple = ShadowStipple(sprite);                   // silhouette tramée BLANCHE (réutilisée de l'ombre)
         var pulse = 0.55f + 0.35f * MathF.Sin(_time * speed);
         var spread = System.Math.Max(2, size / 22);           // épaisseur (px) du halo proche
-        var outer = col * (0.35f * pulse * fade);              // couronne large, pâle
-        var inner = col * (0.75f * pulse * fade);              // liseré proche, vif
+        var outer = col * (0.35f * intensity * pulse * fade);  // couronne large, pâle
+        var inner = col * (0.75f * intensity * pulse * fade);  // liseré proche, vif
         foreach (var (dx, dy) in AuraRing)
             sb.Draw(stipple, new Rectangle(x + dx * spread * 2, y + dy * spread * 2, size, size), outer);
         foreach (var (dx, dy) in AuraRing)
@@ -8244,6 +8324,14 @@ public sealed class GameplayScene : Scene
                 ShakeAoeZone(_pendingImpactZone);
             _pendingImpactHits = null;
             _pendingImpactZone = null;
+        }
+
+        // « Épines » : au contact, l'assaillant encaisse en retour la moitié de son propre coup.
+        if (_pendingThorns != null)
+        {
+            foreach (var (cell, dmg) in _pendingThorns)
+                SpawnThornsPopup(cell, dmg);
+            _pendingThorns = null;
         }
 
         // Recule (trait) : dégât BONUS de plaquage sur la cible collée à l'obstacle. Elle RESTE sur sa case (=
@@ -8929,12 +9017,12 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawSpecPreviewCard(SpriteBatch sb, UnitSpec spec)
     {
-        var buffs = _run.BuffsFor(spec);
+        var buffs = BuffsFor(spec);
         var maxHp = spec.UnitClass.MaxHp
                     + (spec.Equipment?.BonusFor(EquipStat.Hp) ?? 0)
                     + buffs.BonusFor(EquipStat.Hp);
         DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipment, buffs,
-            _run.ActiveNodesFor(spec.Essential), spec.Kills, essential: spec.Essential);
+            _run.ActiveNodesFor(spec.Essential, spec.Domaine), spec.Kills, essential: spec.Essential);
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
@@ -10095,12 +10183,10 @@ public sealed class GameplayScene : Scene
         if (revealed)
             DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
 
-        // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte. Échelle 2 par
-        // défaut, repliée en 1 si le nom déborde de la carte (« ARBALETRIER MONTE » mesure 202 px pour une
-        // carte de 200, et les cartes rétrécissent encore en 1080p). Pas d'échelle intermédiaire : le rendu
-        // est pixel-perfect à l'échelle ENTIÈRE. La hauteur réservée ne bouge pas → rien ne se décale dessous.
+        // Titre : nom de l'unité (localisé), MASQUÉ « ??? » tant qu'elle n'est pas découverte. Échelle repliée
+        // en 1 si le nom déborde de la carte — règle partagée avec le codex et l'écran de sélection.
         var name = revealed ? (nameOverride ?? UnitName(c)).ToUpperInvariant() : unknown;
-        var nameScale = Context.Font.Measure(name, 2) <= rect.Width - 2 * CardPad ? 2 : 1;
+        var nameScale = UnitCardRenderer.TitleScale(Context.Font, name, rect.Width, CardPad);
         // Boîte de titre = hauteur RÉELLE du nom (14 latin / 24 cjk) : centré dans une boîte à sa taille, le
         // titre remplit la boîte au lieu de déborder vers le HAUT sur l'en-tête tier/domaine. Avance idem.
         var titleH = Context.Font.LineHeight(nameScale);
@@ -10335,10 +10421,11 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Améliorations d'arbre à montrer sur la carte d'une <see cref="Unit"/> : celles qui agissent sur elle
-    /// (commandant ou troupe). Null pour un ennemi — l'arbre ne le concerne jamais.
+    /// (commandant ou troupe) — son DOMAINE compris, sinon un nœud réservé à un autre domaine s'afficherait sur
+    /// un pion qu'il ne touche pas. Null pour un ennemi — l'arbre ne le concerne jamais.
     /// </summary>
     private IReadOnlyList<CommandNode>? TreeNodesFor(Unit unit) =>
-        unit.Faction == Faction.Player ? _run.ActiveNodesFor(unit.IsEssential) : null;
+        unit.Faction == Faction.Player ? _run.ActiveNodesFor(unit.IsEssential, unit.Domaine) : null;
 
     /// <summary>
     /// Une ligne de caractéristique : icône 32×32 à gauche, libellé, valeur alignée à droite. Si
@@ -10544,12 +10631,15 @@ public sealed class GameplayScene : Scene
         var rempartBonus = reinforcedApplies ? _run?.RempartBonus ?? 0 : 0;
         var geantsBonus = reinforcedApplies ? _run?.TueurDeGeantsBonus ?? 0 : 0;
         var formationBonus = reinforcedApplies ? _run?.FormationBonus ?? 0 : 0;
+        var impactBonus = reinforcedApplies ? _run?.ImpactBonus ?? 0 : 0;
         if (kw.Label == UnitKeywords.For(Trait.Rempart).Label)
             return ResolveReinforced(kw.Description, Match.BaseRempartReduction, rempartBonus);
         if (kw.Label == UnitKeywords.For(Trait.TueurDeGeants).Label)
             return ResolveReinforced(kw.Description, Match.BaseGiantSlayerBonus, geantsBonus);
         if (kw.Label == UnitKeywords.For(Trait.Formation).Label)
             return ResolveReinforced(kw.Description, Match.BaseFormationBonus, formationBonus);
+        if (kw.Label == UnitKeywords.For(Trait.Impact).Label)
+            return ResolveReinforced(kw.Description, Match.BaseImpactDamage, impactBonus);
         return (kw.Description, null, false);
     }
 

@@ -168,7 +168,31 @@
       "startingUnits": [ "Fou", "Fou" ],
       "unlocked": false
     },
-
+    // Commandant du domaine du CAVALIER. Se deplace en L (saut), thème charge/isolement : il porte
+    // « Franchissement » NATIVEMENT (comme la classe Cavalier) et son arbre "commandantCavalier" tourne autour
+    // de l'Impact, du Vol, du Loup solitaire et des Épines. Source de points PROPRE : « sur saut » (jumpPoints)
+    // = +1 point chaque fois qu'il saute PAR-DESSUS une unite ou un obstacle de terrain (max 2 par combat).
+    // VERROUILLE : debloque en battant en derniere phase le boss "Commandant_cavalier" (unlocksCommander).
+    // STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Commander",
+      "id": "Commandant_cavalier",
+      "domaine": "Cavalier",
+      "name": "Chevalier",
+      "asset": "Commandant_cavalier",
+      "hp": 32,
+      "damage": 12,
+      "moveRange": 3,
+      "attackRange": 3,
+      "deployments": 4,
+      "reserveSize": 8,
+      "tree": "commandantCavalier",
+      "traits": [ "Franchissement" ],
+      "jumpPoints": 1,
+      "jumpCap": 2,
+      "startingUnits": [ "Cavalier", "Cavalier" ],
+      "unlocked": false
+    },
     {
       "role": "Boss",
       "name": "Commandant_brute",
@@ -186,14 +210,14 @@
           "damage": 18,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Berserk" ]
+          "traits": [ "Rage" ]
         },
         "3": {
           "hp": 60,
           "damage": 22,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Berserk", "Transpercement"]
+          "traits": [ "Rage", "Transpercement"]
         }
       }
     },
@@ -289,6 +313,39 @@
           "moveRange": 2,
           "attackRange": 3,
           "traits": [ "Tempête", "Drain de vie" ]
+        }
+      }
+    },
+    // Boss CAVALIER : battu en derniere phase il DEBLOQUE le commandant "Commandant_cavalier" (unlocksCommander).
+    // Boss normal (escortes aleatoires). Domaine Cavalier (saut en L) : il tombe sur le joueur par-dessus ses
+    // lignes, puis frappe autour de lui (Impact) et renvoie les coups (Épines) — les deux traits de l'arbre du
+    // commandant qu'il debloque. STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_cavalier",
+      "asset": "Commandant_cavalier",
+      "domaine": "Cavalier",
+      "unlocksCommander": "Commandant_cavalier",
+      "phases": {
+        "1": {
+          "hp": 32,
+          "damage": 12,
+          "moveRange": 3,
+          "attackRange": 3
+        },
+        "2": {
+          "hp": 42,
+          "damage": 16,
+          "moveRange": 3,
+          "attackRange": 3,
+          "traits": [ "Impact" ]
+        },
+        "3": {
+          "hp": 52,
+          "damage": 20,
+          "moveRange": 3,
+          "attackRange": 3,
+          "traits": [ "Impact", "Épines" ]
         }
       }
     }

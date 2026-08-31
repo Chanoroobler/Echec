@@ -319,6 +319,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.RangedHitPoints > 0)
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.RangedHitPoints, run.CommanderDef.RangedHitCap));
+        else if (run.CommanderDef.JumpPoints > 0)
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.JumpPoints, run.CommanderDef.JumpCap));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>
@@ -488,11 +491,30 @@ public sealed class CommandTreeView
         _ctx.Font.DrawCentered(sb, node.Id[..1].ToUpperInvariant(), icon, 2, Palette.Black1);
     }
 
+    /// <summary>
+    /// Description localisée du nœud, ses MONTANTS injectés (<c>{0}</c> = 1er effet, <c>{1}</c> = 2e…, cf.
+    /// <see cref="CommandNode.DescArgs"/>) : la valeur n'est écrite QUE dans commander_trees.json, jamais en dur
+    /// dans strings.csv. Repli sur le texte brut si le gabarit et les effets ne concordent pas (placeholder de
+    /// trop) : une infobulle ne doit jamais faire tomber le jeu.
+    /// </summary>
+    private static string NodeDescription(CommandNode node)
+    {
+        var raw = Loc.T(node.DescKey);
+        try
+        {
+            return string.Format(raw, node.DescArgs);
+        }
+        catch (System.FormatException)
+        {
+            return raw;
+        }
+    }
+
     /// <summary>Infobulle : libellé + description localisés, posés au-dessus ou sous le nœud selon la place.</summary>
     private void DrawTooltip(SpriteBatch sb, CommandNode node, Viewport vp)
     {
         var name = Loc.T(node.NameKey);
-        var lines = Wrap(Capitalize(Loc.T(node.DescKey)), 260);
+        var lines = Wrap(Capitalize(NodeDescription(node)), 260);
 
         // Espacements dérivés de la police ACTIVE (et non figés en 7px) : le titre CJK fait 12px de glyphe
         // (24 à l'échelle 2) contre 7 (14) en latin, sinon il chevauche la description. Reproduit le latin :

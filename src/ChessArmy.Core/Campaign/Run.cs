@@ -223,12 +223,22 @@ public sealed class Run
     /// le commandant, faux = les troupes). Les nœuds de logistique (réserve, déploiement, bonus de fusion)
     /// n'y figurent jamais : ils ne touchent aucune unité. Sert à afficher sur la carte d'un pion les
     /// améliorations qui le concernent réellement.
+    ///
+    /// <paramref name="domaine"/> = domaine du pion visé : un nœud restreint à un AUTRE domaine est écarté
+    /// (un bonus « domaine du Cavalier » n'a rien à faire sur la carte d'un Soldat). MÊME règle de filtrage que
+    /// <see cref="CommandBuffs.From"/>, pour que l'icône affichée corresponde exactement au bonus appliqué ; le
+    /// commandant n'est jamais filtré (chez lui le domaine ne sert qu'à l'échelle du bonus). Absent = pas de
+    /// filtre par domaine.
     /// </summary>
-    public IReadOnlyList<CommandNode> ActiveNodesFor(bool commander) =>
+    public IReadOnlyList<CommandNode> ActiveNodesFor(bool commander, Domaine? domaine = null) =>
         Tree.Nodes
-            .Where(n => _unlocked.Contains(n.Id)
-                        && n.Effects.Any(e => commander ? e.TargetsCommander : e.TargetsUnits))
+            .Where(n => _unlocked.Contains(n.Id) && n.Effects.Any(e => Affects(e, commander, domaine)))
             .ToList();
+
+    /// <summary>Vrai si <paramref name="effect"/> agit RÉELLEMENT sur la cible décrite (cf. <see cref="ActiveNodesFor"/>).</summary>
+    private static bool Affects(CommandEffect effect, bool commander, Domaine? domaine) =>
+        (commander ? effect.TargetsCommander : effect.TargetsUnits)
+        && (commander || domaine is null || effect.Domaine is not { } d || d == domaine);
 
     /// <summary>
     /// Nombre de PAIRES DE CLASSES DISTINCTES du roster hors commandant (classes distinctes ÷ 2, arrondi
@@ -289,6 +299,19 @@ public sealed class Run
         CommandPoints += Math.Min(commanderRangedHits, CommanderDef.RangedHitCap) * CommanderDef.RangedHitPoints;
     }
 
+    /// <summary>
+    /// Source de points « sur saut » (commandant Cavalier) : crédite <c>CommandeDef.JumpPoints</c> par saut que
+    /// le COMMANDANT a fait PAR-DESSUS une unité ou un obstacle ce combat (<paramref name="commanderJumps"/>,
+    /// cf. <see cref="Battle.Unit.ObstacleJumps"/>), plafonné à <c>CommandeDef.JumpCap</c>. Sans effet pour un
+    /// commandant dont ce n'est pas la source (JumpPoints = 0). À appeler à la clôture d'un combat non perdu.
+    /// </summary>
+    public void GrantCommanderJumpPoints(int commanderJumps)
+    {
+        if (CommanderDef.JumpPoints <= 0 || commanderJumps <= 0)
+            return;
+        CommandPoints += Math.Min(commanderJumps, CommanderDef.JumpCap) * CommanderDef.JumpPoints;
+    }
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {
@@ -324,10 +347,12 @@ public sealed class Run
     /// <summary>
     /// Bonus d'arbre applicables à <paramref name="spec"/> : ceux du commandant s'il est essentiel, ceux
     /// des troupes sinon. À passer à <see cref="UnitSpec.Spawn"/> — les bonus « par paire » sont figés au
-    /// roster du moment, donc recalculés à chaque phase de placement.
+    /// roster du moment, donc recalculés à chaque phase de placement. <paramref name="deployedCount"/> compte
+    /// les pions d'un domaine réellement POSÉS sur le plateau (échelle <see cref="CommandScale.PerDeployedDomaineUnit"/>) :
+    /// seule la scène le sait, absent → ces bonus valent 0.
     /// </summary>
-    public CommandBuffs BuffsFor(UnitSpec spec) =>
-        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount);
+    public CommandBuffs BuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount = null) =>
+        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount, deployedCount);
 
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
@@ -1276,6 +1301,19 @@ public sealed class Run
 
     /// <summary>Bonus de puissance par allié du trait « Formation » apporté par l'arbre (nœud « Formation renforcée »). 0 = aucun.</summary>
     public int FormationBonus => TotalOf(CommandEffectKind.FormationBonus);
+
+    /// <summary>Bonus de dégâts du trait « Impact » apporté par l'arbre (nœud « Impact renforcé »). 0 = aucun.</summary>
+    public int ImpactBonus => TotalOf(CommandEffectKind.ImpactBonus);
+
+    /// <summary>
+    /// Domaine dont une mise à mort rend la main au joueur (nœud « charge », cf.
+    /// <see cref="CommandEffectKind.ExtraTurnOnKill"/>), ou null si le nœud n'est pas acheté. Un effet sans
+    /// domaine vaudrait pour tout le roster — aucun arbre ne le fait aujourd'hui.
+    /// </summary>
+    public Domaine? ExtraTurnDomaine => ActiveEffects
+        .Where(e => e.Kind == CommandEffectKind.ExtraTurnOnKill)
+        .Select(e => e.Domaine)
+        .FirstOrDefault(d => d != null);
 
     /// <summary>
     /// Deux gabarits sont de la MÊME classe (donc fusionnables ensemble) s'ils partagent domaine et

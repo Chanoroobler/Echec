@@ -703,6 +703,13 @@ public sealed class CommanderSelectScene : Scene
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
                 y += LineH;
             }
+        // Source « sur saut » (commandant Cavalier) : +N points quand il saute par-dessus une unité ou un obstacle.
+        if (def.JumpPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_jump", def.JumpPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
     }
 
     /// <summary>

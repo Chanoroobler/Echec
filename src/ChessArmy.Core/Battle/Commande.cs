@@ -25,7 +25,8 @@ public sealed class CommandeDef
         int deployments = 5, int reserveSize = 8, string treeId = "commandant", int fusionPoints = 0,
         string? id = null, IReadOnlyList<Domaine>? startingUnits = null, bool startsUnlocked = true,
         int onHitPoints = 0, int onHitCap = int.MaxValue,
-        int rangedHitPoints = 0, int rangedHitCap = int.MaxValue)
+        int rangedHitPoints = 0, int rangedHitCap = int.MaxValue,
+        int jumpPoints = 0, int jumpCap = int.MaxValue)
     {
         StartsUnlocked = startsUnlocked;
         Role = role;
@@ -39,6 +40,8 @@ public sealed class CommandeDef
         OnHitCap = onHitCap;
         RangedHitPoints = rangedHitPoints;
         RangedHitCap = rangedHitCap;
+        JumpPoints = jumpPoints;
+        JumpCap = jumpCap;
         Id = string.IsNullOrWhiteSpace(id) ? baseClass.Asset : id!;
         StartingUnits = startingUnits ?? DefaultStartingUnits;
     }
@@ -117,6 +120,18 @@ public sealed class CommandeDef
 
     /// <summary>COMMANDANT : nombre MAX de coups à distance comptabilisés par combat pour <see cref="RangedHitPoints"/>.</summary>
     public int RangedHitCap { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à chaque fois qu'il SAUTE par-dessus une unité ou un obstacle
+    /// de terrain (déplacement en L du domaine Cavalier, cf. <see cref="Unit.ObstacleJumps"/>), plafonnés à
+    /// <see cref="JumpCap"/> par combat. Source de gain alternative à <see cref="FusionPoints"/> /
+    /// <see cref="OnHitPoints"/> / <see cref="RangedHitPoints"/> (le commandant Cavalier). 0 = pas cette source.
+    /// Cf. <see cref="Campaign.Run.GrantCommanderJumpPoints"/>.
+    /// </summary>
+    public int JumpPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de sauts comptabilisés par combat pour <see cref="JumpPoints"/>.</summary>
+    public int JumpCap { get; }
 
     public string Name => BaseClass.Name;
 }

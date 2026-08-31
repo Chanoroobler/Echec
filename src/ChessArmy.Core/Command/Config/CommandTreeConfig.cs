@@ -56,7 +56,8 @@ public sealed class EffectEntry
     /// <summary>Trait de combat octroyé (cf. <c>Battle.Trait</c>), pour les effets de trait.</summary>
     public string? Trait { get; set; }
 
-    /// <summary>Mise à l'échelle du bonus : <c>flat</c> (défaut), <c>perDistinctPair</c> ou <c>perDomaineUnit</c>.</summary>
+    /// <summary>Mise à l'échelle du bonus : <c>flat</c> (défaut), <c>perDistinctPair</c>, <c>perDomaineUnit</c>
+    /// (réserve + plateau) ou <c>perDeployedDomaineUnit</c> (pions DÉPLOYÉS seulement).</summary>
     public string? Scale { get; set; }
 
     /// <summary>

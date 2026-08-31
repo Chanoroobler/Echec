@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ChessArmy.Core.Command;
 
@@ -23,6 +24,7 @@ public sealed class CommandNode
         Level = level;
         Icon = icon;
         Effects = effects;
+        DescArgs = effects.Select(e => (object)e.Amount).ToArray();
     }
 
     /// <summary>Identifiant stable : clé de sauvegarde et racine des clés de localisation.</summary>
@@ -48,4 +50,13 @@ public sealed class CommandNode
 
     /// <summary>Clé de localisation de la description affichée en infobulle.</summary>
     public string DescKey => $"tree.{Id}.desc";
+
+    /// <summary>
+    /// Valeurs à injecter dans la description localisée : <c>{0}</c> = montant du 1er effet, <c>{1}</c> = du 2e,
+    /// etc. (même ordre que <see cref="Effects"/>). C'est ce qui permet d'écrire « +{0} pv au commandant » dans
+    /// strings.csv : le CHIFFRE ne vit que dans <c>commander_trees.json</c>, donc rééquilibrer un nœud ne peut
+    /// plus laisser une description qui ment. Les nombres qui viennent d'une CONSTANTE DU MOTEUR (dégâts d'orage,
+    /// réduction de base du rempart…) ne sont pas concernés : ils ne sont pas dans le JSON.
+    /// </summary>
+    public object[] DescArgs { get; }
 }

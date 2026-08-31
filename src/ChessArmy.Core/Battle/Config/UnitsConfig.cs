@@ -65,6 +65,16 @@ public sealed class CommandeConfig
     /// <summary>COMMANDANT : plafond de coups à distance comptabilisés par combat pour <c>rangedHitPoints</c>. Absent → illimité.</summary>
     public int? RangedHitCap { get; set; }
 
+    /// <summary>COMMANDANT : points gagnés à chaque SAUT par-dessus une unité ou un obstacle (domaine Cavalier, source alternative). Absent → 0.</summary>
+    public int? JumpPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de sauts comptabilisés par combat pour <c>jumpPoints</c>. Absent → illimité.</summary>
+    public int? JumpCap { get; set; }
+
+    /// <summary>COMMANDANT : traits de combat NATIFS (cf. Trait), avant tout nœud d'arbre. Absent → aucun.
+    /// (Pour un boss, les traits se déclarent par phase dans <see cref="Phases"/>.)</summary>
+    public List<string>? Traits { get; set; }
+
     /// <summary>
     /// COMMANDANT : identifiant stable, persisté dans la sauvegarde (indépendant du nom et de l'asset).
     /// Absent → l'asset fait office d'id. Ignoré pour un boss.

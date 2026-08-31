@@ -46,10 +46,12 @@ public sealed class CommandBuffs
     /// Les effets de méta (slots, fusion) sont ignorés ici (lus directement par la <see cref="Campaign.Run"/>).
     /// <paramref name="distinctPairs"/> met à l'échelle les bonus « par paire ». Pour une unité,
     /// <paramref name="targetDomaine"/> filtre les effets restreints à un domaine (cf. <see cref="CommandEffect.Domaine"/>) ;
-    /// <paramref name="domaineCount"/> alimente l'échelle « par unité de domaine ».
+    /// <paramref name="domaineCount"/> alimente l'échelle « par unité de domaine », <paramref name="deployedCount"/>
+    /// l'échelle « par unité de domaine DÉPLOYÉE » (fournie par la scène, qui seule connaît le plateau).
     /// </summary>
     public static CommandBuffs From(IEnumerable<CommandEffect> effects, bool commander, int distinctPairs,
-        Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null)
+        Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null,
+        Func<Domaine, int>? deployedCount = null)
     {
         var stats = new Dictionary<EquipStat, int>();
         var traits = new List<string>();
@@ -71,7 +73,7 @@ public sealed class CommandBuffs
                 continue;
             }
 
-            var amount = e.AmountFor(distinctPairs, domaineCount);
+            var amount = e.AmountFor(distinctPairs, domaineCount, deployedCount);
             if (amount != 0)
                 stats[e.Stat] = stats.GetValueOrDefault(e.Stat, 0) + amount;
         }

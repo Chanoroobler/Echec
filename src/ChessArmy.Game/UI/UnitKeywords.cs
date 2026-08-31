@@ -50,6 +50,8 @@ public static class UnitKeywords
         ["Tueur de géants"] = "kw.tueur_geants",
         ["Lien de puissance"] = "kw.lien_puissance",
         ["Repositionnement stratégique"] = "kw.repositionnement",
+        ["Loup solitaire"] = "kw.loup_solitaire",
+        ["Épines"] = "kw.epines",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

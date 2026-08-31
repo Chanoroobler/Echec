@@ -6,6 +6,7 @@ using ChessArmy.Engine;
 using ChessArmy.Engine.Localization;
 using ChessArmy.Engine.Rendering;
 using ChessArmy.Engine.UI;
+using ChessArmy.Engine.UI.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -45,6 +46,16 @@ public sealed class UnitCardRenderer
 
     public static string NameOf(UnitClass c) => Loc.TOr("unit." + c.Asset, c.Name).ToUpperInvariant();
 
+    /// <summary>
+    /// Échelle du TITRE d'une carte : 2 par défaut, repliée en 1 dès que le nom déborde de la carte (« MOUNTED
+    /// CROSSBOWMAN » ou « ARBALETRIER MONTE » dépassent une carte de 200 px, et les cartes rétrécissent encore
+    /// en 1080p). Pas d'échelle intermédiaire : le rendu doit rester pixel-perfect à l'échelle ENTIÈRE. Règle
+    /// PARTAGÉE par les trois constructeurs de carte (jeu, codex, sélection) — sinon un seul est corrigé et les
+    /// deux autres continuent de déborder. La hauteur réservée suit l'échelle, donc rien ne se décale dessous.
+    /// </summary>
+    public static int TitleScale(ITextFont font, string name, int cardWidth, int pad) =>
+        font.Measure(name, 2) <= cardWidth - 2 * pad ? 2 : 1;
+
     /// <summary>Carte complète : tier, nom, sprite, domaine, barre de PV, stats, mots-clés.</summary>
     public void DrawCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect)
     {
@@ -54,9 +65,11 @@ public sealed class UnitCardRenderer
         DrawTierAndDomaine(sb, c.Tier, domaine, rect);
 
         // Boîte de titre à la hauteur réelle du nom (14 latin / 24 cjk) : le nom remplit la boîte au lieu de
-        // déborder vers le haut sur l'en-tête tier/domaine.
-        var titleH = _ctx.Font.LineHeight(2);
-        _ctx.Font.DrawCentered(sb, NameOf(c), new Rectangle(rect.X, y, rect.Width, titleH), 2, Palette.White);
+        // déborder vers le haut sur l'en-tête tier/domaine. Échelle repliée en 1 si le nom est trop long.
+        var name = NameOf(c);
+        var nameScale = TitleScale(_ctx.Font, name, rect.Width, CardPad);
+        var titleH = _ctx.Font.LineHeight(nameScale);
+        _ctx.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
         y += titleH + 8;
 
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);

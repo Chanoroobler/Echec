@@ -71,11 +71,20 @@
     { "id": "Recule", "name": "Attaque lourde", "rarity": "Common", "trait": "Recule", "enemyAllowed": true, "demo": false },
     { "id": "ReculeRare", "name": "Attaque lourde", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 3 }, { "trait": "Recule" } ], "enemyAllowed": true, "demo": false },
     { "id": "riposteRare", "name": "Fleuret de riposte", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 2 }, { "trait": "Riposte" } ], "enemyAllowed": true, "demo": false },
-    { "id": "seisme", "name": "Marteau tellurique", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 5 }, { "trait": "Seisme" } ], "enemyAllowed": true },
-    { "id": "TempeteLegendaire", "name": "Sceptre de tempête", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 5 }, { "trait": "Tempete" } ], "enemyAllowed": true, "demo": false },
+    { "id": "seisme", "name": "Marteau tellurique", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 5 }, { "trait": "Séisme" } ], "enemyAllowed": true },
+    { "id": "TempeteLegendaire", "name": "Sceptre de tempête", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 5 }, { "trait": "Tempête" } ], "enemyAllowed": true, "demo": false },
     { "id": "TranspercerRare", "name": "Épieu perforant", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 2 }, { "trait": "Transpercement" } ], "enemyAllowed": true, "demo": false },
     { "id": "volRare", "name": "Botte de pégasse", "rarity": "Rare", "effects": [ { "trait": "Vol" } ], "enemyAllowed": true, "demo": false },
     { "id": "volLegendaire", "name": "Botte de pégasse", "rarity": "Legendary", "effects": [ { "trait": "Vol" }, { "stat": "MoveRange", "amount": 1 } ], "enemyAllowed": true, "demo": false },
-    { "id": "volVieLegendaire", "name": "Le dentier de Furious", "rarity": "Legendary", "effects": [ { "trait": "Drain de vie" } ], "enemyAllowed": true, "demo": false }
+    { "id": "volVieLegendaire", "name": "Le dentier de Furious", "rarity": "Legendary", "effects": [ { "trait": "Drain de vie" } ], "enemyAllowed": true, "demo": false },
+    { "id": "Loup", "name": "Loup solitaire", "rarity": "Common", "trait": "Loup solitaire", "enemyAllowed": true},
+    { "id": "LoupRare", "name": "Loup solitaire", "rarity": "Rare", "effects": [ { "stat": "Damage", "amount": 2 }, { "stat": "Hp", "amount": 3 }, { "trait": "Loup solitaire" } ], "enemyAllowed": true},
+    { "id": "LoupLegendaire", "name": "Loup solitaire", "rarity": "Legendary", "effects": [ { "stat": "Damage", "amount": 4 }, { "stat": "Hp", "amount": 6 }, { "trait": "Loup solitaire" } ], "enemyAllowed": true},
+    { "id": "lienPuissanceRare", "name": "Lien de puissance", "rarity": "Rare", "effects": [{ "trait": "Lien de puissance" } ], "enemyAllowed": true, "demo": false },
+    { "id": "lienPuissanceLegendaire", "name": "Lien de puissance", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Lien de puissance" } ], "enemyAllowed": true, "demo" :  false},
+    { "id": "EpineRare", "name": "Cactus", "rarity": "Rare", "effects": [{ "trait": "Épines" } ], "enemyAllowed": true},
+    { "id": "EpineLegendaire", "name": "Cactus", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Épines" } ], "enemyAllowed": true},
+    { "id": "auraCeleriteRare", "name": "Botte de célérité", "rarity": "Rare", "effects": [{ "trait": "Aura de célérité" } ], "enemyAllowed": true, "demo": false},
+    { "id": "auraCeleriteLegendaire", "name": "Botte de célérité", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Aura de célérité" } ], "enemyAllowed": true, "demo": false}
   ]
 }

@@ -1306,4 +1306,180 @@ public class TraitsTests
         Assert.Null(m.UnitAt(new Cell(4, 4)));
         Assert.Equal(14, m.UnitAt(new Cell(5, 5))!.Hp);   // repoussée en (5,5), dans l'axe du tir
     }
+
+    // ── Loup solitaire : +3 puissance et -2 dégâts subis quand le porteur est ISOLÉ ──────────────
+
+    [Fact]
+    public void LoupSolitaire_Isolated_HitsHarderAndTakesLess()
+    {
+        // Attaquant isolé : 10 + 3 de puissance. Cible isolée elle aussi : -2 → 20 - 11.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.LoupSolitaire }));
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, new[] { Trait.LoupSolitaire }));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Equal(9, m.UnitAt(new Cell(0, 3))!.Hp);
+    }
+
+    [Fact]
+    public void LoupSolitaire_WithAnAdjacentAlly_DoesNothing()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.LoupSolitaire }));
+        m.Place(new Cell(1, 0), Make(Faction.Player, 20, 5, None));   // allié adjacent : le loup n'est plus seul
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, new[] { Trait.LoupSolitaire }));
+        m.Place(new Cell(1, 3), Make(Faction.Enemy, 20, 5, None));    // idem pour la cible
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Equal(10, m.UnitAt(new Cell(0, 3))!.Hp);   // ni bonus de puissance ni réduction
+    }
+
+    [Fact]
+    public void LoupSolitaire_EnemyAdjacent_StillCountsAsAlone()
+    {
+        // Seuls les ALLIÉS rompent l'isolement : un ennemi collé ne prive pas du bonus.
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 10, new[] { Trait.LoupSolitaire }));
+        m.Place(new Cell(1, 0), Make(Faction.Enemy, 20, 5, None));
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 20, 5, None));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Equal(7, m.UnitAt(new Cell(0, 3))!.Hp);    // 20 - (10 + 3)
+    }
+
+    // ── Épines : renvoie la MOITIÉ des dégâts subis ──────────────────────────────────────────────
+
+    [Fact]
+    public void Epines_ReturnsHalfTheDamageToTheAttacker()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 11, None));
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 30, 5, new[] { Trait.Epines }));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Equal(19, m.UnitAt(new Cell(0, 3))!.Hp);   // 30 - 11
+        Assert.Equal(15, m.UnitAt(new Cell(0, 0))!.Hp);   // 20 - 11/2 (arrondi vers le bas)
+        Assert.Single(m.LastThorns);
+    }
+
+    [Fact]
+    public void Epines_CanKillTheAttacker_WhichIsRemovedFromTheBoard()
+    {
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 4, 20, None));
+        var victim = Make(Faction.Enemy, 40, 5, new[] { Trait.Epines });
+        m.Place(new Cell(0, 3), victim);
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Null(m.UnitAt(new Cell(0, 0)));            // l'assaillant est tombé sur les épines
+        Assert.Equal(1, victim.Kills);                    // la mise à mort lui est créditée
+        Assert.True(m.LastThorns[0].Killed);
+    }
+
+    [Fact]
+    public void Epines_AreNeverRelayed_BetweenTwoBearers()
+    {
+        // Les deux portent Épines : le RENVOI ne déclenche pas un contre-renvoi (pas de ping-pong).
+        var m = Board();
+        m.Place(new Cell(0, 0), Make(Faction.Player, 40, 10, new[] { Trait.Epines }));
+        m.Place(new Cell(0, 3), Make(Faction.Enemy, 40, 5, new[] { Trait.Epines }));
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 3));
+
+        Assert.Equal(30, m.UnitAt(new Cell(0, 3))!.Hp);   // 40 - 10
+        Assert.Equal(35, m.UnitAt(new Cell(0, 0))!.Hp);   // 40 - 5 (le renvoi ne renvoie rien)
+    }
+
+    [Fact]
+    public void Epines_AlsoAnswerAnImpact()
+    {
+        // Le renvoi vaut pour TOUTE source de dégâts, pas seulement l'attaque directe.
+        var m = Board();
+        m.Place(new Cell(2, 2), Make(Faction.Player, 30, 4, new[] { Trait.Impact }, moveRange: 1));
+        m.Place(new Cell(3, 3), Make(Faction.Enemy, 30, 5, new[] { Trait.Epines }));
+
+        m.TryMove(new Cell(2, 2), new Cell(2, 3));   // l'impact frappe le voisin en (3,3) pour 5
+
+        Assert.Equal(25, m.UnitAt(new Cell(3, 3))!.Hp);
+        Assert.Equal(28, m.UnitAt(new Cell(2, 3))!.Hp);   // 30 - 5/2
+    }
+
+    // ── Tour BONUS sur mise à mort (nœud « charge » de l'arbre) ──────────────────────────────────
+
+    [Fact]
+    public void ExtraTurnOnKill_KeepsTheTurn_OnceBetweenEnemyTurns()
+    {
+        var m = Board();
+        m.ExtraTurnDomaine = Domaine.Cavalier;
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 30, None, domaine: Domaine.Cavalier, attackRange: 1));
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 5, 1, None));
+        m.Place(new Cell(3, 3), Make(Faction.Enemy, 5, 1, None));
+        m.Place(new Cell(7, 7), Make(Faction.Enemy, 5, 1, None));   // un survivant : le combat n'est pas décidé
+
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(0, 0), new Cell(1, 2)));
+        Assert.True(m.LastGrantedExtraTurn);
+        Assert.Equal(Faction.Player, m.CurrentTurn);      // le tour n'est PAS passé
+
+        // Deuxième mise à mort dans le MÊME tour : le rejeu est déjà consommé, la main revient à l'ennemi.
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(1, 2), new Cell(3, 3)));
+        Assert.False(m.LastGrantedExtraTurn);
+        Assert.Equal(Faction.Enemy, m.CurrentTurn);
+    }
+
+    [Fact]
+    public void ExtraTurnOnKill_IgnoresOtherDomainesAndSimpleHits()
+    {
+        var m = Board();
+        m.ExtraTurnDomaine = Domaine.Cavalier;
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 30, None));   // domaine Tour : pas concerné
+        m.Place(new Cell(0, 2), Make(Faction.Enemy, 5, 1, None));
+        m.Place(new Cell(7, 7), Make(Faction.Enemy, 5, 1, None));      // un survivant : le combat continue
+
+        m.TryAttack(new Cell(0, 0), new Cell(0, 2));
+
+        Assert.False(m.LastGrantedExtraTurn);
+        Assert.Equal(Faction.Enemy, m.CurrentTurn);
+    }
+
+    [Fact]
+    public void ExtraTurnOnKill_IsRearmedAfterTheEnemyPlayed()
+    {
+        var m = Board();
+        m.ExtraTurnDomaine = Domaine.Cavalier;
+        m.Place(new Cell(0, 0), Make(Faction.Player, 20, 30, None, domaine: Domaine.Cavalier, attackRange: 1));
+        m.Place(new Cell(1, 2), Make(Faction.Enemy, 5, 1, None));
+        m.Place(new Cell(7, 7), Make(Faction.Enemy, 20, 1, None));
+
+        m.TryAttack(new Cell(0, 0), new Cell(1, 2));   // le cavalier tue et prend la case (1,2) : rejeu consommé
+        m.PassTurn();                                   // le joueur rend la main
+        m.PassTurn();                                   // l'ennemi a joué : le rejeu se réarme
+
+        m.Place(new Cell(2, 4), Make(Faction.Enemy, 5, 1, None));   // à un saut de L de (1,2)
+        Assert.Equal(MoveKind.Killed, m.TryAttack(new Cell(1, 2), new Cell(2, 4)));
+        Assert.True(m.LastGrantedExtraTurn);
+        Assert.Equal(Faction.Player, m.CurrentTurn);
+    }
+
+    // ── Compteur de SAUTS par-dessus un obstacle (points du commandant Cavalier) ─────────────────
+
+    [Fact]
+    public void ObstacleJump_IsCounted_OnlyWhenSomethingIsJumpedOver()
+    {
+        var m = Board();
+        var rider = Make(Faction.Player, 20, 5, None, domaine: Domaine.Cavalier);
+        m.Place(new Cell(2, 2), rider);
+        m.Place(new Cell(3, 2), Make(Faction.Player, 20, 5, None));   // sur la grande branche du L
+
+        m.TryMove(new Cell(2, 2), new Cell(4, 3));                    // saute par-dessus (3,2)
+        Assert.Equal(1, rider.ObstacleJumps);
+
+        m.PassTurn();
+        m.TryMove(new Cell(4, 3), new Cell(6, 4));                    // plateau vide : rien d'enjambé
+        Assert.Equal(1, rider.ObstacleJumps);
+    }
 }

@@ -53,10 +53,12 @@ public static class DomaineCatalog
                     $"Domaine de pion de départ inconnu pour le commandant '{c.Name}' : '{d}'.")).ToList();
 
         return new CommandeDef(CommandeRole.Commander, domaine,
-            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange),
+            new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange,
+                traits: c.Traits),
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
             c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue,
-            c.RangedHitPoints ?? 0, c.RangedHitCap ?? int.MaxValue);
+            c.RangedHitPoints ?? 0, c.RangedHitCap ?? int.MaxValue,
+            c.JumpPoints ?? 0, c.JumpCap ?? int.MaxValue);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

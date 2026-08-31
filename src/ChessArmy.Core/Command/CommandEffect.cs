@@ -44,6 +44,15 @@ public enum CommandEffectKind
 
     /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> la puissance par allié adjacent du trait « Formation » (moteur : base 2).</summary>
     FormationBonus,
+
+    /// <summary>Augmente d'<see cref="CommandEffect.Amount"/> les dégâts du trait « Impact » (moteur : base 5).</summary>
+    ImpactBonus,
+
+    /// <summary>
+    /// Une unité du <see cref="CommandEffect.Domaine"/> visé qui TUE par son attaque rend la main au joueur :
+    /// le tour ne passe pas. UNE seule fois entre deux tours ennemis (cf. <see cref="Battle.Match.ExtraTurnDomaine"/>).
+    /// </summary>
+    ExtraTurnOnKill,
 }
 
 /// <summary>
@@ -67,6 +76,14 @@ public enum CommandScale
     /// <see cref="Campaign.Run.DomaineUnitCount"/>.
     /// </summary>
     PerDomaineUnit,
+
+    /// <summary>
+    /// Bonus × le nombre d'unités du <see cref="CommandEffect.Domaine"/> visé réellement DÉPLOYÉES sur le
+    /// plateau (la réserve ne compte pas). Dépend donc du plateau et non du roster : c'est la scène qui
+    /// fournit le compte au moment où les pions sont instanciés (lancement du combat), et il est FIGÉ pour
+    /// tout le combat. Sans compteur fourni → 0.
+    /// </summary>
+    PerDeployedDomaineUnit,
 }
 
 /// <summary>
@@ -123,11 +140,13 @@ public sealed class CommandEffect
     /// l'échelle <see cref="CommandScale.PerDomaineUnit"/> — le nombre d'unités du domaine visé
     /// (<paramref name="domaineCount"/> évalué sur <see cref="Domaine"/>). Absent → l'échelle par domaine vaut 0.
     /// </summary>
-    public int AmountFor(int distinctPairs, System.Func<Domaine, int>? domaineCount = null) =>
+    public int AmountFor(int distinctPairs, System.Func<Domaine, int>? domaineCount = null,
+        System.Func<Domaine, int>? deployedCount = null) =>
         Scale switch
         {
             CommandScale.PerDistinctPair => Amount * distinctPairs,
             CommandScale.PerDomaineUnit => Domaine is { } d ? Amount * (domaineCount?.Invoke(d) ?? 0) : Amount,
+            CommandScale.PerDeployedDomaineUnit => Domaine is { } dd ? Amount * (deployedCount?.Invoke(dd) ?? 0) : Amount,
             _ => Amount,
         };
 
@@ -168,4 +187,10 @@ public sealed class CommandEffect
 
     public static CommandEffect FormationBonus(int amount) =>
         new(CommandEffectKind.FormationBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect ImpactBonus(int amount) =>
+        new(CommandEffectKind.ImpactBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect ExtraTurnOnKill(Domaine? domaine = null) =>
+        new(CommandEffectKind.ExtraTurnOnKill, default, 1, null, CommandScale.Flat, domaine);
 }

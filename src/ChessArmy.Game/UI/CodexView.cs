@@ -699,8 +699,11 @@ public sealed class CodexView
         DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
 
         // Boîte de titre à la hauteur réelle du nom (14 latin / 24 cjk) : pas de débordement vers l'en-tête.
-        var titleH = _ctx.Font.LineHeight(2);
-        _ctx.Font.DrawCentered(sb, UnitName(c), new Rectangle(rect.X, y, rect.Width, titleH), 2, Palette.White);
+        // Échelle repliée en 1 si le nom est trop long pour la carte (cf. UnitCardRenderer.TitleScale).
+        var name = UnitName(c);
+        var nameScale = UnitCardRenderer.TitleScale(_ctx.Font, name, rect.Width, CardPad);
+        var titleH = _ctx.Font.LineHeight(nameScale);
+        _ctx.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
         y += titleH + 8;
 
         var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);

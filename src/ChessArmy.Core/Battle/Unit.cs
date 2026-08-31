@@ -87,6 +87,16 @@ public sealed class Unit
     public void RecordRangedHit() => RangedHits++;
 
     /// <summary>
+    /// Nombre de sauts (déplacement en L du domaine Cavalier) que cette unité a faits PAR-DESSUS une unité ou
+    /// un obstacle de terrain durant le combat courant. Amorcé à 0 au spawn et NON persisté. Incrémenté par
+    /// <see cref="Match"/>. Sert à la source de points « sur saut » d'un commandant (cf. <c>CommandeDef.JumpPoints</c>).
+    /// </summary>
+    public int ObstacleJumps { get; private set; }
+
+    /// <summary>Comptabilise un saut par-dessus une unité ou un obstacle. Appelé par le moteur de combat.</summary>
+    public void RecordObstacleJump() => ObstacleJumps++;
+
+    /// <summary>
     /// Total des dégâts RÉELLEMENT infligés par cette unité durant le combat courant (réductions
     /// déduites). Amorcé à 0 au spawn et NON persisté : chaque combat repart d'une unité neuve. Incrémenté par
     /// <see cref="Match"/>. Sert au récap de fin de run (dégâts par type de pion).

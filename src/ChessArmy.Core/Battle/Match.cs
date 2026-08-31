@@ -43,6 +43,8 @@ public sealed class Match
     private (Cell To, int SlamDamage)? _lastRecule;                        // « Recule » : case d'arrivée de la cible + dégât de plaquage (0 si glissée)
     private readonly List<(Cell From, Cell To)> _dodges = new();           // « Esquive » : replis déclenchés par l'action (départ → arrivée), dans l'ordre
     private (Cell From, Cell To, int Damage, bool Killed)? _lastRiposte;   // « Riposte » : case du riposteur → assaillant + dégâts + assaillant abattu
+    private readonly List<(Cell Cell, int Damage, bool Killed)> _thorns = new();  // « Épines » : renvois de l'action (case de l'assaillant + dégâts + assaillant abattu)
+    private bool _reflecting;                                              // « Épines » : un renvoi est en cours (jamais relayé en chaîne)
     private (Cell Cell, int Damage, int Dc, int Dr)? _lastPierce;          // « Transpercement » : ennemi derrière la cible touché + dégâts + direction du coup
     private readonly List<(Cell From, Cell To, int Damage, bool Killed)> _interceptions = new();  // « Interception » : intercepteur → mobile + dégâts + mobile abattu (par ordre de frappe)
     private IReadOnlyList<Cell>? _lastSlide;                               // « Glace » : chemin de glissade (départ inclus → repos), null si aucune glissade
@@ -101,6 +103,28 @@ public sealed class Match
     /// base, plus le bonus d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
     private int PerAllyFormationBonus(Unit unit) =>
         BaseFormationBonus + (unit.Faction == Faction.Player ? FormationBonus : 0);
+
+    /// <summary>Bonus d'arbre « Impact renforcé » (dégâts en PLUS de <see cref="BaseImpactDamage"/>).
+    /// Appliqué UNIQUEMENT aux unités du JOUEUR. Cf. <see cref="ImpactDamageFor"/>.</summary>
+    public int ImpactBonus { get; set; }
+
+    /// <summary>Dégât EFFECTIF du trait « Impact » pour <paramref name="unit"/> : base, plus le bonus d'arbre
+    /// SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
+    private int ImpactDamageFor(Unit unit) =>
+        BaseImpactDamage + (unit.Faction == Faction.Player ? ImpactBonus : 0);
+
+    /// <summary>
+    /// Nœud d'arbre « charge » : quand une unité du JOUEUR de CE domaine TUE par son attaque, le tour ne passe
+    /// pas — le joueur rejoue aussitôt (UNE seule fois avant que l'ennemi joue, cf. <see cref="_extraTurnUsed"/>).
+    /// null = aucun rejeu. Réglé par la scène depuis la <see cref="Campaign.Run"/>.
+    /// </summary>
+    public Domaine? ExtraTurnDomaine { get; set; }
+
+    /// <summary>Vrai si le rejeu a DÉJÀ été consommé depuis le dernier tour ennemi (remis à zéro quand le tour revient au joueur).</summary>
+    private bool _extraTurnUsed;
+
+    /// <summary>Vrai si la DERNIÈRE action a offert un tour bonus (feedback : le tour n'est pas passé).</summary>
+    public bool LastGrantedExtraTurn { get; private set; }
 
     /// <summary>Réduction EFFECTIVE du trait « Rempart » pour <paramref name="victim"/> : base, plus le bonus
     /// d'arbre SEULEMENT si c'est une unité du joueur (le renforcement ne touche pas l'ennemi).</summary>
@@ -426,6 +450,7 @@ public sealed class Match
             return MoveKind.Invalid;
 
         ResetActionFx();
+        RecordObstacleJump(unit, from, to);   // saut du cavalier PAR-DESSUS quelque chose (compté AVANT de bouger)
         MoveUnit(from, to);
         // « Glace » : si la case d'arrivée est glissante, l'unité glisse au-delà (peut dépasser sa portée). Les
         // traits (interception/impact) se déclenchent depuis sa case de REPOS réelle.
@@ -451,8 +476,13 @@ public sealed class Match
         var victimHpBefore = victim.Hp;
         ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
 
+        // « Épines » de la cible : l'assaillant a pu tomber sur le renvoi (il est alors DÉJÀ retiré du plateau).
+        // La suite de son attaque (drain, transpercement, foudre, impact) est alors sans objet : un mort ne
+        // poursuit pas son coup. Le coup déjà porté, lui, reste acquis.
+        var attackerStanding = CellOf(unit) != null;
+
         // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (réductions incluses).
-        if (unit.HasTrait(Trait.DrainDeVie))
+        if (attackerStanding && unit.HasTrait(Trait.DrainDeVie))
             unit.Heal((victimHpBefore - victim.Hp) / 2);
 
         // Source de points « sur coup à distance » (commandant du Fou) : un coup DIRECT qui TOUCHE vraiment
@@ -463,12 +493,12 @@ public sealed class Match
             unit.RecordRangedHit();
 
         // Transpercement : l'unité juste DERRIÈRE la cible (même direction) est aussi touchée.
-        if (unit.HasTrait(Trait.Transpercement))
+        if (attackerStanding && unit.HasTrait(Trait.Transpercement))
             PierceBehind(from, target, unit);
 
         // Orage / Tempête : la foudre frappe des ennemis AU HASARD (hors cible directe) pour un dégât fixe —
         // 3 cibles pour l'Orage, 5 pour la Tempête (cf. StormTargetsFor).
-        if (StormDamageFor(unit) is > 0 and var storm)
+        if (attackerStanding && StormDamageFor(unit) is > 0 and var storm)
             StormStrike(unit, target, storm);
 
         MoveKind kind;
@@ -524,9 +554,29 @@ public sealed class Match
         if (unit.HasTrait(Trait.Impact) && CellOf(unit) is { } here)
             ApplyImpact(unit, here);
 
+        // Nœud « charge » de l'arbre : une unité du JOUEUR du domaine visé qui TUE PAR SON ATTAQUE (les morts
+        // indirectes — impact, foudre, riposte, épines — ne comptent pas) rend la main au joueur au lieu de
+        // passer le tour. UNE seule fois entre deux tours ennemis, et seulement si l'assaillant est encore
+        // debout (un attaquant tombé sur une riposte / des épines ne rejoue pas).
+        if (GrantsExtraTurn(unit, kind))
+        {
+            _extraTurnUsed = true;
+            LastGrantedExtraTurn = true;
+            UpdateWinner();   // le tour NE passe PAS : on vérifie seulement si le combat est déjà décidé
+            return kind;
+        }
+
         EndTurn();
         return kind;
     }
+
+    /// <summary>Vrai si cette mise à mort ouvre un tour bonus (cf. <see cref="ExtraTurnDomaine"/>).</summary>
+    private bool GrantsExtraTurn(Unit attacker, MoveKind kind) =>
+        kind == MoveKind.Killed
+        && !_extraTurnUsed
+        && ExtraTurnDomaine is { } d && attacker.Domaine == d
+        && attacker.Faction == Faction.Player
+        && CellOf(attacker) != null;
 
     // ─── TRAITS : dégâts effectifs, formes d'attaque, réactions ───────────────────────────────────
 
@@ -545,7 +595,10 @@ public sealed class Match
     public const int RagePowerBonus = 7;
     private const int OrageDamage = 3;           // dégât fixe de l'orage (trait « Orage »)
     private const int TempeteDamage = 3;         // dégât fixe de la tempête (trait « Tempête ») — elle frappe PLUS LARGE, pas plus fort
-    private const int ImpactDamage = 5;          // dégât fixe autour du porteur d'« Impact » (déplacement/attaque)
+    /// <summary>Dégât de BASE autour du porteur d'« Impact » (avant le bonus d'arbre « Impact renforcé »).</summary>
+    public const int BaseImpactDamage = 5;       // dégât fixe autour du porteur d'« Impact » (déplacement/attaque)
+    private const int LoupSolitairePower = 3;    // +3 puissance quand le porteur de « Loup solitaire » n'a AUCUN allié adjacent
+    private const int LoupSolitaireReduction = 2; // -2 dégâts subis dans les mêmes conditions
     private const int ReculeSlamDamage = 5;      // dégât bonus quand « Recule » plaque la cible contre un obstacle
     private const int LienPuissanceBonus = 2;    // +2 puissance par allié dans la PORTÉE DE DÉPLACEMENT (trait « Lien de puissance »)
     /// <summary>Distance de Chebyshev MINIMALE d'un coup direct pour compter comme « coup à distance » — la
@@ -580,6 +633,10 @@ public sealed class Match
     /// <summary>Riposte de la DERNIÈRE attaque : case du riposteur (après un éventuel recul) → case de l'assaillant,
     /// dégâts réellement infligés, et si l'assaillant en est mort. <c>null</c> si aucune riposte. Pour le feedback.</summary>
     public (Cell From, Cell To, int Damage, bool Killed)? LastRiposte => _lastRiposte;
+
+    /// <summary>« Épines » de la DERNIÈRE action : pour chaque renvoi, la case de l'assaillant piqué, les dégâts
+    /// renvoyés et s'il en est mort. Vide si aucun renvoi. Pour le feedback (chiffre + mot-clé sur l'assaillant).</summary>
+    public IReadOnlyList<(Cell Cell, int Damage, bool Killed)> LastThorns => _thorns;
 
     /// <summary>« Interception(s) » du DERNIER déplacement : pour chaque intercepteur qui a frappé le mobile, sa case
     /// → la case d'arrivée du mobile, les dégâts réels et si le mobile en est mort (ordre de frappe). Vide sinon.
@@ -670,7 +727,21 @@ public sealed class Match
     /// réellement infligés. Le Berserk (kills) et la Rage (alliés morts), eux, dépendent de l'état du pion
     /// (pas du placement) et se calculent à part.
     /// </summary>
-    public int ContextualPowerBonus(Cell cell) => AuraPowerBonus(cell) + FormationPowerBonus(cell) + LienPuissancePowerBonus(cell);
+    public int ContextualPowerBonus(Cell cell) =>
+        AuraPowerBonus(cell) + FormationPowerBonus(cell) + LienPuissancePowerBonus(cell) + LoupSolitairePowerBonus(cell);
+
+    /// <summary>
+    /// « Loup solitaire » : vrai si <paramref name="unit"/>, postée en <paramref name="cell"/>, porte le trait
+    /// ET n'a AUCUN allié sur les 8 cases voisines. C'est la condition unique du trait : elle vaut aussi bien
+    /// pour son bonus de puissance que pour sa réduction de dégâts.
+    /// </summary>
+    private bool IsLoneWolf(Unit unit, Cell cell) =>
+        unit.HasTrait(Trait.LoupSolitaire) && AdjacentAllyCount(cell, unit.Faction) == 0;
+
+    /// <summary>Puissance qu'une unité « Loup solitaire » ISOLÉE tient de son trait (0 sinon). Effet CONTEXTUEL
+    /// au placement, comme les auras : l'UI doit le demander ici pour afficher la vraie puissance.</summary>
+    public int LoupSolitairePowerBonus(Cell cell) =>
+        UnitAt(cell) is { } u && IsLoneWolf(u, cell) ? LoupSolitairePower : 0;
 
     /// <summary>Nombre d'unités alliées (même <paramref name="faction"/>) adjacentes à <paramref name="cell"/> (trait « Formation »).</summary>
     private int AdjacentAllyCount(Cell cell, Faction faction)
@@ -765,6 +836,8 @@ public sealed class Match
             power += unit.Kills;      // « Berserk » : +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
         if (unit.HasTrait(Trait.Rage))
             power += unit.RagePower;  // « Rage » : +7 dès la première mort d'un allié ce combat (non cumulable, cf. Unit.RagePower)
+        if (IsLoneWolf(unit, cell))
+            power += LoupSolitairePower;   // « Loup solitaire » : isolé, il frappe plus fort
         power += AuraPowerBonus(cell);
         power += FormationPowerBonus(cell);
         power += LienPuissancePowerBonus(cell);   // « Lien de puissance » : +2 par allié dans la portée de déplacement
@@ -796,6 +869,8 @@ public sealed class Match
             dmg -= RempartReductionFor(victim);
         if (distance == 1 && victim.HasTrait(Trait.Duelliste))
             dmg -= DuellisteReduction;
+        if (IsLoneWolf(victim, victimCell))    // « Loup solitaire » : isolé, il encaisse mieux
+            dmg -= LoupSolitaireReduction;
         if (IsCover(victimCell))               // cible à couvert dans un buisson
             dmg -= BushReduction;
 
@@ -803,7 +878,8 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Applique des dégâts. Le porteur d'« Esquive » qui SURVIT au coup se replie aussitôt
+    /// Applique des dégâts. Le porteur d'« Épines » renvoie aussitôt la moitié du coup à son assaillant
+    /// (cf. <see cref="ApplyEpines"/>), puis le porteur d'« Esquive » qui SURVIT se replie
     /// (cf. <see cref="ApplyEsquive"/>) : il encaisse d'abord, puis quitte la case.
     /// </summary>
     private void ApplyDamage(Unit unit, int amount, Unit? attacker)
@@ -813,8 +889,41 @@ public sealed class Match
         unit.TakeDamage(amount);
         unit.RecordHit();               // coup RÉELLEMENT encaissé (0 exclu) — points d'un commandant
         attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
+        if (attacker != null && unit.HasTrait(Trait.Epines))
+            ApplyEpines(unit, attacker, amount);
         if (unit.IsAlive && unit.HasTrait(Trait.Esquive))
             ApplyEsquive(unit);
+    }
+
+    /// <summary>
+    /// « Épines » : le porteur renvoie à son assaillant la MOITIÉ (arrondie vers le bas) des dégâts qu'il vient
+    /// d'encaisser — quelle que soit la source (attaque, impact, foudre, séisme, riposte, plaquage). Le renvoi
+    /// est un dégât BRUT : aucune réduction de l'assaillant ne s'y applique, et il peut le tuer (l'assaillant
+    /// est alors retiré du plateau, la mise à mort créditée au porteur). JAMAIS relayé : les dégâts d'un renvoi
+    /// n'en déclenchent pas un autre (<see cref="_reflecting"/>), y compris entre deux porteurs d'« Épines ».
+    /// Noté dans <see cref="_thorns"/> pour le feedback.
+    /// </summary>
+    private void ApplyEpines(Unit victim, Unit attacker, int taken)
+    {
+        var back = taken / 2;
+        if (_reflecting || back <= 0)
+            return;
+        if (CellOf(attacker) is not { } attackerCell)
+            return;   // assaillant déjà hors du plateau (mort en chaîne) : rien à renvoyer
+
+        _reflecting = true;
+        try
+        {
+            ApplyDamage(attacker, back, victim);
+        }
+        finally
+        {
+            _reflecting = false;
+        }
+        // La case peut avoir changé (« Esquive » de l'assaillant) : on relit sa position avant de le retirer.
+        var restCell = CellOf(attacker) ?? attackerCell;
+        _thorns.Add((restCell, back, !attacker.IsAlive));
+        RemoveDeadAt(restCell, victim);
     }
 
     /// <summary>
@@ -1061,10 +1170,12 @@ public sealed class Match
         _lastPierce = null;
         _interceptions.Clear();
         _lastSlide = null;
+        _thorns.Clear();
+        LastGrantedExtraTurn = false;
     }
 
     /// <summary>
-    /// « Impact » : le porteur inflige un dégât FIXE (<see cref="ImpactDamage"/>) à TOUS les ennemis des 8 cases
+    /// « Impact » : le porteur inflige un dégât FIXE (<see cref="ImpactDamageFor"/>) à TOUS les ennemis des 8 cases
     /// autour de <paramref name="center"/> (sa position finale). Déclenché UNIQUEMENT par sa propre action
     /// (déplacement / attaque), jamais relayé par un autre trait. Fixe : ni Rempart ni couvert ne le réduisent,
     /// mais une victime d'« Esquive » se replie après coup (via <see cref="ApplyDamage"/>). Les coups réels sont
@@ -1089,7 +1200,7 @@ public sealed class Match
             if (CellOf(victim) is not { } c)
                 continue;
             var before = victim.Hp;
-            ApplyDamage(victim, ImpactDamage, unit);
+            ApplyDamage(victim, ImpactDamageFor(unit), unit);
             if (before - victim.Hp is > 0 and var dealt)
                 _impactHits.Add((c, dealt));
             RemoveDeadAt(c, unit);
@@ -1286,8 +1397,11 @@ public sealed class Match
     /// <summary>Passe le tour sans agir (ennemi passif en tutoriel). Sans effet si la partie est finie.</summary>
     public void PassTurn()
     {
-        if (!IsOver)
-            CurrentTurn = CurrentTurn.Opponent();
+        if (IsOver)
+            return;
+        CurrentTurn = CurrentTurn.Opponent();
+        if (CurrentTurn == Faction.Player)
+            _extraTurnUsed = false;
     }
 
     /// <summary>
@@ -1353,11 +1467,44 @@ public sealed class Match
         _units[from.Column, from.Row] = null;
     }
 
+    /// <summary>
+    /// Compte un saut PAR-DESSUS quelque chose pour une unité qui se déplace en L (domaine du Cavalier) :
+    /// le saut « enjambe » les DEUX cases de sa grande branche (les cases (±1,0) et (±2,0) de l'axe long, ou
+    /// (0,±1) et (0,±2)) ; si au moins l'une porte une unité (alliée ou ennemie) ou un obstacle de terrain
+    /// (eau / montagne / mur), le saut est comptabilisé (cf. <see cref="Unit.ObstacleJumps"/>). C'est la source
+    /// de points de commandement du commandant Cavalier (cf. <c>CommandeDef.JumpPoints</c>) ; le compteur est
+    /// tenu pour TOUTE unité sauteuse, seul le commandant en tire des points. À appeler AVANT le déplacement.
+    /// </summary>
+    private void RecordObstacleJump(Unit unit, Cell from, Cell to)
+    {
+        if (unit.MovementKind != MovementKind.Jump)
+            return;
+        var dc = to.Column - from.Column;
+        var dr = to.Row - from.Row;
+        var (adc, adr) = (System.Math.Abs(dc), System.Math.Abs(dr));
+        if (!((adc == 2 && adr == 1) || (adc == 1 && adr == 2)))
+            return;   // pas un saut en L (ex. « Repositionnement stratégique ») : rien à enjamber
+
+        var (sc, sr) = adc == 2 ? (System.Math.Sign(dc), 0) : (0, System.Math.Sign(dr));
+        for (var step = 1; step <= 2; step++)
+        {
+            var over = new Cell(from.Column + sc * step, from.Row + sr * step);
+            if (UnitAt(over) != null || (InBounds(over) && BlocksMovement(over)))
+            {
+                unit.RecordObstacleJump();
+                return;
+            }
+        }
+    }
+
     private void EndTurn()
     {
         UpdateWinner();
-        if (!IsOver)
-            CurrentTurn = CurrentTurn.Opponent();
+        if (IsOver)
+            return;
+        CurrentTurn = CurrentTurn.Opponent();
+        if (CurrentTurn == Faction.Player)
+            _extraTurnUsed = false;   // la main revient au joueur : son tour bonus est de nouveau disponible
     }
 
     private void UpdateWinner()
