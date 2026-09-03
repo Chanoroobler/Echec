@@ -49,7 +49,7 @@ public class CommandTreeTests
     public void Prerequisite_NeedsALowerNodeOfTheSameBranch()
     {
         // « logi_reserve_1 » (branche 2, niveau 2) n'est PAS ouvert par un niveau 1 d'une AUTRE branche.
-        var otherBranch = new HashSet<string> { "cmd_Esquive" };   // branche 0
+        var otherBranch = new HashSet<string> { "cmd_Duelliste" };   // branche 0
         Assert.False(Tree.PrerequisiteMet(Node("logi_reserve_1"), otherBranch));
 
         var sameBranch = new HashSet<string> { "logi_deploiement_1" };   // branche 2
@@ -60,7 +60,7 @@ public class CommandTreeTests
     public void Prerequisite_AnyNodeOfTheLevelBelow_OpensTheWholeLevelAbove()
     {
         // Un seul des deux nœuds de niveau 2 suffit à ouvrir LES DEUX nœuds de niveau 3 de la branche.
-        var owned = new HashSet<string> { "cmd_Esquive", "cmd_vie" };
+        var owned = new HashSet<string> { "cmd_Duelliste", "cmd_vie" };
         Assert.True(Tree.PrerequisiteMet(Node("cmd_mouvement"), owned));
         Assert.True(Tree.PrerequisiteMet(Node("cmd_Orage"), owned));
         Assert.False(Tree.PrerequisiteMet(Node("cmd_portee"), owned));   // niveau 4 : rien au niveau 3
@@ -70,10 +70,10 @@ public class CommandTreeTests
     public void Unlock_SpendsPoints_AndRefusesWhenTooExpensive()
     {
         var run = RunWithPoints(2);
-        Assert.True(run.CanUnlock(Node("cmd_Esquive")));
-        Assert.True(run.Unlock(Node("cmd_Esquive")));
+        Assert.True(run.CanUnlock(Node("cmd_Duelliste")));
+        Assert.True(run.Unlock(Node("cmd_Duelliste")));
         Assert.Equal(0, run.CommandPoints);
-        Assert.True(run.IsUnlocked("cmd_Esquive"));
+        Assert.True(run.IsUnlocked("cmd_Duelliste"));
 
         // Plus assez pour le niveau 2 (4 points) : refusé, et rien ne bouge.
         Assert.False(run.CanUnlock(Node("cmd_vie")));
@@ -96,16 +96,16 @@ public class CommandTreeTests
     {
         var run = RunWithPoints(10);
         run.StartBattle();
-        Assert.False(run.CanUnlock(Node("cmd_Esquive")));
-        Assert.False(run.Unlock(Node("cmd_Esquive")));
+        Assert.False(run.CanUnlock(Node("cmd_Duelliste")));
+        Assert.False(run.Unlock(Node("cmd_Duelliste")));
     }
 
     [Fact]
     public void Unlock_RefusesAlreadyOwnedNode()
     {
         var run = RunWithPoints(10);
-        Assert.True(run.Unlock(Node("cmd_Esquive")));
-        Assert.False(run.CanUnlock(Node("cmd_Esquive")));
+        Assert.True(run.Unlock(Node("cmd_Duelliste")));
+        Assert.False(run.CanUnlock(Node("cmd_Duelliste")));
         Assert.Equal(8, run.CommandPoints);   // débité une seule fois
     }
 
@@ -224,13 +224,13 @@ public class CommandTreeTests
     public void CommanderTraitNode_AppliesToTheCommanderOnly()
     {
         var run = RunWithPoints(2);
-        run.Unlock(Node("cmd_Esquive"));   // ce nœud octroie le trait Esquive au commandant
+        run.Unlock(Node("cmd_Duelliste"));   // ce nœud octroie le trait Duelliste au commandant
 
         var commander = run.Commander;
-        Assert.True(commander.Spawn(Faction.Player, run.BuffsFor(commander)).HasTrait(Trait.Esquive));
+        Assert.True(commander.Spawn(Faction.Player, run.BuffsFor(commander)).HasTrait(Trait.Duelliste));
 
         var troop = new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass);
-        Assert.False(troop.Spawn(Faction.Player, run.BuffsFor(troop)).HasTrait(Trait.Esquive));
+        Assert.False(troop.Spawn(Faction.Player, run.BuffsFor(troop)).HasTrait(Trait.Duelliste));
     }
 
     [Fact]
@@ -251,11 +251,11 @@ public class CommandTreeTests
     public void ActiveNodesFor_ListsOnlyTheNodesActingOnThatTarget()
     {
         var run = RunWithPoints(100);
-        run.Unlock(Node("cmd_Esquive"));           // commandant
+        run.Unlock(Node("cmd_Duelliste"));           // commandant
         run.Unlock(Node("troupe_vie"));            // troupes
         run.Unlock(Node("logi_deploiement_1"));    // logistique : n'agit sur AUCUNE unité
 
-        Assert.Equal(new[] { "cmd_Esquive" }, run.ActiveNodesFor(commander: true).Select(n => n.Id));
+        Assert.Equal(new[] { "cmd_Duelliste" }, run.ActiveNodesFor(commander: true).Select(n => n.Id));
         Assert.Equal(new[] { "troupe_vie" }, run.ActiveNodesFor(commander: false).Select(n => n.Id));
     }
 
@@ -333,7 +333,7 @@ public class CommandTreeTests
     public void PerDistinctPairNode_ScalesWithTheRosterVariety()
     {
         var run = RunWithPoints(100);
-        run.Unlock(Node("cmd_Esquive"));
+        run.Unlock(Node("cmd_Duelliste"));
         run.Unlock(Node("cmd_vie"));     // +2 PV au commandant PAR PAIRE de classes distinctes
 
         var commander = run.Commander;
@@ -413,9 +413,9 @@ public class CommandTreeTests
     {
         var roster = new List<UnitSpec> { new(Domaine.Dame, Commandes.Commander.BaseClass, essential: true) };
         var run = Run.Restore(roster, 1, 1, false, commandPoints: 4,
-            unlockedNodes: new[] { "cmd_Esquive", "noeud_supprime_du_json" });
+            unlockedNodes: new[] { "cmd_Duelliste", "noeud_supprime_du_json" });
 
-        Assert.True(run.IsUnlocked("cmd_Esquive"));
+        Assert.True(run.IsUnlocked("cmd_Duelliste"));
         Assert.Single(run.UnlockedNodes);
     }
 
@@ -468,7 +468,7 @@ public class CommandTreeTests
     public void NodeIcon_DefaultsToTheNodeId()
     {
         // Sans champ « icon » explicite dans le JSON, l'icône d'un nœud est son id — quel que soit l'effet.
-        Assert.Equal("cmd_Esquive", Node("cmd_Esquive").Icon);
+        Assert.Equal("cmd_Duelliste", Node("cmd_Duelliste").Icon);
         Assert.Equal("logi_reserve_1", Node("logi_reserve_1").Icon);
     }
 

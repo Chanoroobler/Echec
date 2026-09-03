@@ -54,7 +54,7 @@ public static class CommandTrees
         new CommandTree(DefaultTreeId, new[]
         {
             // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────
-            Node("cmd_Esquive",    0, 1, CommandEffect.CommanderTrait(Trait.Esquive)),
+            Node("cmd_Duelliste",  0, 1, CommandEffect.CommanderTrait(Trait.Duelliste)),
             Node("cmd_puissance",  0, 2, CommandEffect.CommanderStat(EquipStat.Damage, 1, CommandScale.PerDistinctPair)),
             Node("cmd_vie",        0, 2, CommandEffect.CommanderStat(EquipStat.Hp, 2, CommandScale.PerDistinctPair)),
             Node("cmd_mouvement",  0, 3, CommandEffect.CommanderStat(EquipStat.MoveRange, 1)),

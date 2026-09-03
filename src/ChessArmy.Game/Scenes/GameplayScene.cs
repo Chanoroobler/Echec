@@ -443,6 +443,13 @@ public sealed class GameplayScene : Scene
     private Equipment? _dragEquip;     // équipement porté à la souris (null sinon)
     private UnitSpec? _dragEquipFrom;  // pion d'origine du portage (null = vient du bandeau d'inventaire)
     private int _equipFocus;           // index d'inventaire sous le focus (manette)
+    private int _equipScroll;          // 1re ligne visible du bandeau d'équipement quand il déborde du panneau
+    // MANETTE : focus sur les boutons du panneau d'équipement (RETOUR au-dessus, COMBAT en dessous). Sans
+    // eux, un inventaire vide ne laissait AUCUNE cible de focus dans le panneau (bouton COMBAT hors portée).
+    private bool _gpEquipButtons;
+    private int _equipBtnFocus;
+    private const int EquipBackBtn = 0;
+    private const int EquipFightBtn = 1;
 
     // Fusion (placement) : pile d'unités identiques en cours d'assemblage par empilement. _fusionGroup
     // = toutes les pièces de la pile (vide=rien, 1..N-1=empilement, ==FusionSize=popup de choix).
@@ -535,6 +542,12 @@ public sealed class GameplayScene : Scene
     private static readonly Color LoneWolfAuraColor = Palette.Cyan1;   // bleu clair #699fad
     private readonly List<Cell> _threatCells = new();
     private readonly HashSet<Cell> _enemyThreatSet = new();   // cases menacées par ≥ 1 ennemi (icône « ! » sur les alliés)
+    // Teinte de la zone de déploiement, recalculée à chaque map (cf. ComputeDeployTint) + cache des couleurs
+    // moyennes de tuiles qui la nourrit (lecture CPU d'une texture : chère et invariante).
+    private Color? _deployTint;
+    private readonly Dictionary<(Texture2D, Rectangle), Color> _tileAvgColor = new();
+    // Allié menacé → dégâts de la plus grosse attaque à portée (aperçu sur sa barre de vie, cf. BuildAllyThreatPreviews).
+    private readonly Dictionary<Cell, int> _allyThreatPreview = new();
     private readonly List<Cell> _auraCarriers = new();        // porteurs d'une même famille d'aura (barrière fusionnée)
     private readonly HashSet<Cell> _auraCells = new();        // union des cases couvertes par la famille (contour partagé)
     // Aperçu au SURVOL d'un pion joueur (rien de sélectionné) : buffers distincts de la sélection.
@@ -769,11 +782,35 @@ public sealed class GameplayScene : Scene
             try
             {
                 var map = MapLoader.Parse(System.IO.File.ReadAllText(file), _catalog);
-                if (!map.IsDraft)                 // BROUILLON : map WIP exclue du jeu (jamais tirée)
-                    _maps.Add(map);
+                if (map.IsDraft)                  // BROUILLON : map WIP exclue du jeu (jamais tirée)
+                    continue;
+                if (Context.Settings.IsDemo && IsIceMap(map))   // DÉMO : pas de maps de glace
+                    continue;
+                _maps.Add(map);
             }
             catch { /* map mal formée : ignorée, les autres restent chargées */ }
         }
+    }
+
+    /// <summary>Préfixe des identifiants de tuiles du tileset hivernal (cf. Assets/Tiles/tiles.json).</summary>
+    private const string IceTilePrefix = "neige_";
+
+    /// <summary>
+    /// Map au thème GLACE ? Mesuré sur les TUILES (majorité de tuiles du tileset « neige ») et non sur le nom
+    /// du fichier : renommer une map ne doit pas changer ce qu'elle est, et une map d'un autre thème qui pose
+    /// quelques plaques de glace décoratives n'est pas concernée. Ces maps sont écartées de la DÉMO.
+    /// </summary>
+    private static bool IsIceMap(MapData map)
+    {
+        var ice = 0;
+        var total = map.Width * map.Height;
+        if (total <= 0)
+            return false;
+        for (var row = 0; row < map.Height; row++)
+            for (var col = 0; col < map.Width; col++)
+                if (map.TileAt(new Cell(col, row)).Id.StartsWith(IceTilePrefix, System.StringComparison.OrdinalIgnoreCase))
+                    ice++;
+        return ice * 2 > total;
     }
 
     /// <summary>
@@ -1157,6 +1194,10 @@ public sealed class GameplayScene : Scene
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
         _specialBriefOpen = _specialMission;
 
+        // Teinte de la zone de déploiement, choisie d'après le terrain de CETTE map (cf. ComputeDeployTint).
+        // Ici et pas au rendu : GetData ne doit pas viser une texture liée au device pendant un batch.
+        ComputeDeployTint();
+
         // Effet d'émergence : les tuiles sortent de l'eau (fondu + remontée), en cascade (cf. BoardIntroAnim).
         _boardIntro = 0f;
         _boardIntroTotal = Columns * Rows * BoardIntroStagger + BoardIntroRise;
@@ -1184,6 +1225,7 @@ public sealed class GameplayScene : Scene
         _dragEquip = null;
         _dragEquipFrom = null;
         _equipFocus = 0;
+        _equipScroll = 0;
         _facesDown.Clear();
         _enemyForcedFacing.Clear();
         _playerSpec.Clear();
@@ -1572,6 +1614,7 @@ public sealed class GameplayScene : Scene
         // croissante (0 % mission 1, +5 %/mission dès la mission 2) d'un TIER 2 parmi les T2 déjà découverts
         // (cf. RollSeenRecruit) — sans effet tant qu'aucun T2 n'est découvert.
         _recrueReveal = _run.RollSeenRecruit(new System.Random(), Context.Saves.IsUnitDiscovered);
+        _gpInventory = false;   // manette : on arrive sur la carte, RB entre ensuite dans la réserve
         Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
 
@@ -2221,8 +2264,8 @@ public sealed class GameplayScene : Scene
             if (TutorialSkipPressed()) { EndTutorial(); return; }
             var pre = _tutorial.Step;
             UpdateTutorialPlacement();
-            if (pre is TutorialStep.Intro or TutorialStep.ReviewCard)
-                return;   // intro / revue : placement gelé (et le clic d'avancement est consommé)
+            if (pre is TutorialStep.Intro or TutorialStep.PadLesson or TutorialStep.ReviewCard)
+                return;   // intro / leçon manette / revue : placement gelé (et le clic d'avancement est consommé)
         }
 
         // Popup de fusion ouverte : on gèle le placement et on ne traite que son choix.
@@ -2242,6 +2285,15 @@ public sealed class GameplayScene : Scene
         // Fin du feu d'artifice de fusion : les particules continuent de vivre après l'animation.
         if (_sparks.HasActive)
             _sparks.Update((float)gameTime.ElapsedGameTime.TotalSeconds);
+
+        // Bascule MINIATURE ↔ DÉTAILLÉE de la carte d'aperçu, comme en combat. À la manette c'est LT : X est
+        // déjà pris au placement (relance du pion porté, fusion dans le panneau de réserve) et la bascule doit
+        // marcher PARTOUT, plateau comme réserve. Le clic droit, lui, n'a aucun autre rôle au placement.
+        if (Context.Input.WasLeftTriggerPressed || Context.Input.WasRightClicked)
+        {
+            _detailedTooltip = !_detailedTooltip;
+            Context.Sounds.Play("menu_click");
+        }
 
         if (Context.Input.UsingGamepad)
             UpdatePlacementGamepad();
@@ -2322,7 +2374,12 @@ public sealed class GameplayScene : Scene
         {
             case TutorialStep.Intro:
                 if (Advanced())
-                    t.Advance();                            // intro lue → PickSoldier
+                    t.Advance();                            // intro lue → PadLesson
+                break;
+            case TutorialStep.PadLesson:
+                // Leçon PROPRE À LA MANETTE (croix ≠ stick) : à la souris on l'enjambe sans rien afficher.
+                if (!Context.Input.UsingGamepad || Advanced())
+                    t.Advance();                            // → PickSoldier
                 break;
             case TutorialStep.PickSoldier:
                 if (_dragSpec != null)
@@ -2455,6 +2512,14 @@ public sealed class GameplayScene : Scene
     private bool Advanced() =>
         Context.Input.WasLeftClicked || Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter);
 
+    /// <summary>
+    /// Texte de tutoriel ADAPTÉ AU PÉRIPHÉRIQUE : à la manette, la variante « clé_gp » quand elle existe,
+    /// sinon le texte commun (les consignes neutres n'ont pas de doublon à maintenir). Évite d'expliquer
+    /// « clique » et « glisse » à quelqu'un qui joue au pad — et l'inverse.
+    /// </summary>
+    private string TutoT(string key) =>
+        Context.Input.UsingGamepad ? Loc.TOr(key + "_gp", Loc.T(key)) : Loc.T(key);
+
     /// <summary>Rapproche l'ennemi du tuto : 3 cases DEVANT le soldat posé (même colonne) → 1 pas chacun = corps à corps.</summary>
     /// <summary>
     /// Repose le coffre du tuto sur une case ADJACENTE au soldat qui vient d'être posé. La map en déclare
@@ -2565,7 +2630,9 @@ public sealed class GameplayScene : Scene
             && _cursor.Column == Columns - 1 && EnterPanelFocus())
             return;
 
-        MoveCursor();
+        // Croix = saut de pion posé en pion posé — SAUF en portant une pièce : il faut alors viser des
+        // cases vides, donc le curseur redevient case par case.
+        MoveCursor(_dragSpec == null && !_carryPile ? PlayerUnitCells : null);
 
         // X en PORTANT un pion : le RELANCE (échange contre un pion du même tier), équivalent manette du
         // glisser sur l'icône à la souris. Le remplaçant rejoint la réserve. Sans effet si plus de relance.
@@ -2574,6 +2641,17 @@ public sealed class GameplayScene : Scene
         {
             _dragSpec = null;
             _dragFrom = null;
+            return;
+        }
+
+        // RB en PORTANT un pion : le renvoie dans la réserve (équivalent manette du glisser vers le
+        // panneau). Sans quoi un pion posé ne pouvait plus quitter le plateau que par un échange.
+        if (Context.Input.WasRightShoulderPressed && !_carryPile && _dragSpec is { Essential: false } stashed)
+        {
+            _pending.Add(stashed);
+            _dragSpec = null;
+            _dragFrom = null;
+            Context.Sounds.Play("unit_pick");
             return;
         }
 
@@ -2737,13 +2815,112 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    /// <summary>Déplace le curseur de case à la croix directionnelle (borné au plateau).</summary>
-    private void MoveCursor()
+    /// <summary>
+    /// Déplace le curseur de case à la manette (borné au plateau). Deux vitesses :
+    /// le STICK avance toujours d'UNE case ; la CROIX SAUTE directement à la cible utile la plus proche
+    /// dans la direction pressée (<paramref name="snapTargets"/> : pions alliés, ou cibles d'action quand
+    /// un pion est sélectionné). Sans liste de cibles, la croix retombe sur le pas d'une case.
+    /// </summary>
+    private void MoveCursor(System.Func<List<Cell>>? snapTargets = null)
     {
-        if (Context.Input.Nav(NavDir.Up)) _cursor = new Cell(_cursor.Column, System.Math.Max(0, _cursor.Row - 1));
-        if (Context.Input.Nav(NavDir.Down)) _cursor = new Cell(_cursor.Column, System.Math.Min(Rows - 1, _cursor.Row + 1));
-        if (Context.Input.Nav(NavDir.Left)) _cursor = new Cell(System.Math.Max(0, _cursor.Column - 1), _cursor.Row);
-        if (Context.Input.Nav(NavDir.Right)) _cursor = new Cell(System.Math.Min(Columns - 1, _cursor.Column + 1), _cursor.Row);
+        List<Cell>? targets = null;
+        var resolved = false;
+        for (var i = 0; i < 4; i++)
+        {
+            var dir = (NavDir)i;
+            if (snapTargets != null && Context.Input.NavDPad(dir))
+            {
+                if (!resolved) { targets = snapTargets(); resolved = true; }   // liste calculée au 1er besoin
+                if (targets is { Count: > 0 })
+                {
+                    // Rien dans cette direction : le curseur reste sur place (pas de repli case par case).
+                    if (NearestTowards(_cursor, targets, dir) is { } target) _cursor = target;
+                    continue;
+                }
+            }
+            if (Context.Input.Nav(dir))   // stick, ou croix quand il n'y a aucune cible où sauter
+                StepCursor(dir);
+        }
+    }
+
+    /// <summary>Avance le curseur d'une case dans <paramref name="dir"/>, borné au plateau.</summary>
+    private void StepCursor(NavDir dir)
+    {
+        _cursor = dir switch
+        {
+            NavDir.Up => new Cell(_cursor.Column, System.Math.Max(0, _cursor.Row - 1)),
+            NavDir.Down => new Cell(_cursor.Column, System.Math.Min(Rows - 1, _cursor.Row + 1)),
+            NavDir.Left => new Cell(System.Math.Max(0, _cursor.Column - 1), _cursor.Row),
+            _ => new Cell(System.Math.Min(Columns - 1, _cursor.Column + 1), _cursor.Row),
+        };
+    }
+
+    /// <summary>
+    /// Cible la plus proche de <paramref name="from"/> STRICTEMENT dans la direction <paramref name="dir"/>.
+    /// Le classement privilégie l'alignement (l'écart latéral compte double) puis la proximité, pour que
+    /// « droite » aille au voisin de droite plutôt qu'à une pièce lointaine en diagonale. Null si aucune.
+    /// </summary>
+    private static Cell? NearestTowards(Cell from, IReadOnlyList<Cell> targets, NavDir dir)
+    {
+        Cell? best = null;
+        var bestScore = int.MaxValue;
+        foreach (var c in targets)
+        {
+            if (c == from) continue;
+            var dc = c.Column - from.Column;
+            var dr = c.Row - from.Row;
+            var (ahead, side) = dir switch
+            {
+                NavDir.Up => (-dr, System.Math.Abs(dc)),
+                NavDir.Down => (dr, System.Math.Abs(dc)),
+                NavDir.Left => (-dc, System.Math.Abs(dr)),
+                _ => (dc, System.Math.Abs(dr)),
+            };
+            if (ahead <= 0) continue;
+            var score = ahead + side * 2;
+            if (score < bestScore) { bestScore = score; best = c; }
+        }
+        return best;
+    }
+
+    /// <summary>Cellule de <paramref name="cells"/> la plus proche de <paramref name="from"/> (distance de roi). Null si la liste est vide.</summary>
+    private static Cell? NearestCell(Cell from, IReadOnlyList<Cell> cells)
+    {
+        Cell? best = null;
+        var bestDist = int.MaxValue;
+        foreach (var c in cells)
+        {
+            var d = System.Math.Max(System.Math.Abs(c.Column - from.Column), System.Math.Abs(c.Row - from.Row));
+            if (d < bestDist) { bestDist = d; best = c; }
+        }
+        return best;
+    }
+
+    /// <summary>Cases des pions ALLIÉS encore en vie (cibles de la croix hors sélection).</summary>
+    private List<Cell> PlayerUnitCells()
+    {
+        var cells = new List<Cell>();
+        foreach (var (cell, unit) in _match.Units())
+            if (unit.Faction == Faction.Player && unit.IsAlive)
+                cells.Add(cell);
+        return cells;
+    }
+
+    /// <summary>
+    /// Cibles de la croix EN COMBAT : avec un pion sélectionné, TOUS ses coups possibles — ennemis à portée,
+    /// alliés soignables ET cases de déplacement légales, dans un même parcours ; sans sélection (ou si le
+    /// pion ne peut rien faire), les pions alliés.
+    /// </summary>
+    private List<Cell> CombatSnapTargets()
+    {
+        if (_selected is not null)
+        {
+            var acts = new List<Cell>(_attackTargets);
+            acts.AddRange(_healTargets);
+            acts.AddRange(_legalMoves);
+            if (acts.Count > 0) return acts;
+        }
+        return PlayerUnitCells();
     }
 
     private void BeginDrag(Point mouse)
@@ -2912,8 +3089,11 @@ public sealed class GameplayScene : Scene
         _dragEquip = null;
         _dragEquipFrom = null;
         _equipFocus = 0;
+        _equipScroll = 0;
         _gpInventory = false;
         _gpButtons = false;
+        _gpEquipButtons = false;
+        _equipBtnFocus = EquipFightBtn;
         ClearSelection();
         Context.Sounds.Play("unit_place");
     }
@@ -2928,11 +3108,20 @@ public sealed class GameplayScene : Scene
             _dragEquipFrom = null;
         }
         _equipPhase = false;
+        _gpEquipButtons = false;
         Context.Sounds.Play("unit_pick");
     }
 
     private void UpdateEquipPhase(GameTime gameTime)
     {
+        // Bascule MINIATURE ↔ DÉTAILLÉE de la carte-tooltip, comme au placement et en combat. Traitée avant
+        // l'aiguillage par périphérique : la sous-phase sort de UpdatePlacement avant sa propre bascule.
+        if (Context.Input.WasLeftTriggerPressed || Context.Input.WasRightClicked)
+        {
+            _detailedTooltip = !_detailedTooltip;
+            Context.Sounds.Play("menu_click");
+        }
+
         if (Context.Input.UsingGamepad)
         {
             UpdateEquipPhaseGamepad();
@@ -2971,25 +3160,65 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    /// <summary>
+    /// Focus manette sur les boutons du panneau d'équipement : Haut/Bas passe de RETOUR à COMBAT, A valide,
+    /// Gauche/B/LB/RB redescend sur les pions.
+    /// </summary>
+    private void UpdateEquipButtonsFocus()
+    {
+        if (Context.Input.Nav(NavDir.Up)) _equipBtnFocus = EquipBackBtn;
+        if (Context.Input.Nav(NavDir.Down)) _equipBtnFocus = EquipFightBtn;
+        if (Context.Input.Nav(NavDir.Left)) { _gpEquipButtons = false; return; }   // sortie par la gauche : plateau
+
+        if (Context.Input.WasConfirmPressed)
+        {
+            _gpEquipButtons = false;
+            if (_equipBtnFocus == EquipFightBtn) BeginBattle();
+            else ExitEquipPhase();
+            return;
+        }
+
+        if (Context.Input.WasCancelPressed || Context.Input.WasLeftShoulderPressed
+            || Context.Input.WasRightShoulderPressed)
+            _gpEquipButtons = false;   // retour aux pions
+    }
+
     /// <summary>Sous-phase Équipement à la manette : curseur sur un pion, A équipe/déséquipe, LB/RB change l'item, Y combat, B retour.</summary>
     private void UpdateEquipPhaseGamepad()
     {
         // En tuto, la sortie est pilotée par le guide (l'épée posée) : ni combat ni retour.
         if (_tutorial == null)
         {
-            if (Context.Input.WasQuaternaryPressed) { BeginBattle(); return; }   // Y = Combat
-            if (Context.Input.WasCancelPressed) { ExitEquipPhase(); return; }    // B = retour au placement
+            if (Context.Input.WasQuaternaryPressed) { BeginBattle(); return; }   // Y = Combat (raccourci)
+            if (!_gpEquipButtons && Context.Input.WasCancelPressed) { ExitEquipPhase(); return; }   // B = placement
         }
 
-        MoveCursor();
+        // Focus sur les boutons RETOUR / COMBAT du panneau (la croix les parcourt, A valide).
+        if (_gpEquipButtons) { UpdateEquipButtonsFocus(); return; }
 
         var inv = _run.EquipmentInventory;
+
+        // Entrée dans les boutons : DROITE quand plus aucun pion n'est à droite du curseur (le focus
+        // continue naturellement dans le panneau, comme au placement), ou RB si l'inventaire est vide
+        // (RB y sert sinon à changer d'objet).
+        if (_tutorial == null
+            && ((Context.Input.NavDPad(NavDir.Right) && NearestTowards(_cursor, PlayerUnitCells(), NavDir.Right) is null)
+                || (inv.Count == 0 && Context.Input.WasRightShoulderPressed)))
+        {
+            _gpEquipButtons = true;
+            _equipBtnFocus = EquipFightBtn;
+            return;
+        }
+
+        MoveCursor(PlayerUnitCells);   // croix : de pion équipable en pion équipable
+
         if (inv.Count > 0)
         {
             if (Context.Input.WasRightShoulderPressed) _equipFocus = (_equipFocus + 1) % inv.Count;
             if (Context.Input.WasLeftShoulderPressed) _equipFocus = (_equipFocus + inv.Count - 1) % inv.Count;
         }
         _equipFocus = inv.Count == 0 ? 0 : System.Math.Clamp(_equipFocus, 0, inv.Count - 1);
+        EnsureEquipFocusVisible();   // le bandeau défile pour garder l'objet focus à l'écran
 
         // X : RECYCLER l'équipement focus de l'inventaire → +1 relance (l'objet est DÉTRUIT).
         if (_tutorial == null && Context.Input.WasTertiaryPressed && inv.Count > 0)
@@ -3127,7 +3356,7 @@ public sealed class GameplayScene : Scene
     {
         var inv = _run.EquipmentInventory;
         for (var i = 0; i < inv.Count; i++)
-            if (EquipRowRect(i).Contains(p))
+            if (EquipRowVisible(i) && EquipRowRect(i).Contains(p))   // une ligne défilée hors vue ne se clique pas
                 return i;
         return null;
     }
@@ -3716,7 +3945,12 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Souris : survol = focus, clic = valide ; clic sur Annuler ferme.
+        // Souris : survol = focus, clic = valide ; clic sur Annuler ferme. IGNORÉ à la manette : le pointeur
+        // reste là où on l'a laissé, et s'il tombe sur une carte il réécrivait le focus à CHAQUE frame — la
+        // navigation à la croix était annulée aussitôt et A validait la carte sous la souris.
+        if (Context.Input.UsingGamepad)
+            return;
+
         var mouse = Context.Input.MousePosition;
         for (var i = 0; i < count; i++)
         {
@@ -3832,8 +4066,12 @@ public sealed class GameplayScene : Scene
                 if (_run.IsReserveFull)
                 {
                     // Réserve pleine : gérer la RÉSERVE (empiler/supprimer) pour faire de la place, ou
-                    // ABANDONNER le pion (bouton / B ; le paysan reste compté pour l'objectif).
+                    // ABANDONNER le pion (bouton / B ; le paysan reste compté pour l'objectif). À la manette,
+                    // RB entre dans le panneau (X fusionne, Y supprime) — sans quoi la réserve était
+                    // inaccessible ici et il ne restait qu'à abandonner la recrue.
                     if (HandleReserveDrag())
+                        return;
+                    if (UpdateReservePanelGamepad())
                         return;
                     if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availW, vp.Height).Contains(mouse)
                         || Context.Input.WasCancelPressed)
@@ -3847,6 +4085,7 @@ public sealed class GameplayScene : Scene
                     _recruitFrom = new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f);
                     _recruitChoice = gained;
                     _recruitHold = RecruitFlightDuration;
+                    _gpInventory = false;   // la place est faite : plus de focus réserve pendant le vol
                     Context.Sounds.Play("unit_place");
                 }
             }
@@ -3946,10 +4185,11 @@ public sealed class GameplayScene : Scene
                 return;
         }
 
-        // Bascule tooltip CONDENSÉ ↔ DÉTAILLÉ, valable sur les deux tours (avant l'aiguillage). X manette à
-        // tout moment ; clic droit SEULEMENT s'il n'annule pas une sélection/un glisser — sinon l'annulation
-        // prime (cf. UpdatePlayerTurn), le clic droit n'est donc pas volé.
-        if (Context.Input.WasTertiaryPressed
+        // Bascule tooltip CONDENSÉ ↔ DÉTAILLÉ, valable sur les deux tours (avant l'aiguillage). LT à la manette
+        // (X y est déjà pris par la fusion dans le panneau de réserve) ; clic droit SEULEMENT s'il n'annule pas
+        // une sélection/un glisser — sinon l'annulation prime (cf. UpdatePlayerTurn), le clic droit n'est donc
+        // pas volé.
+        if (Context.Input.WasLeftTriggerPressed
             || (Context.Input.WasRightClicked && _selected is null && _combatDragFrom is null))
         {
             _detailedTooltip = !_detailedTooltip;
@@ -4257,100 +4497,97 @@ public sealed class GameplayScene : Scene
         switch (t.Step)
         {
             case TutorialStep.Intro:
-                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.intro_title"), Loc.T("tuto.intro_body"), Loc.T("tuto.intro_continue"));
+                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.intro_title"), TutoT("tuto.intro_body"), TutoT("tuto.intro_continue"));
+                break;
+            case TutorialStep.PadLesson:
+                // Manette seulement (l'étape s'auto-enjambe à la souris) : croix ≠ stick gauche.
+                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.pad_title"), TutoT("tuto.pad_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.PickSoldier:
                 // À côté de la carte du soldat dans l'inventaire.
-                DrawAnchoredPopup(sb, PanelCardRect(0), Loc.T("tuto.pick_soldier"), null);
+                DrawAnchoredPopup(sb, PanelCardRect(0), TutoT("tuto.pick_soldier"), null);
                 break;
             case TutorialStep.PlaceSoldier:
                 // Près de la zone de déploiement (bas du plateau).
-                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), Loc.T("tuto.place_soldier"), null);
+                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), TutoT("tuto.place_soldier"), null);
                 break;
             case TutorialStep.ReviewCard:
                 DrawTutorialCardReview(sb, viewport);
                 break;
             case TutorialStep.StartCombat:
-            {
                 // Près du soldat posé ; touche de lancement selon le périphérique.
-                var key = Context.Input.UsingGamepad ? "tuto.start_combat_gp" : "tuto.start_combat";
-                DrawPawnPopup(sb, board, t.PlayerSoldier, Loc.T(key), null);
+                DrawPawnPopup(sb, board, t.PlayerSoldier, TutoT("tuto.start_combat"), null);
                 break;
-            }
             case TutorialStep.CameraLesson:
-                DrawPawnPopup(sb, board, t.Commander,
-                    Loc.T(Context.Input.UsingGamepad ? "tuto.camera_gp" : "tuto.camera"), Loc.T("tuto.next"));
+                DrawPawnPopup(sb, board, t.Commander, TutoT("tuto.camera"), TutoT("tuto.next"));
                 break;
             case TutorialStep.DangerLesson:
-                DrawPawnPopup(sb, board, t.EnemySoldier,
-                    Loc.T(Context.Input.UsingGamepad ? "tuto.danger_gp" : "tuto.danger"), null);
+                DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.danger"), null);
                 break;
             case TutorialStep.Chest:
                 if (t.Chest is { } chestCell)
-                    DrawPawnPopup(sb, board, chestCell, Loc.T("tuto.chest"), null);
+                    DrawPawnPopup(sb, board, chestCell, TutoT("tuto.chest"), null);
                 break;
             case TutorialStep.Move:
                 if (_match.CurrentTurn == Faction.Enemy)
-                    DrawPawnPopup(sb, board, t.EnemySoldier, Loc.T("tuto.enemy_plays"), null);
+                    DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.enemy_plays"), null);
                 else
-                    DrawPawnPopup(sb, board, t.PlayerSoldier, Loc.T("tuto.move"), null);
+                    DrawPawnPopup(sb, board, t.PlayerSoldier, TutoT("tuto.move"), null);
                 break;
             case TutorialStep.ReplayLesson:
                 if (!_fx.Active)   // pendant le replay lui-même, on n'affiche pas de pop par-dessus l'anim
-                    DrawPawnPopup(sb, board, t.EnemySoldier,
-                        Loc.T(Context.Input.UsingGamepad ? "tuto.replay_gp" : "tuto.replay"), null);
+                    DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.replay"), null);
                 break;
             case TutorialStep.Attack:
                 if (!_fx.Active)
                 {
                     if (_match.CurrentTurn == Faction.Enemy)
-                        DrawPawnPopup(sb, board, t.EnemySoldier, Loc.T("tuto.counter"), null);   // l'ennemi va contre-attaquer
+                        DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.counter"), null);   // l'ennemi va contre-attaquer
                     else
                     {
                         // 1re attaque (ennemi intact) vs 2e attaque (ennemi blessé → prise de place).
                         var enemy = _match.UnitAt(t.EnemySoldier);
                         var damaged = enemy != null && enemy.Hp < enemy.MaxHp;
-                        DrawPawnPopup(sb, board, t.EnemySoldier, Loc.T(damaged ? "tuto.attack2" : "tuto.attack"), null);
+                        DrawPawnPopup(sb, board, t.EnemySoldier, TutoT(damaged ? "tuto.attack2" : "tuto.attack"), null);
                     }
                 }
                 break;
             case TutorialStep.Commander:
                 if (!_fx.Active)   // on laisse l'attaque se terminer avant d'afficher la pop commandant
-                    DrawPawnPopup(sb, board, t.Commander, Loc.T("tuto.commander"), Loc.T("tuto.continue"));
+                    DrawPawnPopup(sb, board, t.Commander, TutoT("tuto.commander"), TutoT("tuto.continue"));
                 break;
 
             // ── Préparation guidée ──────────────────────────────────────────────────────────────
             case TutorialStep.FusionIntro:
-                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.fusion_title"), Loc.T("tuto.fusion_body"), Loc.T("tuto.intro_continue"));
+                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.fusion_title"), TutoT("tuto.fusion_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.FusionDo:
                 if (!FusionOpen && !EvoPlaying && _pending.Count > 0)
-                    DrawAnchoredPopup(sb, PanelCardRect(0), Loc.T("tuto.fusion_do"), null);
+                    DrawAnchoredPopup(sb, PanelCardRect(0), TutoT("tuto.fusion_do"), null);
                 break;
             case TutorialStep.RerollLesson:
-                DrawAnchoredPopup(sb, RerollIconRect(), Loc.T("tuto.reroll"), Loc.T("tuto.next"));
+                DrawAnchoredPopup(sb, RerollIconRect(), TutoT("tuto.reroll"), TutoT("tuto.next"));
                 break;
             case TutorialStep.DeployFused:
-                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), Loc.T("tuto.deploy_fused"), null);
+                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), TutoT("tuto.deploy_fused"), null);
                 break;
             case TutorialStep.EquipIntro:
-                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.equip_title"), Loc.T("tuto.equip_body"), Loc.T("tuto.intro_continue"));
+                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.equip_title"), TutoT("tuto.equip_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.EquipDo:
-                DrawAnchoredPopup(sb, EquipRowRect(0), Loc.T("tuto.equip_do"), null);
+                DrawAnchoredPopup(sb, EquipRowRect(0), TutoT("tuto.equip_do"), null);
                 break;
             case TutorialStep.TreeIntro:
-                DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.tree_title"), Loc.T("tuto.tree_body"), Loc.T("tuto.intro_continue"));
+                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.tree_title"), TutoT("tuto.tree_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.TreeOpen:
-                DrawAnchoredPopup(sb, CommandTreeButtonRect(),
-                    Loc.T(Context.Input.UsingGamepad ? "tuto.tree_open_gp" : "tuto.tree_open"), null);
+                DrawAnchoredPopup(sb, CommandTreeButtonRect(), TutoT("tuto.tree_open"), null);
                 break;
             case TutorialStep.TreeDo:
                 break;   // l'arbre est ouvert par-dessus : le rappel est dessiné après la modale
             case TutorialStep.Done:
                 if (!_fx.Active)
-                    DrawTutorialBigPanel(sb, viewport, Loc.T("tuto.victory_title"), Loc.T("tuto.recap_body"), Loc.T("tuto.continue"));
+                    DrawTutorialBigPanel(sb, viewport, TutoT("tuto.victory_title"), TutoT("tuto.recap_body"), TutoT("tuto.continue"));
                 break;
         }
 
@@ -4389,7 +4626,7 @@ public sealed class GameplayScene : Scene
         // Bulle « pop » à GAUCHE de la carte (espace libre de ce côté), alignée sur la donnée encadrée.
         const int pad = 14;
         const int bw = 360;
-        var lines = WrapText(Loc.T(keys[idx]), bw - 2 * pad, 1);
+        var lines = WrapText(TutoT(keys[idx]), bw - 2 * pad, 1);
         var bh = pad + 14 + lines.Count * 12 + 16 + pad;
         var by = System.Math.Clamp(statRect.Y + statRect.Height / 2 - bh / 2, 20, viewport.Height - bh - 20);
         var bubble = new Rectangle(cardRect.X - 28 - bw, by, bw, bh);
@@ -4402,8 +4639,7 @@ public sealed class GameplayScene : Scene
             Context.Font.Draw(sb, line, new Vector2(bubble.X + pad, ty), 1, Palette.White, preserveCase: true);
             ty += 12;
         }
-        var contKey = Context.Input.UsingGamepad ? "tuto.card_continue_gp" : "tuto.card_continue";
-        Context.Font.DrawCentered(sb, Loc.T(contKey),
+        Context.Font.DrawCentered(sb, TutoT("tuto.card_continue"),
             new Rectangle(bubble.X, bubble.Bottom - 16, bubble.Width, 10), 1, Palette.Cyan1, preserveCase: true);
     }
 
@@ -4535,7 +4771,7 @@ public sealed class GameplayScene : Scene
     private void DrawTutorialTreeHint(SpriteBatch sb, Viewport viewport)
     {
         // L'indice suit le périphérique courant (clic à la souris, A à la manette).
-        var text = Loc.T(Context.Input.UsingGamepad ? "tuto.tree_do_gp" : "tuto.tree_do");
+        var text = TutoT("tuto.tree_do");
         var w = Context.Font.Measure(text, 1) + 40;
         var box = new Rectangle((viewport.Width - w) / 2, viewport.Height - 52, w, 30);
 
@@ -4809,18 +5045,23 @@ public sealed class GameplayScene : Scene
             }
     }
 
+    /// <summary>Plafond de cartes offertes par l'écran de récompense de fin de mission.</summary>
+    private const int MaxProtectRewards = 4;
+
     /// <summary>
     /// Récompense de la mission « protéger » : 1 recrue (pion tier-1 déjà vu, comme une tuile recrue) par
-    /// paysan encore VIVANT à la fin. Tirée mais PAS encore ajoutée au roster — l'écran de récompense
-    /// (_protectReward) les montre, puis le clic les verse en réserve (cf. UpdateRecruitment).
+    /// paysan encore VIVANT à la fin, dans la limite de <see cref="MaxProtectRewards"/>. Tirée mais PAS
+    /// encore ajoutée au roster — l'écran de récompense (_protectReward) les montre, puis le clic les
+    /// verse en réserve (cf. UpdateRecruitment).
     /// </summary>
     private List<UnitSpec> RollProtectedPaysanRecruits()
     {
         var rng = new System.Random();
         var list = new List<UnitSpec>();
-        // Borné au plafond de réserve : on ne peut de toute façon pas en garder plus (évite un écran de
-        // récompense incollectable si la map a beaucoup de paysans).
-        var n = System.Math.Min(PaysansProtected, _run.ReserveLimit);
+        // Borné au plafond de réserve (on ne peut de toute façon pas en garder plus) ET à MaxProtectRewards :
+        // une carte par paysan sauvé déborderait de la rangée sur les grandes maps, et la récompense
+        // deviendrait la plus grosse de la run.
+        var n = System.Math.Min(System.Math.Min(PaysansProtected, MaxProtectRewards), _run.ReserveLimit);
         for (var k = 0; k < n; k++)
             list.Add(_run.RollSeenTier1(rng, Context.Saves.IsUnitDiscovered));
         return list;
@@ -4859,6 +5100,9 @@ public sealed class GameplayScene : Scene
         _evoPhase = EvoPhase.None;
         _dragSpec = null;
         _dragFrom = null;
+        _gpInventory = false;   // manette : on arrive sur les cartes, RB entre dans la réserve
+        _invFocus = 0;
+        _invScrollRow = 0;
         _pending.Clear();
         _pending.AddRange(ArmyMinusCommander());
     }
@@ -4871,7 +5115,7 @@ public sealed class GameplayScene : Scene
         // Manette : curseur de case, A agit (sélectionne / déplace / attaque), B désélectionne.
         if (Context.Input.UsingGamepad)
         {
-            MoveCursor();
+            MoveCursor(CombatSnapTargets);
             if (Context.Input.WasConfirmPressed) { CombatActAt(_cursor); return; }
             if (Context.Input.WasCancelPressed && _selected is not null)
             {
@@ -4933,6 +5177,12 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _attackReach);
             _match.HealTargets(cell, _healTargets);
             FilterTutorialActions();
+
+            // Manette : le curseur se pose d'emblée sur l'ennemi attaquable le PLUS PROCHE — attaquer ne
+            // demande plus qu'un A. Sans cible à portée, il reste sur le pion sélectionné.
+            if (Context.Input.UsingGamepad && NearestCell(cell, _attackTargets) is { } firstTarget)
+                _cursor = firstTarget;
+
             Context.Sounds.Play("unit_select");
         }
         else
@@ -5238,7 +5488,7 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// « Séisme » : à la FIN du tour ennemi, chaque pion JOUEUR portant le trait frappe les ennemis adjacents
-    /// pour sa puissance (cf. <see cref="Match.ApplySeismes"/>). Feedback : les tuiles de l'AoE tremblent de
+    /// pour la MOITIÉ de sa puissance (cf. <see cref="Match.ApplySeismes"/>). Feedback : les tuiles de l'AoE tremblent de
     /// haut en bas (cf. TileTremor) + poussière + un chiffre de dégâts par cible + le son « seisme ». Les
     /// dégâts/kills sont déjà appliqués côté moteur.
     /// </summary>
@@ -5305,6 +5555,8 @@ public sealed class GameplayScene : Scene
 
             if (HandleReserveDrag())   // empiler (fusion) / supprimer pour faire de la place
                 return;
+            if (UpdateReservePanelGamepad())   // même gestion à la manette (RB → panneau)
+                return;
             UpdateRewardChecks(rewards);
             return;
         }
@@ -5334,6 +5586,8 @@ public sealed class GameplayScene : Scene
 
             // Tenu, réserve pleine : gérer la réserve (empiler/supprimer), re-choisir une carte, ou abandonner.
             if (HandleReserveDrag())
+                return;
+            if (UpdateReservePanelGamepad())
                 return;
             var vpH = VirtualViewport;
             var availWH = vpH.Width - RightPanelWidth;
@@ -5373,6 +5627,8 @@ public sealed class GameplayScene : Scene
         // il sera « tenu » (affiché) jusqu'à ce qu'on fasse de la place ou qu'on l'abandonne.
         if (HandleReserveDrag())
             return;
+        if (UpdateReservePanelGamepad())
+            return;
         _recruitFocus = System.Math.Clamp(_recruitFocus, 0, count - 1);
 
         // Manette : navigation gauche/droite (cyclique) + validation sur la carte focus.
@@ -5380,7 +5636,11 @@ public sealed class GameplayScene : Scene
         if (Context.Input.Nav(NavDir.Right)) _recruitFocus = (_recruitFocus + 1) % count;
         if (Context.Input.WasConfirmPressed) { SelectRecruit(_recruitFocus, availW, viewport.Height); return; }
 
-        // Souris : le survol fixe le focus, le clic choisit le pion.
+        // Souris : le survol fixe le focus, le clic choisit le pion. Ignoré à la manette pour la même raison
+        // que la popup de fusion : un pointeur immobile posé sur une carte réécrirait le focus à chaque frame.
+        if (Context.Input.UsingGamepad)
+            return;
+
         var mouse = Context.Input.MousePosition;
         for (var i = 0; i < count; i++)
         {
@@ -5479,13 +5739,74 @@ public sealed class GameplayScene : Scene
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, _run.IsReserveFull ? Palette.Purple5 : Palette.Cyan1);
 
-        // Rappel (souris) : fusion par empilement + suppression au clic droit.
+        var hx = panel.X + PanelPad;
+        var hy = panel.Bottom - 32;
         if (!Context.Input.UsingGamepad)
         {
-            var y = panel.Bottom - 32;
-            Context.Font.Draw(sb, Loc.T("reserve.hint_fuse"), new Vector2(panel.X + PanelPad, y), 1, Palette.Yellow2);
-            Context.Font.Draw(sb, Loc.T("reserve.hint_del"), new Vector2(panel.X + PanelPad, y + 14), 1, Palette.Blue1);
+            // Rappel (souris) : fusion par empilement + suppression au clic droit.
+            Context.Font.Draw(sb, Loc.T("reserve.hint_fuse"), new Vector2(hx, hy), 1, Palette.Yellow2);
+            Context.Font.Draw(sb, Loc.T("reserve.hint_del"), new Vector2(hx, hy + 14), 1, Palette.Blue1);
         }
+        else if (_gpInventory && _pending.Count > 0)
+        {
+            // Manette, dans le panneau : portrait focalisé + actions disponibles dessus.
+            DrawRectBorder(sb, Inflate(PendingCardRect(System.Math.Clamp(_invFocus, 0, _pending.Count - 1)), 2),
+                Palette.Cyan1, 2);
+            Context.Font.Draw(sb, Loc.T("reserve.hint_gp_edit"), new Vector2(hx, hy), 1, Palette.Yellow2);
+            Context.Font.Draw(sb, Loc.T("reserve.hint_gp_back"), new Vector2(hx, hy + 14), 1, Palette.Blue1);
+        }
+        else if (_pending.Count > 0)
+        {
+            Context.Font.Draw(sb, Loc.T("reserve.hint_enter"), new Vector2(hx, hy), 1, Palette.Cyan1);
+        }
+    }
+
+    /// <summary>
+    /// Panneau de RÉSERVE à la MANETTE sur les écrans post-combat (recrutement / récompense) : RB entre dans
+    /// le panneau, la croix choisit un portrait, X fusionne (3 identiques), Y supprime — les deux façons de
+    /// faire de la place quand la réserve est pleine — et B/LB/RB ressort vers les cartes. Pendant de
+    /// <see cref="HandleReserveDrag"/> (souris) ; renvoie vrai si l'entrée a été CONSOMMÉE.
+    /// </summary>
+    private bool UpdateReservePanelGamepad()
+    {
+        if (!Context.Input.UsingGamepad)
+            return false;
+
+        // Hors du panneau : seul RB y entre (le reste de l'entrée va aux cartes).
+        if (!_gpInventory)
+        {
+            if (!Context.Input.WasRightShoulderPressed || _pending.Count == 0)
+                return false;
+            _gpInventory = true;
+            _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+            EnsureInvFocusVisible();
+            return true;
+        }
+
+        if (_pending.Count == 0) { _gpInventory = false; return false; }   // réserve vidée : retour aux cartes
+
+        _invFocus = System.Math.Clamp(_invFocus, 0, _pending.Count - 1);
+        MoveGridFocus(ref _invFocus, _pending.Count, InvCols);
+        EnsureInvFocusVisible();
+
+        if (Context.Input.WasTertiaryPressed && CanFuseFromReserve(_pending[_invFocus]))
+        {
+            OpenFusionFromReserve(_pending[_invFocus]);   // → popup de choix d'évolution (comme au placement)
+            return true;
+        }
+        if (Context.Input.WasQuaternaryPressed)
+        {
+            _run.DeleteUnit(_pending[_invFocus]);
+            _pending.RemoveAt(_invFocus);
+            _invFocus = System.Math.Clamp(_invFocus, 0, System.Math.Max(0, _pending.Count - 1));
+            EnsureInvFocusVisible();
+            Context.Sounds.Play("unit_deselect");
+            return true;
+        }
+        if (Context.Input.WasCancelPressed || Context.Input.WasLeftShoulderPressed
+            || Context.Input.WasRightShoulderPressed)
+            _gpInventory = false;
+        return true;
     }
 
     /// <summary>Rectangle du bouton « Abandonner » (perdre le pion tenu), sous les cartes de draft.</summary>
@@ -5518,7 +5839,7 @@ public sealed class GameplayScene : Scene
                     Context.Sounds.Play("unit_deselect");
                     return;
                 }
-        if (gp && !_reserveZone && rewards.Count > 0)
+        if (gp && !_gpInventory && rewards.Count > 0)
         {
             if (Context.Input.Nav(NavDir.Left)) _rewardFocus = (_rewardFocus - 1 + rewards.Count) % rewards.Count;
             if (Context.Input.Nav(NavDir.Right)) _rewardFocus = (_rewardFocus + 1) % rewards.Count;
@@ -6250,6 +6571,12 @@ public sealed class GameplayScene : Scene
             _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
             ClampInvScroll();
         }
+        else if (scroll != 0 && _equipPhase && !CommandTreeOpen
+            && IsOverPanel(Context.Input.MousePosition) && EquipMaxScroll() > 0)
+        {
+            _equipScroll += scroll < 0 ? 1 : -1;    // même geste sur le bandeau d'équipement
+            ClampEquipScroll();
+        }
         else if (scroll > 0) ZoomStep(+1);
         else if (scroll < 0) ZoomStep(-1);
 
@@ -6468,6 +6795,7 @@ public sealed class GameplayScene : Scene
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // objets ennemis visibles DÈS le placement : ça se prépare
+                DrawBossSkulls(sb, board);          // crâne du boss : même icône que la frise des phases
                 if (_equipPhase)
                 {
                     DrawEquipBadgesPlacement(sb, board); // icône au-dessus de la tête (UNIQUEMENT en phase Équipement)
@@ -6538,6 +6866,7 @@ public sealed class GameplayScene : Scene
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // icône de l'objet porté par un ennemi
+                DrawBossSkulls(sb, board);          // crâne du boss : même icône que la frise des phases
                 DrawAllyThreatIcons(sb, board);          // « ! » au-dessus des alliés à portée d'un ennemi
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
@@ -6672,9 +7001,16 @@ public sealed class GameplayScene : Scene
             if (BoardAssembled) DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawBossSkulls(sb, nb);
             if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
             else DrawFusionBoardStack(sb, nb);   // le pion attrapé passe par la couche curseur (par-dessus tout)
+            // MANETTE : la couche curseur (RenderGhostLayer) ne sert qu'à la souris — pion porté ET curseur
+            // de case vivent sur le PLATEAU, donc ici, au layout natif, sinon ils disparaissent en dézoom.
+            if (Context.Input.UsingGamepad)
+            {
+                if (!_equipPhase) { DrawCarriedAtCursor(sb, nb); DrawCarriedPile(sb, nb); }
+                if (BoardAssembled) DrawGamepadPlacementCursor(sb, nb);
+            }
             sb.End();
         }
         else   // Battle
@@ -6682,9 +7018,10 @@ public sealed class GameplayScene : Scene
             DrawHighlights(sb, nb); DrawEnemyThreat(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawBossSkulls(sb, nb);
             DrawAllyThreatIcons(sb, nb);
             DrawCarriedUnitNative(sb, nb);   // liseré de case cible (le pion soulevé = couche curseur)
+            DrawGamepadBattleCursor(sb, nb); // curseur de case manette : sur le plateau, sinon invisible en dézoom
             sb.End();
             // FX de combat (chacun gère son propre batch) — sur la couche plateau pour rester à la bonne échelle.
             if (_fx.Active) DrawCombatFx(sb, nb);
@@ -7017,9 +7354,95 @@ public sealed class GameplayScene : Scene
 
     private void DrawDeploymentZone(SpriteBatch sb, GridLayout layout)
     {
-        // Zone de déploiement : simple fond bleu TRANSPARENT (pas de traits de bordure).
+        // Zone de déploiement : fond transparent d'une teinte CHOISIE POUR CETTE MAP (cf. ComputeDeployTint).
+        // Une teinte fixe finit toujours par se confondre avec un terrain de la même couleur : le bleu se
+        // perdait sur l'eau, le vert sur l'herbe.
+        var tint = _deployTint ?? Palette.Cyan1;
         foreach (var cell in PlayerDeployCells())
-            DrawZone(sb, layout, cell, Palette.Cyan1 * 0.38f);
+            DrawZone(sb, layout, cell, tint * DeployZoneAlpha);
+    }
+
+    private const float DeployZoneAlpha = 0.45f;
+
+    /// <summary>
+    /// Teintes candidates pour la zone de déploiement : trois familles franchement distinctes (bleu / vert /
+    /// or) pour qu'il en reste toujours une éloignée du terrain, quelle que soit la map.
+    /// </summary>
+    private static readonly Color[] DeployTintCandidates = { Palette.Cyan1, Palette.Green1, Palette.Yellow1 };
+
+    /// <summary>
+    /// Choisit la teinte de la zone de déploiement pour la map courante : on moyenne la couleur des TUILES
+    /// que la zone recouvre puis on garde la candidate la plus ÉLOIGNÉE de cette moyenne. Appelée une fois
+    /// par combat (BeginPlacement), jamais pendant un batch : <c>GetData</c> lit la texture côté CPU.
+    /// </summary>
+    private void ComputeDeployTint()
+    {
+        long r = 0, g = 0, b = 0;
+        var n = 0;
+        foreach (var cell in PlayerDeployCells())
+        {
+            if (cell.Column < 0 || cell.Column >= Columns || cell.Row < 0 || cell.Row >= Rows)
+                continue;
+            var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
+            var avg = AverageTileColor(tex, src);
+            r += avg.R; g += avg.G; b += avg.B; n++;
+        }
+        if (n == 0)
+        {
+            _deployTint = Palette.Cyan1;
+            return;
+        }
+
+        var terrain = new Color((int)(r / n), (int)(g / n), (int)(b / n));
+        var best = DeployTintCandidates[0];
+        var bestScore = -1f;
+        foreach (var c in DeployTintCandidates)
+        {
+            var score = ColorDistance(terrain, c);
+            if (score > bestScore) { bestScore = score; best = c; }
+        }
+        _deployTint = best;
+    }
+
+    /// <summary>Écart perceptuel approché entre deux couleurs (pondération verte dominante à l'œil).</summary>
+    private static float ColorDistance(Color a, Color b)
+    {
+        float dr = a.R - b.R, dg = a.G - b.G, db = a.B - b.B;
+        return MathF.Sqrt(2f * dr * dr + 4f * dg * dg + 3f * db * db);
+    }
+
+    /// <summary>
+    /// Couleur MOYENNE de la région <paramref name="src"/> d'une texture de tuile (pixels transparents
+    /// ignorés), mise en cache : la lecture CPU d'une texture est chère et ne change jamais.
+    /// </summary>
+    private Color AverageTileColor(Texture2D tex, Rectangle src)
+    {
+        if (_tileAvgColor.TryGetValue((tex, src), out var cached))
+            return cached;
+
+        var avg = Color.Gray;
+        try
+        {
+            var data = new Color[src.Width * src.Height];
+            tex.GetData(0, src, data, 0, data.Length);
+            long r = 0, g = 0, b = 0;
+            var n = 0;
+            foreach (var p in data)
+            {
+                if (p.A < 128) continue;   // bords transparents : ils ne colorent pas la case
+                r += p.R; g += p.G; b += p.B; n++;
+            }
+            if (n > 0)
+                avg = new Color((int)(r / n), (int)(g / n), (int)(b / n));
+        }
+        catch (System.Exception)
+        {
+            // Texture illisible côté CPU (placeholder, format inattendu) : gris neutre, la teinte candidate
+            // la plus éloignée reste choisie sur les autres tuiles de la zone.
+        }
+
+        _tileAvgColor[(tex, src)] = avg;
+        return avg;
     }
 
     /// <summary>
@@ -7732,7 +8155,11 @@ public sealed class GameplayScene : Scene
         var aimedPreview = 0;
         Cell? healAimed = null;
         var healPreview = 0;
-        if (_combatDragFrom is { } dragFrom)
+        // Qui vise ? Le pion PORTÉ à la souris, ou — à la MANETTE — le pion SÉLECTIONNÉ, le curseur de case
+        // tenant lieu de pointeur. Sans ça la visée manette n'avait aucun aperçu de dégâts, d'autant que les
+        // cartes-tooltips sont masquées pendant la sélection.
+        var aimSource = _combatDragFrom ?? (Context.Input.UsingGamepad ? _selected : null);
+        if (aimSource is { } dragFrom)
         {
             var over = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
             if (over is { } target && _attackTargets.Contains(target))
@@ -7747,6 +8174,8 @@ public sealed class GameplayScene : Scene
             }
         }
 
+        BuildAllyThreatPreviews();
+
         foreach (var (cell, unit) in _match.Units())
         {
             if (_combatDragFrom == cell)            // pion porté : pas de barre sur sa case
@@ -7755,7 +8184,10 @@ public sealed class GameplayScene : Scene
                 continue;
             var isAimed = aimed == cell;
             var isHealAimed = healAimed == cell;
-            if (unit.Hp >= unit.MaxHp && !isAimed)   // pleine vie : pas de barre (sauf cible d'attaque visée → aperçu ; les cibles de soin sont blessées)
+            // Allié MENACÉ : même aperçu que celui de notre visée, sur la plus grosse attaque qu'il peut
+            // encaisser (l'IA ne joue qu'une action par tour). Notre propre visée reste prioritaire.
+            var threat = !isAimed && _allyThreatPreview.TryGetValue(cell, out var td) ? td : 0;
+            if (unit.Hp >= unit.MaxHp && !isAimed && threat <= 0)   // pleine vie : pas de barre (sauf aperçu de dégâts ; les cibles de soin sont blessées)
                 continue;
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, _) = BoardIntroAnim(cell, layout);
@@ -7766,7 +8198,35 @@ public sealed class GameplayScene : Scene
             kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
             kb.Y += ChuteTrembleY(cell);              // et le tremblement de la tuile « chute »
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
-                isAimed ? aimedPreview : 0, isHealAimed ? healPreview : 0);
+                isAimed ? aimedPreview : threat, isHealAimed ? healPreview : 0);
+        }
+    }
+
+    /// <summary>
+    /// Recense, pour chaque ALLIÉ menacé, les dégâts de la PLUS GROSSE attaque qu'un ennemi à portée lui
+    /// infligerait — la valeur prévisualisée sur sa barre de vie. Le maximum et non la somme : l'IA ne joue
+    /// qu'une action par tour, c'est donc le pire coup RÉELLEMENT encaissable au prochain tour. Hors combat
+    /// (placement) : rien, comme le tremblement et l'icône de menace.
+    /// </summary>
+    private void BuildAllyThreatPreviews()
+    {
+        _allyThreatPreview.Clear();
+        if (_run.Phase != RunPhase.Battle)
+            return;
+
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy)
+                continue;
+            _match.ThreatenedCells(cell, _threatCells);
+            foreach (var t in _threatCells)
+            {
+                if (_match.UnitAt(t) is not { Faction: Faction.Player })
+                    continue;
+                var dmg = _match.PreviewDamage(cell, t);
+                if (dmg > 0 && (!_allyThreatPreview.TryGetValue(t, out var best) || dmg > best))
+                    _allyThreatPreview[t] = dmg;
+            }
         }
     }
 
@@ -8475,10 +8935,17 @@ public sealed class GameplayScene : Scene
         {
             if (_dragSpec != null)
             {
-                // On PORTE un pion : poser / annuler, et RELANCER (X) si une relance est dispo.
+                // On PORTE un pion : poser / annuler, le RENVOYER en réserve (RB), et RELANCER (X) si une
+                // relance est dispo. Le commandant ne quitte jamais le plateau : pas de ligne RB pour lui.
                 Context.Font.Draw(sb, Loc.T("placement.hint_gp_hold"), new Vector2(x, hintY), 1, Palette.Blue1);
+                var holdLine = hintY + 16;
+                if (!_dragSpec.Essential)
+                {
+                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_stash"), new Vector2(x, holdLine), 1, Palette.Cyan1);
+                    holdLine += 16;
+                }
                 if (!_dragSpec.Essential && _run.HasReroll)
-                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_reroll"), new Vector2(x, hintY + 16), 1, Palette.Yellow2);
+                    Context.Font.Draw(sb, Loc.T("placement.hint_gp_reroll"), new Vector2(x, holdLine), 1, Palette.Yellow2);
             }
             else
             {
@@ -8950,6 +9417,13 @@ public sealed class GameplayScene : Scene
     /// Aperçu au survol en placement (hors glisser) : affiche la carte complète À GAUCHE du panneau
     /// d'inventaire, pour un portrait d'inventaire OU une pièce déjà posée sur le plateau.
     /// </summary>
+    /// <summary>
+    /// Cartes d'aperçu du PLACEMENT en miniature ? Oui par défaut, comme partout ailleurs (LT à la manette /
+    /// clic droit bascule vers la détaillée, cf. <see cref="_detailedTooltip"/>) : la grande carte mangeait
+    /// le plateau au moment même où l'on compose son armée.
+    /// </summary>
+    private bool PlacementCardsCondensed => !_detailedTooltip;
+
     private void DrawPlacementPreview(SpriteBatch sb)
     {
         if (_dragSpec != null)
@@ -9000,11 +9474,22 @@ public sealed class GameplayScene : Scene
     {
         var layout = BuildLayout();
         var board = BoardRect(layout);
+        // MINIATURE par défaut au placement comme en combat (X / clic droit détaille, cf. _detailedTooltip) :
+        // la grande carte mangeait le plateau au moment même où l'on compose son armée.
+        var condensed = PlacementCardsCondensed;
+        var w = condensed ? CondensedCardW : CombatCardW;
+        var h = condensed ? CondensedCardHeight(c, equip, buffs, kills) : CombatCardH;
         // Décrit une case du plateau (survol) → carte JUXTE le pion ; sinon (aperçu réserve) → à droite du plateau.
-        // Carte d'aperçu = toujours DÉTAILLÉE (révélations recrue/évolution), donc au gabarit de combat plein.
-        var rect = subject is { } s ? CardRectNearCell(s, layout, CombatCardW, CombatCardH) : RightCardRect(board);
+        var rect = subject is { } s ? CardRectNearCell(s, layout, w, h) : RightCardRect(board, w, h);
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
         // la frise, le briefing et le panneau, dessinés après elle.
+        if (condensed)
+        {
+            // Condensée : traits en noms inline, donc aucun popup de mots-clés à différer.
+            _deferredCards.Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c, domaine, hp, maxHp,
+                equip, buffs, kills, null, 0, 0, nameOverride: CommanderCardName(essential, faction)));
+            return;
+        }
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
             equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills,
             nameOverride: CommanderCardName(essential, faction)));
@@ -9387,6 +9872,36 @@ public sealed class GameplayScene : Scene
                 DrawEquipIcon(sb, e, EquipBadgeRect(cell, layout));
     }
 
+    /// <summary>
+    /// Crâne au-dessus de la tête des BOSS (ennemi essentiel) : le MÊME PNG que le nœud « boss » de la frise
+    /// des phases, pour qu'on reconnaisse sur le plateau la pièce annoncée en haut. Dessiné à échelle ENTIÈRE
+    /// (pixel-art net) et remonté au-dessus du badge d'équipement quand le boss en porte un.
+    /// </summary>
+    private void DrawBossSkulls(SpriteBatch sb, GridLayout layout)
+    {
+        if (IconOrNull("mission_boss") is not { } skull)
+            return;
+
+        var size = layout.TileSize;
+        var zoom = System.Math.Max(1, size / GridLayout.DefaultTileSize);
+        int w = skull.Width * zoom, h = skull.Height * zoom;
+
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy || !unit.IsEssential || !unit.IsAlive)
+                continue;
+            if (_fx.Active && _fx.Attacker == cell)   // attaquant animé : sa passe FX le dessine ailleurs
+                continue;
+
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            var cx = (int)top.X + size / 2;
+            var headTop = (int)top.Y - (int)(size * SpriteLiftFraction) - UnitLift(cell, size);
+            // Sous le crâne : la tête, ou le badge d'équipement s'il y en a un (pas de superposition).
+            var bottom = unit.Equipment != null ? EquipBadgeRect(cell, layout).Y - 2 : headTop - 2;
+            sb.Draw(skull, new Rectangle(cx - w / 2, bottom - h, w, h), Color.White);
+        }
+    }
+
     private void DrawEquipBadge(SpriteBatch sb, GridLayout layout, Cell cell, Equipment equip)
     {
         var r = EquipBadgeRect(cell, layout);
@@ -9436,13 +9951,22 @@ public sealed class GameplayScene : Scene
         Context.Font.Draw(sb, Loc.T("equip.inventory"), new Vector2(x, PanelListTop - 22), 1, Palette.Blue1);
 
         var inv = _run.EquipmentInventory;
+        ClampEquipScroll();
         if (inv.Count == 0)
             Context.Font.Draw(sb, Loc.T("equip.empty"), new Vector2(x, PanelListTop), 1, Palette.Blue1);
         for (var i = 0; i < inv.Count; i++)
-            DrawEquipInventoryRow(sb, inv[i], EquipRowRect(i), Context.Input.UsingGamepad && i == _equipFocus);
+            if (EquipRowVisible(i))   // liste défilante : rien sous les boutons du bas
+                DrawEquipInventoryRow(sb, inv[i], EquipRowRect(i), Context.Input.UsingGamepad && i == _equipFocus);
+        DrawEquipScrollbar(sb);
 
-        var hintY = PanelListTop + System.Math.Max(1, inv.Count) * (EquipRowH + EquipRowGap) + 12;
-        if (Context.Input.UsingGamepad)
+        // Aide ANCRÉE au bas du panneau (et non à la suite de la dernière ligne) : elle ne descend plus
+        // derrière les boutons quand l'inventaire s'allonge.
+        var hintY = EquipBackButtonRect().Y - EquipHintBlockH;
+        if (Context.Input.UsingGamepad && _gpEquipButtons)
+        {
+            Context.Font.Draw(sb, Loc.T("placement.hint_gp_btn"), new Vector2(x, hintY), 1, Palette.Blue1);
+        }
+        else if (Context.Input.UsingGamepad)
         {
             Context.Font.Draw(sb, Loc.T("equip.hint_gp_equip"), new Vector2(x, hintY), 1, Palette.Blue1);
             Context.Font.Draw(sb, Loc.T("equip.hint_gp_cycle"), new Vector2(x, hintY + 16), 1, Palette.Cyan1);
@@ -9454,23 +9978,42 @@ public sealed class GameplayScene : Scene
             Context.Font.Draw(sb, Loc.T("equip.hint_drag"), new Vector2(x, hintY), 1, Palette.Blue1);
         }
 
-        // Bouton « Retour » (vers le placement) puis « Combat » en bas.
+        // Bouton « Retour » (vers le placement) puis « Combat » en bas. À la manette, le focus (croix) les
+        // allume et les cerne d'un liseré doré, comme les boutons du panneau de placement.
+        var gpBtn = Context.Input.UsingGamepad && _gpEquipButtons;
         var back = EquipBackButtonRect();
+        var backFocus = gpBtn && _equipBtnFocus == EquipBackBtn;
         var backHover = !Context.Input.UsingGamepad && back.Contains(Context.Input.MousePosition);
-        var backDy = Context.Style.DrawButton(sb, back, UiStyle.StateOf(backHover, backHover && Context.Input.IsLeftDown));
+        var backDy = Context.Style.DrawButton(sb, back, UiStyle.StateOf(backHover || backFocus, backHover && Context.Input.IsLeftDown));
         var backArea = back; backArea.Offset(0, backDy);
-        Context.Font.DrawCentered(sb, Loc.T("equip.back"), backArea, 1, Palette.White);
+        if (backFocus) DrawRectBorder(sb, Inflate(backArea, 2), Palette.Yellow2, 2);
+        Context.Font.DrawCentered(sb, Loc.T("equip.back"), backArea, 1, backFocus ? Palette.Yellow2 : Palette.White);
 
         var btn = FightButtonRect();
+        var fightFocus = gpBtn && _equipBtnFocus == EquipFightBtn;
         var hover = !Context.Input.UsingGamepad && btn.Contains(Context.Input.MousePosition);
-        var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover, hover && Context.Input.IsLeftDown));
+        var dy = Context.Style.DrawButton(sb, btn, UiStyle.StateOf(hover || fightFocus, hover && Context.Input.IsLeftDown));
         var area = btn; area.Offset(0, dy);
-        Context.Font.DrawCentered(sb, Loc.T("placement.fight"), area, 1, Palette.White);
+        if (fightFocus) DrawRectBorder(sb, Inflate(area, 2), Palette.Yellow2, 2);
+        Context.Font.DrawCentered(sb, Loc.T("placement.fight"), area, 1, fightFocus ? Palette.Yellow2 : Palette.White);
 
-        // Tooltip descriptif au survol d'un équipement du bandeau (souris, hors glisser).
-        if (!Context.Input.UsingGamepad && _dragEquip == null
-            && EquipPanelCardAt(Context.Input.MousePosition) is { } hi)
-            DrawEquipTooltip(sb, inv[hi], EquipRowRect(hi));
+        // Tooltip descriptif de l'équipement DÉSIGNÉ : celui sous la souris, ou — à la manette — celui que
+        // LB/RB a mis sous le focus (sans quoi on choisissait un objet sans jamais pouvoir lire ce qu'il fait).
+        if (_dragEquip == null)
+        {
+            if (Context.Input.UsingGamepad)
+            {
+                if (!_gpEquipButtons && inv.Count > 0)
+                {
+                    var fi = System.Math.Clamp(_equipFocus, 0, inv.Count - 1);   // le rendu ne suppose rien de l'update
+                    DrawEquipTooltip(sb, inv[fi], EquipRowRect(fi));
+                }
+            }
+            else if (EquipPanelCardAt(Context.Input.MousePosition) is { } hi)
+            {
+                DrawEquipTooltip(sb, inv[hi], EquipRowRect(hi));
+            }
+        }
 
         DrawRerollIcon(sb);   // icône de relance / casse d'équipement, à gauche du panneau
     }
@@ -9484,8 +10027,58 @@ public sealed class GameplayScene : Scene
     private Rectangle EquipRowRect(int i)
     {
         var panel = PanelRect();
-        return new Rectangle(panel.X + PanelPad, PanelListTop + i * (EquipRowH + EquipRowGap),
+        return new Rectangle(panel.X + PanelPad, PanelListTop + (i - _equipScroll) * EquipRowPitch,
             panel.Width - 2 * PanelPad, EquipRowH);
+    }
+
+    // ── Défilement du bandeau d'équipement ───────────────────────────────────────────────────────
+    // Sans lui, un inventaire fourni débordait SOUS les boutons RETOUR / COMBAT (lignes dessinées derrière
+    // et objets inatteignables). La fenêtre visible s'arrête au-dessus du bloc d'aide, lui-même ancré au bas
+    // du panneau : la hauteur du bandeau ne dépend donc plus du nombre d'objets.
+    private const int EquipRowPitch = EquipRowH + EquipRowGap;
+    private const int EquipHintBlockH = 52;   // place réservée aux 3 lignes d'aide, sous la liste
+
+    /// <summary>Ligne du bas de la fenêtre visible du bandeau (au-dessus du bloc d'aide et des boutons).</summary>
+    private int EquipListBottom() => EquipBackButtonRect().Y - EquipHintBlockH - 8;
+
+    /// <summary>Nombre de lignes d'équipement affichables d'un coup (au moins 1).</summary>
+    private int EquipVisibleRows() =>
+        System.Math.Max(1, (EquipListBottom() - PanelListTop) / EquipRowPitch);
+
+    /// <summary>Défilement maximal du bandeau (0 = tout tient à l'écran).</summary>
+    private int EquipMaxScroll() =>
+        System.Math.Max(0, _run.EquipmentInventory.Count - EquipVisibleRows());
+
+    private void ClampEquipScroll() => _equipScroll = System.Math.Clamp(_equipScroll, 0, EquipMaxScroll());
+
+    /// <summary>La ligne <paramref name="index"/> est-elle dans la fenêtre visible ?</summary>
+    private bool EquipRowVisible(int index) =>
+        index >= _equipScroll && index < _equipScroll + EquipVisibleRows();
+
+    /// <summary>Fait défiler le bandeau au minimum pour que l'objet FOCUS reste visible (manette).</summary>
+    private void EnsureEquipFocusVisible()
+    {
+        ClampEquipScroll();
+        if (_equipFocus < _equipScroll) _equipScroll = _equipFocus;
+        else if (_equipFocus >= _equipScroll + EquipVisibleRows()) _equipScroll = _equipFocus - EquipVisibleRows() + 1;
+        ClampEquipScroll();
+    }
+
+    /// <summary>Barre de défilement du bandeau d'équipement (même style que celle de la réserve).</summary>
+    private void DrawEquipScrollbar(SpriteBatch sb)
+    {
+        var max = EquipMaxScroll();
+        if (max == 0)
+            return;
+        var panel = PanelRect();
+        var visible = EquipVisibleRows();
+        var trackH = visible * EquipRowPitch;
+        var trackX = panel.Right - 14;
+        DrawRect(sb, new Rectangle(trackX, PanelListTop, 2, trackH), Palette.Navy1);
+
+        var thumbH = System.Math.Max(10, trackH * visible / _run.EquipmentInventory.Count);
+        var thumbY = PanelListTop + (trackH - thumbH) * _equipScroll / max;
+        DrawRect(sb, new Rectangle(trackX, thumbY, 2, thumbH), Palette.Cyan1);
     }
 
     private void DrawEquipInventoryRow(SpriteBatch sb, Equipment equip, Rectangle row, bool focus)
@@ -9614,8 +10207,29 @@ public sealed class GameplayScene : Scene
     /// <summary>Tooltip au survol d'un badge d'équipement AU-DESSUS de la tête d'un pion (phase Équipement, souris, hors glisser).</summary>
     private void DrawEquipBadgeTooltip(SpriteBatch sb, GridLayout layout)
     {
-        if (Context.Input.UsingGamepad || _dragEquip != null)
+        if (_dragEquip != null)
             return;
+
+        // MANETTE : le badge « survolé » est celui du pion sous le CURSEUR de case (rien quand le focus est
+        // parti sur les boutons du panneau). Sinon, le badge sous la souris.
+        if (Context.Input.UsingGamepad)
+        {
+            if (_gpEquipButtons)
+                return;
+            foreach (var (cell, spec) in DeployedPlayerSpecs())
+                if (cell == _cursor && !spec.Essential && spec.Equipment is { } worn)
+                {
+                    // Posée du côté OPPOSÉ à la carte du pion (les deux décrivent la case sous le curseur),
+                    // et DIFFÉRÉE dans la couche de survol — ajoutée après DrawCombatCards, elle passe donc
+                    // devant si le repli d'écran finit malgré tout par les faire se toucher.
+                    var badge = EquipBadgeRect(cell, layout);
+                    var spot = EquipTooltipSpotOppositeCard(worn, cell, layout, badge);
+                    _deferredHoverCards.Add(() => DrawEquipTooltipPanel(Context.SpriteBatch, worn, spot.X, spot.Y));
+                    return;
+                }
+            return;
+        }
+
         var mouse = Context.Input.MousePosition;
         foreach (var (cell, spec) in DeployedPlayerSpecs())
         {
@@ -9630,20 +10244,79 @@ public sealed class GameplayScene : Scene
         }
     }
 
-    private const int EquipTooltipWidth = 210;
+    /// <summary>Largeur MAXIMALE d'une tooltip d'équipement : au-delà, les lignes se replient.</summary>
+    private const int EquipTooltipMaxWidth = 210;
+
+    /// <summary>
+    /// Emplacement d'une tooltip d'équipement PORTÉ, posée du côté OPPOSÉ à la carte-tooltip du même pion :
+    /// la carte se cale à droite de la case (ou à gauche faute de place, cf. <see cref="CardRectNearCell"/>),
+    /// la tooltip prend donc l'autre bord. Bornée à l'écran (et à la gauche du panneau en placement) : si le
+    /// côté visé n'a pas la place, elle revient dans le cadre plutôt que de sortir.
+    /// </summary>
+    private Point EquipTooltipSpotOppositeCard(Equipment equip, Cell cell, GridLayout layout, Rectangle badge)
+    {
+        var vp = VirtualViewport;
+        var w = EquipTooltipWidth(equip);
+        var h = EquipTooltipHeight(equip);
+        var pos = layout.CellToScreen(cell.Column, cell.Row);
+        var tile = layout.TileSize;
+
+        // Côté pris par la carte du pion : on vise l'autre.
+        var cardOnRight = UnitCardRect(cell, layout) is not { } card || card.Center.X > pos.X + tile / 2f;
+        var x = cardOnRight ? (int)pos.X - CombatCardGap - w : (int)pos.X + tile + CombatCardGap;
+
+        var rightLimit = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
+        x = System.Math.Clamp(x, 8, System.Math.Max(8, rightLimit - 8 - w));
+        var y = System.Math.Clamp(badge.Y, 8, System.Math.Max(8, vp.Height - 8 - h));
+        return new Point(x, y);
+    }
+
+    /// <summary>
+    /// Emplacement de la carte-tooltip du pion de <paramref name="cell"/> — MÊME calcul que
+    /// <see cref="DrawCombatCards"/> (gabarit condensé ou détaillé selon <see cref="_detailedTooltip"/>),
+    /// pour que ce qui veut l'éviter sache où elle tombe. Null si la case est vide.
+    /// </summary>
+    private Rectangle? UnitCardRect(Cell cell, GridLayout layout)
+    {
+        if (_match.UnitAt(cell) is not { } unit)
+            return null;
+        var condensed = !_detailedTooltip;
+        return CardRectNearCell(cell, layout,
+            condensed ? CondensedCardW : CombatCardW,
+            condensed ? CondensedCardHeight(unit, cell) : CombatCardH);
+    }
+
+    /// <summary>
+    /// Largeur RÉELLE d'une tooltip d'équipement : celle de sa ligne la plus longue (titre effets restriction),
+    /// bornée à <see cref="EquipTooltipMaxWidth"/>. Une largeur fixe donnait un cadre énorme pour un simple
+    /// « +2 PUISSANCE / +2 PV ». Les lignes sont mesurées APRÈS repli au gabarit maximal, comme à la hauteur.
+    /// </summary>
+    private int EquipTooltipWidth(Equipment equip)
+    {
+        var inner = EquipTooltipMaxWidth - 2 * EquipTooltipPad;
+        var w = Context.Font.Measure(EquipName(equip).ToUpperInvariant(), 1);
+        foreach (var (text, _) in EquipEffectLines(equip, inner))
+            w = System.Math.Max(w, Context.Font.Measure(text, 1));
+        if (EquipRestriction(equip) is { } r)
+            foreach (var line in WrapText(r, inner, 1))
+                w = System.Math.Max(w, Context.Font.Measure(line, 1));
+        return System.Math.Min(EquipTooltipMaxWidth, w + 2 * EquipTooltipPad);
+    }
 
     /// <summary>Tooltip d'un équipement (nom + description), ancré à GAUCHE de l'élément survolé (repli à droite).</summary>
     private void DrawEquipTooltip(SpriteBatch sb, Equipment equip, Rectangle row)
     {
-        var x = row.X - EquipTooltipWidth - 8;           // à gauche du bandeau (vers le plateau)
-        if (x < 8) x = System.Math.Min(row.Right + 8, VirtualViewport.Width - EquipTooltipWidth - 8);
+        var w = EquipTooltipWidth(equip);
+        var x = row.X - w - 8;                          // à gauche du bandeau (vers le plateau)
+        if (x < 8) x = System.Math.Min(row.Right + 8, VirtualViewport.Width - w - 8);
         DrawEquipTooltipPanel(sb, equip, x, row.Y);
     }
 
     /// <summary>Tooltip d'un équipement centré AU-DESSUS de <paramref name="anchor"/> (repli en dessous si pas de place).</summary>
     private void DrawEquipTooltipAbove(SpriteBatch sb, Equipment equip, Rectangle anchor)
     {
-        var x = System.Math.Clamp(anchor.Center.X - EquipTooltipWidth / 2, 8, VirtualViewport.Width - EquipTooltipWidth - 8);
+        var w = EquipTooltipWidth(equip);
+        var x = System.Math.Clamp(anchor.Center.X - w / 2, 8, System.Math.Max(8, VirtualViewport.Width - w - 8));
         var y = anchor.Y - EquipTooltipHeight(equip) - 8;
         if (y < 8) y = anchor.Bottom + 8;
         DrawEquipTooltipPanel(sb, equip, x, y);
@@ -9659,7 +10332,7 @@ public sealed class GameplayScene : Scene
     /// <summary>Hauteur du cadre tooltip : nom + effet replié, plus l'éventuelle restriction (espacée), largeur fixe.</summary>
     private int EquipTooltipHeight(Equipment equip)
     {
-        int inner = EquipTooltipWidth - 2 * EquipTooltipPad;
+        int inner = EquipTooltipMaxWidth - 2 * EquipTooltipPad;
         int h = EquipTooltipPad + EquipTooltipTitleH
               + EquipEffectLines(equip, inner).Count * EquipTooltipLineH;
         if (EquipRestriction(equip) is { } r)
@@ -9670,8 +10343,10 @@ public sealed class GameplayScene : Scene
     /// <summary>Dessine le cadre tooltip (nom jaune, effet crème, puis restriction en rouge doux) à un coin haut-gauche donné.</summary>
     private void DrawEquipTooltipPanel(SpriteBatch sb, Equipment equip, int x, int y)
     {
-        int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EquipTooltipWidth - 2 * pad;
-        var box = new Rectangle(x, y, EquipTooltipWidth, EquipTooltipHeight(equip));
+        // Le REPLI des lignes se fait au gabarit MAXIMAL (comme au calcul de hauteur) ; seule la BOÎTE se
+        // resserre sur la ligne la plus longue.
+        int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EquipTooltipMaxWidth - 2 * pad;
+        var box = new Rectangle(x, y, EquipTooltipWidth(equip), EquipTooltipHeight(equip));
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
 
@@ -9860,6 +10535,12 @@ public sealed class GameplayScene : Scene
         if (_combatDragFrom is not null)
             return;
 
+        // MANETTE, pion SÉLECTIONNÉ : même raison — le curseur part viser une case ou un ennemi, et les
+        // cartes (la sienne comme celle de la cible) mangeraient le plateau pendant la visée. Elles
+        // reviennent dès la désélection ; la lecture des dégâts passe par la barre de vie de la cible.
+        if (Context.Input.UsingGamepad && _selected is not null)
+            return;
+
         var board = BoardRect(layout);
         // En manette, la « case survolée » est celle du curseur ; sinon celle sous la souris (hors frise).
         var hovered = Context.Input.UsingGamepad ? _cursor : HoverCellForCards();
@@ -9873,18 +10554,16 @@ public sealed class GameplayScene : Scene
         // Carte de l'ennemi SURVOLÉ (à gauche).
         Cell? enemyCell = hovered is { } he && _match.UnitAt(he) is { Faction: Faction.Enemy } ? he : null;
 
-        // Combat : cartes CONDENSÉES par défaut (icônes de stats + PV + traits/kills) ; clic droit / X bascule
-        // vers le détaillé (cf. _detailedTooltip). Hors combat (placement/équipement), toujours détaillé.
-        var condensed = _run.Phase == RunPhase.Battle && !_detailedTooltip;
+        // Cartes CONDENSÉES par défaut (icônes de stats + PV + traits/kills) PARTOUT — combat, placement et
+        // sous-phase Équipement ; LT (manette) / clic droit bascule vers le détaillé (cf. _detailedTooltip).
+        var condensed = !_detailedTooltip;
 
         // Chaque carte se cale JUXTE le pion qu'elle décrit (à sa droite, cf. CardRectNearCell). En condensé,
         // la HAUTEUR dépend de l'unité (nombre de traits, cf. CondensedCardHeight).
         Rectangle? ownCard = null;
-        if (ownCell is { } oc && _match.UnitAt(oc) is { } own)
+        if (ownCell is { } oc && _match.UnitAt(oc) is { } own && UnitCardRect(oc, layout) is { } ownRect)
         {
-            ownCard = CardRectNearCell(oc, layout,
-                condensed ? CondensedCardW : CombatCardW,
-                condensed ? CondensedCardHeight(own, oc) : CombatCardH);
+            ownCard = ownRect;   // même calcul que ce qui cherche à ÉVITER la carte
             // showKeywords : jamais pour le pion SÉLECTIONNÉ (ses popups de mots-clés mangeraient le plateau
             // pendant la visée) ; seulement au simple survol.
             var ownSelected = oc == _selected;
@@ -9895,7 +10574,7 @@ public sealed class GameplayScene : Scene
             // s'enchaînent donc SANS à-coup. Dès que le curseur part viser ailleurs, la carte du pion tenu
             // repasse en dessin direct (pleine), comme avant.
             var ownFades = Context.Input.UsingGamepad ? hovered == oc : !ownSelected;
-            DrawUnitCard(sb, own, ownCard.Value, showKeywords: !ownSelected, cell: oc, hover: ownFades, condensed: condensed);
+            DrawUnitCard(sb, own, ownRect, showKeywords: !ownSelected, cell: oc, hover: ownFades, condensed: condensed);
         }
 
         // Si NOTRE pion sélectionné le vise (case à portée d'attaque), on prévisualise les dégâts :
@@ -9903,9 +10582,7 @@ public sealed class GameplayScene : Scene
         if (enemyCell is { } ec && _match.UnitAt(ec) is { } enemy)
         {
             var preview = _selected is { } sel && _attackTargets.Contains(ec) ? _match.PreviewDamage(sel, ec) : 0;
-            var enemyRect = CardRectNearCell(ec, layout,
-                condensed ? CondensedCardW : CombatCardW,
-                condensed ? CondensedCardHeight(enemy, ec) : CombatCardH);
+            var enemyRect = UnitCardRect(ec, layout) ?? Rectangle.Empty;
             DrawUnitCard(sb, enemy, enemyRect, preview, cell: ec, hover: true, condensed: condensed);
         }
 
@@ -10002,12 +10679,14 @@ public sealed class GameplayScene : Scene
     /// Emplacement de la carte à DROITE du plateau (unité sélectionnée), borné à l'écran. Pendant le
     /// placement (phase Équipement), le panneau de droite est visible : la carte reste à sa gauche.
     /// </summary>
-    private Rectangle RightCardRect(Rectangle board)
+    private Rectangle RightCardRect(Rectangle board, int? cardW = null, int? cardH = null)
     {
+        var w = cardW ?? CombatCardW;
+        var h = cardH ?? CombatCardH;
         var vp = VirtualViewport;
         var rightLimit = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
-        var x = Math.Min(board.Right + CombatCardGap, rightLimit - CombatCardGap - CombatCardW);
-        return new Rectangle(x, (vp.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
+        var x = Math.Min(board.Right + CombatCardGap, rightLimit - CombatCardGap - w);
+        return new Rectangle(x, (vp.Height - h) / 2, w, h);
     }
 
     /// <summary>
@@ -10038,12 +10717,16 @@ public sealed class GameplayScene : Scene
     /// éventuel bloc bas (lignes de traits repliées + « TUÉS »). Ainsi la carte grandit avec le nombre de
     /// traits et le « TUÉS » ne repasse jamais derrière eux.
     /// </summary>
-    private int CondensedCardHeight(Unit unit, Cell? cell)
+    private int CondensedCardHeight(Unit unit, Cell? cell) =>
+        CondensedCardHeight(unit.Class, unit.Equipment, unit.Buffs, unit.Kills, GrantedTraitsFor(unit, cell));
+
+    /// <summary>Même hauteur, calculée depuis une CLASSE (aperçu de placement/réserve : pas d'unité posée).</summary>
+    private int CondensedCardHeight(UnitClass c, Equipment? equip, CommandBuffs? buffs, int kills,
+        IReadOnlyList<string>? granted = null)
     {
-        var b = unit.Buffs ?? CommandBuffs.None;
-        var keywords = KeywordsFor(unit.Class, unit.Equipment, b, GrantedTraitsFor(unit, cell));
+        var keywords = KeywordsFor(c, equip, buffs ?? CommandBuffs.None, granted);
         var lines = KeywordLineCount(keywords, CondensedCardW);
-        var bottom = lines * KwLineH + (unit.Kills > 0 ? KwLineH : 0);
+        var bottom = lines * KwLineH + (kills > 0 ? KwLineH : 0);
         return CondensedTopBlockH + (bottom > 0 ? CondensedBottomGap + bottom : 0) + CondensedPad;
     }
 
@@ -10295,6 +10978,7 @@ public sealed class GameplayScene : Scene
 
         // Icône de TIER (taille native 23×9) + NOM DU DOMAINE, dans la marge haute (même rendu que le détaillé).
         DrawCardTierAndDomaine(sb, c.Tier, domaine, rect);
+        DrawCardExpandHint(sb, rect);   // coin haut-droit : X (manette) / clic droit (souris) = carte détaillée
         var y = rect.Y + 15;   // sous l'en-tête tier/domaine
 
         // Nom centré, échelle 2 par défaut, repliée en 1 s'il déborde (même règle que la carte détaillée).
@@ -10318,6 +11002,44 @@ public sealed class GameplayScene : Scene
         if (kills > 0)
             Context.Font.DrawCentered(sb, Loc.T("stat.kills", kills),
                 new Rectangle(rect.X, bottomY - KwLineH, rect.Width, KwLineH), 1, Palette.Purple5);
+    }
+
+    /// <summary>
+    /// Indice « agrandir la carte » au coin HAUT-DROIT d'une carte condensée : le bouton X à la manette, une
+    /// petite souris au bouton DROIT allumé au clavier/souris. L'en-tête tier + domaine étant CENTRÉ, le coin
+    /// est libre. L'indice suit toujours le périphérique actif : jamais une touche qui n'est pas la bonne.
+    /// </summary>
+    private void DrawCardExpandHint(SpriteBatch sb, Rectangle rect)
+    {
+        var c = Palette.Cyan1;
+        // Ancrage dans l'ANGLE : le cadre du panneau mange 3 px à droite et 1 px en haut (cf. UiStyle.Bevel),
+        // on repart donc de l'intérieur du cadre et on ajoute la MÊME petite marge des deux côtés.
+        const int inset = 3;
+        var right = rect.Right - 3 - inset;   // bord droit utile
+        var top = rect.Y + 1 + inset;         // bord haut utile
+
+        if (Context.Input.UsingGamepad)
+        {
+            // Gâchette LT : pastille en PILULE (coins mangés) + libellé en négatif — la forme d'une gâchette,
+            // pas d'un bouton rond de face. Largeur calée sur le texte pour survivre à une autre police.
+            const string label = "LT";
+            const int padH = 11;
+            var padW = Context.Font.Measure(label, 1) + 6;
+            var box = new Rectangle(right - padW, top, padW, padH);
+            DrawRect(sb, new Rectangle(box.X + 1, box.Y, box.Width - 2, box.Height), c);
+            DrawRect(sb, new Rectangle(box.X, box.Y + 1, box.Width, box.Height - 2), c);
+            Context.Font.DrawCentered(sb, label, box, 1, Palette.Black1);
+            return;
+        }
+
+        // Souris dessinée en primitives (pas d'asset) : corps 9×12, séparation centrale des deux boutons,
+        // et bouton DROIT rempli — c'est lui qu'on demande.
+        const int w = 9, h = 12;
+        var body = new Rectangle(right - w, top, w, h);
+        DrawRect(sb, new Rectangle(body.X + w / 2 + 1, body.Y + 1, w - w / 2 - 2, 4), c);   // bouton droit allumé
+        DrawRectBorder(sb, body, c, 1);
+        DrawRect(sb, new Rectangle(body.X + w / 2, body.Y + 1, 1, 4), c);                   // séparation des boutons
+        DrawRect(sb, new Rectangle(body.X + 1, body.Y + 5, w - 2, 1), c);                   // trait sous les boutons
     }
 
     /// <summary>PV condensés « pv/max » EN ROUGE (échelle 2) centrés ; si une attaque est visée, « -N » jaune accolé.</summary>
@@ -11111,8 +11833,10 @@ public sealed class GameplayScene : Scene
             DrawRectBorder(sb, ab, Palette.Purple5, 2);
             Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
         }
-        // Surbrillance de la carte FOCUS (souris ou manette) — sauf si un pion est déjà choisi (vol/tenu).
-        else if (_recruitChoice == null && _run.Draft.Count > 0)
+        // Surbrillance de la carte FOCUS (souris ou manette) — sauf si un pion est déjà choisi (vol/tenu),
+        // ou si le focus manette est parti dans le panneau de réserve (un seul focus visible à la fois).
+        else if (_recruitChoice == null && _run.Draft.Count > 0
+            && !(Context.Input.UsingGamepad && _gpInventory))
         {
             var fi = System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1);
             var fr = DraftCardRect(fi, _run.Draft.Count, availW, viewport.Height);
@@ -11171,7 +11895,7 @@ public sealed class GameplayScene : Scene
         if (!flying)
         {
             // Manette : carte de récompense focalisée.
-            if (Context.Input.UsingGamepad && !_reserveZone && rewards.Count > 0)
+            if (Context.Input.UsingGamepad && !_gpInventory && rewards.Count > 0)
                 DrawRectBorder(sb, Inflate(DraftCardRect(System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1),
                     rewards.Count, availW, viewport.Height), 3), Palette.Cyan1, 3);
 

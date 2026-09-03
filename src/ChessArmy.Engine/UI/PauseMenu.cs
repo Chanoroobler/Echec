@@ -70,7 +70,8 @@ public sealed class PauseMenu
 
     private static readonly Point[] BaseResolutions =
     {
-        new(1280, 720), new(1600, 900), new(1920, 1080), new(2560, 1440), new(3840, 2160),
+        // 1280×800 est en 16:10 : le rendu 16:9 s'y affiche en letterbox (bandes haut/bas), comme prévu.
+        new(1280, 720), new(1280, 800), new(1600, 900), new(1920, 1080), new(2560, 1440), new(3840, 2160),
     };
 
     private readonly GameSettings _s;

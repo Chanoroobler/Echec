@@ -9,6 +9,7 @@ namespace ChessArmy.Game.Scenes;
 public enum TutorialStep
 {
     Intro,         // annonce le tuto + les 3 phases (préparation / combat / récompense)
+    PadLesson,     // MANETTE uniquement : croix (saut de pion en pion) vs stick gauche (case par case)
     PickSoldier,   // prendre le soldat dans l'inventaire
     PlaceSoldier,  // le poser dans la zone de déploiement
     ReviewCard,    // revue de la carte donnée par donnée (DÈS la pose, avant de lancer le combat)

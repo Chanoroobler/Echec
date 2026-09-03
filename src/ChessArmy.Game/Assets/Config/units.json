@@ -238,14 +238,14 @@
           "damage": 16,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Esquive" ]
+          "traits": [ "Duelliste" ]
         },
         "3": {
           "hp": 65,
           "damage": 20,
           "moveRange": 2,
           "attackRange": 1,
-          "traits": [ "Esquive", "Orage" ]
+          "traits": [ "Duelliste", "Orage" ]
         }
       }
     },

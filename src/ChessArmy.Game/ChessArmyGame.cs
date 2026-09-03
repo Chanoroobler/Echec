@@ -330,7 +330,8 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
                     Color.White);
         }
 
-        DrawCursor(_spriteBatch);
+        if (!_input.UsingGamepad)   // à la manette, le pointeur n'a plus de rôle : il ne doit pas traîner à l'écran
+            DrawCursor(_spriteBatch);
         if (_showFps)
         {
             _context.Font.Draw(_spriteBatch, _fpsText, new Vector2(7, 7), 2, Color.Black);   // ombre lisible

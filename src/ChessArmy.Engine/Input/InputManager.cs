@@ -28,9 +28,12 @@ public sealed class InputManager
 
     /// <summary>Zone morte du stick droit (caméra) : sous ce module, le stick est considéré au repos.</summary>
     private const float StickDeadZone = 0.2f;
-    private readonly bool[] _navWasDown = new bool[4];
-    private readonly float[] _navTimer = new float[4];
-    private readonly bool[] _nav = new bool[4];
+    // Index 0-3 = croix directionnelle, 4-7 = stick gauche : les deux sources sont suivies SÉPARÉMENT
+    // (répétition indépendante) pour que le jeu puisse leur donner un rôle différent (saut de pion en
+    // pion à la croix, case par case au stick), tout en gardant Nav() = « l'une ou l'autre ».
+    private readonly bool[] _navWasDown = new bool[8];
+    private readonly float[] _navTimer = new float[8];
+    private readonly bool[] _nav = new bool[8];
 
     // Dernier périphérique utilisé : pilote l'affichage (curseur souris vs focus/curseur de case).
     private bool _usingGamepad;
@@ -147,7 +150,13 @@ public sealed class InputManager
     public bool UsingGamepad => _usingGamepad;
 
     /// <summary>Navigation directionnelle (front + répétition auto) : croix directionnelle ou stick gauche.</summary>
-    public bool Nav(NavDir dir) => _nav[(int)dir];
+    public bool Nav(NavDir dir) => _nav[(int)dir] || _nav[(int)dir + 4];
+
+    /// <summary>Navigation à la CROIX directionnelle seule (front + répétition auto).</summary>
+    public bool NavDPad(NavDir dir) => _nav[(int)dir];
+
+    /// <summary>Navigation au STICK GAUCHE seul (front + répétition auto).</summary>
+    public bool NavStick(NavDir dir) => _nav[(int)dir + 4];
 
     /// <summary>
     /// Stick DROIT en ANALOGIQUE, zone morte appliquée (<see cref="Vector2.Zero"/> au repos) : <c>Y &gt; 0</c>
@@ -187,6 +196,13 @@ public sealed class InputManager
     /// <summary>Gâchette droite MAINTENUE (analogique &gt; 0,5) — ex. révéler les zones de danger.</summary>
     public bool IsRightTriggerDown => _currentPad.Triggers.Right > 0.5f;
 
+    /// <summary>Seuil de « pression » d'une gâchette analogique (au-delà = enfoncée).</summary>
+    private const float TriggerThreshold = 0.5f;
+
+    /// <summary>Gâchette GAUCHE : front d'appui uniquement (franchissement du seuil) — ex. agrandir une carte.</summary>
+    public bool WasLeftTriggerPressed =>
+        _currentPad.Triggers.Left > TriggerThreshold && _previousPad.Triggers.Left <= TriggerThreshold;
+
     /// <summary>Clics de stick (L3 / R3) — ex. crans de zoom du plateau.</summary>
     public bool WasLeftStickPressed => PadEdge(Buttons.LeftStick);
     public bool WasRightStickPressed => PadEdge(Buttons.RightStick);
@@ -196,9 +212,9 @@ public sealed class InputManager
 
     private void UpdateNav(float dt)
     {
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 8; i++)
         {
-            var down = DirDown((NavDir)i);
+            var down = DirDown((NavDir)(i % 4), dpad: i < 4);
             var fire = false;
             if (down)
             {
@@ -210,16 +226,16 @@ public sealed class InputManager
         }
     }
 
-    private bool DirDown(NavDir dir)
+    private bool DirDown(NavDir dir, bool dpad)
     {
         var d = _currentPad.DPad;
         var s = _currentPad.ThumbSticks.Left;
         return dir switch
         {
-            NavDir.Up => d.Up == ButtonState.Pressed || s.Y > StickThreshold,
-            NavDir.Down => d.Down == ButtonState.Pressed || s.Y < -StickThreshold,
-            NavDir.Left => d.Left == ButtonState.Pressed || s.X < -StickThreshold,
-            NavDir.Right => d.Right == ButtonState.Pressed || s.X > StickThreshold,
+            NavDir.Up => dpad ? d.Up == ButtonState.Pressed : s.Y > StickThreshold,
+            NavDir.Down => dpad ? d.Down == ButtonState.Pressed : s.Y < -StickThreshold,
+            NavDir.Left => dpad ? d.Left == ButtonState.Pressed : s.X < -StickThreshold,
+            NavDir.Right => dpad ? d.Right == ButtonState.Pressed : s.X > StickThreshold,
             _ => false,
         };
     }
@@ -243,8 +259,13 @@ public sealed class InputManager
             b.Start == ButtonState.Pressed || b.Back == ButtonState.Pressed ||
             b.LeftShoulder == ButtonState.Pressed || b.RightShoulder == ButtonState.Pressed ||
             b.LeftStick == ButtonState.Pressed || b.RightStick == ButtonState.Pressed;
-        var anyDir = _navWasDown[0] || _navWasDown[1] || _navWasDown[2] || _navWasDown[3];
-        return anyButton || anyDir || RightStick != Vector2.Zero;   // bouger la caméra = activité manette
+        var anyDir = false;
+        for (var i = 0; i < _navWasDown.Length; i++)
+            anyDir |= _navWasDown[i];
+        // Gâchettes comprises : elles portent de vraies actions (zones de danger, agrandir une carte), leur
+        // appui doit donc basculer l'affichage en mode manette comme n'importe quel bouton.
+        var anyTrigger = _currentPad.Triggers.Left > TriggerThreshold || _currentPad.Triggers.Right > TriggerThreshold;
+        return anyButton || anyDir || anyTrigger || RightStick != Vector2.Zero;   // bouger la caméra = activité manette
     }
 
     private bool MouseActivity() =>

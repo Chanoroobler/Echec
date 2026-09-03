@@ -849,9 +849,16 @@ public sealed class Match
     /// Rempart / Aura de rempart (partout SAUF au contact direct orthogonal), Duelliste (corps à corps) et
     /// le couvert d'un buisson. Borné à 0.
     /// </summary>
-    private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell)
+    /// <param name="halfPower">
+    /// Le coup ne vaut que la MOITIÉ de la puissance (arrondie vers le bas comme « Épines ») : c'est le cas du
+    /// « Séisme ». La réduction porte sur la puissance AVANT les défenses de la cible (Rempart Duelliste
+    /// couvert…) qui s'appliquent ensuite normalement.
+    /// </param>
+    private int EffectiveDamage(Unit attacker, Cell attackerCell, Unit victim, Cell victimCell, bool halfPower = false)
     {
         var dmg = EffectivePower(attacker, attackerCell);
+        if (halfPower)
+            dmg /= 2;
 
         // « Tueur de géants » : +5 (ou +7 « renforcé ») quand la cible a PLUS de PV ACTUELS que l'attaquant
         // (autrement dit l'attaquant est le plus BLESSÉ des deux). Comparaison AVANT que ce coup ne porte.
@@ -1005,7 +1012,8 @@ public sealed class Match
     /// <summary>
     /// « Séisme » : déclenché À LA FIN DU TOUR ADVERSE (appelé par la scène). Chaque unité de
     /// <paramref name="actor"/> portant le trait <see cref="Trait.Seisme"/> frappe les ENNEMIS des 8 cases
-    /// autour d'elle pour ses dégâts EFFECTIFS (sa puissance, moins les défenses de chaque cible). Les morts
+    /// autour d'elle pour la MOITIÉ de sa puissance (arrondie vers le bas), moins les défenses de chaque
+    /// cible : la secousse touche tout le voisinage mais ne vaut pas une attaque en règle. Les morts
     /// sont retirés et crédités au porteur. Renvoie les (case, dégâts réellement infligés) pour le feedback.
     /// </summary>
     public IReadOnlyList<(Cell Cell, int Damage)> ApplySeismes(Faction actor)
@@ -1046,7 +1054,7 @@ public sealed class Match
                 if (CellOf(victim) is not { } c)
                     continue;
                 var before = victim.Hp;
-                ApplyDamage(victim, EffectiveDamage(caster, casterCell, victim, c), caster);
+                ApplyDamage(victim, EffectiveDamage(caster, casterCell, victim, c, halfPower: true), caster);
                 var dealt = before - victim.Hp;
                 if (dealt > 0)
                     hits.Add((c, dealt));

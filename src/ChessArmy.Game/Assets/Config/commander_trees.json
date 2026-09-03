@@ -33,7 +33,7 @@
       "id": "commandant",
       "nodes": [
         // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────────
-        { "id": "cmd_Esquive",   "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Esquive" } ] },
+        { "id": "cmd_Duelliste", "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Duelliste" } ] },
         { "id": "cmd_puissance", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 2, "scale": "perDistinctPair" } ] },        
         { "id": "cmd_mouvement", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "moveRange",   "amount": 1 } ] },
         { "id": "cmd_vie",       "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perDistinctPair" } ] },
