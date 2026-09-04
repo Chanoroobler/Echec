@@ -77,6 +77,13 @@ public static class CommandTreeCatalog
             "formationbonus" => CommandEffect.FormationBonus(amount),
             "impactbonus" => CommandEffect.ImpactBonus(amount),
             "extraturnonkill" => CommandEffect.ExtraTurnOnKill(DomaineOf(e, nodeId)),
+            "commanderequipslots" => CommandEffect.CommanderEquipSlots(amount),
+            "unitequipslots" => CommandEffect.UnitEquipSlots(amount),
+            "chestextraitem" => CommandEffect.ChestExtraItem(amount),
+            "chestraritybonus" => CommandEffect.ChestRarityBonus(amount),
+            "rerollequipment" => CommandEffect.RerollEquipment(amount),
+            "recruitextraunit" => CommandEffect.RecruitExtraUnit(amount),
+            "recyclerecruit" => CommandEffect.RecycleRecruit(amount, DomaineOf(e, nodeId)),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }

@@ -179,16 +179,48 @@ public sealed class SaveService
         return true;
     }
 
-    /// <summary>Efface toute la méta-progression (unités, équipements découverts ET commandants débloqués). Garde le reste du profil.</summary>
+    // ── Méta-progression : coffres ouverts (déblocage du commandant Marchand) ────────
+
+    /// <summary>Nombre de coffres à ouvrir, TOUTES PARTIES CONFONDUES, pour débloquer le commandant Marchand.</summary>
+    public const int ChestUnlockThreshold = 30;
+
+    // Cache mémoire du compteur (même logique que les sets de découverte).
+    private int? _chestsOpened;
+
+    /// <summary>Total de coffres ouverts par le joueur depuis toujours (cf. <see cref="ChestUnlockThreshold"/>).</summary>
+    public int ChestsOpened() => _chestsOpened ??= TryRead<ProfileDto>(ProfilePath)?.ChestsOpened ?? 0;
+
+    /// <summary>
+    /// Comptabilise UN coffre ouvert (méta-progression). Compteur mémoire mis à jour SYNCHRONE ; persistance
+    /// disque (lecture-modification-écriture sous verrou, pour préserver les autres champs) en arrière-plan.
+    /// </summary>
+    public void AddChestOpened()
+    {
+        var total = ChestsOpened() + 1;
+        _chestsOpened = total;
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.ChestsOpened = total;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+    }
+
+    /// <summary>Efface toute la méta-progression (unités, équipements découverts, commandants débloqués ET coffres ouverts). Garde le reste du profil.</summary>
     public void ResetMetaProgression()
     {
         _discovered = new HashSet<string>();
         _discoveredEquip = new HashSet<string>();
         _unlockedCommanders = new HashSet<string>();
+        _chestsOpened = 0;
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
         dto.DiscoveredEquipment = new List<string>();
         dto.UnlockedCommanders = new List<string>();
+        dto.ChestsOpened = 0;
         TryWrite(ProfilePath, dto);
     }
 

@@ -104,6 +104,8 @@
 
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
   // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
+  // Un boss peut aussi porter de l'EQUIPEMENT : "equipmentPool" (ids d'equipment.json, ecrits a la main) au
+  // niveau du boss + "equipmentCount" par phase = combien il en tire, sans doublon. Cf. le boss Marchand.
   //
   // BOSS : un boss = une IDENTITE (name + asset/sprite + domaine de déplacement) et un PROFIL PAR PHASE dans
   // "phases" ("1".."3" -> stats + traits). Un boss n'est eligible qu'aux phases qu'il declare. A chaque run,
@@ -191,6 +193,36 @@
       "jumpPoints": 1,
       "jumpCap": 2,
       "startingUnits": [ "Cavalier", "Cavalier" ],
+      "unlocked": false
+    },
+    // Commandant MARCHAND. Se deplace en L (domaine Cavalier) : un convoyeur qui traverse le plateau pour
+    // ramasser le butin. Theme : l'EQUIPEMENT — son arbre "commandantMarchand" lui donne des slots (il est le
+    // SEUL commandant qui s'equipe), double les butins de coffre, ameliore les raretes et transforme la
+    // logistique. Source de points PROPRE : « sur butin » (lootPoints) = +1 point par coffre OUVERT ou tuile
+    // RECRUE ramassee, max lootCap = 3 par combat (les deux sources partagent le meme plafond). En echange il
+    // ne touche qu'UN point par mission reussie (missionPoints:1) la ou les autres en touchent 2 : son revenu
+    // se gagne sur le terrain, pas a l'arrivee.
+    // VERROUILLE : se debloque a la fin d'une partie quand le joueur a ouvert 30 coffres AU TOTAL (compteur du
+    // profil, cf. SaveService.ChestUnlockThreshold) — pas de boss lie.
+    // ASSET A DESSINER : Assets/Units/Commandant_marchand_{front,back,ia_front,ia_back}.png (64x64).
+    // STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Commander",
+      "id": "Commandant_marchand",
+      "domaine": "Cavalier",
+      "name": "Marchand",
+      "asset": "Commandant_marchand",
+      "hp": 22,
+      "damage": 8,
+      "moveRange": 3,
+      "attackRange": 3,
+      "deployments": 5,
+      "reserveSize": 8,
+      "tree": "commandantMarchand",
+      "lootPoints": 1,
+      "lootCap": 3,
+      "missionPoints": 1,
+      "startingUnits": [ "Dame", "Fou", "Tour" ],
       "unlocked": false
     },
     {
@@ -346,6 +378,57 @@
           "moveRange": 3,
           "attackRange": 3,
           "traits": [ "Impact", "Épines" ]
+        }
+      }
+    },
+    // Boss MARCHAND. Ne DEBLOQUE rien : le commandant "Commandant_marchand" reste gagne au compteur de 30
+    // coffres du profil (cf. SaveService.ChestUnlockThreshold) ; ce boss n'est qu'un adversaire de plus.
+    // Domaine Cavalier (saut en L) comme le commandant qu'il reflete.
+    //
+    // PARTICULARITE : c'est le SEUL boss sans aucun trait. Sa montee en puissance passe entierement par
+    // l'EQUIPEMENT ("equipmentPool" + "equipmentCount" par phase) : nu en phase 1, un legendaire en phase 2,
+    // deux en phase 3, tires sans doublon dans le pool ci-dessous. Ses traits varient donc d'une run a l'autre
+    // selon ce qu'il porte — c'est le theme du Marchand, retourne contre le joueur.
+    // Le pool est ECRIT A LA MAIN : ni la rarete ni "enemyAllowed" ne le filtrent (rageLegendaire est
+    // normalement interdit a l'IA, il est ici volontairement autorise a ce boss).
+    // STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_marchand",
+      "asset": "Commandant_marchand",
+      "domaine": "Cavalier",
+      "equipmentPool": [
+        "casqueLegendaire",
+        "bouclierLegendaire",
+        "epeeLegendaire",
+        "esquiveLegendaire",
+        "armureLegendaire",
+        "hacheLegendaire",
+        "InterceptionLegendaire",
+        "rageLegendaire",
+        "LoupLegendaire",
+        "EpineLegendaire"
+      ],
+      "phases": {
+        "1": {
+          "hp": 35,
+          "damage": 8,
+          "moveRange": 3,
+          "attackRange": 3
+        },
+        "2": {
+          "hp": 35,
+          "damage": 8,
+          "moveRange": 3,
+          "attackRange": 3,
+          "equipmentCount": 1
+        },
+        "3": {
+          "hp": 35,
+          "damage": 8,
+          "moveRange": 3,
+          "attackRange": 3,
+          "equipmentCount": 2
         }
       }
     }

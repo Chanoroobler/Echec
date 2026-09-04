@@ -9,6 +9,7 @@ using ChessArmy.Engine;
 using ChessArmy.Engine.Audio;
 using ChessArmy.Engine.Input;
 using ChessArmy.Engine.Localization;
+using ChessArmy.Engine.Persistence;
 using ChessArmy.Engine.Rendering;
 using ChessArmy.Engine.Scenes;
 using ChessArmy.Engine.UI;
@@ -96,8 +97,13 @@ public sealed class GameplayScene : Scene
     private readonly HashSet<Cell> _recrueConsumed = new();  // déjà déclenchées (libérées OU capturées)
     private readonly HashSet<Cell> _recrueCaptured = new();  // sous-ensemble CAPTURÉ par l'IA (mission « sauver » : distingue libéré du perdu)
     private readonly HashSet<Cell> _recruePrev = new();      // cases recrue occupées par un allié à la frame précédente
-    private UnitSpec? _recrueReveal;                         // unité gagnée en attente de révélation (carte modale, fige le combat)
+    // Unités gagnées en attente de révélation (une carte par unité, fige le combat). Une tuile recrue peut en
+    // donner PLUSIEURS à la fois (nœud « recrue double » du Marchand) : elles sont alors révélées ENSEMBLE,
+    // côte à côte, et rejoignent la réserve d'un seul vol.
+    private readonly List<UnitSpec> _recrueReveals = new();
     private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
+    private bool _recrueFlying;                              // phase VOL : les cartes filent vers la réserve
+    private float _recrueFlightTimer;                        // temps restant du vol (partagé par toutes les cartes)
     private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
     // Looks du pion recrue : chaque paire <Nom>_front.png (+ <Nom>_back.png optionnel) de Assets/Objects/ =
@@ -234,12 +240,13 @@ public sealed class GameplayScene : Scene
     // à l'arrivée) → Settle (court répit) → fin. L'item n'entre dans l'inventaire qu'à la fin du vol.
     private enum ChestPhase { None, Opening, Rolling, Item, Fly, Settle }
     private ChestPhase _chestPhase = ChestPhase.None;
-    private Equipment? _chestReveal;        // objet GAGNÉ (révélé à la fin, pas encore en inventaire)
-    private Equipment? _chestRollItem;      // objet AFFICHÉ pendant le défilement « machine à sous » (change vite)
+    // Un coffre peut donner PLUSIEURS objets (nœud « coffre généreux » du Marchand, cf. Run.ChestItemCount) :
+    // autant de roues côte à côte, tirées indépendamment et révélées ensemble. Un seul objet = rendu historique.
+    private readonly List<Equipment> _chestReveals = new();   // objets GAGNÉS (pas encore en inventaire)
+    private readonly List<Equipment> _chestRollItems = new(); // objets AFFICHÉS pendant le défilement (changent vite)
     private double _chestRollSwapTimer;     // temps depuis le dernier changement d'objet affiché
     private readonly System.Random _chestRollRng = new();
     private double _chestPhaseTimer;        // temps écoulé dans la phase courante
-    private Vector2 _chestFlyFrom;          // position de départ du vol (centre de l'objet révélé)
     private bool ChestRevealActive => _chestPhase != ChestPhase.None;
     private const int ChestFrames = 4;
     private const double ChestOpenDuration = 0.6;
@@ -561,8 +568,11 @@ public sealed class GameplayScene : Scene
     private readonly HashSet<Cell> _trembleTargets = new();
     // « Lien de puissance » : alliés qui ALIMENTENT le porteur sous le focus (sélection, sinon survol). Ils
     // prennent un halo dans la passe des pions pour montrer d'où vient son bonus de puissance. Rempli une fois
-    // par frame dans DrawHighlights, lu par DrawUnit. Vide si le pion focalisé n'a pas le trait.
+    // par frame dans UpdateLienAllies, lu par DrawUnit et DrawLienArcs. Vide si le pion focalisé n'a pas le trait.
     private readonly HashSet<Cell> _lienAllies = new();
+    // Tampon des alliés nourriciers d'UN porteur, réutilisé par DrawLienArcs (qui parcourt TOUS les porteurs
+    // du plateau à chaque frame) : pas d'allocation par porteur et par frame.
+    private readonly List<Cell> _lienArcBuffer = new();
     private double _aiTimer;
     private bool _showGrid = true;   // quadrillage permanent du plateau (bascule F1 / Select), activé par défaut
     private bool _showChecker = true;   // damier façon échiquier (une case sur deux assombrie), bascule F2, activé par défaut
@@ -1206,13 +1216,15 @@ public sealed class GameplayScene : Scene
         _recrueConsumed.Clear();
         _recrueCaptured.Clear();
         _recruePrev.Clear();
-        _recrueReveal = null;
+        _recrueReveals.Clear();
         _recrueAdded = false;
+        _recrueFlying = false;
+        _recrueFlightTimer = 0f;
         _recrueSettle = 0f;
         _chestConsumed.Clear();
         _chestPrev.Clear();
-        _chestReveal = null;
-        _chestRollItem = null;
+        _chestReveals.Clear();
+        _chestRollItems.Clear();
         _chestRollSwapTimer = 0;
         _chestPhase = ChestPhase.None;
         _chestPhaseTimer = 0;
@@ -1224,6 +1236,10 @@ public sealed class GameplayScene : Scene
         _equipPhase = false;
         _dragEquip = null;
         _dragEquipFrom = null;
+        _rerollLoot.Clear();   // butin de relance de la mission précédente : rien à reporter
+        _rerollLootTimer = 0;
+        _recycleRecruits.Clear();   // idem pour la recrue de recyclage
+        _recycleRecruitTimer = 0;
         _equipFocus = 0;
         _equipScroll = 0;
         _facesDown.Clear();
@@ -1603,6 +1619,39 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    /// <summary>
+    /// Prend UNE recrue précise de la révélation (cas « pas la place pour toutes ») : elle rejoint la réserve
+    /// tout de suite, sa carte disparaît de la rangée et les autres restent proposées. Sans effet s'il ne reste
+    /// plus un seul slot. La révélation se ferme quand plus aucune carte n'attend.
+    /// </summary>
+    private void TakeRecrue(int index)
+    {
+        if (index < 0 || index >= _recrueReveals.Count || _run.IsReserveFull)
+            return;
+
+        var spec = _recrueReveals[index];
+        _run.AddUnit(spec);     // rejoint l'armée…
+        _pending.Add(spec);     // …et la vue locale de la réserve
+        _recrueReveals.RemoveAt(index);
+        _recruitFocus = System.Math.Clamp(_recruitFocus, 0, System.Math.Max(0, _recrueReveals.Count - 1));
+        ClampInvScroll();
+        Context.Sounds.Play("unit_place");
+        if (_recrueReveals.Count == 0)
+            CloseRecrueReveal();
+    }
+
+    /// <summary>
+    /// Ferme la révélation de recrue : après la pose des pions comme après un abandon (pas la place en
+    /// réserve). Toutes les cartes de la tuile partent ensemble, il n'y a donc rien à enchaîner.
+    /// </summary>
+    private void CloseRecrueReveal()
+    {
+        _recrueReveals.Clear();
+        _recrueAdded = false;
+        _recrueFlying = false;
+        _recrueFlightTimer = 0f;
+    }
+
     private void TriggerRecrue(Cell c)
     {
         _recrueConsumed.Add(c);
@@ -1613,8 +1662,18 @@ public sealed class GameplayScene : Scene
         // et il rejoint l'armée seulement à la fin du vol. Tirage parmi les tier 1 déjà vus, avec une CHANCE
         // croissante (0 % mission 1, +5 %/mission dès la mission 2) d'un TIER 2 parmi les T2 déjà découverts
         // (cf. RollSeenRecruit) — sans effet tant qu'aucun T2 n'est découvert.
-        _recrueReveal = _run.RollSeenRecruit(new System.Random(), Context.Saves.IsUnitDiscovered);
+        // Une tuile peut donner PLUSIEURS pions (nœud « recrue double » du Marchand, cf. Run.RecruitTileUnits) :
+        // autant de tirages INDÉPENDANTS, révélés ENSEMBLE (une carte chacun, côte à côte) et posés d'un seul
+        // vol. Un seul pion = déroulé historique (une carte centrée).
+        var rng = new System.Random();
+        _recrueReveals.Clear();
+        _recrueFlying = false;
+        _recrueAdded = false;
+        _recruitFocus = 0;   // manette : la 1re carte est désignée (sert au choix à l'unité si la place manque)
+        for (var i = 0; i < _run.RecruitTileUnits; i++)
+            _recrueReveals.Add(_run.RollSeenRecruit(rng, Context.Saves.IsUnitDiscovered));
         _gpInventory = false;   // manette : on arrive sur la carte, RB entre ensuite dans la réserve
+        GrantLootPoint(c);      // commandant MARCHAND : une recrue ramassée rapporte un point (plafonné par combat)
         Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
 
@@ -1689,10 +1748,13 @@ public sealed class GameplayScene : Scene
         // Pions joueur ÉQUIPÉS encore sur le plateau ; ceux du snapshot précédent qui ont disparu sont morts.
         var current = new Dictionary<Unit, Cell>();
         foreach (var (cell, unit) in _match.Units())
-            if (unit.Faction == Faction.Player && unit.Equipment != null)
+            if (unit.Faction == Faction.Player && unit.Equipments.Count > 0)
                 current[unit] = cell;
         foreach (var (unit, cell) in _equippedCells)
-            if (!current.ContainsKey(unit) && unit.Equipment is { } e)
+        {
+            if (current.ContainsKey(unit))
+                continue;
+            foreach (var e in unit.Equipments)   // un pion peut en porter plusieurs : tous se dissolvent
                 _equipDissolves.Add(new EquipDissolveFx
                 {
                     Equip = e,
@@ -1700,6 +1762,7 @@ public sealed class GameplayScene : Scene
                     Seed = new Vector2((_equipDissolves.Count * 53) % 211, (_equipDissolves.Count * 97) % 199),
                     Delay = EquipDissolveDelay,
                 });
+        }
         _equippedCells = current;
     }
 
@@ -1711,14 +1774,25 @@ public sealed class GameplayScene : Scene
         // équipement de cette rareté. Met à jour l'état de pitié de la run (sauvegardé au prochain placement).
         // TUTORIEL : butin FIXE (une épée, bonus de stat posable sur n'importe quelle classe) — la leçon
         // suivante doit pouvoir l'équiper, et la « pitié » de la vraie run n'a pas à bouger.
-        var item = _tutorial != null
-            ? Equipments.ById(TutorialEquipmentId)
-            : _run.RollChestEquipment(new System.Random());
-        if (item == null)
+        // Le nombre d'objets vient de l'arbre (1 partout, 2 avec le nœud « coffre généreux » du Marchand) :
+        // autant de tirages COMPLETS et indépendants, révélés côte à côte.
+        _chestReveals.Clear();
+        if (_tutorial != null)
+        {
+            if (Equipments.ById(TutorialEquipmentId) is { } tuto)
+                _chestReveals.Add(tuto);
+        }
+        else
+        {
+            _chestReveals.AddRange(_run.RollChestContents(new System.Random()));
+        }
+        if (_chestReveals.Count == 0)
             return;
-        _chestReveal = item;
+        if (_tutorial == null)
+            Context.Saves.AddChestOpened();   // méta-progression : 30 coffres au total débloquent le Marchand
         _chestPhase = ChestPhase.Opening;
         _chestPhaseTimer = 0;
+        GrantLootPoint(c);   // commandant MARCHAND : un coffre ouvert rapporte un point (plafonné par combat)
         Context.Sounds.Play("unit_place");   // TODO : son dédié « coffre qui s'ouvre »
     }
 
@@ -1735,7 +1809,9 @@ public sealed class GameplayScene : Scene
                     _chestPhase = ChestPhase.Rolling;      // le défilement « machine à sous » démarre
                     _chestPhaseTimer = 0;
                     _chestRollSwapTimer = 0;
-                    _chestRollItem = RandomRollItem();
+                    _chestRollItems.Clear();
+                    foreach (var _ in _chestReveals)
+                        _chestRollItems.Add(RandomRollItem());
                 }
                 break;
 
@@ -1746,7 +1822,6 @@ public sealed class GameplayScene : Scene
             case ChestPhase.Item:   // l'objet flotte au-dessus du coffre + description ; on attend le clic
                 if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
                 {
-                    _chestFlyFrom = ChestItemRect(ChestRevealRect()).Center.ToVector2();
                     _chestPhase = ChestPhase.Fly;
                     _chestPhaseTimer = 0;
                     Context.Sounds.Play("unit_place");
@@ -1756,7 +1831,7 @@ public sealed class GameplayScene : Scene
             case ChestPhase.Fly:    // l'objet vole vers l'inventaire ; il y entre à l'arrivée
                 if (_chestPhaseTimer >= ChestFlyDuration)
                 {
-                    if (_chestReveal is { } item)
+                    foreach (var item in _chestReveals)
                     {
                         _run.AddEquipment(item);
                         _run.Stats.AddEquipmentFound();   // récap : équipement ramassé
@@ -1771,8 +1846,8 @@ public sealed class GameplayScene : Scene
             default:                // Settle : court répit puis on reprend le combat
                 if (_chestPhaseTimer >= ChestSettleDuration)
                 {
-                    _chestReveal = null;
-                    _chestRollItem = null;
+                    _chestReveals.Clear();
+                    _chestRollItems.Clear();
                     _chestPhase = ChestPhase.None;
                     _lootBurstsLeft = 0;   // fin de la modale : on annule d'éventuelles salves restantes
                 }
@@ -1783,28 +1858,30 @@ public sealed class GameplayScene : Scene
     /// <summary>
     /// Défilement « machine à sous » : l'objet affiché change de plus en plus lentement (intervalle qui passe
     /// de <see cref="ChestRollSwapMin"/> à <see cref="ChestRollSwapMax"/>), puis se FIGE sur l'objet gagné
-    /// (<see cref="_chestReveal"/>) durant le dernier <see cref="ChestRollLockTime"/> avant de le révéler.
+    /// (<see cref="_chestReveals"/>) durant le dernier <see cref="ChestRollLockTime"/> avant de le révéler.
     /// </summary>
     private void UpdateChestRoll(float dt)
     {
         var remaining = ChestRollDuration - _chestPhaseTimer;
         if (remaining <= ChestRollLockTime)
-            _chestRollItem = _chestReveal;   // verrouillé sur le gagné : il « atterrit » avant la révélation
+            LockChestRolls();   // verrouillées sur les gagnés : ils « atterrissent » avant la révélation
 
         if (_chestPhaseTimer >= ChestRollDuration)
         {
-            _chestRollItem = _chestReveal;
+            LockChestRolls();
             _chestPhase = ChestPhase.Item;
             _chestPhaseTimer = 0;
-            Context.Sounds.Play("reward");   // jingle positif à l'instant où l'objet se fige
-            if (_chestReveal!.Rarity == EquipmentRarity.Legendary)
+            Context.Sounds.Play("reward");   // jingle positif à l'instant où les objets se figent
+            // Plusieurs objets : c'est la MEILLEURE rareté du coffre qui décide de la fanfare et du feu d'artifice.
+            var best = _chestReveals.Max(i => i.Rarity);
+            if (best == EquipmentRarity.Legendary)
                 Context.Sounds.Play("reward_legendary");   // fanfare EN PLUS pour un légendaire (par-dessus le feu d'artifice)
-            QueueLootFireworks(_chestReveal!.Rarity);   // rare = petit feu d'artifice, légendaire = grand bouquet
+            QueueLootFireworks(best);   // rare = petit feu d'artifice, légendaire = grand bouquet
             return;
         }
 
         // Intervalle de changement croissant (décélération) selon l'avancement du défilement.
-        if (_chestRollItem == _chestReveal && remaining <= ChestRollLockTime)
+        if (remaining <= ChestRollLockTime)
             return;   // déjà figé : on ne change plus
         var progress = _chestPhaseTimer / ChestRollDuration;
         var interval = ChestRollSwapMin + (ChestRollSwapMax - ChestRollSwapMin) * (progress * progress);
@@ -1812,15 +1889,23 @@ public sealed class GameplayScene : Scene
         if (_chestRollSwapTimer >= interval)
         {
             _chestRollSwapTimer = 0;
-            _chestRollItem = RandomRollItem();
+            for (var i = 0; i < _chestRollItems.Count; i++)
+                _chestRollItems[i] = RandomRollItem();
         }
+    }
+
+    /// <summary>Fige chaque roue sur l'objet réellement gagné de sa colonne.</summary>
+    private void LockChestRolls()
+    {
+        for (var i = 0; i < _chestRollItems.Count && i < _chestReveals.Count; i++)
+            _chestRollItems[i] = _chestReveals[i];
     }
 
     /// <summary>Objet aléatoire du catalogue pour le défilement (repli sur l'objet gagné si le catalogue est vide).</summary>
     private Equipment RandomRollItem()
     {
         var all = Equipments.All;
-        return all.Count > 0 ? all[_chestRollRng.Next(all.Count)] : _chestReveal!;
+        return all.Count > 0 ? all[_chestRollRng.Next(all.Count)] : _chestReveals[0];
     }
 
     /// <summary>
@@ -2086,6 +2171,10 @@ public sealed class GameplayScene : Scene
 
         if (_landingTimer > 0)
             _landingTimer -= gameTime.ElapsedGameTime.TotalSeconds;
+        if (_rerollLootTimer > 0)   // butin de relance affiché au-dessus de l'icône (cf. DrawRerollLoot)
+            _rerollLootTimer -= gameTime.ElapsedGameTime.TotalSeconds;
+        if (_recycleRecruitTimer > 0)   // recrue de recyclage, même emplacement (cf. DrawRecycleRecruits)
+            _recycleRecruitTimer -= gameTime.ElapsedGameTime.TotalSeconds;
         if (_fusionPunchTimer > 0)
             _fusionPunchTimer -= gameTime.ElapsedGameTime.TotalSeconds;
 
@@ -2456,7 +2545,7 @@ public sealed class GameplayScene : Scene
             case TutorialStep.EquipDo:
                 // Réussite = l'épée est COLLÉE à un pion. (L'inventaire se vide aussi pendant le portage :
                 // on regarde donc le roster, et on attend que le glisser soit relâché.)
-                if (_dragEquip == null && _run.Roster.Any(u => u.Equipment != null))
+                if (_dragEquip == null && _run.Roster.Any(u => u.HasEquipment))
                 {
                     ExitEquipPhase();
                     t.Advance();                 // → TreeIntro
@@ -3224,7 +3313,7 @@ public sealed class GameplayScene : Scene
         if (_tutorial == null && Context.Input.WasTertiaryPressed && inv.Count > 0)
         {
             _run.RemoveEquipment(inv[_equipFocus]);
-            _run.AddReroll();
+            GrantRecycleRewards();
             _equipFocus = inv.Count == 0 ? 0 : System.Math.Clamp(_equipFocus, 0, inv.Count - 1);
             Context.Sounds.Play("equip_lost");   // son de casse (objet détruit)
             return;
@@ -3234,15 +3323,16 @@ public sealed class GameplayScene : Scene
         if (Context.Input.WasConfirmPressed
             && _match.UnitAt(_cursor) is { Faction: Faction.Player } unit
             && _playerSpec.TryGetValue(unit, out var spec)
-            && !spec.Essential)
+            && SlotsOf(spec) > 0)
         {
-            if (spec.Equipment is null && inv.Count > 0 && _run.Equip(spec, inv[_equipFocus]))
+            // A : remplit le PREMIER slot libre avec l'item focus ; si tous les slots sont pris, vide le pion.
+            if (_run.HasFreeSlot(spec) && inv.Count > 0 && _run.Equip(spec, inv[_equipFocus]))
             {
                 _equipFocus = inv.Count == 0 ? 0 : System.Math.Clamp(_equipFocus, 0, inv.Count - 1);
                 RefreshDeployedUnit(spec);
                 Context.Sounds.Play("unit_place");
             }
-            else if (spec.Equipment is not null)
+            else if (spec.HasEquipment)
             {
                 _run.Unequip(spec);
                 RefreshDeployedUnit(spec);
@@ -3267,14 +3357,14 @@ public sealed class GameplayScene : Scene
         var layout = BuildLayout();
         foreach (var (cell, spec) in DeployedPlayerSpecs().ToList())
         {
-            if (spec.Essential || spec.Equipment is null)
+            if (!spec.HasEquipment)
                 continue;
-            if (EquipBadgeRect(cell, layout).Contains(mouse))
+            if (EquipSlotAt(spec, cell, layout, mouse) is { Worn: { } worn })
             {
-                _dragEquip = spec.Equipment;
-                spec.Equipment = null;      // détaché (rendu à l'inventaire seulement si lâché hors d'un slot)
+                _dragEquip = worn;
+                spec.RemoveEquipment(worn);   // détaché (rendu à l'inventaire seulement si lâché hors d'un slot)
                 _dragEquipFrom = spec;
-                RefreshDeployedUnit(spec);  // la carte tooltip reflète le retrait en direct
+                RefreshDeployedUnit(spec);    // la carte tooltip reflète le retrait en direct
                 Context.Sounds.Play("unit_pick");
                 return;
             }
@@ -3289,7 +3379,7 @@ public sealed class GameplayScene : Scene
         // Lâcher sur l'ICÔNE DE RELANCE : CASSE l'équipement (détruit) contre +1 relance.
         if (_tutorial == null && RerollIconRect().Contains(mouse))
         {
-            _run.AddReroll();
+            GrantRecycleRewards();
             _dragEquip = null;
             _dragEquipFrom = null;
             Context.Sounds.Play("equip_lost");   // son de casse : l'objet est détruit
@@ -3300,22 +3390,26 @@ public sealed class GameplayScene : Scene
 
         foreach (var (cell, spec) in DeployedPlayerSpecs().ToList())
         {
-            if (spec.Essential)
+            if (SlotsOf(spec) <= 0)
                 continue;
-            if (EquipBadgeRect(cell, layout).Contains(mouse))
+            if (EquipSlotAt(spec, cell, layout, mouse) is { } hit)
             {
-                if (!_run.CanEquip(spec, carried))
+                if (!_run.CanReceive(spec, carried))
                 {
-                    // Pion incompatible (restriction de domaine : cf. Run.CanEquip) : refus, l'objet retourne à l'inventaire.
+                    // Pion incompatible (restriction de domaine, ou objet déjà porté : cf. Run.CanEquip) :
+                    // refus, l'objet retourne à l'inventaire.
                     _run.AddEquipment(carried);
                     _dragEquip = null;
                     _dragEquipFrom = null;
                     Context.Sounds.Play("unit_deselect");
                     return;
                 }
-                if (spec.Equipment is { } occ)   // slot occupé : l'ancien équipement repart à l'inventaire
+                if (hit.Worn is { } occ)         // slot visé occupé : l'ancien équipement repart à l'inventaire
+                {
+                    spec.RemoveEquipment(occ);
                     _run.AddEquipment(occ);
-                spec.Equipment = carried;
+                }
+                spec.AddEquipment(carried);
                 RefreshDeployedUnit(spec);       // la carte tooltip reflète le nouvel équipement en direct
                 _dragEquip = null;
                 _dragEquipFrom = null;
@@ -3339,8 +3433,13 @@ public sealed class GameplayScene : Scene
                 yield return (cell, spec);
     }
 
-    /// <summary>Rectangle de l'icône d'équipement AU-DESSUS de la tête du pion (badge placement + cible de dépose).</summary>
-    private Rectangle EquipBadgeRect(Cell cell, GridLayout layout)
+    /// <summary>
+    /// Rectangle du slot d'équipement n° <paramref name="slot"/> AU-DESSUS de la tête du pion (badge placement
+    /// + cible de dépose). Les <paramref name="slots"/> cadres sont alignés côte à côte et CENTRÉS sur le pion :
+    /// avec un seul slot (cas de tous les commandants sauf le Marchand, et de tout pion sans le nœud « deuxième
+    /// équipement »), c'est exactement le placement historique.
+    /// </summary>
+    private Rectangle EquipBadgeRect(Cell cell, GridLayout layout, int slot = 0, int slots = 1)
     {
         const int s = 34;                                        // cadre 34 ; l'icône 32 y est centrée
         var top = layout.CellToScreen(cell.Column, cell.Row);
@@ -3348,7 +3447,25 @@ public sealed class GameplayScene : Scene
         var spriteLift = (int)(size * SpriteLiftFraction);
         var cx = (int)top.X + size / 2;
         var y = (int)top.Y - spriteLift - s - 2;                 // juste au-dessus du sommet du sprite
-        return new Rectangle(cx - s / 2, y, s, s);
+        var count = System.Math.Max(1, slots);
+        var left = cx - count * s / 2;
+        return new Rectangle(left + System.Math.Clamp(slot, 0, count - 1) * s, y, s, s);
+    }
+
+    /// <summary>Slots d'équipement affichés au-dessus d'un pion posé (0 = il ne s'équipe pas : le commandant, sauf arbre du Marchand).</summary>
+    private int SlotsOf(UnitSpec spec) => _run.SlotsFor(spec);
+
+    /// <summary>
+    /// Slot d'équipement de <paramref name="spec"/> (posé en <paramref name="cell"/>) sous <paramref name="p"/> :
+    /// son indice et l'équipement qu'il porte (null si le slot est vide). Null si aucun slot n'est visé.
+    /// </summary>
+    private (int Slot, Equipment? Worn)? EquipSlotAt(UnitSpec spec, Cell cell, GridLayout layout, Point p)
+    {
+        var slots = SlotsOf(spec);
+        for (var i = 0; i < slots; i++)
+            if (EquipBadgeRect(cell, layout, i, slots).Contains(p))
+                return (i, i < spec.Equipments.Count ? spec.Equipments[i] : null);
+        return null;
     }
 
     /// <summary>Indice d'inventaire d'équipement sous <paramref name="p"/> dans le bandeau du panneau (null si aucun).</summary>
@@ -3369,6 +3486,45 @@ public sealed class GameplayScene : Scene
 
     private const int RerollIconSize = 32;    // icône native
     private const int RerollFrame = 40;       // zone de dépose autour de l'icône
+
+    // Butin de relance (nœud « Troc » du Marchand) : l'objet gagné s'affiche quelques secondes AU-DESSUS de
+    // l'icône de relance — sans lui, il tomberait en inventaire sans qu'on sache ce qu'on a eu. Purement
+    // visuel : l'objet est DÉJÀ dans l'inventaire quand ceci s'affiche.
+    private readonly List<Equipment> _rerollLoot = new();
+    private double _rerollLootTimer;
+    private const double RerollLootDuration = 3.5;
+
+    // Recrues gagnées par un RECYCLAGE (nœud « Ferraille » du Marchand) : même emplacement et même durée que
+    // le butin de relance ci-dessus. Les deux ne coexistent jamais (relance = placement, recyclage = sous-phase
+    // Équipement) mais gardent chacun leur état, pour qu'aucun ne remette l'autre à zéro. Purement visuel :
+    // le pion est DÉJÀ dans la réserve quand ceci s'affiche.
+    private readonly List<UnitSpec> _recycleRecruits = new();
+    private double _recycleRecruitTimer;
+
+    /// <summary>
+    /// Suite d'un RECYCLAGE d'équipement (l'objet est déjà détruit par l'appelant) : +1 relance, et — avec le
+    /// nœud « Ferraille » du Marchand — la recrue tier 1 qu'il offre rejoint la réserve. La règle (plafond de
+    /// réserve, une seule recrue par phase de placement) vit dans <see cref="Run.GrantRecycleRecruits"/> ; ici
+    /// on ne fait qu'accrocher la vue locale et le retour visuel.
+    /// </summary>
+    private void GrantRecycleRewards()
+    {
+        _run.AddReroll();
+
+        var granted = _run.GrantRecycleRecruits(new System.Random(), Context.Saves.IsUnitDiscovered);
+        if (granted.Count == 0)
+            return;
+
+        _recycleRecruits.Clear();
+        foreach (var spec in granted)
+        {
+            _pending.Add(spec);        // vue locale de la réserve (posable dès le retour au placement)
+            _recycleRecruits.Add(spec);
+        }
+        ClampInvScroll();
+        _recycleRecruitTimer = RerollLootDuration;   // …et on le MONTRE au-dessus de l'icône (cf. DrawRecycleRecruits)
+        Context.Sounds.Play("recruit");
+    }
 
     /// <summary>
     /// Libellé sous l'icône : le COMPTEUR de relances au placement, « RECYCLER » en sous-phase Équipement
@@ -3395,12 +3551,29 @@ public sealed class GameplayScene : Scene
     /// <summary>Relance le pion en cours de glisser (lâché sur l'icône) : remplaçant en réserve. Faux si impossible.</summary>
     private bool TryRerollDraggedUnit(UnitSpec spec)
     {
-        var replacement = _run.RerollUnit(spec, new System.Random(), Context.Saves.IsUnitDiscovered);
+        var loot = new List<Equipment>();
+        var replacement = _run.RerollUnit(spec, new System.Random(), Context.Saves.IsUnitDiscovered, loot);
         if (replacement == null)
             return false;
         _pending.Add(replacement);        // le remplaçant rejoint la réserve
         ClampInvScroll();
         Context.Sounds.Play("recruit");   // son positif : nouveau pion obtenu
+        // Nœud « butin de relance » (Marchand) : la relance a AUSSI donné un équipement (déjà en inventaire) —
+        // on le fait entrer au codex et au récap comme un butin de coffre.
+        foreach (var item in loot)
+        {
+            _run.Stats.AddEquipmentFound();
+            if (Context.Saves.DiscoverEquipment(item.Id))
+                _run.Stats.AddDiscoveredEquipment(item.Name);
+        }
+        if (loot.Count > 0)
+        {
+            // …et on le MONTRE quelques secondes au-dessus de l'icône de relance (cf. DrawRerollLoot).
+            _rerollLoot.Clear();
+            _rerollLoot.AddRange(loot);
+            _rerollLootTimer = RerollLootDuration;
+            Context.Sounds.Play("reward");
+        }
         return true;
     }
 
@@ -3445,6 +3618,21 @@ public sealed class GameplayScene : Scene
         // Survol souris (AVEC OU SANS objet/pion en main) : surbrillance + tooltip descriptive au style
         // standard du jeu (titre jaune + description repliée), placée au-dessus de l'icône, bornée à l'écran
         // et à gauche du panneau. Titre/desc selon le mode (relancer un pion / recycler un équipement).
+        // Butin de relance encore affiché : il occupe la place au-dessus de l'icône, la tooltip de survol
+        // attendra (deux panneaux superposés seraient illisibles).
+        if (_rerollLootTimer > 0 && _rerollLoot.Count > 0)
+        {
+            DrawRerollLoot(sb, frame);
+            return;
+        }
+
+        // Même emplacement pour la recrue offerte par un RECYCLAGE (nœud « Ferraille »).
+        if (_recycleRecruitTimer > 0 && _recycleRecruits.Count > 0)
+        {
+            DrawRecycleRecruits(sb, frame);
+            return;
+        }
+
         if (!Context.Input.UsingGamepad && frame.Contains(Context.Input.MousePosition))
         {
             DrawRectBorder(sb, Inflate(frame, 2), Palette.Yellow1, 2);
@@ -3466,6 +3654,52 @@ public sealed class GameplayScene : Scene
                 : (_dragSpec is { Essential: false } && _run.HasReroll);
             if (gpAvailable)
                 DrawRectBorder(sb, Inflate(frame, 2), Palette.Yellow1, 2);
+        }
+    }
+
+    /// <summary>
+    /// Butin gagné par une RELANCE (nœud « Troc » du Marchand), affiché quelques secondes AU-DESSUS de l'icône
+    /// de relance : icône 32×32 de l'objet + son cadre habituel (nom / effets / restriction), le MÊME que la
+    /// révélation d'un coffre — on reconnaît l'objet au même endroit visuel que partout ailleurs. L'objet est
+    /// déjà en inventaire à ce moment : c'est purement du feedback, rien à cliquer.
+    /// </summary>
+    private void DrawRerollLoot(SpriteBatch sb, Rectangle frame)
+    {
+        const int s = 32, gap = 6;
+        var pitch = EquipTooltipMaxWidth + 8;   // un objet par colonne (le nœud n'en donne qu'un aujourd'hui)
+        for (var i = 0; i < _rerollLoot.Count; i++)
+        {
+            var cx = frame.Center.X - (_rerollLoot.Count - 1) * pitch / 2 + i * pitch;
+            var icon = new Rectangle(cx - s / 2, frame.Y - gap - s, s, s);
+            DrawEquipIcon(sb, _rerollLoot[i], icon);
+
+            // Cadre au-dessus de l'icône, borné À GAUCHE DU PANNEAU comme la tooltip de survol (en 1080p la
+            // largeur utile est serrée : sans ce clamp le cadre passerait sous le panneau de droite).
+            var item = _rerollLoot[i];
+            int w = EquipTooltipWidth(item), h = EquipTooltipHeight(item);
+            var x = System.Math.Clamp(icon.Center.X - w / 2, 8, System.Math.Max(8, PanelRect().X - w - 8));
+            var y = icon.Y - h - gap;
+            if (y < 8) y = icon.Bottom + gap;   // pas la place au-dessus : bascule dessous
+            DrawEquipTooltipPanel(sb, item, x, y);
+        }
+    }
+
+    /// <summary>
+    /// Recrue(s) offerte(s) par un RECYCLAGE (nœud « Ferraille » du Marchand), quelques secondes AU-DESSUS de
+    /// l'icône : portrait 64×64 À TAILLE NATIVE (jamais redimensionné, comme les portraits de la réserve) +
+    /// le nom en jaune. Le pion est déjà en réserve : c'est purement du feedback, rien à cliquer.
+    /// </summary>
+    private void DrawRecycleRecruits(SpriteBatch sb, Rectangle frame)
+    {
+        const int s = 64, gap = 6, pitch = s + 12;
+        for (var i = 0; i < _recycleRecruits.Count; i++)
+        {
+            var cls = _recycleRecruits[i].UnitClass;
+            var cx = frame.Center.X - (_recycleRecruits.Count - 1) * pitch / 2 + i * pitch;
+            var icon = new Rectangle(cx - s / 2, frame.Y - gap - s, s, s);
+            DrawChip(sb, cls, Faction.Player, icon, front: true);
+            Context.Font.DrawCentered(sb, UnitName(cls).ToUpperInvariant(),
+                new Rectangle(icon.X - 24, icon.Y - 11, icon.Width + 48, 8), 1, Palette.Yellow2);
         }
     }
 
@@ -3538,8 +3772,66 @@ public sealed class GameplayScene : Scene
         return r;
     }
 
-    /// <summary>Nombre de slots occupés dans la grille (portraits + éventuelle pile de fusion).</summary>
-    private int InvSlotCount() => _pending.Count + (ReservePileSlot() is null ? 0 : 1);
+    // ── Pions ENGAGÉS (posés sur le plateau) affichés en réserve ───────────────────────────────────
+    // Le compteur du panneau annonce ReserveCount, qui compte TOUTE l'armée hors commandant — pions posés
+    // compris. Tant que la grille ne montrait que _pending, elle contredisait son propre compteur : « 7/8 »
+    // au-dessus de deux portraits. On complète donc la grille avec les pions ENGAGÉS, en TRANSPARENT et
+    // inertes (ni fusion, ni suppression, ni focus manette) : ils sont sur le terrain, on n'en dispose pas.
+    // C'est ce qui permet de juger quoi sacrifier quand une recrue arrive sur une réserve pleine.
+
+    /// <summary>Opacité des portraits engagés : présents mais clairement hors de portée.</summary>
+    private const float EngagedCardAlpha = 0.35f;
+
+    /// <summary>
+    /// Vrai quand la grille de réserve complète ses portraits par les pions ENGAGÉS. Jamais au PLACEMENT :
+    /// là, un pion posé se reprend à la main sur le plateau, la grille doit rester celle des pions posables
+    /// (et un doublon transparent y serait un piège).
+    /// </summary>
+    private bool ReserveShowsEngaged => _run.Phase != RunPhase.Placement;
+
+    /// <summary>Vrai si ce gabarit est un pion ENGAGÉ : de l'armée, pas le commandant, pas en réserve.</summary>
+    private bool IsEngaged(UnitSpec spec) => !spec.Essential && !_pending.Contains(spec);
+
+    /// <summary>
+    /// Combien de pions de l'armée sont engagés sur le plateau (donc absents de <see cref="_pending"/>).
+    /// 0 au placement. Lu à chaque frame par la mise en page de la grille : compte SANS allouer.
+    /// </summary>
+    private int EngagedCount()
+    {
+        if (!ReserveShowsEngaged)
+            return 0;
+        var n = 0;
+        foreach (var spec in _run.Roster)
+            if (IsEngaged(spec))
+                n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Remplit <see cref="_engagedBuffer"/> des pions engagés sur le plateau pour la mission en cours
+    /// (commandant exclu, il ne compte jamais dans la réserve) et le renvoie. Vide au placement et sur les
+    /// écrans où toute l'armée est rentrée en réserve. Tampon réutilisé : pas d'allocation par frame.
+    /// </summary>
+    private List<UnitSpec> EngagedSpecs()
+    {
+        _engagedBuffer.Clear();
+        if (!ReserveShowsEngaged)
+            return _engagedBuffer;
+        foreach (var spec in _run.Roster)
+            if (IsEngaged(spec))
+                _engagedBuffer.Add(spec);
+        return _engagedBuffer;
+    }
+
+    private readonly List<UnitSpec> _engagedBuffer = new();
+
+    /// <summary>Case du portrait ENGAGÉ d'indice <paramref name="k"/> : à la suite des portraits de réserve et de la pile.</summary>
+    private Rectangle EngagedCardRect(int k) =>
+        SlotRect(_pending.Count + (ReservePileSlot() is null ? 0 : 1) + k);
+
+    /// <summary>Nombre de slots occupés dans la grille (portraits + éventuelle pile de fusion + engagés).</summary>
+    private int InvSlotCount() =>
+        _pending.Count + (ReservePileSlot() is null ? 0 : 1) + EngagedCount();
 
     /// <summary>Y sous lequel la grille ne doit pas déborder (au-dessus des lignes d'aide et des boutons).</summary>
     private int InvGridBottom()
@@ -4017,6 +4309,7 @@ public sealed class GameplayScene : Scene
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point (coup reçu Lancier / coup à distance Fou)
+        ConsumeUltimateRevive();         // « Renaissance ultime » déclenchée : consommée pour TOUTE la partie
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
         // Paysans (tuiles recrue) :
@@ -4030,9 +4323,7 @@ public sealed class GameplayScene : Scene
         // l'attaquant AVANCE dessus (le moteur l'y place instantanément), la révélation s'ouvrirait AVANT que
         // l'animation d'attaque n'ait fini de jouer. On attend donc la fin des FX : l'attaque se joue, PUIS la
         // découverte. La détection est basée sur l'état (occupation courante) : rien n'est manqué, juste différé.
-        if (!_fx.Active && !_storm.Active && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active && _pendingSlide is null
-            && _pendingRiposte is null && _pendingInterceptions.Count == 0
-            && _pendingSlamDissolve is null && _pendingPierceDissolve is null)
+        if (BattleSettled)
         {
             if (AiCapturesPaysans)
                 CheckPaysanCapture();
@@ -4051,64 +4342,86 @@ public sealed class GameplayScene : Scene
 
         // Révélation de recrue : carte au centre + inventaire ouvert ; au clic, le pion vole vers son slot
         // d'inventaire et ne rejoint l'armée qu'à la fin du vol. Combat FIGÉ pendant toute la séquence.
-        if (_recrueReveal is { } gained)
+        if (_recrueReveals.Count > 0)
         {
             // Fusion FAÇON PLACEMENT pendant la révélation (empiler → popup au centre → évolution). Pendant le
             // combat, _pending = la réserve NON déployée → fusionner dessus ne touche pas le plateau.
             if (EvoPlaying) { UpdateEvolutionAnimation(dt); return; }
             if (FusionOpen) { UpdateFusionPopup(); return; }
 
-            if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : on voit le pion, on décide
+            if (!_recrueFlying && !_recrueAdded)   // phase CARTE : on voit les pions, on décide
             {
                 var vp = VirtualViewport;
                 var availW = vp.Width - RightPanelWidth;
                 var mouse = Context.Input.MousePosition;
-                if (_run.IsReserveFull)
+                // Il faut la place pour TOUTES les recrues révélées (une tuile peut en donner plusieurs).
+                var count = _recrueReveals.Count;
+                if (_run.ReserveLimit - _run.ReserveCount < count)
                 {
-                    // Réserve pleine : gérer la RÉSERVE (empiler/supprimer) pour faire de la place, ou
-                    // ABANDONNER le pion (bouton / B ; le paysan reste compté pour l'objectif). À la manette,
-                    // RB entre dans le panneau (X fusionne, Y supprime) — sans quoi la réserve était
-                    // inaccessible ici et il ne restait qu'à abandonner la recrue.
+                    // Pas la place pour tout le monde. Trois issues : faire de la place dans la RÉSERVE
+                    // (empiler/supprimer), en PRENDRE une à l'unité tant qu'il reste au moins un slot, ou tout
+                    // ABANDONNER (bouton / B ; les paysans restent comptés pour l'objectif). À la manette, RB
+                    // entre dans le panneau (X fusionne, Y supprime) — sans quoi la réserve serait inaccessible.
                     if (HandleReserveDrag())
                         return;
                     if (UpdateReservePanelGamepad())
                         return;
                     if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availW, vp.Height).Contains(mouse)
                         || Context.Input.WasCancelPressed)
-                    { _recrueReveal = null; _recrueAdded = false; }
+                    { CloseRecrueReveal(); return; }
+
+                    // CHOIX À L'UNITÉ : la place manque pour toutes, mais pas forcément pour UNE. Souris = clic
+                    // sur la carte voulue ; manette = gauche/droite pour la désigner puis A. Les cartes restantes
+                    // demeurent à l'écran (et repassent en « tout prendre » dès qu'il y a la place pour elles).
+                    if (_run.IsReserveFull)
+                        return;   // plus un seul slot : il ne reste que la fusion/suppression ou l'abandon
+                    if (Context.Input.UsingGamepad)
+                    {
+                        if (Context.Input.Nav(NavDir.Left)) _recruitFocus = (_recruitFocus - 1 + count) % count;
+                        if (Context.Input.Nav(NavDir.Right)) _recruitFocus = (_recruitFocus + 1) % count;
+                        _recruitFocus = System.Math.Clamp(_recruitFocus, 0, count - 1);
+                        if (Context.Input.WasConfirmPressed)
+                            TakeRecrue(_recruitFocus);
+                        return;
+                    }
+                    if (Context.Input.WasLeftClicked)
+                        for (var i = 0; i < count; i++)
+                            if (DraftCardRect(i, count, availW, vp.Height).Contains(mouse))
+                            {
+                                TakeRecrue(i);
+                                break;
+                            }
                     return;
                 }
-                // Place dispo : un clic (carte / ailleurs) / Entrée / A → le pion vole vers la réserve.
+                // Place dispo : un clic (carte / ailleurs) / Entrée / A → les pions volent vers la réserve.
                 if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
                 {
-                    var card = DraftCardRect(0, 1, availW, vp.Height);
-                    _recruitFrom = new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f);
-                    _recruitChoice = gained;
-                    _recruitHold = RecruitFlightDuration;
+                    _recrueFlying = true;
+                    _recrueFlightTimer = RecruitFlightDuration;
                     _gpInventory = false;   // la place est faite : plus de focus réserve pendant le vol
                     Context.Sounds.Play("unit_place");
                 }
             }
-            else if (_recruitChoice != null)               // phase VOL : le pion file vers l'inventaire
+            else if (_recrueFlying)                        // phase VOL : les pions filent vers l'inventaire
             {
-                _recruitHold -= dt;
-                if (_recruitHold <= 0f)
+                _recrueFlightTimer -= dt;
+                if (_recrueFlightTimer <= 0f)
                 {
-                    _run.AddUnit(gained);   // la recrue rejoint l'armée (réserve), dans son slot
-                    _pending.Add(gained);   // …ET la vue locale du panneau, sinon elle disparaît à la fin du vol
-                    _recruitChoice = null;
+                    foreach (var gained in _recrueReveals)
+                    {
+                        _run.AddUnit(gained);   // la recrue rejoint l'armée (réserve), dans son slot
+                        _pending.Add(gained);   // …ET la vue locale du panneau, sinon elle disparaît à la fin du vol
+                    }
+                    _recrueFlying = false;
                     _recrueAdded = true;
                     _recrueSettle = RecrueSettleDuration;
                 }
             }
-            else                                           // phase PAUSE : le pion est posé, on laisse voir le slot un instant
+            else                                           // phase PAUSE : les pions sont posés, on laisse voir les slots un instant
             {
                 _recrueSettle -= dt;
                 if (_recrueSettle <= 0f)
-                {
-                    _recrueReveal = null;
-                    _recrueAdded = false;
-                }
+                    CloseRecrueReveal();
             }
             return;
         }
@@ -4293,9 +4606,26 @@ public sealed class GameplayScene : Scene
             && _match.AttackTargets(_tutorial.PlayerSoldier).Contains(_tutorial.EnemySoldier))
             _tutorial.Advance();                            // Move → ReplayLesson
 
-        if (!_fx.Active)        // une attaque vient peut-être de lancer une animation : on attend
+        // FIN DE COMBAT : on attend que le plateau soit POSÉ, pas seulement que l'anim d'attaque soit finie.
+        // Le déplacement de l'IA est INSTANTANÉ : dans la frame même où il déclenche une « Interception », rien
+        // n'anime encore (la file n'est pompée qu'à la frame suivante, en tête d'UpdateBattle). Avec la seule
+        // garde `!_fx.Active`, une interception qui abattait le DERNIER ennemi basculait au recrutement sans
+        // qu'on l'ait vue frapper. Même raison pour la riposte et les dissolutions différées.
+        if (BattleSettled)
             CheckBattleEnd();
     }
+
+    /// <summary>
+    /// Vrai quand le plateau est POSÉ : aucune animation en cours ET aucun effet DIFFÉRÉ en attente de l'être
+    /// (riposte, interception, glissade, dissolutions de plaquage/transpercement). Les effets différés sont
+    /// mis en file au moment où le moteur les résout, mais ne s'animent qu'à la frame suivante : les tester
+    /// est le seul moyen de ne pas conclure sur un coup que le joueur n'a pas encore vu. Sert à la fin de
+    /// combat comme aux découvertes de terrain (coffres, tuiles recrue).
+    /// </summary>
+    private bool BattleSettled =>
+        !_fx.Active && !_storm.Active && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active
+        && _pendingSlide is null && _pendingRiposte is null && _pendingInterceptions.Count == 0
+        && _pendingSlamDissolve is null && _pendingPierceDissolve is null;
 
     /// <summary>
     /// Tour de l'ennemi en TUTORIEL. Il JOUE À CHAQUE TOUR — l'alternance doit rester visible : il avance
@@ -4917,6 +5247,23 @@ public sealed class GameplayScene : Scene
             _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + id, id));   // NOUVEAU déblocage → récap
     }
 
+    /// <summary>
+    /// Déblocage du commandant MARCHAND : il s'ouvre dès que le joueur a ouvert
+    /// <see cref="SaveService.ChestUnlockThreshold"/> coffres au TOTAL (toutes parties confondues, compteur du
+    /// profil). Contrôlé à la fin de TOUTE partie, gagnée comme perdue — le déblocage apparaît alors dans le
+    /// récap comme ceux des boss. Idempotent.
+    /// </summary>
+    private void UnlockMerchantIfEnoughChests()
+    {
+        if (Context.Saves.ChestsOpened() < SaveService.ChestUnlockThreshold)
+            return;
+        if (Context.Saves.UnlockCommander(MerchantCommanderId))
+            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + MerchantCommanderId, MerchantCommanderId));
+    }
+
+    /// <summary>Id du commandant Marchand (units.json), débloqué au compteur de coffres.</summary>
+    private const string MerchantCommanderId = "Commandant_marchand";
+
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
     private List<UnitSpec> PlayerCasualties() =>
         _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
@@ -4967,6 +5314,37 @@ public sealed class GameplayScene : Scene
             _run.GrantCommanderRangedHitPoints(commander.RangedHits);     // source « sur coup à distance » (Fou)
             _run.GrantCommanderJumpPoints(commander.ObstacleJumps);       // source « sur saut » (Cavalier)
         }
+    }
+
+    /// <summary>
+    /// Source de points « sur butin » (commandant MARCHAND) : un coffre OUVERT ou une tuile RECRUE ramassée
+    /// rapporte un point, dans la limite du plafond par combat. Contrairement aux autres sources, le crédit est
+    /// IMMÉDIAT (le butin est un événement ponctuel, pas un compteur relu à la clôture) ; le « +N » doré jaillit
+    /// sur la case du butin. Sans effet pour un commandant dont ce n'est pas la source.
+    /// </summary>
+    /// <summary>
+    /// « Renaissance ultime » (nœud d'arbre du Marchand) : le moteur vient de faire revenir le commandant à PV
+    /// pleins. On la consomme DÉFINITIVEMENT dans la run (une fois par partie, persisté) et on l'annonce.
+    /// Idempotent : la run ne la consomme qu'une fois, et le trait disparaît ensuite de ses buffs.
+    /// </summary>
+    private void ConsumeUltimateRevive()
+    {
+        if (!_match.UltimateReviveTriggered || _run.UltimateReviveUsed)
+            return;
+        _run.UseUltimateRevive();
+        if (_playerSpec.Keys.FirstOrDefault(u => u.IsEssential && u.IsAlive) is { } commander
+            && _match.CellOf(commander) is { } cell)
+            _damagePopups.SpawnText(cell, Loc.T("fx.ultimate_revive"), Palette.Yellow1);
+        Context.Sounds.Play("reward_legendary");
+    }
+
+    private void GrantLootPoint(Cell cell)
+    {
+        var points = _run.GrantLootPoints();
+        if (points <= 0)
+            return;
+        _damagePopups.SpawnText(cell, Loc.T("fx.command_point", points), Palette.Yellow1);
+        Context.Sounds.Play("command_point");
     }
 
     /// <summary>
@@ -5040,8 +5418,10 @@ public sealed class GameplayScene : Scene
                 spec.Kills = unit.Kills;
                 // « Queue de phénix » BRISÉE en combat (renaissance) : l'équipement disparaît AUSSI du gabarit
                 // persistant — sinon le pion le récupérerait au combat suivant. cf. Unit.ReviveConsumingEquipment.
-                if (unit.Equipment == null && spec.Equipment != null)
-                    spec.Equipment = null;
+                // Multi-slot : on ne retire QUE ceux que le combat a consommés, les autres restent collés.
+                foreach (var worn in spec.Equipments.ToList())
+                    if (!unit.Equipments.Contains(worn))
+                        spec.RemoveEquipment(worn);
             }
     }
 
@@ -5083,7 +5463,10 @@ public sealed class GameplayScene : Scene
 
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
         if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)
+        {
+            UnlockMerchantIfEnoughChests();   // déblocage « 30 coffres ouverts » : contrôlé à toute fin de partie
             Context.Saves.DeleteSlot(_saveSlot);
+        }
     }
 
     /// <summary>
@@ -5733,6 +6116,13 @@ public sealed class GameplayScene : Scene
             DrawInventoryCard(sb, _pending[i], PendingCardRect(i));
         DrawFusionStack(sb);   // pile « N/3 » + bouton X (comme au placement)
 
+        // Pions ENGAGÉS sur le plateau : en TRANSPARENT à la suite, pour que la grille dise la même chose que
+        // le compteur juste au-dessus. Purement informatifs — aucun code d'interaction ne va au-delà de
+        // _pending (cf. PanelCardAt, _invFocus), donc ils ne sont ni fusionnables ni supprimables.
+        var engaged = EngagedSpecs();
+        for (var k = 0; k < engaged.Count; k++)
+            DrawInventoryCard(sb, engaged[k], EngagedCardRect(k), EngagedCardAlpha);
+
         var panel = PanelRect();
         var counter = Loc.T("reserve.count", _run.ReserveCount, _run.ReserveLimit);
         Context.Font.Draw(sb, counter,
@@ -6221,7 +6611,7 @@ public sealed class GameplayScene : Scene
     {
         var attacker = _match.UnitAt(from);
         var victim = _match.UnitAt(target);
-        var victimEquipBefore = victim?.Equipment;   // pour détecter une renaissance « Queue de phénix » après le coup
+        var victimEquipBefore = victim?.Equipments.Count ?? 0;   // pour détecter une renaissance « Queue de phénix » après le coup (un objet en moins)
         // Dégâts EFFECTIFS à afficher (traits inclus : Rempart, Rage…), bornés aux PV de la cible.
         _pendingDamage = attacker != null && victim != null ? _match.PreviewDamage(from, target) : 0;
         // Part « Tueur de géants » de ces dégâts (0 sinon) : affichée en « +N » distinct à l'impact.
@@ -6323,7 +6713,7 @@ public sealed class GameplayScene : Scene
         RecordIfEnemyKilled(victim);
 
         // « Queue de phénix » : la cible a encaissé un coup létal mais renaît à 1 PV (son équipement s'est brisé).
-        _pendingPhenix = victim is { IsAlive: true } && victimEquipBefore != null && victim.Equipment == null;
+        _pendingPhenix = victim is { IsAlive: true } && victim.Equipments.Count < victimEquipBefore;
 
         var killed = kind == MoveKind.Killed;
         // Esquive : le coup a bien porté, mais la victime s'est repliée dans la foulée → callout dédié.
@@ -6564,8 +6954,11 @@ public sealed class GameplayScene : Scene
     {
         // Molette : fait défiler la RÉSERVE quand le curseur la survole et qu'elle déborde ; sinon,
         // un seul cran de zoom du plateau (haut = rapproché, bas = retour au cadrage).
+        // La RÉVÉLATION DE RECRUE (en plein combat) affiche le même panneau, complété des pions ENGAGÉS : la
+        // grille peut donc y déborder alors qu'elle tenait avant. Elle défile à la molette comme au placement.
+        var scrollableReserve = _run.Phase == RunPhase.Placement || _recrueReveals.Count > 0;
         var scroll = Context.Input.ScrollDelta;
-        if (scroll != 0 && _run.Phase == RunPhase.Placement && !_equipPhase && !CommandTreeOpen
+        if (scroll != 0 && scrollableReserve && !_equipPhase && !CommandTreeOpen
             && IsOverPanel(Context.Input.MousePosition) && InvMaxScrollRow() > 0)
         {
             _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
@@ -6832,6 +7225,7 @@ public sealed class GameplayScene : Scene
                         DrawBossBriefing(sb, viewport);          // rappel de la condition de victoire (vaincre le boss)
                 }
                 DrawPhaseTimelineTooltip(sb);      // infobulle de la frise : PAR-DESSUS l'encart de briefing
+                QueueEnemyEquipTooltip();          // équipement ennemi : tooltip du badge SURVOLÉ
                 // Cartes flottantes + popups : PAR-DESSUS tout le chrome, mais SOUS les modales (tuto, arbre
                 // de commandement, fusion, briefing modal) dessinées juste après.
                 DrawDeferredCards(sb);
@@ -6895,12 +7289,13 @@ public sealed class GameplayScene : Scene
                 // plateau (et son survol) une fois la bataille engagée.
                 if (_specialMission)
                     DrawSpecialObjective(sb, viewport);   // paysans X/N + tours restants (HUD haut droite)
+                QueueEnemyEquipTooltip();          // équipement ennemi : tooltip du badge SURVOLÉ (comme au placement)
                 // Cartes flottantes + popups : PAR-DESSUS le chrome, mais SOUS les révélations/overlays
                 // (tuto, recrue, coffre) dessinés juste après.
                 DrawDeferredCards(sb);
                 if (_tutorial != null)
                     DrawTutorialOverlay(sb, board, viewport);
-                if (_recrueReveal != null)
+                if (_recrueReveals.Count > 0)
                     DrawRecrueReveal(sb, viewport);
                 if (ChestRevealActive)
                     DrawChestReveal(sb, viewport);       // révélation modale du coffre (centre + inventaire)
@@ -7053,6 +7448,7 @@ public sealed class GameplayScene : Scene
                 else if (_run.IsBossCombat) DrawBossBriefing(sb, viewport);
             }
             DrawPhaseTimelineTooltip(sb);
+            QueueEnemyEquipTooltip();   // équipement ennemi : tooltip du badge SURVOLÉ
             DrawDeferredCards(sb);
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
             if (CommandTreeOpen)
@@ -7071,9 +7467,10 @@ public sealed class GameplayScene : Scene
             DrawCombatCards(sb, hit);
             sb.End();
             if (_specialMission) DrawSpecialObjective(sb, viewport);   // pas de frise en combat
+            QueueEnemyEquipTooltip();   // équipement ennemi : tooltip du badge SURVOLÉ (comme au placement)
             DrawDeferredCards(sb);
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
-            if (_recrueReveal != null) DrawRecrueReveal(sb, viewport);
+            if (_recrueReveals.Count > 0) DrawRecrueReveal(sb, viewport);
             if (ChestRevealActive) DrawChestReveal(sb, viewport);
         }
         if (_pauseMenu.IsOpen)
@@ -7233,7 +7630,7 @@ public sealed class GameplayScene : Scene
     {
         if (_pauseMenu.IsOpen)
             return Palette.Navy2 * 0.85f; // = PauseMenuRenderer.Overlay
-        if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveal != null || ChestRevealActive
+        if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveals.Count > 0 || ChestRevealActive
             || _specialBriefOpen)
             return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre / briefing : = DrawDim
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
@@ -7250,7 +7647,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool BoardOverlayActive =>
         _pauseMenu.IsOpen || _codex.IsOpen || CommandTreeOpen || FusionOpen || EvoPlaying
-        || _recrueReveal != null || ChestRevealActive || _specialBriefOpen;
+        || _recrueReveals.Count > 0 || ChestRevealActive || _specialBriefOpen;
 
     /// <summary>Vrai quand l'animation d'assemblage du plateau est finie (toutes les tuiles en place).</summary>
     private bool BoardAssembled => _boardIntro >= _boardIntroTotal;
@@ -7502,13 +7899,9 @@ public sealed class GameplayScene : Scene
         _trembleTargets.Clear();
         AddThreatenedAlliesToTremble();
 
-        // « Lien de puissance » du pion sous le FOCUS (sélectionné, sinon survolé — même règle que sa carte) :
-        // ses alliés nourriciers pulsent dans la passe des pions. Calculé AVANT le retour anticipé ci-dessous
-        // pour valoir aussi bien à la sélection qu'au survol, et sur un porteur ENNEMI (savoir ce qui le gonfle).
-        _lienAllies.Clear();
-        if ((_selected ?? HoverCellForCards()) is { } focus)
-            foreach (var ally in _match.LienDePuissanceAllies(focus))
-                _lienAllies.Add(ally);
+        // Le « Lien de puissance » du pion focalisé (halo sur ses alliés nourriciers + arcs électriques) est
+        // recalculé dans UpdateLienAllies, appelé par DrawAuraHalos : il vaut AUSSI au placement, où cette
+        // passe-ci n'a pas lieu.
 
         // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
         if (_selected is { } sel)
@@ -7706,6 +8099,175 @@ public sealed class GameplayScene : Scene
             }
 
         DrawCeleriteAuraTiles(sb, layout);   // « Aura de célérité » : repère sur les 4 cases orthogonales (portée du bonus)
+        DrawLienArcs(sb, layout);            // « Lien de puissance » : arcs électriques porteur ↔ alliés nourriciers
+    }
+
+    /// <summary>Nombre de FORMES d'arc par seconde : l'éclair est redessiné par paliers, pas à chaque frame —
+    /// c'est ce grésillement qui fait « électrique » (un jitter à 60 fps donnerait une bouillie).</summary>
+    private const float LienFlickerHz = 14f;
+
+    /// <summary>Tours par seconde de la CHARGE qui remonte de l'allié vers le porteur (sens du bonus).</summary>
+    private const float LienChargeSpeed = 0.8f;
+
+    /// <summary>
+    /// Recalcule les alliés qui alimentent les traits de PLACEMENT du pion sous le FOCUS (sélectionné, sinon
+    /// survolé — même règle que sa carte) : « Lien de puissance » et « Formation », réunis dans
+    /// <see cref="_lienAllies"/>. Une fois par frame, AVANT la passe des pions, qui les auréole. Vaut aussi
+    /// sur un porteur ENNEMI (savoir ce qui le gonfle). Le moteur est seul juge de la portée
+    /// (<see cref="Match.LienDePuissanceAllies(Cell, List{Cell})"/> / <see cref="Match.FormationAllies"/>) :
+    /// l'UI ne redéduit rien.
+    /// </summary>
+    private void UpdateLienAllies()
+    {
+        _lienAllies.Clear();
+        if ((_selected ?? HoverCellForCards()) is not { } focus)
+            return;
+        // Les DEUX traits de placement nourrissent le même halo : « Lien de puissance » (portée de déplacement)
+        // et « Formation » (les 8 cases autour). Un pion qui les porte tous deux cumule les nourriciers.
+        _match.LienDePuissanceAllies(focus, _lienArcBuffer);
+        foreach (var ally in _lienArcBuffer)
+            _lienAllies.Add(ally);
+        _match.FormationAllies(focus, _lienArcBuffer);
+        foreach (var ally in _lienArcBuffer)
+            _lienAllies.Add(ally);
+    }
+
+    /// <summary>Teinte des liens de puissance (« Lien de puissance » ET « Formation »), arcs comme halos :
+    /// ROUGE dans les deux camps. Le code couleur porte ici l'EFFET (de la puissance en plus), pas le camp —
+    /// et un réseau lisible d'un seul coup d'œil vaut mieux qu'une nuance de plus à décoder.</summary>
+    private static readonly Color LienTint = Palette.Purple5;
+
+    /// <summary>
+    /// Traits de PLACEMENT (« Lien de puissance » sur la portée de déplacement, « Formation » sur les 8 cases
+    /// autour) : de petits ARCS ÉLECTRIQUES relient CHAQUE porteur du plateau à CHACUN des alliés qui lui
+    /// donnent ses +2 de puissance. Affichés EN PERMANENCE (pas seulement sous le curseur) : ce sont des bonus
+    /// contextuels qui s'allument et s'éteignent au fil des déplacements, on doit lire l'état du plateau d'un
+    /// coup d'œil. ROUGE dans les deux camps (cf. <see cref="LienTint"/>) : la couleur dit « puissance en
+    /// plus », c'est la position des pions qui dit à qui elle profite.
+    /// Dessinés avec les halos d'aura : au-dessus des zones, SOUS les pions, pour que l'arc rentre derrière
+    /// les silhouettes plutôt que de leur passer sur la figure.
+    /// </summary>
+    private void DrawLienArcs(SpriteBatch sb, GridLayout layout)
+    {
+        UpdateLienAllies();   // halo sur les nourriciers du pion FOCALISÉ (cf. DrawUnit) : lui reste au focus
+
+        var size = layout.TileSize;
+        var block = System.Math.Max(1, size / 24);
+        var flicker = (int)(_time * LienFlickerHz);
+        var pulse = 0.5f + 0.5f * MathF.Sin(_time * 5f);
+
+        foreach (var (carrier, unit) in _match.Units())
+        {
+            // Un pion peut porter les DEUX : chaque trait a son propre réseau (et son propre grain, cf. salt),
+            // donc deux arcs distincts vers un allié qui l'alimente des deux côtés.
+            if (unit.HasTrait(Trait.LienDePuissance))
+            {
+                _match.LienDePuissanceAllies(carrier, _lienArcBuffer);
+                DrawLinkNetwork(sb, layout, carrier, size, block, flicker, pulse, salt: 0);
+            }
+            if (unit.HasTrait(Trait.Formation))
+            {
+                _match.FormationAllies(carrier, _lienArcBuffer);
+                DrawLinkNetwork(sb, layout, carrier, size, block, flicker, pulse, salt: 5501);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Trace les arcs d'UN réseau : du porteur vers chaque allié de <see cref="_lienArcBuffer"/> (rempli par
+    /// l'appelant selon le trait). <paramref name="salt"/> distingue les grains de deux traits portés par le
+    /// même pion, pour qu'ils ne se superposent pas trait pour trait.
+    /// </summary>
+    private void DrawLinkNetwork(SpriteBatch sb, GridLayout layout, Cell carrier,
+        int size, int block, int flicker, float pulse, int salt)
+    {
+        if (_lienArcBuffer.Count == 0)
+            return;
+
+        var from = LienAnchor(layout, carrier, size);
+        foreach (var ally in _lienArcBuffer)
+        {
+            var to = LienAnchor(layout, ally, size);
+            // Graine = les DEUX cases + le trait + le palier de grésillement : chaque lien a sa propre forme,
+            // et elle change par paliers sans jamais dépendre de l'ordre de parcours du plateau.
+            var seed = (carrier.Column * 73 + carrier.Row * 31) ^ (ally.Column * 17 + ally.Row * 7)
+                       ^ (flicker * 977) ^ salt;
+            DrawLienArc(sb, from, to, block, pulse, seed);
+            DrawLienCharge(sb, from, to, block, pulse, seed);
+        }
+    }
+
+    /// <summary>Point d'accroche d'un arc sur une case : le BUSTE du pion (centre horizontal, haut du torse une
+    /// fois la remontée de socle appliquée) — pas le sol, sinon l'arc rase les pieds et se perd dans les zones.</summary>
+    private static Vector2 LienAnchor(GridLayout layout, Cell cell, int size)
+    {
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        return new Vector2(top.X + size / 2f, top.Y + size * 0.45f - size * SpriteLiftFraction);
+    }
+
+    /// <summary>
+    /// Un arc : une polyligne qui serpente autour du segment [a,b], halo rouge derrière + cœur clair devant
+    /// (même vocabulaire que les éclairs d'orage, en beaucoup plus fin). Les EXTRÉMITÉS restent collées aux
+    /// deux pions : seul le milieu ondule, sinon le lien paraît décroché.
+    /// </summary>
+    private void DrawLienArc(SpriteBatch sb, Vector2 a, Vector2 b, int block, float pulse, int seed)
+    {
+        var dir = b - a;
+        var length = dir.Length();
+        if (length < 1f)
+            return;
+        var normal = new Vector2(-dir.Y, dir.X) / length;   // perpendiculaire unitaire : sens de l'ondulation
+
+        // Affichage PERMANENT : l'arc reste discret (il vit sous les pions et ne doit pas manger le plateau),
+        // c'est la respiration qui attire l'œil, pas l'opacité.
+        var alpha = 0.32f + 0.28f * pulse;
+        var core = Palette.White * alpha;
+        var halo = LienTint * (alpha * 0.6f);
+
+        var rng = new System.Random(seed);
+        var segments = System.Math.Clamp((int)(length / (block * 7)), 3, 7);
+        var amplitude = MathF.Min(length * 0.09f, block * 3.5f);
+        var prev = a;
+        for (var s = 1; s <= segments; s++)
+        {
+            var p = Vector2.Lerp(a, b, s / (float)segments);
+            if (s < segments)
+                p += normal * (float)(rng.NextDouble() * 2 - 1) * amplitude;
+            DrawLienSegment(sb, prev, p, block, core, halo);
+            prev = p;
+        }
+    }
+
+    /// <summary>Une CHARGE qui remonte de l'allié vers le porteur : c'est LUI qui gagne la puissance, le sens
+    /// du flux le dit. Une étincelle claire qui glisse le long du lien, décalée par lien.</summary>
+    private void DrawLienCharge(SpriteBatch sb, Vector2 carrier, Vector2 ally, int block, float pulse, int seed)
+    {
+        var offset = (seed & 0xFF) / 255f;                                  // départ décalé par lien
+        var t = (_time * LienChargeSpeed + offset) % 1f;
+        var p = Vector2.Lerp(ally, carrier, t);                             // de l'allié VERS le porteur
+        var alpha = 0.4f + 0.35f * pulse;
+        var r = System.Math.Max(1, block);
+        DrawRect(sb, new Rectangle((int)p.X - r, (int)p.Y - r, r * 2, r * 2), LienTint * (alpha * 0.7f));
+        DrawRect(sb, new Rectangle((int)p.X - r / 2, (int)p.Y - r / 2, System.Math.Max(1, r), System.Math.Max(1, r)),
+            Palette.White * alpha);
+    }
+
+    /// <summary>Segment d'arc : blocs CARRÉS le long de [a,b] (halo large derrière, cœur clair devant). Carrés
+    /// et non barres horizontales comme <see cref="DrawBoltSegment"/> : un lien part dans n'importe quelle
+    /// direction, alors qu'un éclair d'orage tombe toujours à la verticale.</summary>
+    private void DrawLienSegment(SpriteBatch sb, Vector2 a, Vector2 b, int block, Color core, Color halo)
+    {
+        var steps = System.Math.Max(1, (int)(Vector2.Distance(a, b) / block));
+        for (var i = 0; i <= steps; i++)
+        {
+            var p = Vector2.Lerp(a, b, i / (float)steps);
+            DrawRect(sb, new Rectangle((int)p.X - block, (int)p.Y - block, block * 2, block * 2), halo);
+        }
+        for (var i = 0; i <= steps; i++)
+        {
+            var p = Vector2.Lerp(a, b, i / (float)steps);
+            DrawRect(sb, new Rectangle((int)p.X - block / 2, (int)p.Y - block / 2, block, block), core);
+        }
     }
 
     /// <summary>« Aura de célérité » : petit repère JAUNE discret sur les 4 cases ORTHOGONALES (hors diagonales) autour
@@ -8050,10 +8612,11 @@ public sealed class GameplayScene : Scene
         // porteur au contact direct). Même style que la Rage, en jaune et plus posé.
         if (sprite != null && _match.BenefitsFromAura(cell, Trait.AuraDeCelerite))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Yellow2, 3.5f);
-        // « Lien de puissance » : halo CYAN sur les alliés qui nourrissent le porteur focalisé — on voit d'un
-        // coup d'œil d'où sortent ses +2 de puissance (cf. _lienAllies, rempli par DrawHighlights).
+        // « Lien de puissance » / « Formation » : halo sur les alliés qui nourrissent le porteur focalisé — on
+        // voit d'un coup d'œil d'où sortent ses +2 de puissance (cf. _lienAllies, rempli par UpdateLienAllies).
+        // ROUGE dans les deux camps, comme les arcs électriques (cf. LienTint).
         if (sprite != null && _lienAllies.Contains(cell))
-            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Cyan2, 2.5f);
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, LienTint, 2.5f);
         // « Loup solitaire » ACTIF : halo VERT lent sur le porteur qui n'a AUCUN allié adjacent — le bonus
         // s'allume et s'éteint au fil des déplacements, il faut le voir sur le plateau sans ouvrir la fiche.
         // Le moteur est seul juge de la condition (cf. Match.LoupSolitairePowerBonus).
@@ -9186,13 +9749,14 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Révélation d'une recrue gagnée via une tuile « recrue » : voile + carte centrée de l'unité +
-    /// « une unité veut rejoindre votre armée ». Le combat est figé jusqu'au clic (cf. UpdateBattle).
-    /// L'unité est déjà ajoutée à l'armée ; le clic ne fait que fermer la carte.
+    /// Révélation des recrues gagnées via une tuile « recrue » : voile + une carte par unité (centrées en
+    /// rangée quand la tuile en donne plusieurs) + « une unité veut rejoindre votre armée ». Le combat est
+    /// figé jusqu'au clic (cf. UpdateBattle) ; les unités ne rejoignent l'armée qu'à la fin du vol.
     /// </summary>
     private void DrawRecrueReveal(SpriteBatch sb, Viewport viewport)
     {
-        if (_recrueReveal is not { } spec)
+        var count = _recrueReveals.Count;
+        if (count == 0)
             return;
 
         var availW = viewport.Width - RightPanelWidth;    // zone des cartes, à gauche du panneau
@@ -9205,20 +9769,41 @@ public sealed class GameplayScene : Scene
         DrawPanelBackground(sb);
         DrawReservePanelFusion(sb);
 
-        if (_recruitChoice == null && !_recrueAdded)   // phase CARTE : carte centrée, puis décision
+        if (!_recrueFlying && !_recrueAdded)   // phase CARTE : les cartes en rangée centrée, puis décision
         {
-            var card = DraftCardRect(0, 1, availW, viewport.Height);
-            Context.Font.DrawCentered(sb, Loc.T("recrue.join"),
+            var card = DraftCardRect(0, count, availW, viewport.Height);
+            Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recrue.join_plural" : "recrue.join"),
                 new Rectangle(0, card.Y - 44, availW, 24), 2, Palette.Yellow2);
-            DrawCardLayout(sb, card, spec.UnitClass, Faction.Player, spec.Domaine, spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
-
-            if (_run.IsReserveFull)
+            for (var i = 0; i < count; i++)
             {
+                var spec = _recrueReveals[i];
+                DrawCardLayout(sb, DraftCardRect(i, count, availW, viewport.Height), spec.UnitClass,
+                    Faction.Player, spec.Domaine, spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
+            }
+
+            // Pas la place pour TOUTES les recrues : faire de la place, en prendre une, ou tout abandonner.
+            if (_run.ReserveLimit - _run.ReserveCount < count)
+            {
+                // Il reste au moins un slot : on peut en choisir UNE (clic sur sa carte / A sur la désignée).
+                if (!_run.IsReserveFull && count > 1)
+                {
+                    if (Context.Input.UsingGamepad)   // la carte désignée est encadrée (pendant du draft)
+                        DrawRectBorder(sb, Inflate(DraftCardRect(
+                            System.Math.Clamp(_recruitFocus, 0, count - 1), count, availW, viewport.Height), 3),
+                            Palette.Yellow2, 3);
+                    // Entre le titre et les cartes : le dessous est déjà pris par le bouton ABANDONNER.
+                    Context.Font.DrawCentered(sb,
+                        Loc.T(Context.Input.UsingGamepad ? "recrue.pick_one_gp" : "recrue.pick_one"),
+                        new Rectangle(0, card.Y - 18, availW, 12), 1, Palette.Cyan1);
+                }
+
                 var ab = RecruitAbandonBtnRect(availW, viewport.Height);
                 Context.Style.FillDither(sb, ab);
                 DrawRectBorder(sb, ab, Palette.Purple5, 2);
-                Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
-                Context.Font.DrawCentered(sb, Loc.T("recruit.hold_prompt"),
+                // À plusieurs recrues la réserve n'est pas forcément PLEINE : il manque juste des places.
+                Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recruit.abandon_plural" : "recruit.abandon"),
+                    ab, 1, Palette.Purple5);
+                Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recruit.hold_prompt_plural" : "recruit.hold_prompt"),
                     new Rectangle(0, ab.Bottom + 6, availW, 12), 1, Palette.Cyan1);
             }
             else
@@ -9233,9 +9818,17 @@ public sealed class GameplayScene : Scene
         if (FusionOpen) DrawFusionPopup(sb, viewport);
         if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
 
-        // Phase VOL : la recrue file de la carte vers son slot de réserve (slot suivant = _pending.Count).
-        if (_recruitChoice is { } flying && _recruitHold > 0f)
-            DrawRecruitFlight(sb, flying, _pending.Count);
+        // Phase VOL : chaque recrue file de SA carte vers SON slot de réserve (les suivants de _pending).
+        if (_recrueFlying && _recrueFlightTimer > 0f)
+        {
+            var t = MathHelper.Clamp(1f - _recrueFlightTimer / RecruitFlightDuration, 0f, 1f);
+            for (var i = 0; i < count; i++)
+            {
+                var card = DraftCardRect(i, count, availW, viewport.Height);
+                DrawUnitFlight(sb, _recrueReveals[i],
+                    new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f), _pending.Count + i, t);
+            }
+        }
     }
 
     // Bornes internes de la phase REVEAL (fractions de EvoRevealDuration).
@@ -9442,7 +10035,7 @@ public sealed class GameplayScene : Scene
             if (_gpInventory && _pending.Count > 0)
                 DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
             else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
-                DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipment, cu.Buffs,
+                DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipments, cu.Buffs,
                     TreeNodesFor(cu), cu.Kills, subject: _cursor, essential: cu.IsEssential);
             return;
         }
@@ -9458,7 +10051,7 @@ public sealed class GameplayScene : Scene
 
         // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé), hors frise.
         if (HoverCellForCards() is { } cell && _match.UnitAt(cell) is { } unit)
-            DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipment, unit.Buffs,
+            DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipments, unit.Buffs,
                 TreeNodesFor(unit), unit.Kills, subject: cell, essential: unit.IsEssential);
     }
 
@@ -9469,7 +10062,7 @@ public sealed class GameplayScene : Scene
     /// pion (cf. <see cref="CardRectNearCell"/>).
     /// </summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
-        Equipment? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
+        IReadOnlyList<Equipment>? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
         Cell? subject = null, bool essential = false)
     {
         var layout = BuildLayout();
@@ -9481,19 +10074,37 @@ public sealed class GameplayScene : Scene
         var h = condensed ? CondensedCardHeight(c, equip, buffs, kills) : CombatCardH;
         // Décrit une case du plateau (survol) → carte JUXTE le pion ; sinon (aperçu réserve) → à droite du plateau.
         var rect = subject is { } s ? CardRectNearCell(s, layout, w, h) : RightCardRect(board, w, h);
+
+        // Bonus CONTEXTUELS au PLACEMENT — auras alliées, « Formation », « Lien de puissance », « Loup
+        // solitaire » pour la puissance, « Aura de célérité » pour le déplacement (cf. Match.ContextualPowerBonus
+        // / MoveRangeBonus). Ils dépendent de la CASE, donc uniquement quand la carte décrit un pion POSÉ ;
+        // l'aperçu d'un gabarit de la réserve n'a rien à afficher. Sans eux, c'est précisément là où l'on
+        // compose son armée que la carte annonçait une puissance INFÉRIEURE aux dégâts réellement infligés.
+        // La « Rage » n'entre pas dans le compte : elle se gagne à la mort d'un allié, donc toujours 0 ici.
+        var contextualDmg = 0;
+        var contextualMove = 0;
+        IReadOnlyList<string>? granted = null;
+        if (subject is { } bonusCell && _match.UnitAt(bonusCell) is { } placed)
+        {
+            contextualDmg = _match.ContextualPowerBonus(bonusCell);
+            contextualMove = _match.MoveRangeBonus(bonusCell);
+            granted = GrantedTraitsFor(placed, bonusCell);   // traits prêtés par une aura alliée au contact
+        }
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
         // la frise, le briefing et le panneau, dessinés après elle.
         if (condensed)
         {
             // Condensée : traits en noms inline, donc aucun popup de mots-clés à différer.
             _deferredCards.Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c, domaine, hp, maxHp,
-                equip, buffs, kills, null, 0, 0, nameOverride: CommanderCardName(essential, faction)));
+                equip, buffs, kills, granted, contextualDmg, 0, contextualMove,
+                nameOverride: CommanderCardName(essential, faction)));
             return;
         }
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
             equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills,
+            granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove,
             nameOverride: CommanderCardName(essential, faction)));
-        _deferredKeywordPopups.Add((c, rect, equip, buffs, null, faction));
+        _deferredKeywordPopups.Add((c, rect, equip, buffs, granted, faction));
     }
 
     /// <summary>
@@ -9504,18 +10115,18 @@ public sealed class GameplayScene : Scene
     {
         var buffs = BuffsFor(spec);
         var maxHp = spec.UnitClass.MaxHp
-                    + (spec.Equipment?.BonusFor(EquipStat.Hp) ?? 0)
+                    + spec.Equipments.BonusFor(EquipStat.Hp)
                     + buffs.BonusFor(EquipStat.Hp);
-        DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipment, buffs,
+        DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipments, buffs,
             _run.ActiveNodesFor(spec.Essential, spec.Domaine), spec.Kills, essential: spec.Essential);
     }
 
-    private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon)
+    private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon, float alpha = 1f)
     {
         // Portrait 64×64 à taille native (jamais redimensionné), de FACE (présentation), nom dessous.
-        DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true);
+        DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true, alpha);
         Context.Font.DrawCentered(sb, UnitName(spec.UnitClass).ToUpperInvariant(),
-            new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White);
+            new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White * alpha);
     }
 
     // ── Coffres + sous-phase Équipement (rendu) ───────────────────────────────────
@@ -9668,20 +10279,30 @@ public sealed class GameplayScene : Scene
         return new Rectangle(availW / 2 - s / 2, vp.Height / 2 - s / 2 + 40, s, s);
     }
 
-    /// <summary>Rectangle 64×64 de l'objet révélé, juste AU-DESSUS du coffre.</summary>
-    private static Rectangle ChestItemRect(Rectangle chestRect)
+    /// <summary>
+    /// Rectangle 64×64 de l'objet révélé n° <paramref name="index"/>, juste AU-DESSUS du coffre. Les
+    /// <paramref name="count"/> colonnes sont centrées sur le coffre et espacées d'une largeur de tooltip
+    /// (<see cref="ChestColumnPitch"/>) pour que les descriptions ne se chevauchent pas. Un seul objet =
+    /// exactement au-dessus du coffre, comme avant le Marchand.
+    /// </summary>
+    private static Rectangle ChestItemRect(Rectangle chestRect, int index = 0, int count = 1)
     {
         const int s = 64;
-        return new Rectangle(chestRect.Center.X - s / 2, chestRect.Y - s - 8, s, s);
+        var n = System.Math.Max(1, count);
+        var cx = chestRect.Center.X - (n - 1) * ChestColumnPitch / 2 + index * ChestColumnPitch;
+        return new Rectangle(cx - s / 2, chestRect.Y - s - 8, s, s);
     }
+
+    /// <summary>Écart horizontal entre deux colonnes de butin (assez large pour deux tooltips côte à côte).</summary>
+    private const int ChestColumnPitch = EquipTooltipMaxWidth + 16;
 
     /// <summary>
     /// Rectangle de l'objet PENDANT le défilement : il monte du haut du coffre jusqu'à sa place finale
     /// (<see cref="ChestItemRect"/>) selon l'avancement, avec une décélération (ease-out) pour se poser en douceur.
     /// </summary>
-    private Rectangle ChestRollItemRect(Rectangle chestRect)
+    private Rectangle ChestRollItemRect(Rectangle chestRect, int index = 0, int count = 1)
     {
-        var target = ChestItemRect(chestRect);
+        var target = ChestItemRect(chestRect, index, count);
         var startY = chestRect.Y + 12;   // émerge du haut du coffre
         var p = (float)System.Math.Clamp(_chestPhaseTimer / ChestRollDuration, 0, 1);
         var eased = 1f - (1f - p) * (1f - p) * (1f - p);   // ease-out cubique : monte vite puis ralentit
@@ -9696,10 +10317,11 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawChestReveal(SpriteBatch sb, Viewport viewport)
     {
-        if (_chestReveal is not { } item)
+        if (_chestReveals.Count == 0)
             return;
         var availW = viewport.Width - RightPanelWidth;
         var chestRect = ChestRevealRect();
+        var count = _chestReveals.Count;
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawDim(sb, viewport);
@@ -9707,25 +10329,37 @@ public sealed class GameplayScene : Scene
         DrawEquipmentRevealPanel(sb);   // inventaire d'équipement (on voit où l'objet va atterrir)
         DrawChestFrame(sb, chestRect);
 
-        if (_chestPhase == ChestPhase.Rolling && _chestRollItem is { } rolling)
+        if (_chestPhase == ChestPhase.Rolling)
         {
-            // L'objet MONTE (du coffre vers sa place) en défilant vite ; pas de nom/rareté tant qu'il n'est pas figé.
-            DrawEquipSpriteAt(sb, rolling, ChestRollItemRect(chestRect));
+            // Les objets MONTENT (du coffre vers leur place) en défilant vite, une roue par colonne ; pas de
+            // nom/rareté tant qu'ils ne sont pas figés.
+            for (var i = 0; i < _chestRollItems.Count; i++)
+                DrawEquipSpriteAt(sb, _chestRollItems[i], ChestRollItemRect(chestRect, i, count));
         }
         else if (_chestPhase == ChestPhase.Item)
         {
-            var itemRect = ChestItemRect(chestRect);
-            DrawEquipSpriteAt(sb, item, itemRect);                   // l'objet flotte au-dessus du coffre
-            DrawEquipTooltipAbove(sb, item, itemRect);              // cadre tooltip (nom + description) au-dessus du sprite
-            Context.Font.DrawCentered(sb, RarityLabel(item.Rarity),  // rareté du butin (couleur dédiée) sous le coffre
-                new Rectangle(0, chestRect.Bottom + 4, availW, 10), 1, RarityColor(item.Rarity));
+            for (var i = 0; i < count; i++)
+            {
+                var item = _chestReveals[i];
+                var itemRect = ChestItemRect(chestRect, i, count);
+                DrawEquipSpriteAt(sb, item, itemRect);                   // l'objet flotte au-dessus du coffre
+                DrawEquipTooltipAbove(sb, item, itemRect);              // cadre tooltip (nom + description) au-dessus du sprite
+                // Rareté du butin (couleur dédiée). À PLUSIEURS objets elle se colle SOUS SON OBJET : posée
+                // sous le coffre comme pour un butin unique, elle se retrouve loin de sa colonne et on ne sait
+                // plus à quel objet elle se rapporte. Un seul objet → rendu historique (ligne sous le coffre).
+                var rarityBox = count > 1
+                    ? new Rectangle(itemRect.Center.X - 100, itemRect.Bottom + 3, 200, 10)
+                    : new Rectangle(0, chestRect.Bottom + 4, availW, 10);
+                Context.Font.DrawCentered(sb, RarityLabel(item.Rarity), rarityBox, 1, RarityColor(item.Rarity));
+            }
             Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),  // invite au clic
                 new Rectangle(0, chestRect.Bottom + 18, availW, 12), 1, Palette.Cyan1);
         }
         sb.End();
 
         if (_chestPhase == ChestPhase.Fly)
-            DrawChestFlight(sb, item);
+            for (var i = 0; i < count; i++)
+                DrawChestFlight(sb, _chestReveals[i], i, count);
 
         _sparks.Draw(sb, Context.Pixel);   // feu d'artifice de récompense PAR-DESSUS le voile (cf. QueueLootFireworks)
     }
@@ -9795,13 +10429,15 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Vol de l'objet (32×32, échelle constante) du centre vers son slot d'inventaire, avec accélération.</summary>
-    private void DrawChestFlight(SpriteBatch sb, Equipment item)
+    private void DrawChestFlight(SpriteBatch sb, Equipment item, int index = 0, int count = 1)
     {
         var t = MathHelper.Clamp((float)(_chestPhaseTimer / ChestFlyDuration), 0f, 1f);
         var ease = t * t;
-        var slot = EquipRowRect(_run.EquipmentInventory.Count);   // slot d'atterrissage (item pas encore ajouté)
+        // Chaque objet part de SA colonne et vise SON futur slot (ils sont ajoutés dans l'ordre à l'arrivée).
+        var from = ChestItemRect(ChestRevealRect(), index, count).Center.ToVector2();
+        var slot = EquipRowRect(_run.EquipmentInventory.Count + index);   // slot d'atterrissage (items pas encore ajoutés)
         var iconCenter = new Vector2(slot.X + 18, slot.Y + slot.Height / 2f);
-        var pos = Vector2.Lerp(_chestFlyFrom, iconCenter, ease);
+        var pos = Vector2.Lerp(from, iconCenter, ease);
         const int s = 32;
         var dest = new Rectangle((int)(pos.X - s / 2f), (int)(pos.Y - s / 2f), s, s);
         sb.Begin(samplerState: SamplerState.PointClamp);
@@ -9827,9 +10463,10 @@ public sealed class GameplayScene : Scene
     {
         foreach (var (cell, spec) in DeployedPlayerSpecs())
         {
-            if (spec.Essential || spec.Equipment != null)
-                continue;   // les pions équipés montrent déjà leur badge (DrawEquipBadgesPlacement)
-            DrawEquipSlotBackground(sb, EquipBadgeRect(cell, layout));
+            var slots = SlotsOf(spec);
+            // Slots VIDES seulement : les slots remplis montrent déjà leur badge (DrawEquipBadgesPlacement).
+            for (var i = spec.Equipments.Count; i < slots; i++)
+                DrawEquipSlotBackground(sb, EquipBadgeRect(cell, layout, i, slots));
         }
     }
 
@@ -9852,11 +10489,9 @@ public sealed class GameplayScene : Scene
     {
         foreach (var (cell, spec) in DeployedPlayerSpecs())
         {
-            if (spec.Essential || spec.Equipment is not { } e)
-                continue;
-            if (_dragEquipFrom == spec)   // en cours de portage : l'icône suit la souris, pas le pion
-                continue;
-            DrawEquipBadge(sb, layout, cell, e);
+            var slots = SlotsOf(spec);
+            for (var i = 0; i < spec.Equipments.Count && i < slots; i++)
+                DrawEquipBadge(sb, layout, cell, spec.Equipments[i], i, slots);
         }
     }
 
@@ -9868,8 +10503,12 @@ public sealed class GameplayScene : Scene
     private void DrawEnemyEquipBadges(SpriteBatch sb, GridLayout layout)
     {
         foreach (var (cell, unit) in _match.Units())
-            if (unit.Faction == Faction.Enemy && unit.Equipment is { } e)
-                DrawEquipIcon(sb, e, EquipBadgeRect(cell, layout));
+        {
+            if (unit.Faction != Faction.Enemy || unit.Equipments.Count == 0)
+                continue;
+            for (var i = 0; i < unit.Equipments.Count; i++)
+                DrawEquipIcon(sb, unit.Equipments[i], EquipBadgeRect(cell, layout, i, unit.Equipments.Count));
+        }
     }
 
     /// <summary>
@@ -9897,14 +10536,15 @@ public sealed class GameplayScene : Scene
             var cx = (int)top.X + size / 2;
             var headTop = (int)top.Y - (int)(size * SpriteLiftFraction) - UnitLift(cell, size);
             // Sous le crâne : la tête, ou le badge d'équipement s'il y en a un (pas de superposition).
-            var bottom = unit.Equipment != null ? EquipBadgeRect(cell, layout).Y - 2 : headTop - 2;
+            var bottom = unit.Equipments.Count > 0 ? EquipBadgeRect(cell, layout).Y - 2 : headTop - 2;
             sb.Draw(skull, new Rectangle(cx - w / 2, bottom - h, w, h), Color.White);
         }
     }
 
-    private void DrawEquipBadge(SpriteBatch sb, GridLayout layout, Cell cell, Equipment equip)
+    private void DrawEquipBadge(SpriteBatch sb, GridLayout layout, Cell cell, Equipment equip,
+        int slot = 0, int slots = 1)
     {
-        var r = EquipBadgeRect(cell, layout);
+        var r = EquipBadgeRect(cell, layout, slot, slots);
         DrawEquipSlotBackground(sb, r);   // même fond de slot que les emplacements vides
         DrawEquipIcon(sb, equip, r);
     }
@@ -10217,12 +10857,12 @@ public sealed class GameplayScene : Scene
             if (_gpEquipButtons)
                 return;
             foreach (var (cell, spec) in DeployedPlayerSpecs())
-                if (cell == _cursor && !spec.Essential && spec.Equipment is { } worn)
+                if (cell == _cursor && spec.HasEquipment && spec.Equipments[0] is { } worn)
                 {
                     // Posée du côté OPPOSÉ à la carte du pion (les deux décrivent la case sous le curseur),
                     // et DIFFÉRÉE dans la couche de survol — ajoutée après DrawCombatCards, elle passe donc
                     // devant si le repli d'écran finit malgré tout par les faire se toucher.
-                    var badge = EquipBadgeRect(cell, layout);
+                    var badge = EquipBadgeRect(cell, layout, 0, SlotsOf(spec));
                     var spot = EquipTooltipSpotOppositeCard(worn, cell, layout, badge);
                     _deferredHoverCards.Add(() => DrawEquipTooltipPanel(Context.SpriteBatch, worn, spot.X, spot.Y));
                     return;
@@ -10233,12 +10873,11 @@ public sealed class GameplayScene : Scene
         var mouse = Context.Input.MousePosition;
         foreach (var (cell, spec) in DeployedPlayerSpecs())
         {
-            if (spec.Essential || spec.Equipment is not { } e)
+            if (!spec.HasEquipment)
                 continue;
-            var r = EquipBadgeRect(cell, layout);
-            if (r.Contains(mouse))
+            if (EquipSlotAt(spec, cell, layout, mouse) is { Worn: { } e, Slot: var slot })
             {
-                DrawEquipTooltip(sb, e, r);
+                DrawEquipTooltip(sb, e, EquipBadgeRect(cell, layout, slot, SlotsOf(spec)));
                 return;
             }
         }
@@ -10330,14 +10969,84 @@ public sealed class GameplayScene : Scene
     private int EquipTooltipTitleH => Context.Font.GlyphHeight + 4;
 
     /// <summary>Hauteur du cadre tooltip : nom + effet replié, plus l'éventuelle restriction (espacée), largeur fixe.</summary>
-    private int EquipTooltipHeight(Equipment equip)
+    private int EquipTooltipHeight(Equipment equip) =>
+        EquipPanelHeight(equip, EquipTooltipMaxWidth - 2 * EquipTooltipPad);
+
+    // ── Équipement ENNEMI : la tooltip du badge SURVOLÉ (placement ET combat) ──────────────────────
+    // Au placement on compose son armée FACE à celle de l'IA, en combat on choisit sa cible : savoir ce
+    // qu'un ennemi porte fait partie des deux décisions. Les afficher TOUTES d'un coup a été essayé et
+    // rejeté : six cadres de 210 px mangeaient le plateau. On n'en montre donc qu'une, celle du badge visé,
+    // posée À DROITE de l'icône. La carte DÉTAILLÉE d'un pion, elle, empile les cadres de ses objets
+    // au-dessus de ses traits (cf. DrawKeywordPopupStack) : les deux lectures se rejoignent.
+
+    /// <summary>Écart entre le badge d'équipement et sa tooltip.</summary>
+    private const int EnemyTipGap = 6;
+
+    /// <summary>
+    /// Met en file la tooltip de l'équipement ENNEMI visé : le badge sous la souris, ou — à la manette, qui
+    /// n'a pas de pointeur — le premier objet du pion sous le curseur de case. Passe par
+    /// <see cref="_deferredCards"/> comme les cartes-tooltips : dessinée EN DERNIER (par-dessus la frise et le
+    /// panneau) et dans la bonne couche, que le plateau soit rendu normalement ou dézoomé.
+    /// </summary>
+    private void QueueEnemyEquipTooltip()
     {
-        int inner = EquipTooltipMaxWidth - 2 * EquipTooltipPad;
-        int h = EquipTooltipPad + EquipTooltipTitleH
-              + EquipEffectLines(equip, inner).Count * EquipTooltipLineH;
-        if (EquipRestriction(equip) is { } r)
-            h += EquipTooltipGap + WrapText(r, inner, 1).Count * EquipTooltipLineH;
-        return h + EquipTooltipPad;
+        if (!BoardAssembled || BoardOverlayActive || _dragEquip != null)
+            return;
+
+        var layout = BuildLayout();
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy || unit.Equipments.Count == 0)
+                continue;
+            if (EnemyBadgeAt(cell, unit, layout) is not { } hit)
+                continue;
+
+            var spot = EnemyTipSpot(hit.Item, hit.Badge);
+            var item = hit.Item;
+            _deferredCards.Add(() => DrawEquipTooltipPanel(Context.SpriteBatch, item, spot.X, spot.Y));
+            return;   // un seul badge à la fois : c'est celui qu'on vise
+        }
+    }
+
+    /// <summary>
+    /// Badge d'équipement ennemi VISÉ sur cette case, et son cadre. À la souris : celui qui est sous le
+    /// pointeur. À la MANETTE : le premier objet du pion sous le curseur de case (pas de pointeur à promener
+    /// sur une icône de 34 px). Null si aucun.
+    /// </summary>
+    private (Equipment Item, Rectangle Badge)? EnemyBadgeAt(Cell cell, Unit unit, GridLayout layout)
+    {
+        if (Context.Input.UsingGamepad)
+            return cell == _cursor
+                ? (unit.Equipments[0], EquipBadgeRect(cell, layout, 0, unit.Equipments.Count))
+                : null;
+
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < unit.Equipments.Count; i++)
+        {
+            var badge = EquipBadgeRect(cell, layout, i, unit.Equipments.Count);
+            if (badge.Contains(mouse))
+                return (unit.Equipments[i], badge);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Coin haut-gauche de la tooltip d'un badge ennemi : À DROITE de l'icône, alignée sur son haut. Si la
+    /// place manque avant le panneau de réserve, elle bascule à gauche du badge plutôt que de passer dessous ;
+    /// bornée à l'écran dans les deux cas.
+    /// </summary>
+    private Point EnemyTipSpot(Equipment item, Rectangle badge)
+    {
+        var vp = VirtualViewport;
+        int w = EquipTooltipWidth(item), h = EquipTooltipHeight(item);
+        var rightLimit = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
+
+        var x = badge.Right + EnemyTipGap;
+        if (x + w > rightLimit - 8)
+            x = badge.X - EnemyTipGap - w;
+        x = System.Math.Clamp(x, 8, System.Math.Max(8, rightLimit - 8 - w));
+        var y = System.Math.Clamp(badge.Y, 8, System.Math.Max(8, vp.Height - 8 - h));
+        return new Point(x, y);
     }
 
     /// <summary>Dessine le cadre tooltip (nom jaune, effet crème, puis restriction en rouge doux) à un coin haut-gauche donné.</summary>
@@ -10345,13 +11054,25 @@ public sealed class GameplayScene : Scene
     {
         // Le REPLI des lignes se fait au gabarit MAXIMAL (comme au calcul de hauteur) ; seule la BOÎTE se
         // resserre sur la ligne la plus longue.
-        int pad = EquipTooltipPad, lineH = EquipTooltipLineH, inner = EquipTooltipMaxWidth - 2 * pad;
-        var box = new Rectangle(x, y, EquipTooltipWidth(equip), EquipTooltipHeight(equip));
+        // Le REPLI des lignes se fait au gabarit MAXIMAL ; seule la BOÎTE se resserre sur la ligne la plus longue.
+        DrawEquipPanelAt(sb, equip, new Rectangle(x, y, EquipTooltipWidth(equip), EquipTooltipHeight(equip)),
+            EquipTooltipMaxWidth - 2 * EquipTooltipPad);
+    }
+
+    /// <summary>
+    /// Corps d'un cadre d'équipement (nom + effets + restriction) dans une BOÎTE imposée. Le repli des lignes
+    /// se fait sur <paramref name="wrapInner"/>, qui n'est pas forcément la largeur de la boîte : la tooltip
+    /// flottante replie au gabarit maximal puis resserre son cadre, alors que la pile de la carte détaillée
+    /// replie à sa propre largeur. Pendant de <see cref="EquipPanelHeight"/> — les deux doivent rester d'accord.
+    /// </summary>
+    private void DrawEquipPanelAt(SpriteBatch sb, Equipment equip, Rectangle box, int wrapInner)
+    {
+        int pad = EquipTooltipPad, lineH = EquipTooltipLineH;
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
 
         var ly = box.Y + pad + EquipTooltipTitleH;
-        foreach (var (text, color) in EquipEffectLines(equip, inner))
+        foreach (var (text, color) in EquipEffectLines(equip, wrapInner))
         {
             Context.Font.Draw(sb, text, new Vector2(box.X + pad, ly), 1, color, preserveCase: true);
             ly += lineH;
@@ -10359,12 +11080,21 @@ public sealed class GameplayScene : Scene
         if (EquipRestriction(equip) is { } r)
         {
             ly += EquipTooltipGap;   // respire entre l'effet et la mise en garde
-            foreach (var line in WrapText(r, inner, 1))
+            foreach (var line in WrapText(r, wrapInner, 1))
             {
                 Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.Purple5);
                 ly += lineH;
             }
         }
+    }
+
+    /// <summary>Hauteur d'un cadre d'équipement dont les lignes sont repliées sur <paramref name="wrapInner"/>.</summary>
+    private int EquipPanelHeight(Equipment equip, int wrapInner)
+    {
+        var h = EquipTooltipPad + EquipTooltipTitleH + EquipEffectLines(equip, wrapInner).Count * EquipTooltipLineH;
+        if (EquipRestriction(equip) is { } r)
+            h += EquipTooltipGap + WrapText(r, wrapInner, 1).Count * EquipTooltipLineH;
+        return h + EquipTooltipPad;
     }
 
     // ── Cartes de combat (remplacent l'ancien panneau de droite) ──────────────────
@@ -10403,14 +11133,14 @@ public sealed class GameplayScene : Scene
     // Cartes flottantes + leurs popups de mots-clés, mis de côté par DrawUnitCard/DrawPreviewCard et dessinés
     // EN DERNIER (par-dessus frise, briefing, panneau) : la carte-tooltip qu'on lit doit rester au premier plan.
     private readonly List<Action> _deferredCards = new();
-    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
+    private readonly List<(UnitClass Class, Rectangle Card, IReadOnlyList<Equipment>? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
         _deferredKeywordPopups = new();
 
     // Cartes de SURVOL (tooltip d'un pion pointé, non sélectionné) : mêmes différés, mais FONDUES en entrée
     // (cf. UpdateTooltipHover / TooltipHoverAlpha). Rendues à part dans _hoverCardTarget puis recomposées avec
     // un alpha, pour que carte + popups de mots-clés fondent D'UN SEUL BLOC.
     private readonly List<Action> _deferredHoverCards = new();
-    private readonly List<(UnitClass Class, Rectangle Card, Equipment? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
+    private readonly List<(UnitClass Class, Rectangle Card, IReadOnlyList<Equipment>? Equip, CommandBuffs? Buffs, IReadOnlyList<string>? Granted, Faction Faction)>
         _deferredHoverKeywordPopups = new();
     private Microsoft.Xna.Framework.Graphics.RenderTarget2D? _hoverCardTarget;
 
@@ -10718,10 +11448,10 @@ public sealed class GameplayScene : Scene
     /// traits et le « TUÉS » ne repasse jamais derrière eux.
     /// </summary>
     private int CondensedCardHeight(Unit unit, Cell? cell) =>
-        CondensedCardHeight(unit.Class, unit.Equipment, unit.Buffs, unit.Kills, GrantedTraitsFor(unit, cell));
+        CondensedCardHeight(unit.Class, unit.Equipments, unit.Buffs, unit.Kills, GrantedTraitsFor(unit, cell));
 
     /// <summary>Même hauteur, calculée depuis une CLASSE (aperçu de placement/réserve : pas d'unité posée).</summary>
-    private int CondensedCardHeight(UnitClass c, Equipment? equip, CommandBuffs? buffs, int kills,
+    private int CondensedCardHeight(UnitClass c, IReadOnlyList<Equipment>? equip, CommandBuffs? buffs, int kills,
         IReadOnlyList<string>? granted = null)
     {
         var keywords = KeywordsFor(c, equip, buffs ?? CommandBuffs.None, granted);
@@ -10775,7 +11505,7 @@ public sealed class GameplayScene : Scene
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
         var faction = unit.Faction; var domaine = unit.Domaine; var hp = unit.Hp; var maxHp = unit.MaxHp;
-        var equip = unit.Equipment; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
+        var equip = unit.Equipments; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
         var title = CommanderCardName(unit.IsEssential, faction);
         if (condensed)
         {
@@ -10838,7 +11568,7 @@ public sealed class GameplayScene : Scene
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
-        Domaine domaine, int hp, int maxHp, bool revealed = true, Equipment? equip = null, int hpPreviewDamage = 0,
+        Domaine domaine, int hp, int maxHp, bool revealed = true, IReadOnlyList<Equipment>? equip = null, int hpPreviewDamage = 0,
         CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
         IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0,
         string? nameOverride = null)
@@ -10846,16 +11576,16 @@ public sealed class GameplayScene : Scene
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
         var b = buffs ?? CommandBuffs.None;
-        var hpBonus = (equip?.BonusFor(EquipStat.Hp) ?? 0) + b.BonusFor(EquipStat.Hp);
-        var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
+        var hpBonus = equip.BonusFor(EquipStat.Hp) + b.BonusFor(EquipStat.Hp);
+        var dmgBonus = equip.BonusFor(EquipStat.Damage) + b.BonusFor(EquipStat.Damage);
         // Berserk : +1 puissance par ennemi tué (bonus intrinsèque TOUJOURS actif, cf. Match.EffectivePower) —
         // on l'intègre au « +N » de la puissance pour que la carte montre la vraie valeur de combat.
         if (kills > 0 && CardHasTrait(c, equip, b, Trait.Berserk))
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;   // bonus de combat contextuels : auras de puissance + Formation + Rage (cf. DrawUnitCard)
-        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange);
+        var moveBonus = equip.BonusFor(EquipStat.MoveRange) + b.BonusFor(EquipStat.MoveRange);
         moveBonus += contextualMoveBonus;   // bonus de déplacement contextuel : « Aura de célérité » d'un allié adjacent
-        var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
+        var rangeBonus = equip.BonusFor(EquipStat.AttackRange) + b.BonusFor(EquipStat.AttackRange);
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
 
         Context.Style.DrawPanel(sb, rect);
@@ -10891,15 +11621,21 @@ public sealed class GameplayScene : Scene
         var right = new Rectangle(sprite.Right + SpriteMargin, sprite.Y,
             rect.Right - CardPad - (sprite.Right + SpriteMargin), bandH);
 
-        // Icône de l'équipement porté : même cadre que les améliorations d'arbre, mais CERCLÉ D'OR.
-        if (equip != null)
+        // Icônes des équipements portés : même cadre que les améliorations d'arbre, mais CERCLÉ D'OR. Un pion
+        // peut en porter plusieurs (arbre du Marchand) : la colonne reste CENTRÉE sur la bande, comme la
+        // mosaïque d'améliorations en face.
+        if (equip is { Count: > 0 })
         {
-            var eRect = new Rectangle(
-                right.X + (right.Width - TreeIconBox) / 2,
-                right.Y + (right.Height - TreeIconBox) / 2, TreeIconBox, TreeIconBox);
-            DrawRect(sb, eRect, Palette.Black1);
-            DrawRectBorder(sb, eRect, Palette.Yellow1, 1);
-            DrawEquipIcon(sb, equip, eRect);
+            var stackH = equip.Count * TreeIconBox + (equip.Count - 1) * TreeIconGap;
+            var ey = right.Y + (right.Height - stackH) / 2;
+            foreach (var worn in equip)
+            {
+                var eRect = new Rectangle(right.X + (right.Width - TreeIconBox) / 2, ey, TreeIconBox, TreeIconBox);
+                DrawRect(sb, eRect, Palette.Black1);
+                DrawRectBorder(sb, eRect, Palette.Yellow1, 1);
+                DrawEquipIcon(sb, worn, eRect);
+                ey += TreeIconBox + TreeIconGap;
+            }
         }
 
         // Améliorations d'arbre ACTIVES sur ce pion, en mosaïque à GAUCHE du sprite (pendant de l'équipement).
@@ -10962,17 +11698,17 @@ public sealed class GameplayScene : Scene
     /// (les cartes de combat le sont). Le clic droit / X repasse au détaillé (cf. <see cref="DrawCardLayout"/>).
     /// </summary>
     private void DrawCondensedCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Domaine domaine, int hp, int maxHp,
-        Equipment? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
+        IReadOnlyList<Equipment>? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
         int hpPreviewDamage, int contextualMoveBonus = 0, string? nameOverride = null)
     {
         // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
         var b = buffs ?? CommandBuffs.None;
-        var dmgBonus = (equip?.BonusFor(EquipStat.Damage) ?? 0) + b.BonusFor(EquipStat.Damage);
+        var dmgBonus = equip.BonusFor(EquipStat.Damage) + b.BonusFor(EquipStat.Damage);
         if (kills > 0 && CardHasTrait(c, equip, b, Trait.Berserk))
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;
-        var moveBonus = (equip?.BonusFor(EquipStat.MoveRange) ?? 0) + b.BonusFor(EquipStat.MoveRange) + contextualMoveBonus;
-        var rangeBonus = (equip?.BonusFor(EquipStat.AttackRange) ?? 0) + b.BonusFor(EquipStat.AttackRange);
+        var moveBonus = equip.BonusFor(EquipStat.MoveRange) + b.BonusFor(EquipStat.MoveRange) + contextualMoveBonus;
+        var rangeBonus = equip.BonusFor(EquipStat.AttackRange) + b.BonusFor(EquipStat.AttackRange);
 
         Context.Style.DrawPanel(sb, rect);
 
@@ -11399,7 +12135,7 @@ public sealed class GameplayScene : Scene
     /// la fois natif ET accordé compte comme natif (présent dans <see cref="UnitClass.Traits"/>). Renvoie
     /// <c>null</c> si rien n'est ajouté (évite une allocation et le test au moment de peindre).
     /// </summary>
-    private static HashSet<string>? AddedKeywordLabels(UnitClass c, Equipment? equip,
+    private static HashSet<string>? AddedKeywordLabels(UnitClass c, IReadOnlyList<Equipment>? equip,
         CommandBuffs? buffs, IReadOnlyList<string>? granted)
     {
         var innate = new HashSet<string>(c.Traits);
@@ -11409,8 +12145,7 @@ public sealed class GameplayScene : Scene
             if (!innate.Contains(raw))
                 labels.Add(UnitKeywords.For(raw).Label);
         }
-        if (equip is { } eq)
-            foreach (var et in eq.Traits) Consider(et);
+        foreach (var et in equip.TraitsOf()) Consider(et);
         foreach (var bt in (buffs ?? CommandBuffs.None).Traits) Consider(bt);
         if (granted != null)
             foreach (var gt in granted) Consider(gt);
@@ -11475,10 +12210,10 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Vrai si la carte porte ce trait, toutes sources confondues (classe, équipement, arbre) —
     /// pendant côté UI de <see cref="Unit.HasTrait"/>, sans instance de pion.</summary>
-    private static bool CardHasTrait(UnitClass c, Equipment? equip, CommandBuffs b, string trait) =>
-        (equip?.GrantsTrait(trait) ?? false) || b.GrantsTrait(trait) || c.Traits.Contains(trait);
+    private static bool CardHasTrait(UnitClass c, IReadOnlyList<Equipment>? equip, CommandBuffs b, string trait) =>
+        equip.GrantsTrait(trait) || b.GrantsTrait(trait) || c.Traits.Contains(trait);
 
-    private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, Equipment? equip = null,
+    private static List<UnitKeywords.Keyword> KeywordsFor(UnitClass c, IReadOnlyList<Equipment>? equip = null,
         CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null)
     {
         var list = new List<UnitKeywords.Keyword>();
@@ -11492,9 +12227,8 @@ public sealed class GameplayScene : Scene
         if (c.MinAttackRange > 1)
             list.Add(UnitKeywords.DeadZone);
         // Traits octroyés par un équipement puis par l'arbre : affichés comme des traits natifs.
-        if (equip is { } eq)
-            foreach (var et in eq.Traits)
-                if (seen.Add(et))
+        foreach (var et in equip.TraitsOf())
+            if (seen.Add(et))
                     list.Add(UnitKeywords.For(et));
         foreach (var bt in (buffs ?? CommandBuffs.None).Traits)
             if (seen.Add(bt))
@@ -11518,7 +12252,7 @@ public sealed class GameplayScene : Scene
     /// <see cref="DrawRowKeywords"/>). Aucune disposition verticale n'est possible dans ce cas :
     /// carte (330) + pile (200) = toute la hauteur du canvas.
     /// </summary>
-    private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, Equipment? equip = null,
+    private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, IReadOnlyList<Equipment>? equip = null,
         CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
         var h = KeywordStackHeight(c, card.Width, equip, buffs, granted, faction);
@@ -11553,7 +12287,7 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
     private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight)> KeywordBoxes(
-        UnitClass c, int width, Equipment? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null,
+        UnitClass c, int width, IReadOnlyList<Equipment>? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null,
         Faction faction = Faction.Player)
     {
         var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?)>();
@@ -11567,27 +12301,60 @@ public sealed class GameplayScene : Scene
         return boxes;
     }
 
-    /// <summary>Hauteur totale de la pile de popups d'une classe (0 si elle n'a aucun mot-clé).</summary>
-    private int KeywordStackHeight(UnitClass c, int width, Equipment? equip = null, CommandBuffs? buffs = null,
+    /// <summary>
+    /// Cadres d'ÉQUIPEMENT qui ouvrent la pile de la carte détaillée : un par objet porté. Les mots-clés
+    /// n'exposaient que le TRAIT d'un objet, jamais ses bonus de stat ni sa restriction — il fallait aller
+    /// survoler le badge sur le plateau pour les lire. Repliés à la largeur de la pile (pas au gabarit de la
+    /// tooltip flottante) pour s'aligner sur les popups de traits qui suivent.
+    /// </summary>
+    private int EquipPanelsHeight(IReadOnlyList<Equipment>? equip, int width)
+    {
+        if (equip is not { Count: > 0 })
+            return 0;
+        var inner = width - 2 * EquipTooltipPad;
+        var h = 0;
+        foreach (var e in equip)
+            h += EquipPanelHeight(e, inner) + KwGap;
+        return h;   // le KwGap de trop sépare le dernier cadre des popups de traits (ou du bas de la pile)
+    }
+
+    /// <summary>Hauteur totale de la pile : cadres d'équipement puis popups de mots-clés (0 si les deux sont vides).</summary>
+    private int KeywordStackHeight(UnitClass c, int width, IReadOnlyList<Equipment>? equip = null, CommandBuffs? buffs = null,
         IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
         var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
-        return boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
+        var kw = boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
+        var eq = EquipPanelsHeight(equip, width);
+        return eq == 0 ? kw : kw == 0 ? eq - KwGap : eq + kw;   // sans popup derrière, l'écart final ne sert plus
     }
 
-    private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, Equipment? equip = null,
+    private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, IReadOnlyList<Equipment>? equip = null,
         CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
     {
         var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
-        if (boxes.Count == 0)
+        var total = KeywordStackHeight(c, width, equip, buffs, granted, faction);
+        if (total == 0)
             return;
-        var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
 
         // REMONTE la pile si elle dépasse le bas de l'écran (sinon les derniers popups sont coupés, ex. une
         // évolution à 3 traits en phase de fusion). Décalage MINIMAL, borné en haut de l'écran.
         var y = origin.Y;
         if (y + total > VirtualViewport.Height - KwScreenMargin)
             y = System.Math.Max(KwScreenMargin, VirtualViewport.Height - KwScreenMargin - total);
+
+        // EN TÊTE : les objets portés (nom + bonus de stat + restriction), avant les traits.
+        if (equip is { Count: > 0 })
+        {
+            var inner = width - 2 * EquipTooltipPad;
+            foreach (var e in equip)
+            {
+                var h = EquipPanelHeight(e, inner);
+                DrawEquipPanelAt(sb, e, new Rectangle(origin.X, y, width, h), inner);
+                y += h + KwGap;
+            }
+        }
+        if (boxes.Count == 0)
+            return;
 
         var addedLabels = AddedKeywordLabels(c, equip, buffs, granted);
         foreach (var (kw, lines, h, reinforced, highlight) in boxes)
@@ -11668,33 +12435,34 @@ public sealed class GameplayScene : Scene
     /// uniquement par un facteur ENTIER (1/2, 1/3…) — jamais fractionnaire — pour ne pas déborder
     /// ni déformer. Avec des boîtes de 64, le sprite 64×64 reste donc strictement intact.
     /// </summary>
-    private static void DrawSpriteFit(SpriteBatch sb, Texture2D sprite, Rectangle area)
+    private static void DrawSpriteFit(SpriteBatch sb, Texture2D sprite, Rectangle area, float alpha = 1f)
     {
         var src = sprite.Width;                       // sprites d'unité carrés (64×64)
         var box = Math.Min(area.Width, area.Height);
         var size = box >= src ? src : src / ((src + box - 1) / box);
         var x = area.X + (area.Width - size) / 2;
         var y = area.Y + (area.Height - size) / 2;
-        sb.Draw(sprite, new Rectangle(x, y, size, size), Color.White);
+        sb.Draw(sprite, new Rectangle(x, y, size, size), Color.White * alpha);
     }
 
     /// <summary>
     /// Jeton/sprite d'une unité dessiné dans une zone (placeholder si pas d'asset).
     /// <paramref name="front"/> = montrer la face du joueur (présentation), sinon le dos.
     /// </summary>
-    private void DrawChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area, bool front = false)
+    private void DrawChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area, bool front = false,
+        float alpha = 1f)
     {
         var sprite = SpriteFor(cls, faction, front);
         if (sprite != null)
         {
-            DrawSpriteFit(sb, sprite, area);
+            DrawSpriteFit(sb, sprite, area, alpha);
             return;
         }
 
         var color = faction == Faction.Player ? Palette.Cyan1 : Palette.Purple5;
-        DrawRect(sb, Inflate(area, 2), Palette.Black1);
-        DrawRect(sb, area, color);
-        Context.Font.DrawCentered(sb, UnitName(cls)[..1].ToUpperInvariant(), area, 2, Palette.White);
+        DrawRect(sb, Inflate(area, 2), Palette.Black1 * alpha);
+        DrawRect(sb, area, color * alpha);
+        Context.Font.DrawCentered(sb, UnitName(cls)[..1].ToUpperInvariant(), area, 2, Palette.White * alpha);
     }
 
     /// <summary>
@@ -12090,21 +12858,29 @@ public sealed class GameplayScene : Scene
     /// Pion recruté qui vole de sa carte (<see cref="_recruitFrom"/>) vers son emplacement d'inventaire
     /// (slot <paramref name="slotIndex"/>) — translation pure 64×64 (pixel-perfect), avec accélération.
     /// </summary>
-    private void DrawRecruitFlight(SpriteBatch sb, UnitSpec choice, int slotIndex)
+    private void DrawRecruitFlight(SpriteBatch sb, UnitSpec choice, int slotIndex) =>
+        DrawUnitFlight(sb, choice, _recruitFrom, slotIndex,
+            MathHelper.Clamp(1f - _recruitHold / RecruitFlightDuration, 0f, 1f));
+
+    /// <summary>
+    /// Un pion qui vole de <paramref name="from"/> vers le slot de réserve <paramref name="slotIndex"/>, à
+    /// l'avancement <paramref name="t"/> (0 = au départ, 1 = arrivé). Partagé par le recrutement (une carte)
+    /// et la révélation de tuile recrue (une ou PLUSIEURS cartes qui partent ensemble).
+    /// </summary>
+    private void DrawUnitFlight(SpriteBatch sb, UnitSpec spec, Vector2 from, int slotIndex, float t)
     {
-        var t = MathHelper.Clamp(1f - _recruitHold / RecruitFlightDuration, 0f, 1f);
         var ease = t * t;
         var slot = PanelCardRect(slotIndex);
         var target = new Vector2(slot.X + slot.Width / 2f, slot.Y + slot.Height / 2f);
-        var pos = Vector2.Lerp(_recruitFrom, target, ease);
+        var pos = Vector2.Lerp(from, target, ease);
         var dest = new Rectangle((int)(pos.X - InvIconSize / 2f), (int)(pos.Y - InvIconSize / 2f),
             InvIconSize, InvIconSize);
 
         sb.Begin(samplerState: SamplerState.PointClamp);
-        if (SpriteFor(choice.UnitClass, Faction.Player, front: true) is { } sprite)
+        if (SpriteFor(spec.UnitClass, Faction.Player, front: true) is { } sprite)
             sb.Draw(sprite, dest, Color.White);
         else
-            DrawChip(sb, choice.UnitClass, Faction.Player, dest, front: true);
+            DrawChip(sb, spec.UnitClass, Faction.Player, dest, front: true);
         sb.End();
     }
 

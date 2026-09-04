@@ -90,6 +90,10 @@ public sealed class RunSave
     public List<string>? AiFreshTier2 { get; set; }
     public List<string>? AiFreshTier3 { get; set; }
 
+    /// <summary>« Renaissance ultime » (arbre du Marchand) DÉJÀ consommée : elle ne sert qu'une fois par
+    /// partie. Absent (vieux save) → false.</summary>
+    public bool UltimateReviveUsed { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -113,6 +117,7 @@ public sealed class RunSave
             Stats = RunStatsSave.From(run.Stats),
             AiFreshTier2 = run.AiFreshTier2?.ToList(),
             AiFreshTier3 = run.AiFreshTier3?.ToList(),
+            UltimateReviveUsed = run.UltimateReviveUsed,
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -132,7 +137,7 @@ public sealed class RunSave
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
             CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats(),
-            AiFreshTier2, AiFreshTier3);
+            AiFreshTier2, AiFreshTier3, UltimateReviveUsed);
     }
 }
 
@@ -189,8 +194,17 @@ public sealed class UnitSpecSave
 
     public bool Essential { get; set; }
 
-    /// <summary>Id de l'équipement porté (collé au pion), ou null. Le commandant n'en a jamais.</summary>
+    /// <summary>
+    /// HÉRITÉ (sauvegardes mono-slot) : id de l'UNIQUE équipement porté. Plus jamais écrit — relu seulement si
+    /// <see cref="EquipmentIds"/> est absent. Cf. <see cref="ToSpec"/>.
+    /// </summary>
     public string? Equipment { get; set; }
+
+    /// <summary>
+    /// Ids des équipements portés (collés au pion), dans l'ordre de pose. Le commandant peut en porter depuis
+    /// l'arbre du MARCHAND. Absent (vieux save) → repli sur <see cref="Equipment"/>.
+    /// </summary>
+    public List<string>? EquipmentIds { get; set; }
 
     /// <summary>Total d'ennemis tués À VIE par ce pion. Absent (vieux save) → 0. Voir <see cref="UnitSpec.Kills"/>.</summary>
     public int Kills { get; set; }
@@ -200,24 +214,31 @@ public sealed class UnitSpecSave
         Domaine = spec.Domaine,
         Class = spec.UnitClass.Asset,
         Essential = spec.Essential,
-        Equipment = spec.Equipment?.Id,
+        EquipmentIds = spec.Equipments.Select(e => e.Id).ToList(),
         Kills = spec.Kills,
     };
 
     public UnitSpec ToSpec()
     {
+        UnitSpec spec;
         if (Essential)
         {
             // Unité COMMANDE (commandant) : retrouvée par asset dans le registre, repli sur le commandant.
             var def = Commandes.All.FirstOrDefault(c => c.BaseClass.Asset == Class) ?? Commandes.Commander;
-            return new UnitSpec(def.Movement, def.BaseClass, essential: true) { Kills = Kills };
+            spec = new UnitSpec(def.Movement, def.BaseClass, essential: true) { Kills = Kills };
+        }
+        else
+        {
+            // Classe quelconque de l'arbre du domaine (base ou évolution), repli sur la classe de base.
+            var cls = FindClass(Domaines.Of(Domaine).BaseClass, Class) ?? Domaines.Of(Domaine).BaseClass;
+            spec = new UnitSpec(Domaine, cls) { Kills = Kills };
         }
 
-        // Classe quelconque de l'arbre du domaine (base ou évolution), repli sur la classe de base.
-        var cls = FindClass(Domaines.Of(Domaine).BaseClass, Class) ?? Domaines.Of(Domaine).BaseClass;
-        var spec = new UnitSpec(Domaine, cls) { Kills = Kills };
-        if (Equipment is { } id)
-            spec.Equipment = Equipments.ById(id);   // équipement inconnu (catalogue modifié) → ignoré
+        // Multi-slot depuis le Marchand ; une sauvegarde plus ancienne n'a que le champ mono-slot.
+        var ids = EquipmentIds ?? (Equipment is { } legacy ? new List<string> { legacy } : new List<string>());
+        foreach (var id in ids)
+            if (Equipments.ById(id) is { } item)   // équipement inconnu (catalogue modifié) → ignoré
+                spec.AddEquipment(item);
         return spec;
     }
 

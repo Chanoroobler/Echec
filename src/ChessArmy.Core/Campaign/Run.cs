@@ -204,6 +204,13 @@ public sealed class Run
     public int CommandPoints { get; private set; }
 
     /// <summary>
+    /// Points gagnés par MISSION RÉUSSIE avec le commandant de cette run : <see cref="PointsPerMission"/> pour
+    /// tous, sauf ceux qui l'échangent contre une autre source (le MARCHAND n'en gagne qu'un, mais ramasse
+    /// jusqu'à <c>CommandeDef.LootCap</c> butins par combat). Cf. <see cref="Battle.CommandeDef.MissionPoints"/>.
+    /// </summary>
+    public int MissionPoints => CommanderDef.MissionPoints;
+
+    /// <summary>
     /// Statistiques CUMULÉES de la run (récap de fin : dégâts par classe, tués, perdus, déblocages…).
     /// Alimentée par la scène de jeu et PERSISTÉE avec la run (cf. <see cref="RunSave"/>) : elle survit à un
     /// « Continuer » et entre sessions. Neuve à chaque nouvelle campagne (<see cref="Reset"/>).
@@ -312,6 +319,30 @@ public sealed class Run
         CommandPoints += Math.Min(commanderJumps, CommanderDef.JumpCap) * CommanderDef.JumpPoints;
     }
 
+    /// <summary>
+    /// Butins ramassés (coffres ouverts + tuiles recrue) DÉJÀ comptabilisés pour les points ce combat. Remis à
+    /// zéro à chaque <see cref="StartBattle"/>. Comparé à <c>CommandeDef.LootCap</c>.
+    /// </summary>
+    private int _lootEvents;
+
+    /// <summary>Butins déjà comptabilisés ce combat (pour l'UI : « 2/2 »).</summary>
+    public int LootEventsThisCombat => _lootEvents;
+
+    /// <summary>
+    /// Source de points « sur butin » (commandant MARCHAND) : crédite <c>CommandeDef.LootPoints</c> pour UN
+    /// butin ramassé en combat — coffre ouvert ou tuile recrue —, dans la limite de <c>CommandeDef.LootCap</c>
+    /// butins par combat. À appeler AU MOMENT du ramassage (le gain est immédiat, comme le feedback). Renvoie
+    /// les points réellement crédités : 0 si le plafond est atteint ou si ce n'est pas la source du commandant.
+    /// </summary>
+    public int GrantLootPoints()
+    {
+        if (CommanderDef.LootPoints <= 0 || _lootEvents >= CommanderDef.LootCap)
+            return 0;
+        _lootEvents++;
+        CommandPoints += CommanderDef.LootPoints;
+        return CommanderDef.LootPoints;
+    }
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {
@@ -344,6 +375,32 @@ public sealed class Run
     /// <summary>Unités tier 1 (déjà vues) données en réserve PAR unité tier 2+ tombée au combat (nœud « relève »). 0 = aucun.</summary>
     public int EliteDeathRecruits => TotalOf(CommandEffectKind.EliteDeathRecruit);
 
+    // ── COMMANDANT MARCHAND : butin et logistique d'équipement ────────────────────────────────────
+
+    /// <summary>Nombre d'équipements donnés par UN coffre : 1 de base, + les nœuds « coffre généreux ».</summary>
+    public int ChestItemCount => 1 + TotalOf(CommandEffectKind.ChestExtraItem);
+
+    /// <summary>Points de % ajoutés aux chances RARE et LÉGENDAIRE d'un coffre (nœuds « chance de butin »). 0 = aucun.</summary>
+    public int ChestRarityBonus => TotalOf(CommandEffectKind.ChestRarityBonus);
+
+    /// <summary>Équipements offerts à chaque RELANCE d'unité (nœud « butin de relance »). 0 = aucun.</summary>
+    public int RerollEquipmentCount => TotalOf(CommandEffectKind.RerollEquipment);
+
+    /// <summary>Pions donnés par UNE tuile recrue du terrain : 1 de base, + les nœuds « recrue double ».</summary>
+    public int RecruitTileUnits => 1 + TotalOf(CommandEffectKind.RecruitExtraUnit);
+
+    /// <summary>Pions tier 1 offerts à CHAQUE équipement recyclé (nœud « ferraille »). 0 = aucun.</summary>
+    public int RecycleRecruits => TotalOf(CommandEffectKind.RecycleRecruit);
+
+    /// <summary>
+    /// Vrai si la « Renaissance ultime » du commandant a DÉJÀ servi dans cette partie : le trait disparaît alors
+    /// de ses buffs (cf. <see cref="BuffEffects"/>). Persisté avec la run.
+    /// </summary>
+    public bool UltimateReviveUsed { get; private set; }
+
+    /// <summary>Consomme la « Renaissance ultime » (appelé quand le combat rapporte que le commandant est revenu).</summary>
+    public void UseUltimateRevive() => UltimateReviveUsed = true;
+
     /// <summary>
     /// Bonus d'arbre applicables à <paramref name="spec"/> : ceux du commandant s'il est essentiel, ceux
     /// des troupes sinon. À passer à <see cref="UnitSpec.Spawn"/> — les bonus « par paire » sont figés au
@@ -352,7 +409,26 @@ public sealed class Run
     /// seule la scène le sait, absent → ces bonus valent 0.
     /// </summary>
     public CommandBuffs BuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount = null) =>
-        CommandBuffs.From(ActiveEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount, deployedCount);
+        CommandBuffs.From(BuffEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount,
+            deployedCount, EquippedItemCount, spec.Equipments.Count);
+
+    /// <summary>
+    /// Nombre d'équipements POSSÉDÉS : ceux posés sur une unité de l'armée (commandant compris) PLUS ceux qui
+    /// dorment en inventaire. Multiplicateur de l'échelle <see cref="CommandScale.PerEquippedItem"/>, figé au
+    /// roster de la phase de placement. C'est bien le STOCK du Marchand qui compte, pas ce qu'il en a équipé :
+    /// déplacer un objet d'un pion vers l'inventaire (ou l'inverse) ne fait donc jamais bouger le bonus.
+    /// </summary>
+    public int EquippedItemCount => _roster.Sum(u => u.Equipments.Count) + _equipment.Count;
+
+    /// <summary>
+    /// Effets retenus pour les BUFFS d'unité : tous les nœuds achetés, moins la « Renaissance ultime » DÉJÀ
+    /// CONSOMMÉE (cf. <see cref="UltimateReviveUsed"/>) — une fois utilisée, le commandant ne doit plus porter
+    /// le trait, ni en combat ni sur sa carte.
+    /// </summary>
+    private IEnumerable<CommandEffect> BuffEffects =>
+        UltimateReviveUsed
+            ? ActiveEffects.Where(e => e.Trait != Trait.RenaissanceUltime)
+            : ActiveEffects;
 
     /// <summary>Les 3 options de recrutement (vides hors phase de recrutement).</summary>
     public IReadOnlyList<UnitSpec> Draft => _draft;
@@ -364,7 +440,7 @@ public sealed class Run
     /// Vrai si le joueur possède au moins un équipement — en inventaire OU déjà posé sur un pion (sinon
     /// la phase Équipement est sautée). On l'ouvre même si tout est équipé, pour pouvoir réagencer/retirer.
     /// </summary>
-    public bool HasEquipment => _equipment.Count > 0 || _roster.Any(u => u.Equipment != null);
+    public bool HasEquipment => _equipment.Count > 0 || _roster.Any(u => u.HasEquipment);
 
     /// <summary>Relances disponibles (cf. <see cref="RerollUnit"/>, <see cref="AddReroll"/>).</summary>
     public int Rerolls => _rerolls;
@@ -427,6 +503,8 @@ public sealed class Run
         Stats = new RunStats();     // récap remis à zéro pour la nouvelle campagne
         _aiFreshT2 = null;          // nouveauté IA retirée à neuf : recalculée au 1er combat qui aligne le tier
         _aiFreshT3 = null;
+        UltimateReviveUsed = false; // « Renaissance ultime » : une fois par PARTIE, donc rendue à la nouvelle
+        _lootEvents = 0;
         Phase = RunPhase.Placement;
     }
 
@@ -450,9 +528,11 @@ public sealed class Run
         IReadOnlyList<Equipment>? inventory = null, int legendaryPity = 0, int rarePity = 0,
         int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
         string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null,
-        IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null)
+        IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null,
+        bool ultimateReviveUsed = false)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
+        run.UltimateReviveUsed = ultimateReviveUsed;
         if (stats != null)
             run.Stats = stats;   // récap repris de la sauvegarde (sinon compteur neuf du constructeur)
         // Nouveauté IA figée pour la run (null = à recalculer au 1er combat du tier concerné) : la reprise
@@ -537,6 +617,72 @@ public sealed class Run
                 yield return RecruitFor(e, rng, isSeen);
     }
 
+    /// <summary>
+    /// Mission (<see cref="CombatNumber"/>) dont la phase de placement a DÉJÀ donné son gain de recyclage.
+    /// 0 = jamais servi. Non persisté : la sauvegarde est prise à l'ENTRÉE de la mission, avant tout
+    /// recyclage, donc une reprise rejoue la phase depuis un état où la charge est légitimement intacte.
+    /// </summary>
+    private int _recycleRecruitCombat;
+
+    /// <summary>
+    /// Vrai si le gain de pion du recyclage (nœud « ferraille ») est ENCORE disponible : le nœud est acheté et
+    /// la phase de placement courante ne l'a pas déjà donné. Le recyclage lui-même reste toujours possible
+    /// (il rapporte sa relance) : c'est seulement la RECRUE qui est limitée à une par placement.
+    /// </summary>
+    public bool RecycleRecruitAvailable => RecycleRecruits > 0 && _recycleRecruitCombat != CombatNumber;
+
+    /// <summary>
+    /// Applique le gain des nœuds « ferraille » à un équipement RECYCLÉ (cassé contre une relance) : fait
+    /// arriver en réserve le tier 1 dont on a déjà le plus d'exemplaires (<see cref="MostOwnedTier1"/>), ou la
+    /// classe de base du domaine précisé par l'effet. Renvoie ce qui a RÉELLEMENT été recruté — vide si le nœud
+    /// n'est pas acheté, si la phase de placement a déjà eu son gain (<see cref="RecycleRecruitAvailable"/>) ou
+    /// si la réserve est pleine (comme la tuile recrue : ce qui ne rentre pas est perdu). La charge de la phase
+    /// n'est consommée QUE si au moins un pion est arrivé — un recyclage sur réserve pleine ne la gâche pas.
+    /// </summary>
+    public IReadOnlyList<UnitSpec> GrantRecycleRecruits(Random rng, Func<string, bool> isSeen)
+    {
+        var granted = new List<UnitSpec>();
+        if (!RecycleRecruitAvailable)
+            return granted;
+
+        foreach (var e in ActiveEffects.Where(x => x.Kind == CommandEffectKind.RecycleRecruit))
+            for (var i = 0; i < e.Amount && !IsReserveFull; i++)
+            {
+                // Ajoutées au fur et à mesure : la 2e recrue voit donc la 1re dans le compte et renforce la
+                // même classe — c'est exactement l'intention (rapprocher d'une fusion).
+                var spec = e.Domaine is { } d ? new UnitSpec(d, Domaines.Of(d).BaseClass) : MostOwnedTier1(rng, isSeen);
+                AddUnit(spec);
+                granted.Add(spec);
+            }
+
+        if (granted.Count > 0)
+            _recycleRecruitCombat = CombatNumber;
+        return granted;
+    }
+
+    /// <summary>
+    /// Le TIER 1 le plus représenté dans l'armée (roster HORS commandant) : celui dont on possède déjà le plus
+    /// d'exemplaires, donc celui qui rapproche le plus d'une FUSION. C'est ce qui rend la recrue « avantageuse »
+    /// plutôt qu'un tirage au hasard. Ex aequo → tirage au sort entre eux (sinon le même domaine sortirait
+    /// toujours). Aucun tier 1 en réserve → repli sur <see cref="RollSeenTier1"/>.
+    /// </summary>
+    public UnitSpec MostOwnedTier1(Random rng, Func<string, bool> isSeen)
+    {
+        // GroupBy conserve l'ordre de PREMIÈRE apparition : à effectif égal, la liste des ex aequo est stable
+        // d'un appel à l'autre (seul le tirage entre eux introduit du hasard).
+        var groups = _roster
+            .Where(s => !s.Essential && s.UnitClass.Tier == 1)
+            .GroupBy(s => s.UnitClass)
+            .Select(g => (Spec: new UnitSpec(g.First().Domaine, g.Key), Count: g.Count()))
+            .ToList();
+        if (groups.Count == 0)
+            return RollSeenTier1(rng, isSeen);
+
+        var best = groups.Max(g => g.Count);
+        var tied = groups.Where(g => g.Count == best).ToList();
+        return tied[rng.Next(tied.Count)].Spec;
+    }
+
     /// <summary>Points de % gagnés par mission (à partir de la mission 2) sur la chance de recruter un T2.</summary>
     private const int Tier2RecruitChancePerCombat = 5;
 
@@ -610,6 +756,21 @@ public sealed class Run
         return null;
     }
 
+    /// <summary>
+    /// Contenu COMPLET d'un coffre : <see cref="ChestItemCount"/> tirages INDÉPENDANTS de
+    /// <see cref="RollChestEquipment"/> (chacun avec sa rareté et sa pitié). Un seul item pour tous les
+    /// commandants sauf le Marchand qui a acheté le nœud « coffre généreux ». Les items ne sont PAS ajoutés à
+    /// l'inventaire : c'est la scène qui le fait au terme de sa révélation.
+    /// </summary>
+    public IReadOnlyList<Equipment> RollChestContents(Random rng)
+    {
+        var items = new List<Equipment>();
+        for (var i = 0; i < ChestItemCount; i++)
+            if (RollChestEquipment(rng) is { } item)
+                items.Add(item);
+        return items;
+    }
+
     /// <summary>Pions ennemis ÉQUIPÉS par vague en difficulté NORMALE, par phase (index 0..2 = phase 1..3).</summary>
     private static readonly int[] EnemyEquipByPhase = { 1, 3, 3 };
 
@@ -655,7 +816,8 @@ public sealed class Run
         var rng = CombatRng(3);
         Shuffle(carriers, rng);   // qui porte l'objet est aléatoire ; COMBIEN en portent ne l'est pas
         for (var i = 0; i < count; i++)
-            carriers[i].Equipment = RollEnemyEquipment(rng, carriers[i]);
+            if (RollEnemyEquipment(rng, carriers[i]) is { } item)   // l'IA reste à UN équipement par pion
+                carriers[i].AddEquipment(item);
     }
 
     /// <summary>
@@ -691,7 +853,7 @@ public sealed class Run
         foreach (var e in _equipment)
             counts[e.Id] = counts.GetValueOrDefault(e.Id) + 1;
         foreach (var u in _roster)
-            if (u.Equipment is { } e)
+            foreach (var e in u.Equipments)
                 counts[e.Id] = counts.GetValueOrDefault(e.Id) + 1;
         return counts;
     }
@@ -710,8 +872,10 @@ public sealed class Run
     public EquipmentRarity ResolveChestRarity(double roll)
     {
         var p = Math.Clamp(PhaseIndex, 1, PhaseCount) - 1;
-        var legendaryChance = LegendaryChanceByPhase[p] + LegendaryPity;
-        var rareChance = RareChanceByPhase[p] + RarePity;
+        // Nœuds « chance de butin » (Marchand) : + N POINTS de % sur les deux raretés (0 sans le nœud).
+        var bonus = ChestRarityBonus;
+        var legendaryChance = LegendaryChanceByPhase[p] + LegendaryPity + bonus;
+        var rareChance = RareChanceByPhase[p] + RarePity + bonus;
 
         var rarity =
             roll < legendaryChance ? EquipmentRarity.Legendary
@@ -747,11 +911,7 @@ public sealed class Run
     {
         if (spec.Essential || !_roster.Contains(spec))
             return false;
-        if (spec.Equipment is { } e)   // l'équipement du pion supprimé n'est pas perdu
-        {
-            _equipment.Add(e);
-            spec.Equipment = null;
-        }
+        _equipment.AddRange(spec.TakeAllEquipment());   // les équipements du pion supprimé ne sont pas perdus
         return _roster.Remove(spec);
     }
 
@@ -774,7 +934,13 @@ public sealed class Run
     /// rien consommer — si impossible : plus de relance, pion essentiel/absent, ou aucun remplaçant découvert.
     /// L'effectif du roster est INCHANGÉ (retire 1, ajoute 1) : le plafond de réserve reste respecté.
     /// </summary>
-    public UnitSpec? RerollUnit(UnitSpec spec, Random rng, Func<string, bool> isSeen)
+    /// <param name="loot">
+    /// Reçoit, s'il est fourni, les équipements offerts PAR la relance (nœud « butin de relance » du Marchand,
+    /// cf. <see cref="RerollEquipmentCount"/>). Ils sont AUSSI ajoutés à l'inventaire : la liste ne sert qu'au
+    /// feedback de la scène. Vide pour un commandant sans ce nœud.
+    /// </param>
+    public UnitSpec? RerollUnit(UnitSpec spec, Random rng, Func<string, bool> isSeen,
+        List<Equipment>? loot = null)
     {
         if (_rerolls <= 0 || spec.Essential || !_roster.Contains(spec))
             return null;
@@ -785,17 +951,22 @@ public sealed class Run
         if (pool.Count == 0)
             return null;
 
-        if (spec.Equipment is { } e)   // l'équipement du pion relancé n'est pas perdu
-        {
-            _equipment.Add(e);
-            spec.Equipment = null;
-        }
+        _equipment.AddRange(spec.TakeAllEquipment());   // les équipements du pion relancé ne sont pas perdus
         _roster.Remove(spec);
 
         var pick = pool[rng.Next(pool.Count)];
         var replacement = new UnitSpec(pick.Domaine, pick.Class);
         _roster.Add(replacement);
         _rerolls--;
+
+        // Nœud « butin de relance » (Marchand) : chaque relance rapporte en plus un équipement, tiré comme un
+        // coffre (pitié comprise). Sans le nœud, RerollEquipmentCount vaut 0 et rien ne change.
+        for (var i = 0; i < RerollEquipmentCount; i++)
+            if (RollChestEquipment(rng) is { } reward)
+            {
+                _equipment.Add(reward);
+                loot?.Add(reward);
+            }
         return replacement;
     }
 
@@ -820,23 +991,50 @@ public sealed class Run
     public bool RemoveEquipment(Equipment equipment) => _equipment.Remove(equipment);
 
     /// <summary>
-    /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : pion non essentiel
-    /// (le commandant ne s'équipe jamais). Un trait déjà natif de la classe est AUTORISÉ (il ne s'empile
+    /// Nombre de slots d'équipement de <paramref name="spec"/> : pour un pion, 1 + les nœuds « slot d'unité » ;
+    /// pour le COMMANDANT, 0 tant qu'un nœud ne lui en donne pas (cf. <see cref="CommanderEquipSlots"/>) — le
+    /// commandant ne s'équipe donc jamais par défaut.
+    /// </summary>
+    public int SlotsFor(UnitSpec spec) => spec.Essential ? CommanderEquipSlots : UnitEquipSlots;
+
+    /// <summary>Slots d'équipement d'un PION : 1 de base, + les nœuds d'arbre « deuxième équipement ».</summary>
+    public int UnitEquipSlots => 1 + TotalOf(CommandEffectKind.UnitEquipSlots);
+
+    /// <summary>Slots d'équipement du COMMANDANT : 0 de base (il ne porte rien), + les nœuds d'arbre.</summary>
+    public int CommanderEquipSlots => TotalOf(CommandEffectKind.CommanderEquipSlots);
+
+    /// <summary>Vrai s'il reste un slot libre sur <paramref name="spec"/>.</summary>
+    public bool HasFreeSlot(UnitSpec spec) => spec.Equipments.Count < SlotsFor(spec);
+
+    /// <summary>
+    /// Vrai si <paramref name="spec"/> peut RECEVOIR <paramref name="equipment"/> ici et maintenant :
+    /// <see cref="CanEquip"/> (compatibilité de principe) ET pas déjà un exemplaire du même objet — deux
+    /// copies d'un même item sur un seul pion gaspillent un slot (le trait ne s'empile pas). C'est ce que
+    /// vérifient la pose et le lâcher d'un objet ; <see cref="CanEquip"/> reste la question « ce pion
+    /// pourrait-il porter cet objet ? », indépendante de ce qu'il porte déjà.
+    /// </summary>
+    public bool CanReceive(UnitSpec spec, Equipment equipment) =>
+        CanEquip(spec, equipment) && !spec.Equipments.Any(e => e.Id == equipment.Id);
+
+    /// <summary>
+    /// Vrai si <paramref name="spec"/> peut recevoir <paramref name="equipment"/> : le commandant seulement
+    /// s'il a gagné un slot (<see cref="CommanderEquipSlots"/>). Un trait déjà natif de la classe est AUTORISÉ (il ne s'empile
     /// pas : sans effet supplémentaire, mais les éventuels bonus de stat de l'objet s'appliquent). Un objet
     /// « Attaque libre » (tir comme une Dame) est refusé au domaine Dame (redondant). Restrictions du domaine
-    /// Cavalier (monté) : objet de PORTÉE refusé aux cavaliers de mêlée (sauf archer monté), objet de MOUVEMENT
-    /// refusé à TOUS les cavaliers. Les autres équipements de stat passent toujours.
+    /// Cavalier (monté), <b>commandant compris</b> : objet de PORTÉE refusé aux cavaliers de mêlée (sauf archer
+    /// monté), objet de MOUVEMENT refusé à TOUS les cavaliers. Les autres équipements de stat passent toujours.
     /// </summary>
     public bool CanEquip(UnitSpec spec, Equipment equipment)
     {
-        if (spec.Essential)
+        if (SlotsFor(spec) <= 0)
             return false;
 
         // « Attaque libre » fait tirer COMME UNE DAME : sans objet (et interdit) sur un pion déjà de domaine Dame.
         if (spec.Domaine == Domaine.Dame && equipment.GrantsTrait(Trait.AttaqueLibre))
             return false;
 
-        // Le domaine Cavalier (monté) refuse deux familles d'objets :
+        // Le domaine Cavalier (monté) refuse deux familles d'objets — COMMANDANT COMPRIS : la règle tient à la
+        // MONTURE, pas au rang (un Marchand à cheval n'a pas plus l'usage de bottes qu'un cavalier de troupe).
         if (spec.Domaine == Domaine.Cavalier)
         {
             // • PORTÉE (arc) : aucun sens sur un cavalier de mêlée (lance/épée à cheval) — mais OK pour
@@ -861,30 +1059,37 @@ public sealed class Run
 
     /// <summary>
     /// Équipe <paramref name="spec"/> avec <paramref name="equipment"/> (pris dans l'inventaire) pendant
-    /// le placement. Un seul équipement par pion ; le commandant n'en porte jamais (cf. <see cref="CanEquip"/>
-    /// pour les restrictions de domaine). Si le pion en portait déjà un, l'ancien retourne à l'inventaire.
+    /// le placement, dans la limite de ses slots (cf. <see cref="SlotsFor"/> ; le commandant n'en a aucun sans
+    /// nœud d'arbre) et des restrictions de domaine (cf. <see cref="CanEquip"/>). Si tous les slots sont pris,
+    /// le PREMIER équipement posé retourne à l'inventaire pour laisser la place.
     /// Renvoie faux si la phase / le pion / l'item l'interdit.
     /// </summary>
     public bool Equip(UnitSpec spec, Equipment equipment)
     {
-        if (Phase != RunPhase.Placement || !CanEquip(spec, equipment))
+        if (Phase != RunPhase.Placement || !CanReceive(spec, equipment))
             return false;
         if (!_equipment.Remove(equipment))
             return false;
-        if (spec.Equipment is { } old)
+        while (spec.Equipments.Count >= SlotsFor(spec) && spec.Equipments.Count > 0)
+        {
+            var old = spec.Equipments[0];
+            spec.RemoveEquipment(old);
             _equipment.Add(old);
-        spec.Equipment = equipment;
+        }
+        spec.AddEquipment(equipment);
         return true;
     }
 
-    /// <summary>Retire l'équipement de <paramref name="spec"/> et le rend à l'inventaire (sans effet s'il n'en a pas).</summary>
-    public void Unequip(UnitSpec spec)
+    /// <summary>Retire TOUS les équipements de <paramref name="spec"/> et les rend à l'inventaire.</summary>
+    public void Unequip(UnitSpec spec) => _equipment.AddRange(spec.TakeAllEquipment());
+
+    /// <summary>Retire UN équipement précis de <paramref name="spec"/> et le rend à l'inventaire (faux s'il ne le portait pas).</summary>
+    public bool Unequip(UnitSpec spec, Equipment equipment)
     {
-        if (spec.Equipment is { } e)
-        {
-            _equipment.Add(e);
-            spec.Equipment = null;
-        }
+        if (!spec.RemoveEquipment(equipment))
+            return false;
+        _equipment.Add(equipment);
+        return true;
     }
 
     // ── NOUVEAUTÉ IA (méta-progression des tiers 2-3) ─────────────────────────────────────────────
@@ -977,7 +1182,7 @@ public sealed class Run
 
         var pool = UnlockedDomaines();
         var counts = new Dictionary<UnitClass, int>();   // pour éviter au max plus de 2 fois la même classe
-        foreach (var tier in AdjustTiers(CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers, Difficulty))
+        foreach (var tier in AdjustTiersForCombat(CampaignPlan.For(PhaseIndex, MissionInPhase).Tiers))
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
         Shuffle(wave, rng);   // position aléatoire des types dans la vague (déterministe)
         EquipEnemies(wave);   // AVANT l'insertion du boss : lui n'est jamais équipé
@@ -1040,7 +1245,7 @@ public sealed class Run
         var tiers = new List<int>(count);
         for (var k = 0; k < count; k++)
             tiers.Add(template[k % template.Count]);
-        tiers = AdjustTiers(tiers, Difficulty).ToList();
+        tiers = AdjustTiersForCombat(tiers).ToList();
 
         foreach (var tier in tiers)
             wave.Add(PickEnemy(rng, pool, tier, isSeen, counts));
@@ -1048,6 +1253,20 @@ public sealed class Run
         EquipEnemies(wave);   // le boss est ajouté par l'appelant APRÈS : il n'est jamais équipé
         return wave;
     }
+
+    /// <summary>
+    /// Combats du DÉBUT de campagne où la DIFFICULTÉ ne touche pas à la composition en tiers : la toute
+    /// première mission reste la mise en jambes de la table (2× T1) même en difficile, pas de T2 d'entrée.
+    /// Même esprit que <see cref="NoEquipCombats"/>.
+    /// </summary>
+    private const int NoTierShiftCombats = 1;
+
+    /// <summary>
+    /// <see cref="AdjustTiers"/> appliqué au combat COURANT : neutralisé sur les
+    /// <see cref="NoTierShiftCombats"/> premiers combats de la run, quelle que soit la difficulté.
+    /// </summary>
+    private IReadOnlyList<int> AdjustTiersForCombat(IReadOnlyList<int> tiers) =>
+        CombatNumber <= NoTierShiftCombats ? tiers : AdjustTiers(tiers, Difficulty);
 
     /// <summary>Bornes de tier d'un pion (la table de campagne ne sort jamais de 1..3).</summary>
     private const int MinTier = 1, MaxTier = 3;
@@ -1167,6 +1386,7 @@ public sealed class Run
     {
         if (Phase == RunPhase.Placement)
             Phase = RunPhase.Battle;
+        _lootEvents = 0;   // le plafond de points « sur butin » (Marchand) est PAR COMBAT
     }
 
     /// <summary>Repasse en phase de placement SANS avancer le combat (fin du tutoriel → combat 1).</summary>
@@ -1182,7 +1402,7 @@ public sealed class Run
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
-        CommandPoints += PointsPerMission;   // toute mission réussie, boss et spéciale comprises
+        CommandPoints += MissionPoints;   // toute mission réussie, boss et spéciale comprises
 
         if (IsBossCombat && PhaseIndex >= EndAtPhase)   // boss de la phase de FIN → victoire (cf. EndAtPhase) ; les boss avant enchaînent
         {
@@ -1261,7 +1481,7 @@ public sealed class Run
     {
         var dead = new HashSet<UnitSpec>(casualties);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
-        CommandPoints += PointsPerMission;
+        CommandPoints += MissionPoints;
         _draft.Clear();
         Phase = RunPhase.Recruitment;
     }
@@ -1385,11 +1605,7 @@ public sealed class Run
 
         foreach (var u in group)
         {
-            if (u.Equipment is { } e)   // fusion : les équipements des 3 pions reviennent à l'inventaire
-            {
-                _equipment.Add(e);
-                u.Equipment = null;
-            }
+            _equipment.AddRange(u.TakeAllEquipment());   // fusion : les équipements des pions reviennent à l'inventaire
             _roster.Remove(u);
         }
 
@@ -1416,7 +1632,7 @@ public sealed class Run
     }
 
     /// <summary>Mélange en place (Fisher-Yates) avec le RNG déterministe du combat.</summary>
-    private static void Shuffle(List<UnitSpec> list, Random rng)
+    private static void Shuffle<T>(List<T> list, Random rng)
     {
         for (var i = list.Count - 1; i > 0; i--)
         {
@@ -1468,11 +1684,42 @@ public sealed class Run
     /// <summary>Boss (identité + profils par phase) assigné à la <paramref name="phase"/> (1..<see cref="PhaseCount"/>) de CETTE run.</summary>
     public BossDef BossOfPhase(int phase) => BossAssignment[phase - 1];
 
-    /// <summary>Gabarit essentiel du boss d'une phase : son domaine de déplacement + le profil (stats/traits) de la phase.</summary>
+    /// <summary>
+    /// Gabarit essentiel du boss d'une phase : son domaine de déplacement + le profil (stats/traits) de la
+    /// phase, et — pour un boss qui monte en puissance par l'ÉQUIPEMENT plutôt que par des traits (le
+    /// Marchand) — les objets de son pool que la phase lui accorde (cf. <see cref="EquipBoss"/>).
+    /// </summary>
     private UnitSpec BossSpecFor(int phase)
     {
         var boss = BossOfPhase(phase);
-        return new UnitSpec(boss.Movement, boss.ProfileFor(phase), essential: true);
+        var spec = new UnitSpec(boss.Movement, boss.ProfileFor(phase), essential: true);
+        EquipBoss(spec, boss, phase);
+        return spec;
+    }
+
+    /// <summary>
+    /// Équipe le boss : <see cref="BossDef.EquipmentCountFor"/> objets tirés SANS DOUBLON dans son
+    /// <see cref="BossDef.EquipmentPool"/>. Rien à voir avec <see cref="EquipEnemies"/>, qui ne touche jamais
+    /// un pion essentiel et tire dans le butin ordinaire : ici le pool est écrit à la main dans units.json,
+    /// donc ni la rareté ni <c>enemyAllowed</c> ni les restrictions de domaine ne s'appliquent — le designer a
+    /// déjà choisi. Un id inconnu du catalogue est SAUTÉ (catalogue plus vieux que la config) : le boss sort
+    /// avec un objet de moins plutôt que de faire tomber la mission. RNG déterministe : reprise = même boss.
+    /// </summary>
+    private void EquipBoss(UnitSpec spec, BossDef boss, int phase)
+    {
+        var count = boss.EquipmentCountFor(phase);
+        if (count <= 0)
+            return;
+
+        var pool = boss.EquipmentPool.ToList();
+        Shuffle(pool, CombatRng(4));   // salt 4 : propre à l'équipement du boss (0 terrain, 1 vague, 3 ennemis)
+        foreach (var id in pool)
+        {
+            if (spec.Equipments.Count >= count)
+                break;
+            if (Equipments.ById(id) is { } item)
+                spec.AddEquipment(item);   // un id inconnu ne consomme pas un emplacement : on continue le pool
+        }
     }
 
     /// <summary>

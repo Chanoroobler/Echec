@@ -387,10 +387,8 @@ public class CommandTreeTests
         run.Unlock(Node("troupe_vie"));   // +2 PV
 
         var soldat = Domaines.Dame.BaseClass;
-        var troop = new UnitSpec(Domaine.Dame, soldat)
-        {
-            Equipment = Equipment.OfStat("test_pv", "Test", EquipStat.Hp, 5),
-        };
+        var troop = new UnitSpec(Domaine.Dame, soldat);
+        troop.AddEquipment(Equipment.OfStat("test_pv", "Test", EquipStat.Hp, 5));
         Assert.Equal(soldat.MaxHp + 2 + 5, troop.Spawn(Faction.Player, run.BuffsFor(troop)).MaxHp);
     }
 
@@ -784,10 +782,27 @@ public class CommandTreeTests
 
         var bosses = Battle.Config.DomaineCatalog.BossesFromJson(json);
         Assert.NotEmpty(bosses);
+
+        // Le pool d'équipement d'un boss est écrit à la main : une faute de frappe le désarmerait en silence
+        // (l'id inconnu est sauté au tirage). On le confronte donc au catalogue RÉELLEMENT LIVRÉ.
+        var equipmentIds = Equip.EquipmentCatalog
+            .FromJson(System.IO.File.ReadAllText(AssetPath("Config", "equipment.json")))
+            .Select(e => e.Id).ToHashSet();
+
         foreach (var b in bosses)
+        {
             foreach (var profile in b.Profiles.Values)
                 foreach (var t in profile.Traits)
                     Assert.True(Trait.All.Contains(t), $"trait inconnu sur le boss '{b.Name}' : {t}");
+
+            foreach (var id in b.EquipmentPool)
+                Assert.True(equipmentIds.Contains(id), $"équipement inconnu dans le pool du boss '{b.Name}' : {id}");
+
+            // Un boss ne peut pas porter deux fois le même objet : le pool doit couvrir la phase la plus gourmande.
+            for (var phase = 1; phase <= 3; phase++)
+                Assert.True(b.EquipmentCountFor(phase) <= b.EquipmentPool.Count,
+                    $"pool trop petit pour le boss '{b.Name}' en phase {phase}");
+        }
     }
 
     [Fact]

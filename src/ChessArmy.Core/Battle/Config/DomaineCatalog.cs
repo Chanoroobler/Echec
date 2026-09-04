@@ -58,7 +58,9 @@ public static class DomaineCatalog
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
             c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue,
             c.RangedHitPoints ?? 0, c.RangedHitCap ?? int.MaxValue,
-            c.JumpPoints ?? 0, c.JumpCap ?? int.MaxValue);
+            c.JumpPoints ?? 0, c.JumpCap ?? int.MaxValue,
+            c.LootPoints ?? 0, c.LootCap ?? int.MaxValue,
+            c.MissionPoints ?? Campaign.Run.PointsPerMission);
     }
 
     private static BossDef ToBoss(CommandeConfig c)
@@ -67,6 +69,7 @@ public static class DomaineCatalog
             throw new InvalidOperationException($"Domaine de mouvement inconnu pour le boss '{c.Name}' : '{c.Domaine}'.");
 
         var profiles = new Dictionary<int, UnitClass>();
+        var equipmentCounts = new Dictionary<int, int>();
         if (c.Phases is { Count: > 0 })
         {
             foreach (var (key, p) in c.Phases)
@@ -77,7 +80,13 @@ public static class DomaineCatalog
                 if (!profiles.TryAdd(phase, new UnitClass(c.Name, c.Asset, tier: 1, p.Hp, p.Damage, p.MoveRange,
                         p.AttackRange, p.PiercesAllies, p.MinAttackRange ?? 1, p.Traits, ParseAttackDomaine(p.AttackDomaine, c.Name))))
                     throw new InvalidOperationException($"Phase de boss en double pour '{c.Name}' : {phase}.");
+                if (p.EquipmentCount is > 0 and var n)
+                    equipmentCounts[phase] = n;
             }
+
+            if (equipmentCounts.Count > 0 && c.EquipmentPool is not { Count: > 0 })
+                throw new InvalidOperationException(
+                    $"Le boss '{c.Name}' demande des équipements par phase mais ne déclare aucun \"equipmentPool\".");
         }
         else
         {
@@ -88,7 +97,7 @@ public static class DomaineCatalog
             profiles[phase] = new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange);
         }
 
-        return new BossDef(c.Name, c.Asset, domaine, profiles, c.UnlocksCommander);
+        return new BossDef(c.Name, c.Asset, domaine, profiles, c.UnlocksCommander, c.EquipmentPool, equipmentCounts);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

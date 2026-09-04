@@ -41,6 +41,14 @@ public sealed class CommandeConfig
     /// </summary>
     public Dictionary<string, BossPhaseConfig>? Phases { get; set; }
 
+    /// <summary>
+    /// BOSS : ids d'équipement (cf. equipment.json) dans lesquels il pioche, sans doublon, autant de fois que
+    /// la phase le demande (<see cref="BossPhaseConfig.EquipmentCount"/>). Pool CHOISI À LA MAIN : ni la rareté
+    /// ni le drapeau <c>enemyAllowed</c> ne le filtrent — c'est le designer qui décide ce qu'un boss peut porter.
+    /// Absent → le boss ne s'équipe jamais. Ignoré pour un Commander.
+    /// </summary>
+    public List<string>? EquipmentPool { get; set; }
+
     /// <summary>COMMANDANT : pions posables au placement, commandant compris. Absent → 5.</summary>
     public int? Deployments { get; set; }
 
@@ -70,6 +78,15 @@ public sealed class CommandeConfig
 
     /// <summary>COMMANDANT : plafond de sauts comptabilisés par combat pour <c>jumpPoints</c>. Absent → illimité.</summary>
     public int? JumpCap { get; set; }
+
+    /// <summary>COMMANDANT : points gagnés à chaque BUTIN ramassé en combat, coffre ouvert OU tuile recrue (Marchand). Absent → 0.</summary>
+    public int? LootPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de butins comptabilisés par combat pour <c>lootPoints</c>. Absent → illimité.</summary>
+    public int? LootCap { get; set; }
+
+    /// <summary>COMMANDANT : points gagnés à chaque MISSION RÉUSSIE. Absent → <c>Run.PointsPerMission</c> (2).</summary>
+    public int? MissionPoints { get; set; }
 
     /// <summary>COMMANDANT : traits de combat NATIFS (cf. Trait), avant tout nœud d'arbre. Absent → aucun.
     /// (Pour un boss, les traits se déclarent par phase dans <see cref="Phases"/>.)</summary>
@@ -124,6 +141,13 @@ public sealed class BossPhaseConfig
 
     /// <summary>Domaine du pattern d'ATTAQUE s'il diffère du déplacement. Absent → attaque = déplacement.</summary>
     public string? AttackDomaine { get; set; }
+
+    /// <summary>
+    /// BOSS : nombre d'équipements portés à cette phase, tirés dans <see cref="CommandeConfig.EquipmentPool"/>
+    /// (jamais deux fois le même). Absent/0 → boss nu. Sert aux boss dont la montée en puissance passe par
+    /// l'ÉQUIPEMENT plutôt que par des traits (le Marchand).
+    /// </summary>
+    public int? EquipmentCount { get; set; }
 }
 
 /// <summary>Un domaine et sa classe de base (le motif de déplacement reste en code).</summary>

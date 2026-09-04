@@ -721,6 +721,26 @@ public sealed class Match
             : 0;
 
     /// <summary>
+    /// Cases des ALLIÉS ADJACENTS qui alimentent la « Formation » du porteur posé sur <paramref name="cell"/>,
+    /// dans le tampon fourni (vidé au passage). Vide s'il n'a pas le trait. Même parcours que
+    /// <see cref="AdjacentAllyCount"/>, dont <see cref="FormationPowerBonus"/> tire le bonus — l'UI s'en sert
+    /// pour montrer d'où il vient (halo + arcs), les deux DOIVENT donc rester d'accord. Pendant du
+    /// <see cref="LienDePuissanceAllies(Cell, List{Cell})"/> pour l'autre trait de placement.
+    /// </summary>
+    public void FormationAllies(Cell cell, List<Cell> result)
+    {
+        result.Clear();
+        if (UnitAt(cell) is not { } u || !u.HasTrait(Trait.Formation))
+            return;
+        foreach (var (dc, dr) in Neighbors8)
+        {
+            var n = new Cell(cell.Column + dc, cell.Row + dr);
+            if (UnitAt(n) is { } ally && ally.Faction == u.Faction)
+                result.Add(n);
+        }
+    }
+
+    /// <summary>
     /// Bonus de puissance CONTEXTUEL total d'une unité : ce qu'elle tient de son PLACEMENT — auras alliées
     /// (<see cref="AuraPowerBonus"/>) et Formation (<see cref="FormationPowerBonus"/>) — et que sa fiche ne
     /// laisse pas deviner. La carte l'affiche en « +N » sur la puissance pour rester fidèle aux dégâts
@@ -778,9 +798,19 @@ public sealed class Match
     public List<Cell> LienDePuissanceAllies(Cell cell)
     {
         var result = new List<Cell>();
+        LienDePuissanceAllies(cell, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Même chose dans un tampon FOURNI (vidé au passage) : l'UI dessine les liens de TOUS les porteurs à
+    /// chaque frame, elle ne peut pas allouer une liste par porteur et par frame.
+    /// </summary>
+    public void LienDePuissanceAllies(Cell cell, List<Cell> result)
+    {
+        result.Clear();
         if (UnitAt(cell) is { } u && u.HasTrait(Trait.LienDePuissance))
             AppendAlliesInMoveRange(cell, u, result);
-        return result;
     }
 
     /// <summary>
@@ -1306,13 +1336,27 @@ public sealed class Match
     }
 
     /// <summary>
-    /// « Queue de phénix » : si l'unité TOMBÉE porte l'équipement de <see cref="Trait.Renaissance"/>, elle
-    /// ressuscite à 1 PV et l'équipement se brise (consommé). Renvoie vrai si une renaissance a eu lieu —
-    /// l'unité RESTE alors en jeu (aucun kill ne doit être crédité, aucune case libérée).
+    /// Vrai si la « Renaissance ultime » (nœud d'arbre) a été déclenchée pendant ce combat. La scène le lit à
+    /// la fin du combat pour la consommer DÉFINITIVEMENT dans la run (cf. <c>Run.UseUltimateRevive</c>) : le
+    /// nœud ne sert qu'une fois par PARTIE.
     /// </summary>
-    private static bool TryReviveWithEquipment(Unit unit)
+    public bool UltimateReviveTriggered { get; private set; }
+
+    /// <summary>
+    /// Renaissance de l'unité TOMBÉE, dans cet ordre : « Renaissance ultime » de l'arbre (PV PLEINS, une fois
+    /// par partie) d'abord, puis la « Queue de phénix » de l'équipement (1 PV, l'objet se brise). Renvoie vrai
+    /// si une renaissance a eu lieu — l'unité RESTE alors en jeu (aucun kill crédité, aucune case libérée).
+    /// </summary>
+    private bool TryReviveWithEquipment(Unit unit)
     {
-        if (unit.IsAlive || unit.Equipment is not { } eq || !eq.GrantsTrait(Trait.Renaissance))
+        if (unit.IsAlive)
+            return false;
+        if (unit.TryUltimateRevive())
+        {
+            UltimateReviveTriggered = true;
+            return true;
+        }
+        if (unit.EquipmentWithTrait(Trait.Renaissance) is null)
             return false;
         unit.ReviveConsumingEquipment();
         return true;

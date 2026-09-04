@@ -49,9 +49,17 @@ public sealed class CommandBuffs
     /// <paramref name="domaineCount"/> alimente l'échelle « par unité de domaine », <paramref name="deployedCount"/>
     /// l'échelle « par unité de domaine DÉPLOYÉE » (fournie par la scène, qui seule connaît le plateau).
     /// </summary>
+    /// <param name="equippedItems">
+    /// Nombre d'équipements POSSÉDÉS par l'armée (portés ou en réserve) : échelle
+    /// <see cref="CommandScale.PerEquippedItem"/> du commandant MARCHAND. 0 par défaut → ces bonus valent 0.
+    /// </param>
+    /// <param name="ownEquippedItems">
+    /// Nombre d'équipements que porte la CIBLE elle-même : échelle <see cref="CommandScale.PerOwnEquippedItem"/>.
+    /// 0 par défaut → ces bonus valent 0 (cas de tous les pions et des commandants sans emplacement).
+    /// </param>
     public static CommandBuffs From(IEnumerable<CommandEffect> effects, bool commander, int distinctPairs,
         Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null,
-        Func<Domaine, int>? deployedCount = null)
+        Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0)
     {
         var stats = new Dictionary<EquipStat, int>();
         var traits = new List<string>();
@@ -73,7 +81,7 @@ public sealed class CommandBuffs
                 continue;
             }
 
-            var amount = e.AmountFor(distinctPairs, domaineCount, deployedCount);
+            var amount = e.AmountFor(distinctPairs, domaineCount, deployedCount, equippedItems, ownEquippedItems);
             if (amount != 0)
                 stats[e.Stat] = stats.GetValueOrDefault(e.Stat, 0) + amount;
         }

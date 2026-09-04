@@ -28,4 +28,11 @@ public sealed class ProfileDto
     /// déjà ouverts par défaut (<c>unlocked: true</c> dans units.json) n'ont pas besoin d'y figurer.
     /// </summary>
     public System.Collections.Generic.List<string> UnlockedCommanders { get; set; } = new();
+
+    /// <summary>
+    /// Méta-progression : nombre TOTAL de coffres ouverts par le joueur, toutes parties confondues. Sert à
+    /// débloquer le commandant MARCHAND (cf. <c>SaveService.ChestUnlockThreshold</c>), contrôlé à la fin de
+    /// chaque partie. Absent d'un vieux profil → 0.
+    /// </summary>
+    public int ChestsOpened { get; set; }
 }

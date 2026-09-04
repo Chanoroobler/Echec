@@ -299,8 +299,26 @@ internal sealed class MainForm : Form
         _rosterList.SelectedIndexChanged += (_, _) => BindSelectedUnit();
         _domaineBox.SelectedIndexChanged += (_, _) => OnDomaineChanged();
         _classBox.SelectedIndexChanged += (_, _) => EditUnit(u => u.Class = Key(_classBox)!);
+        // Multi-slot (arbre du Marchand) : la liste déroulante édite le PREMIER slot ; les éventuels autres
+        // équipements du pion sont conservés tels quels.
         _equipBox.SelectedIndexChanged += (_, _) => EditUnit(u =>
-            u.Equipment = Key(_equipBox) is { Length: > 0 } id ? id : null);
+        {
+            var ids = u.EquipmentIds ??= new List<string>();
+            var id = Key(_equipBox) is { Length: > 0 } k ? k : null;
+            if (id is null)
+            {
+                if (ids.Count > 0)
+                    ids.RemoveAt(0);
+            }
+            else if (ids.Count > 0)
+            {
+                ids[0] = id;
+            }
+            else
+            {
+                ids.Add(id);
+            }
+        });
         _killsNum.ValueChanged += (_, _) => EditUnit(u => u.Kills = (int)_killsNum.Value);
 
         // ItemCheck part AUSSI depuis Items.Add(item, état) — d'où le garde _loading dans le handler. On lit
@@ -458,13 +476,15 @@ internal sealed class MainForm : Form
         _rosterList.Items.Clear();
         foreach (var unit in _save.Roster)
         {
-            var equipment = unit.Equipment is { } id ? Equipments.ById(id)?.Name ?? $"? {id}" : "—";
+            var equipment = unit.EquipmentIds is { Count: > 0 } ids
+                ? string.Join(" + ", ids.Select(id => Equipments.ById(id)?.Name ?? $"? {id}"))
+                : "—";
             _rosterList.Items.Add(new ListViewItem(new[]
             {
                 unit.Essential ? "Commandant" : "Pion",
                 unit.Domaine.ToString(),
                 ClassNameOf(unit),
-                unit.Essential ? "—" : equipment,
+                equipment,
                 unit.Kills.ToString(),
             }));
         }
@@ -498,11 +518,12 @@ internal sealed class MainForm : Form
     {
         var unit = Selected;
         var editable = unit is { Essential: false };
+        // Le COMMANDANT peut porter un équipement depuis l'arbre du Marchand : sa case équipement reste éditable.
 
         _loading = true;
         _domaineBox.Enabled = editable;
         _classBox.Enabled = editable;
-        _equipBox.Enabled = editable;
+        _equipBox.Enabled = unit is not null;
         _killsNum.Enabled = unit is not null;
 
         if (unit is not null)
@@ -510,7 +531,7 @@ internal sealed class MainForm : Form
             Select(_domaineBox, unit.Domaine.ToString());
             FillClassChoices(unit.Domaine);
             Select(_classBox, unit.Class);
-            Select(_equipBox, unit.Equipment ?? "");
+            Select(_equipBox, unit.EquipmentIds is { Count: > 0 } worn ? worn[0] : "");
             _killsNum.Value = Clamp(_killsNum, unit.Kills);
         }
         _loading = false;
@@ -594,7 +615,7 @@ internal sealed class MainForm : Form
         }
         essential.Domaine = def.Movement;
         essential.Class = def.BaseClass.Asset;
-        essential.Equipment = null;
+        essential.EquipmentIds = new List<string>();
 
         _save.CommandNodes.Clear();
         RefreshRoster();
@@ -625,7 +646,8 @@ internal sealed class MainForm : Form
             return;
         _save.Roster.Add(new UnitSpecSave
         {
-            Domaine = unit.Domaine, Class = unit.Class, Equipment = unit.Equipment, Kills = unit.Kills,
+            Domaine = unit.Domaine, Class = unit.Class, Kills = unit.Kills,
+            EquipmentIds = unit.EquipmentIds is { } src ? new List<string>(src) : null,
         });
         RefreshRoster();
         _rosterList.Items[^1].Selected = true;

@@ -14,14 +14,19 @@ namespace ChessArmy.Core.Battle;
 public sealed class BossDef
 {
     public BossDef(string name, string asset, Domaine movement, IReadOnlyDictionary<int, UnitClass> profiles,
-        string? unlocksCommander = null)
+        string? unlocksCommander = null, IReadOnlyList<string>? equipmentPool = null,
+        IReadOnlyDictionary<int, int>? equipmentCounts = null)
     {
         Name = name;
         Asset = asset;
         Movement = movement;
         Profiles = profiles;
         UnlocksCommander = unlocksCommander;
+        EquipmentPool = equipmentPool ?? System.Array.Empty<string>();
+        _equipmentCounts = equipmentCounts;
     }
+
+    private readonly IReadOnlyDictionary<int, int>? _equipmentCounts;
 
     public string Name { get; }
 
@@ -39,6 +44,23 @@ public sealed class BossDef
     /// Null = ce boss ne débloque aucun commandant (ex. la Brute). Cf. la méta-progression du profil.
     /// </summary>
     public string? UnlocksCommander { get; }
+
+    /// <summary>
+    /// Ids d'équipement (equipment.json) où ce boss pioche ce qu'il porte, sans doublon. Vide = boss nu, quelle
+    /// que soit la phase. Pool CHOISI À LA MAIN dans units.json : ni la rareté ni <c>enemyAllowed</c> ne le
+    /// filtrent — un boss porte ce que le designer lui a mis, pas le butin ordinaire des ennemis de passage.
+    /// </summary>
+    public IReadOnlyList<string> EquipmentPool { get; }
+
+    /// <summary>
+    /// Nombre d'équipements portés à cette <paramref name="phase"/>, tirés dans <see cref="EquipmentPool"/>.
+    /// 0 (boss nu) si la phase ne le déclare pas ou si le pool est vide. Borné par la taille du pool : on ne
+    /// peut pas porter deux fois le même objet.
+    /// </summary>
+    public int EquipmentCountFor(int phase) =>
+        EquipmentPool.Count == 0 || _equipmentCounts is null || !_equipmentCounts.TryGetValue(phase, out var n)
+            ? 0
+            : System.Math.Clamp(n, 0, EquipmentPool.Count);
 
     /// <summary>Vrai si ce boss DÉCLARE un profil pour cette phase (= éligible à y être tiré).</summary>
     public bool SupportsPhase(int phase) => Profiles.ContainsKey(phase);

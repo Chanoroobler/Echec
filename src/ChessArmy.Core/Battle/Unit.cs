@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ChessArmy.Core.Command;
 using ChessArmy.Core.Equip;
 
@@ -8,19 +9,20 @@ namespace ChessArmy.Core.Battle;
 /// déplacement) et la <see cref="Class"/> (asset + stats : PV, dégâts, portée).
 /// Le level-up n'est pas encore défini : l'unité reste sur la classe qu'on lui donne.
 ///
-/// Trois sources de stats et de traits, cumulatives : la <see cref="Class"/>, un éventuel
-/// <see cref="Equipment"/> (collé au pion) et les <see cref="Buffs"/> de l'arbre de commandement
+/// Trois sources de stats et de traits, cumulatives : la <see cref="Class"/>, ses
+/// <see cref="Equipments"/> (collés au pion) et les <see cref="Buffs"/> de l'arbre de commandement
 /// (bonus d'armée du joueur, figés au placement — les ennemis n'en ont jamais).
 /// </summary>
 public sealed class Unit
 {
-    public Unit(Domaine domaine, Faction faction, UnitClass unitClass, Equipment? equipment = null,
-        CommandBuffs? buffs = null, int kills = 0)
+    public Unit(Domaine domaine, Faction faction, UnitClass unitClass,
+        IReadOnlyList<Equipment>? equipment = null, CommandBuffs? buffs = null, int kills = 0)
     {
         Domaine = domaine;
         Faction = faction;
         Class = unitClass;
-        Equipment = equipment;
+        if (equipment is { Count: > 0 })
+            _equipment.AddRange(equipment);
         Buffs = buffs ?? CommandBuffs.None;
         Kills = kills;   // total d'ennemis tués à VIE (repris du gabarit, cf. UnitSpec.Spawn)
         Hp = MaxHp;   // PV pleins, bonus d'équipement et d'arbre inclus
@@ -42,9 +44,11 @@ public sealed class Unit
     public Domaine AttackDomaine =>
         HasTrait(Battle.Trait.AttaqueLibre) ? Domaine.Dame : Class.AttackDomaine ?? Domaine;
 
-    /// <summary>Équipement porté (collé au pion), ou null. Stat ou trait, jamais sur le commandant. Peut être
-    /// BRISÉ en combat (mis à null) par la « Queue de phénix » — cf. <see cref="ReviveConsumingEquipment"/>.</summary>
-    public Equipment? Equipment { get; private set; }
+    private readonly List<Equipment> _equipment = new();
+
+    /// <summary>Équipements portés (collés au pion), dans l'ordre de pose. Stats et traits se CUMULENT. Un
+    /// exemplaire peut être BRISÉ en combat (retiré) par la « Queue de phénix » — cf. <see cref="ReviveConsumingEquipment"/>.</summary>
+    public IReadOnlyList<Equipment> Equipments => _equipment;
 
     /// <summary>
     /// Bonus de l'arbre de commandement applicables à CETTE unité (ceux du commandant, ou ceux des troupes).
@@ -150,24 +154,58 @@ public sealed class Unit
     public int MinAttackRange =>
         System.Math.Max(Class.MinAttackRange, HasTrait(Battle.Trait.ZoneMorte) ? 2 : 1);
 
-    /// <summary>Bonus de l'équipement porté sur une stat (0 si aucun, ou si l'équipement vise une autre stat).</summary>
-    private int EquipBonus(EquipStat stat) => Equipment?.BonusFor(stat) ?? 0;
+    /// <summary>Bonus CUMULÉ des équipements portés sur une stat (0 si aucun ne la vise).</summary>
+    private int EquipBonus(EquipStat stat)
+    {
+        var total = 0;
+        foreach (var e in _equipment)
+            total += e.BonusFor(stat);
+        return total;
+    }
 
     public bool IsAlive => Hp > 0;
 
     public void TakeDamage(int amount) => Hp = System.Math.Max(0, Hp - amount);
 
     /// <summary>
-    /// « Queue de phénix » : l'unité TOMBÉE (0 PV) ressuscite à 1 PV et son équipement se BRISE (consommé,
-    /// mis à null — une seule fois, puisque le trait <see cref="Battle.Trait.Renaissance"/> disparaît avec lui).
-    /// Renvoie l'équipement brisé (pour le feedback côté scène), ou null s'il n'y avait rien à consommer.
+    /// « Queue de phénix » : l'unité TOMBÉE (0 PV) ressuscite à 1 PV et l'équipement PORTEUR du trait
+    /// <see cref="Battle.Trait.Renaissance"/> se BRISE (retiré — une seule fois, puisque le trait part avec lui).
+    /// Les AUTRES équipements du pion restent en place. Renvoie l'équipement brisé (pour le feedback côté
+    /// scène), ou null s'il n'y avait rien à consommer.
     /// </summary>
     public Equipment? ReviveConsumingEquipment()
     {
-        var broken = Equipment;
-        Equipment = null;
+        var broken = EquipmentWithTrait(Battle.Trait.Renaissance);
+        if (broken != null)
+            _equipment.Remove(broken);
         Hp = 1;
         return broken;
+    }
+
+    /// <summary>Premier équipement porté qui octroie ce trait, ou null.</summary>
+    public Equipment? EquipmentWithTrait(string trait)
+    {
+        foreach (var e in _equipment)
+            if (e.GrantsTrait(trait))
+                return e;
+        return null;
+    }
+
+    /// <summary>
+    /// « Renaissance ultime » (nœud d'arbre du Marchand) : le commandant TOMBÉ revient à PV PLEINS, UNE SEULE
+    /// FOIS par partie. Le compteur définitif vit dans la <see cref="Campaign.Run"/> (persisté) : ce drapeau-ci
+    /// n'empêche qu'un second déclenchement dans le MÊME combat. Faux si déjà utilisé.
+    /// </summary>
+    public bool UltimateReviveUsed { get; private set; }
+
+    /// <summary>Consomme la « Renaissance ultime » : PV pleins. Faux si l'unité ne l'a pas / l'a déjà utilisée.</summary>
+    public bool TryUltimateRevive()
+    {
+        if (UltimateReviveUsed || !HasTrait(Battle.Trait.RenaissanceUltime))
+            return false;
+        UltimateReviveUsed = true;
+        Hp = MaxHp;
+        return true;
     }
 
     /// <summary>Soigne l'unité (borné à ses PV max).</summary>
@@ -180,8 +218,9 @@ public sealed class Unit
     /// </summary>
     public bool HasTrait(string trait)
     {
-        if (Equipment is { } e && e.GrantsTrait(trait))
-            return true;
+        foreach (var e in _equipment)
+            if (e.GrantsTrait(trait))
+                return true;
         if (Buffs.GrantsTrait(trait))
             return true;
         if (trait == Battle.Trait.TraverseAllie)

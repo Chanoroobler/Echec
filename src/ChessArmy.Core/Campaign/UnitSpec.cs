@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using ChessArmy.Core.Battle;
 using ChessArmy.Core.Command;
 using ChessArmy.Core.Equip;
@@ -9,8 +11,8 @@ namespace ChessArmy.Core.Campaign;
 /// options de recrutement et vagues ennemies. <see cref="Essential"/> marque le
 /// commandant (joueur) ou le boss (ennemi) ; leur mort décide la partie.
 /// Un même gabarit produit une <see cref="Unit"/> neuve (PV pleins) à chaque combat.
-/// L'<see cref="Equipment"/> est « collé au pion » : il suit ce gabarit d'un combat à l'autre et
-/// disparaît avec lui (permadeath). Géré par <see cref="Run.Equip"/> / <see cref="Run.Unequip"/>.
+/// Les <see cref="Equipments"/> sont « collés au pion » : ils suivent ce gabarit d'un combat à l'autre et
+/// disparaissent avec lui (permadeath). Gérés par <see cref="Run.Equip"/> / <see cref="Run.Unequip"/>.
 /// </summary>
 public sealed class UnitSpec
 {
@@ -21,12 +23,35 @@ public sealed class UnitSpec
         Essential = essential;
     }
 
+    private readonly List<Equipment> _equipment = new();
+
     public Domaine Domaine { get; }
     public UnitClass UnitClass { get; }
     public bool Essential { get; }
 
-    /// <summary>Équipement porté (un seul, jamais sur le commandant), ou null. Voir <see cref="Run.Equip"/>.</summary>
-    public Equipment? Equipment { get; set; }
+    /// <summary>
+    /// Équipements portés, dans l'ordre où ils ont été posés. Le NOMBRE DE SLOTS n'est pas porté ici mais par
+    /// la run (cf. <see cref="Run.SlotsFor"/>) : il dépend de l'arbre de commandement, et le commandant en a
+    /// 0 tant qu'un nœud ne lui en donne pas. Voir <see cref="Run.Equip"/> / <see cref="Run.Unequip"/>.
+    /// </summary>
+    public IReadOnlyList<Equipment> Equipments => _equipment;
+
+    /// <summary>Vrai si le pion porte au moins un équipement.</summary>
+    public bool HasEquipment => _equipment.Count > 0;
+
+    /// <summary>Pose un équipement (aucun contrôle de slot : c'est <see cref="Run.Equip"/> qui décide).</summary>
+    public void AddEquipment(Equipment equipment) => _equipment.Add(equipment);
+
+    /// <summary>Retire un exemplaire précis (faux s'il ne le portait pas).</summary>
+    public bool RemoveEquipment(Equipment equipment) => _equipment.Remove(equipment);
+
+    /// <summary>Retire TOUS les équipements portés et les renvoie (l'appelant décide de leur sort).</summary>
+    public IReadOnlyList<Equipment> TakeAllEquipment()
+    {
+        var taken = _equipment.ToList();
+        _equipment.Clear();
+        return taken;
+    }
 
     /// <summary>
     /// Total d'ennemis tués À VIE par ce pion (persistant, sauvegardé). Recopié sur l'<see cref="Unit"/>
@@ -43,5 +68,5 @@ public sealed class UnitSpec
     /// ennemi ou un spawn hors campagne.
     /// </summary>
     public Unit Spawn(Faction faction, CommandBuffs? buffs = null) =>
-        new(Domaine, faction, UnitClass, Equipment, buffs, Kills) { IsEssential = Essential };
+        new(Domaine, faction, UnitClass, _equipment, buffs, Kills) { IsEssential = Essential };
 }

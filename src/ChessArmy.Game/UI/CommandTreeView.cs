@@ -310,7 +310,7 @@ public sealed class CommandTreeView
 
         // Comment on gagne des points : la mission (commun à tous), puis la source PROPRE au commandant
         // (fusion, ou coup reçu — cf. CommandeDef) — sa clé de texte vit sous l'id de son arbre.
-        DrawIncomeLine(sb, panel, 64, Loc.T("tree.income_mission", Run.PointsPerMission));
+        DrawIncomeLine(sb, panel, 64, Loc.T("tree.income_mission", run.MissionPoints));
         if (run.CommanderDef.FusionPoints > 0)
             DrawIncomeLine(sb, panel, 78, Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.FusionPoints));
         else if (run.CommanderDef.OnHitPoints > 0)
@@ -322,6 +322,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.JumpPoints > 0)
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.JumpPoints, run.CommanderDef.JumpCap));
+        else if (run.CommanderDef.LootPoints > 0)   // Marchand : coffre ouvert ou recrue ramassée
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.LootPoints, run.CommanderDef.LootCap));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>

@@ -188,6 +188,95 @@ public class RunTests
         Assert.Equal(a.Select(u => u.UnitClass), b.Select(u => u.UnitClass));
     }
 
+    // ─── Boss ÉQUIPÉ (montée en puissance par l'objet plutôt que par des traits) ─────────────────
+    // Le boss du Marchand n'a aucun trait : c'est son équipement qui le fait grossir de phase en phase.
+
+    /// <summary>Boss d'essai à pool d'équipement : nu en phase 1, 1 objet en phase 2, 2 en phase 3.</summary>
+    private static BossDef EquippedBoss() =>
+        new("Marchand", "marchand", Domaine.Dame,
+            new Dictionary<int, UnitClass>
+            {
+                [1] = new("Marchand", "marchand", 1, 30, 10, 1, 1),
+                [2] = new("Marchand", "marchand", 1, 40, 14, 1, 1),
+                [3] = new("Marchand", "marchand", 1, 50, 18, 1, 1),
+            },
+            equipmentPool: new[] { "a", "b", "c" },
+            equipmentCounts: new Dictionary<int, int> { [2] = 1, [3] = 2 });
+
+    private static void WithEquippedBoss(System.Action body)
+    {
+        try
+        {
+            Bosses.Load(new[] { EquippedBoss() });
+            Equipments.Load(new[]
+            {
+                Equipment.OfStat("a", "A", EquipStat.Hp, 1),
+                Equipment.OfStat("b", "B", EquipStat.Hp, 2),
+                Equipment.OfStat("c", "C", EquipStat.Hp, 3),
+            });
+            body();
+        }
+        finally
+        {
+            Bosses.ResetToDefaults();
+            Equipments.ResetToDefaults();
+        }
+    }
+
+    [Theory]
+    [InlineData(6, 0)]     // phase 1 : boss NU
+    [InlineData(12, 1)]    // phase 2 : un objet
+    [InlineData(18, 2)]    // phase 3 : deux
+    public void BossEquipment_FollowsThePhase(int combat, int expected)
+    {
+        WithEquippedBoss(() =>
+        {
+            var boss = RunAt(combat).BuildBossEnemyWave(0)[0];
+
+            Assert.True(boss.Essential);
+            Assert.Equal(expected, boss.Equipments.Count);
+            Assert.Equal(expected, boss.Equipments.Select(e => e.Id).Distinct().Count());   // jamais deux fois le même
+        });
+    }
+
+    [Fact]
+    public void BossEquipment_IsDeterministic_AcrossReloads()
+    {
+        WithEquippedBoss(() =>
+        {
+            var a = RunAt(18, seed: 7).BuildBossEnemyWave(0)[0];
+            var b = RunAt(18, seed: 7).BuildBossEnemyWave(0)[0];
+
+            Assert.Equal(a.Equipments.Select(e => e.Id), b.Equipments.Select(e => e.Id));
+        });
+    }
+
+    [Fact]
+    public void BossEquipment_SkipsIdsTheCatalogDoesNotKnow()
+    {
+        try
+        {
+            Bosses.Load(new[] { EquippedBoss() });
+            // Catalogue amputé : « b » n'existe plus. Le boss de phase 3 doit quand même sortir à 2 objets,
+            // pris ailleurs dans le pool — un id inconnu ne doit pas lui coûter un emplacement.
+            Equipments.Load(new[]
+            {
+                Equipment.OfStat("a", "A", EquipStat.Hp, 1),
+                Equipment.OfStat("c", "C", EquipStat.Hp, 3),
+            });
+
+            var boss = RunAt(18).BuildBossEnemyWave(0)[0];
+
+            Assert.Equal(2, boss.Equipments.Count);
+            Assert.DoesNotContain("b", boss.Equipments.Select(e => e.Id));
+        }
+        finally
+        {
+            Bosses.ResetToDefaults();
+            Equipments.ResetToDefaults();
+        }
+    }
+
     // ─── Rareté de coffre (chances par phase + pitié) ────────────────────────────────────────────
     [Theory]
     // Phase 1 : légendaire 5 %, rare 30 % (combat 1).
@@ -848,16 +937,16 @@ public class RunTests
                     var run = RunAt(combat, seed);
                     foreach (var s in run.BuildEnemyWave())
                     {
-                        if (s.Equipment is not null)
+                        if (s.HasEquipment)
                             sawEquippedEnemy = true;
                         if (s.Domaine == Domaine.Cavalier)
                         {
                             sawCavalier = true;
-                            Assert.Null(s.Equipment);   // jamais de bottes sur un cavalier ennemi (le bug corrigé)
+                            Assert.False(s.HasEquipment);   // jamais de bottes sur un cavalier ennemi (le bug corrigé)
                         }
                         // Invariant général : l'IA ne porte rien que CanEquip refuserait au joueur.
-                        Assert.True(s.Equipment is null || run.CanEquip(s, s.Equipment),
-                            $"Un ennemi ({s.Domaine}) porte un équipement interdit : {s.Equipment?.Id}.");
+                        Assert.True(!s.HasEquipment || run.CanEquip(s, s.Equipments[0]),
+                            $"Un ennemi ({s.Domaine}) porte un équipement interdit : {s.Equipments.FirstOrDefault()?.Id}.");
                     }
                 }
 

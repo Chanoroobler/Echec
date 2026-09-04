@@ -168,6 +168,62 @@
         { "id": "cav_logi_reserve_2", "asset": "lan_logi_reserve_1",  "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
         { "id": "cav_logi_amalgame",  "branch": 2, "level": 4, "effects": [ { "kind": "fusionSizeReduction", "amount": 1, "domaine": "Cavalier" } ] }
       ]
+    },
+
+    // ── Arbre du commandant MARCHAND (tree "commandantMarchand") ─────────────────────────────────────
+    // Thème : l'ÉQUIPEMENT. C'est le SEUL commandant qui peut s'équiper (les autres n'ont aucun slot), et le
+    // seul dont les pions peuvent porter DEUX objets. Six effets propres à cet arbre :
+    //   "commanderEquipSlots" : donne N slot(s) d'équipement au COMMANDANT (0 partout ailleurs) ;
+    //   "unitEquipSlots"      : donne N slot(s) EN PLUS à chaque pion (base 1) ;
+    //   "chestExtraItem"      : chaque coffre donne N objet(s) de plus (tirages COMPLETS et indépendants) ;
+    //   "chestRarityBonus"    : + N POINTS de % sur les chances RARE et LÉGENDAIRE d'un coffre ;
+    //   "rerollEquipment"     : chaque relance d'unité rapporte N équipement (tiré comme un coffre) ;
+    //   "recruitExtraUnit"    : la tuile RECRUE du terrain donne N pion(s) de plus (tirage indépendant) ;
+    //   "recycleRecruit"      : RECYCLER un equipement fait venir N pion(s) tier 1 : celui dont on a deja le
+    //                           plus d'exemplaires (cf. Run.MostOwnedTier1), donc celui qui rapproche d'une fusion.
+    // Et deux échelles :
+    //   "perEquippedItem"    = × le nombre d'équipements POSSEDES (posés sur une unité, commandant compris,
+    //                          PLUS ceux qui dorment en inventaire) — c'est le STOCK qui fait monter ces bonus,
+    //                          pas le fait de l'équiper ; ils retombent quand un objet est réellement perdu
+    //                          (porteur mort, objet recyclé) ;
+    //   "perOwnEquippedItem" = × le nombre d'équipements que le porteur du bonus a LUI-MEME sur le dos. Seul
+    //                          le Marchand a des emplacements, donc seul lui en profite (cf. mar_cmd_slot_1). Le trait « Renaissance ultime » (nœud final) ramène le
+    // commandant à PV pleins une fois par PARTIE (cf. Run.UltimateReviveUsed, persisté avec la run).
+    // ICÔNES À DESSINER : Assets/CommandTree/<id>.png (32×32) pour tous les nœuds sans "asset".
+    {
+      "id": "commandantMarchand",
+      "nodes": [
+        // ── Branche 0 : le COMMANDANT s'équipe ───────────────────────────────────────────────────
+        // Le +2 pv / +2 puissance PAR OBJET QU'IL PORTE est porte par CE nœud (le premier emplacement) : il est
+        // la porte d'entree obligatoire de la branche, donc le bonus vaut des que le commandant peut s'equiper.
+        // Il est RAPPELE entre parentheses sur "mar_cmd_slot_2" (BESACE), ou les 2/2 sont ecrits en dur dans
+        // strings.csv : changer les montants ici oblige a retoucher CETTE description-la aussi.
+        { "id": "mar_cmd_slot_1",         "branch": 0, "level": 1, "effects": [
+            { "kind": "commanderEquipSlots", "amount": 1 },
+            { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perOwnEquippedItem" },
+            { "kind": "commanderStat", "stat": "damage", "amount": 2, "scale": "perOwnEquippedItem" } ] },
+        { "id": "mar_cmd_pv_stock",       "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 2, "scale": "perEquippedItem" } ] },
+        { "id": "mar_cmd_esquive", "asset": "cmd_Esquive", "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Esquive" } ] },
+        { "id": "mar_cmd_slot_2",         "branch": 0, "level": 3, "effects": [ { "kind": "commanderEquipSlots", "amount": 1 } ] },
+        { "id": "mar_cmd_puissance_stock","branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perEquippedItem" } ] },
+        { "id": "mar_cmd_renaissance",    "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Renaissance ultime" } ] },
+
+        // ── Branche 1 : le BUTIN (coffres, raretés, relances, slots des pions) ───────────────────
+        { "id": "mar_loot_relance",       "branch": 1, "level": 1, "effects": [ { "kind": "rerollEquipment", "amount": 1 } ] },
+        { "id": "mar_loot_rarete_1", "asset": "mar_loot_rarete_1",  "branch": 1, "level": 2, "effects": [ { "kind": "chestRarityBonus", "amount": 7 } ] },
+        { "id": "mar_loot_ferraille",                              "branch": 1, "level": 2, "effects": [ { "kind": "recycleRecruit", "amount": 1 } ] },
+        { "id": "mar_loot_rarete_2", "asset": "mar_loot_rarete_1", "branch": 1, "level": 3, "effects": [ { "kind": "chestRarityBonus", "amount": 7 } ] },
+        { "id": "mar_unit_slot_2",        "branch": 1, "level": 3, "effects": [ { "kind": "unitEquipSlots", "amount": 1 } ] },
+        { "id": "mar_loot_coffre_double", "branch": 1, "level": 4, "effects": [ { "kind": "chestExtraItem", "amount": 1 } ] },
+
+        // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + recrues) ──────────────────────────
+        { "id": "mar_logi_deploy_1",  "asset": "logi_deploiement_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots",  "amount": 1 } ] },
+        { "id": "mar_logi_deploy_2",  "asset": "logi_deploiement_2", "branch": 2, "level": 2, "effects": [ { "kind": "deploySlots",  "amount": 2 } ] },
+        { "id": "mar_logi_reserve_1", "asset": "lan_logi_reserve_1", "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "mar_logi_recrue_double",                            "branch": 2, "level": 3, "effects": [ { "kind": "recruitExtraUnit", "amount": 1 } ] },
+        { "id": "mar_logi_reserve_2", "asset": "lan_logi_reserve_1", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
+        { "id": "mar_logi_deploy_3",  "asset": "logi_deploiement_2", "branch": 2, "level": 4, "effects": [ { "kind": "deploySlots",  "amount": 4 } ] }
+      ]
     }
   ]
 }

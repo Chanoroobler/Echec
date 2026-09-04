@@ -26,8 +26,13 @@ public sealed class CommandeDef
         string? id = null, IReadOnlyList<Domaine>? startingUnits = null, bool startsUnlocked = true,
         int onHitPoints = 0, int onHitCap = int.MaxValue,
         int rangedHitPoints = 0, int rangedHitCap = int.MaxValue,
-        int jumpPoints = 0, int jumpCap = int.MaxValue)
+        int jumpPoints = 0, int jumpCap = int.MaxValue,
+        int lootPoints = 0, int lootCap = int.MaxValue,
+        int missionPoints = Campaign.Run.PointsPerMission)
     {
+        LootPoints = lootPoints;
+        LootCap = lootCap;
+        MissionPoints = missionPoints;
         StartsUnlocked = startsUnlocked;
         Role = role;
         Movement = movement;
@@ -132,6 +137,25 @@ public sealed class CommandeDef
 
     /// <summary>COMMANDANT : nombre MAX de sauts comptabilisés par combat pour <see cref="JumpPoints"/>.</summary>
     public int JumpCap { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à chaque BUTIN ramassé pendant un combat — un coffre OUVERT
+    /// ou une tuile RECRUE récupérée, les deux comptant sur le MÊME plafond <see cref="LootCap"/> par combat.
+    /// Source de gain du MARCHAND. 0 = ce commandant ne gagne pas de points ainsi.
+    /// Cf. <see cref="Campaign.Run.GrantLootPoints"/>.
+    /// </summary>
+    public int LootPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de butins comptabilisés par combat pour <see cref="LootPoints"/>.</summary>
+    public int LootCap { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à chaque MISSION RÉUSSIE. Vaut
+    /// <see cref="Campaign.Run.PointsPerMission"/> pour tout le monde, SAUF un commandant qui tire l'essentiel
+    /// de son revenu d'ailleurs et le paie sur la mission (le MARCHAND, qui n'en gagne qu'un mais peut en
+    /// ramasser trois par combat sur le terrain). Cf. <see cref="Campaign.Run.MissionPoints"/>.
+    /// </summary>
+    public int MissionPoints { get; }
 
     public string Name => BaseClass.Name;
 }

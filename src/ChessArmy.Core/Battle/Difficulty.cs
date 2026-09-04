@@ -29,6 +29,7 @@ public enum Difficulty
 /// Décalage de puissance appliqué à CHAQUE vague ennemie : <c>-1</c> rétrograde UN pion du tier le plus haut,
 /// <c>+1</c> promeut UN pion du tier le plus bas, <c>0</c> ne touche à rien. L'EFFECTIF ne change jamais —
 /// seule la composition en tiers bouge. La table de campagne (campaign.json) est calée sur Normal.
+/// EXCEPTION : la toute première mission de la run n'est jamais décalée (2× T1 en difficile aussi).
 /// Cf. <see cref="Campaign.Run.AdjustTiers"/>.
 /// </param>
 /// <param name="EnemyEquipBonus">

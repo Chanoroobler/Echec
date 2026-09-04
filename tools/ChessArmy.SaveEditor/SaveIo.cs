@@ -48,4 +48,10 @@ internal sealed class ProfileDto
     public List<string> DiscoveredUnits { get; set; } = new();
     public List<string> DiscoveredEquipment { get; set; } = new();
     public List<string> UnlockedCommanders { get; set; } = new();
+
+    /// <summary>
+    /// Coffres ouverts À VIE (déblocage du commandant Marchand à 30). L'éditeur ne l'expose pas mais DOIT le
+    /// porter : sans ce champ, réécrire le profil remettrait le compteur du joueur à zéro.
+    /// </summary>
+    public int ChestsOpened { get; set; }
 }

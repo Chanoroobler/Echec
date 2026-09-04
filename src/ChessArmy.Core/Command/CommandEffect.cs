@@ -53,6 +53,31 @@ public enum CommandEffectKind
     /// le tour ne passe pas. UNE seule fois entre deux tours ennemis (cf. <see cref="Battle.Match.ExtraTurnDomaine"/>).
     /// </summary>
     ExtraTurnOnKill,
+
+    /// <summary>Donne <see cref="CommandEffect.Amount"/> slot(s) d'équipement au COMMANDANT (0 sans nœud : il ne s'équipe pas).</summary>
+    CommanderEquipSlots,
+
+    /// <summary>Donne <see cref="CommandEffect.Amount"/> slot(s) d'équipement EN PLUS à chaque pion (base 1).</summary>
+    UnitEquipSlots,
+
+    /// <summary>Chaque coffre donne <see cref="CommandEffect.Amount"/> équipement(s) EN PLUS (tirage complet et indépendant).</summary>
+    ChestExtraItem,
+
+    /// <summary>Ajoute <see cref="CommandEffect.Amount"/> POINTS de % aux chances RARE et LÉGENDAIRE d'un coffre.</summary>
+    ChestRarityBonus,
+
+    /// <summary>Chaque RELANCE d'unité rapporte <see cref="CommandEffect.Amount"/> équipement(s) (tirés comme un coffre).</summary>
+    RerollEquipment,
+
+    /// <summary>La tuile RECRUE du terrain donne <see cref="CommandEffect.Amount"/> pion(s) EN PLUS (tirage indépendant).</summary>
+    RecruitExtraUnit,
+
+    /// <summary>
+    /// RECYCLER un équipement fait arriver en réserve <see cref="CommandEffect.Amount"/> pion(s) tier 1 : celui
+    /// dont on a DÉJÀ le plus d'exemplaires (cf. <see cref="Campaign.Run.MostOwnedTier1"/>) — donc celui qui
+    /// rapproche d'une fusion — ou la classe de base d'un <see cref="CommandEffect.Domaine"/> précis s'il est fixé.
+    /// </summary>
+    RecycleRecruit,
 }
 
 /// <summary>
@@ -84,6 +109,22 @@ public enum CommandScale
     /// tout le combat. Sans compteur fourni → 0.
     /// </summary>
     PerDeployedDomaineUnit,
+
+    /// <summary>
+    /// Bonus × le nombre d'équipements POSSÉDÉS : ceux posés sur une unité de l'armée (commandant compris) ET
+    /// ceux qui dorment en inventaire (cf. <see cref="Campaign.Run.EquippedItemCount"/>). Recalculé à chaque
+    /// phase de placement — c'est le STOCK qui fait monter le bonus, pas le fait de l'équiper. Thème du
+    /// commandant MARCHAND.
+    /// </summary>
+    PerEquippedItem,
+
+    /// <summary>
+    /// Bonus × le nombre d'équipements que la cible porte ELLE-MÊME. À ne pas confondre avec
+    /// <see cref="PerEquippedItem"/>, qui compte tout le stock de l'armée : ici seul l'objet posé sur CE pion
+    /// compte. Réservé de fait au commandant MARCHAND — c'est le seul à avoir des emplacements (cf.
+    /// <see cref="CommandEffectKind.CommanderEquipSlots"/>), les autres portent toujours 0 et le bonus vaut 0.
+    /// </summary>
+    PerOwnEquippedItem,
 }
 
 /// <summary>
@@ -141,10 +182,12 @@ public sealed class CommandEffect
     /// (<paramref name="domaineCount"/> évalué sur <see cref="Domaine"/>). Absent → l'échelle par domaine vaut 0.
     /// </summary>
     public int AmountFor(int distinctPairs, System.Func<Domaine, int>? domaineCount = null,
-        System.Func<Domaine, int>? deployedCount = null) =>
+        System.Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0) =>
         Scale switch
         {
             CommandScale.PerDistinctPair => Amount * distinctPairs,
+            CommandScale.PerEquippedItem => Amount * equippedItems,
+            CommandScale.PerOwnEquippedItem => Amount * ownEquippedItems,
             CommandScale.PerDomaineUnit => Domaine is { } d ? Amount * (domaineCount?.Invoke(d) ?? 0) : Amount,
             CommandScale.PerDeployedDomaineUnit => Domaine is { } dd ? Amount * (deployedCount?.Invoke(dd) ?? 0) : Amount,
             _ => Amount,
@@ -193,4 +236,25 @@ public sealed class CommandEffect
 
     public static CommandEffect ExtraTurnOnKill(Domaine? domaine = null) =>
         new(CommandEffectKind.ExtraTurnOnKill, default, 1, null, CommandScale.Flat, domaine);
+
+    public static CommandEffect CommanderEquipSlots(int amount = 1) =>
+        new(CommandEffectKind.CommanderEquipSlots, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect UnitEquipSlots(int amount = 1) =>
+        new(CommandEffectKind.UnitEquipSlots, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect ChestExtraItem(int amount = 1) =>
+        new(CommandEffectKind.ChestExtraItem, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect ChestRarityBonus(int amount) =>
+        new(CommandEffectKind.ChestRarityBonus, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect RerollEquipment(int amount = 1) =>
+        new(CommandEffectKind.RerollEquipment, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect RecruitExtraUnit(int amount = 1) =>
+        new(CommandEffectKind.RecruitExtraUnit, default, amount, null, CommandScale.Flat, null);
+
+    public static CommandEffect RecycleRecruit(int amount = 1, Domaine? domaine = null) =>
+        new(CommandEffectKind.RecycleRecruit, default, amount, null, CommandScale.Flat, domaine);
 }

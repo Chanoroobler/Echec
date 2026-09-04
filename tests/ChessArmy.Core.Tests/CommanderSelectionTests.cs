@@ -309,10 +309,37 @@ public class CommanderSelectionTests
         });
     }
 
+    [Theory]
+    [InlineData(Difficulty.Facile)]
+    [InlineData(Difficulty.Normal)]
+    [InlineData(Difficulty.Difficile)]
+    public void FirstMission_IsAlwaysTwoTier1_WhateverTheDifficulty(Difficulty difficulty)
+    {
+        // Mise en jambes : le combat 1 reste la vague de la table (2× T1). En difficile, la promotion
+        // d'un pion sortirait un T2 dès l'ouverture — c'est justement ce qu'on interdit ici.
+        for (var seed = 1; seed <= 15; seed++)
+        {
+            var wave = RunAt(1, difficulty, seed).BuildEnemyWave();
+
+            Assert.Equal(2, wave.Count);
+            Assert.All(wave, u => Assert.Equal(1, u.UnitClass.Tier));
+        }
+    }
+
+    [Fact]
+    public void SecondMission_StillFollowsTheDifficulty()
+    {
+        // Le garde-fou ne vaut QUE pour la première mission : dès le combat 2 le décalage reprend.
+        var wave = RunAt(2, Difficulty.Difficile).BuildEnemyWave();
+
+        Assert.Equal(3, wave.Count);                   // table : 3× T1
+        Assert.Equal((2, 1), Count(wave));             // difficile : un T1 promu en T2
+    }
+
     // ── Difficulté : équipement des pions ennemis ────────────────────────────────
 
     private static int Equipped(int combat, Difficulty difficulty, int seed = 1) =>
-        RunAt(combat, difficulty, seed).BuildEnemyWave().Count(u => u.Equipment != null);
+        RunAt(combat, difficulty, seed).BuildEnemyWave().Count(u => u.HasEquipment);
 
     [Theory]
     // Le nombre d'équipés est EXACT, pas probabiliste : phase 1 → 1, phases 2-3 → 3 en normal.
@@ -349,7 +376,7 @@ public class CommanderSelectionTests
         for (var combat = 3; combat <= 18; combat++)
             for (var seed = 1; seed <= 10; seed++)
                 Assert.All(RunAt(combat, Difficulty.Difficile, seed).BuildEnemyWave(),
-                    u => Assert.NotEqual(EquipmentRarity.Legendary, u.Equipment?.Rarity ?? EquipmentRarity.Common));
+                    u => Assert.NotEqual(EquipmentRarity.Legendary, u.Equipments.FirstOrDefault()?.Rarity ?? EquipmentRarity.Common));
     }
 
     [Fact]
@@ -361,7 +388,7 @@ public class CommanderSelectionTests
             var wave = RunAt(6, Difficulty.Difficile, seed)
                 .BuildBossEnemyWave(DrawnTiers.Length, fixedTiers: DrawnTiers);
 
-            Assert.Null(wave[0].Equipment);   // le boss est inséré EN TÊTE
+            Assert.False(wave[0].HasEquipment);   // le boss est inséré EN TÊTE
         }
     }
 
@@ -370,8 +397,8 @@ public class CommanderSelectionTests
     {
         // La vague n'est pas sauvegardée : elle est REGÉNÉRÉE depuis la graine. Reprendre une partie doit
         // donc rendre exactement les mêmes ennemis avec les mêmes objets.
-        var first = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipment?.Id).ToList();
-        var second = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipment?.Id).ToList();
+        var first = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipments.FirstOrDefault()?.Id).ToList();
+        var second = RunAt(7, Difficulty.Difficile).BuildEnemyWave().Select(u => u.Equipments.FirstOrDefault()?.Id).ToList();
 
         Assert.Equal(first, second);
     }

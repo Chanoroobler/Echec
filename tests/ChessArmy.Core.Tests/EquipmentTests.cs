@@ -29,7 +29,7 @@ public class EquipmentTests
     {
         var baseHp = Domaines.Dame.BaseClass.MaxHp;
         var spec = Soldat();
-        spec.Equipment = Vigueur;
+        spec.AddEquipment(Vigueur);
 
         var unit = spec.Spawn(Faction.Player);
 
@@ -41,7 +41,7 @@ public class EquipmentTests
     public void StatEquipment_OnlyAffectsItsOwnStat()
     {
         var spec = Soldat();
-        spec.Equipment = Equipment.OfStat("force", "Force", EquipStat.Damage, 3);
+        spec.AddEquipment(Equipment.OfStat("force", "Force", EquipStat.Damage, 3));
 
         var unit = spec.Spawn(Faction.Player);
 
@@ -56,7 +56,7 @@ public class EquipmentTests
         var spec = Soldat();   // le Soldat de base n'a aucun trait
         Assert.False(spec.Spawn(Faction.Player).HasTrait(Trait.Rempart));
 
-        spec.Equipment = RempartEquip;
+        spec.AddEquipment(RempartEquip);
         Assert.True(spec.Spawn(Faction.Player).HasTrait(Trait.Rempart));
     }
 
@@ -65,11 +65,11 @@ public class EquipmentTests
     {
         var baseHp = Domaines.Dame.BaseClass.MaxHp;
         var spec = Soldat();   // sans Rempart natif
-        spec.Equipment = Equipment.Of("cuirasse", "Cuirasse", EquipmentRarity.Rare, new[]
+        spec.AddEquipment(Equipment.Of("cuirasse", "Cuirasse", EquipmentRarity.Rare, new[]
         {
             EquipEffect.OfStat(EquipStat.Hp, 6),
             EquipEffect.OfTrait(Trait.Rempart),
-        });
+        }));
 
         var unit = spec.Spawn(Faction.Player);
 
@@ -82,11 +82,11 @@ public class EquipmentTests
     {
         var b = Domaines.Dame.BaseClass;
         var spec = Soldat();
-        spec.Equipment = Equipment.Of("brassards", "Brassards", EquipmentRarity.Common, new[]
+        spec.AddEquipment(Equipment.Of("brassards", "Brassards", EquipmentRarity.Common, new[]
         {
             EquipEffect.OfStat(EquipStat.Hp, 4),
             EquipEffect.OfStat(EquipStat.Damage, 2),
-        });
+        }));
 
         var unit = spec.Spawn(Faction.Player);
 
@@ -341,7 +341,7 @@ public class EquipmentTests
         run.AddEquipment(vigueur);
 
         Assert.True(run.Equip(soldat, vigueur));
-        Assert.Same(vigueur, soldat.Equipment);
+        Assert.Same(vigueur, soldat.Equipments.Single());
         Assert.Empty(run.EquipmentInventory);            // retiré de l'inventaire
     }
 
@@ -358,7 +358,7 @@ public class EquipmentTests
         run.Equip(soldat, vigueur);
         run.Equip(soldat, rempart);   // remplace vigueur
 
-        Assert.Same(rempart, soldat.Equipment);
+        Assert.Same(rempart, soldat.Equipments.Single());
         Assert.Contains(vigueur, run.EquipmentInventory);  // l'ancien revient
         Assert.DoesNotContain(rempart, run.EquipmentInventory);
     }
@@ -376,7 +376,7 @@ public class EquipmentTests
 
         Assert.True(run.CanEquip(g, rempart));
         Assert.True(run.Equip(g, rempart));
-        Assert.Equal(rempart, g.Equipment);
+        Assert.Equal(rempart, g.Equipments.Single());
         Assert.DoesNotContain(rempart, run.EquipmentInventory);   // consommé (posé sur le pion)
 
         // Un Soldat (sans Rempart) l'accepte aussi, comme avant.
@@ -401,7 +401,7 @@ public class EquipmentTests
         run.AddEquipment(arc);
         Assert.False(run.CanEquip(meleeUnit, arc));
         Assert.False(run.Equip(meleeUnit, arc));
-        Assert.Null(meleeUnit.Equipment);
+        Assert.False(meleeUnit.HasEquipment);
         Assert.Contains(arc, run.EquipmentInventory);    // pas consommé
 
         // Archer monté (évolution archère du Cavalier, trait « Zone morte ») : accepté.
@@ -466,7 +466,7 @@ public class EquipmentTests
         run.AddEquipment(v1);
         Assert.False(run.CanEquip(dame, v1));
         Assert.False(run.Equip(dame, v1));
-        Assert.Null(dame.Equipment);
+        Assert.False(dame.HasEquipment);
         Assert.Contains(v1, run.EquipmentInventory);   // pas consommé
 
         // Hors domaine Dame (Tour) : accepté.
@@ -486,7 +486,7 @@ public class EquipmentTests
         run.AddEquipment(vigueur);
 
         Assert.False(run.Equip(run.Commander, vigueur));
-        Assert.Null(run.Commander.Equipment);
+        Assert.False(run.Commander.HasEquipment);
         Assert.Contains(vigueur, run.EquipmentInventory);  // pas consommé
     }
 
@@ -525,7 +525,7 @@ public class EquipmentTests
 
         run.Unequip(soldat);
 
-        Assert.Null(soldat.Equipment);
+        Assert.False(soldat.HasEquipment);
         Assert.Contains(vigueur, run.EquipmentInventory);
     }
 
@@ -543,7 +543,7 @@ public class EquipmentTests
         var fused = run.Fuse(soldats[0], Domaines.Dame.BaseClass.Evolutions[0]);
 
         Assert.NotNull(fused);
-        Assert.Null(fused!.Equipment);                     // l'évolution sort nue
+        Assert.False(fused!.HasEquipment);                     // l'évolution sort nue
         Assert.Contains(vigueur, run.EquipmentInventory);  // l'équipement est rendu, pas perdu
     }
 
@@ -566,7 +566,7 @@ public class EquipmentTests
 
         Assert.DoesNotContain(doomed, run.Roster);
         Assert.DoesNotContain(vigueur, run.EquipmentInventory);   // mort avec son équipement → perdu
-        Assert.Same(rempart, survivor.Equipment);                 // le survivant garde le sien
+        Assert.Same(rempart, survivor.Equipments.Single());                 // le survivant garde le sien
     }
 
     [Fact]
@@ -583,7 +583,7 @@ public class EquipmentTests
         var restored = RunSave.From(run).ToRun();
 
         var restoredSoldat = restored.Roster.First(u => !u.Essential);
-        Assert.Equal("vigueur", restoredSoldat.Equipment?.Id);
+        Assert.Equal("vigueur", restoredSoldat.Equipments.Single().Id);
         Assert.Contains(restored.EquipmentInventory, e => e.Id == "rempart");
         Assert.Single(restored.EquipmentInventory);
     }

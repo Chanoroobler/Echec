@@ -23,6 +23,9 @@ public static class Bosses
             _all = defs;
     }
 
+    /// <summary>Restaure le repli codé (utile pour réinitialiser l'état statique partagé après un test).</summary>
+    public static void ResetToDefaults() => _all = Defaults();
+
     public static IReadOnlyList<BossDef> All => _all;
 
     /// <summary>

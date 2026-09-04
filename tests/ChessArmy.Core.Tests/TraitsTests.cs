@@ -545,7 +545,7 @@ public class TraitsTests
         var lance = Equipment.OfTrait("lance", "Lance", Trait.TraverseAllie);
 
         var equipped = Board();
-        equipped.Place(new Cell(0, 0), new Unit(Domaine.Tour, Faction.Player, cls, lance));
+        equipped.Place(new Cell(0, 0), new Unit(Domaine.Tour, Faction.Player, cls, new[] { lance }));
         equipped.Place(new Cell(0, 1), Make(Faction.Player, 20, 5, None));   // allié sur la ligne de tir
         equipped.Place(new Cell(0, 2), Make(Faction.Enemy, 20, 5, None));    // ennemi DERRIÈRE l'allié
         var targets = equipped.AttackTargets(new Cell(0, 0));
@@ -1161,7 +1161,7 @@ public class TraitsTests
         var board = Board();
         var phenix = Equipment.OfTrait("phenix", "Queue de phénix", Trait.Renaissance);
         var cls = new UnitClass("V", "v", tier: 1, maxHp: 10, damage: 0, moveRange: 1, attackRange: 1);
-        var victim = new Unit(Domaine.Tour, Faction.Enemy, cls, equipment: phenix);
+        var victim = new Unit(Domaine.Tour, Faction.Enemy, cls, equipment: new[] { phenix });
         board.Place(new Cell(0, 0), Make(Faction.Player, 20, 50, None));   // dégâts LÉTAUX (50 » 10 PV)
         board.Place(new Cell(0, 1), victim);
 
@@ -1170,7 +1170,7 @@ public class TraitsTests
         var after = board.UnitAt(new Cell(0, 1));
         Assert.Same(victim, after);                        // toujours en jeu (ressuscité, pas retiré)
         Assert.Equal(1, after!.Hp);                        // à 1 PV
-        Assert.Null(after.Equipment);                      // équipement brisé (consommé)
+        Assert.Empty(after.Equipments);                      // équipement brisé (consommé)
         Assert.Equal(0, board.UnitAt(new Cell(0, 0))!.Kills);   // aucun kill crédité à l'attaquant
     }
 

@@ -89,6 +89,51 @@ public class DomaineCatalogTests
     }
 
     [Fact]
+    public void BossesFromJson_ReadsPerPhaseEquipment()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Boss", "name": "Commandant_marchand", "asset": "Commandant_marchand", "domaine": "Cavalier",
+              "equipmentPool": [ "epeeLegendaire", "armureLegendaire" ],
+              "phases": {
+                "1": { "hp": 34, "damage": 12, "moveRange": 3, "attackRange": 2 },
+                "2": { "hp": 46, "damage": 15, "moveRange": 3, "attackRange": 2, "equipmentCount": 1 },
+                "3": { "hp": 58, "damage": 18, "moveRange": 3, "attackRange": 2, "equipmentCount": 5 }
+              }
+            }
+          ]
+        }
+        """;
+
+        var boss = Assert.Single(DomaineCatalog.BossesFromJson(json));
+
+        Assert.Equal(new[] { "epeeLegendaire", "armureLegendaire" }, boss.EquipmentPool);
+        Assert.Equal(0, boss.EquipmentCountFor(1));   // phase sans "equipmentCount" : boss nu
+        Assert.Equal(1, boss.EquipmentCountFor(2));
+        Assert.Equal(2, boss.EquipmentCountFor(3));   // borné par la taille du pool (jamais deux fois le même objet)
+    }
+
+    [Fact]
+    public void BossesFromJson_Rejects_EquipmentCountWithoutPool()
+    {
+        const string json = """
+        {
+          "domaines": [],
+          "commandes": [
+            { "role": "Boss", "name": "Nu", "asset": "nu", "domaine": "Dame",
+              "phases": { "1": { "hp": 30, "damage": 9, "moveRange": 1, "attackRange": 1, "equipmentCount": 1 } }
+            }
+          ]
+        }
+        """;
+
+        // Sans pool, le boss sortirait nu en silence : la config doit être refusée au chargement.
+        Assert.Throws<System.InvalidOperationException>(() => DomaineCatalog.BossesFromJson(json));
+    }
+
+    [Fact]
     public void BossesFromJson_ReadsUnlockedCommander()
     {
         const string json = """

@@ -52,6 +52,7 @@ public static class UnitKeywords
         ["Repositionnement stratégique"] = "kw.repositionnement",
         ["Loup solitaire"] = "kw.loup_solitaire",
         ["Épines"] = "kw.epines",
+        ["Renaissance ultime"] = "kw.renaissance_ultime",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

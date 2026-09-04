@@ -678,7 +678,7 @@ public sealed class CommanderSelectScene : Scene
         y += 10;
         Context.Font.Draw(sb, Loc.T("commander.points"), new Vector2(inner.X, y), 1, Palette.Yellow1);
         y += 16;
-        foreach (var line in _card.Wrap(Loc.T("commander.points_mission", Run.PointsPerMission), body.Width, 1))
+        foreach (var line in _card.Wrap(Loc.T("commander.points_mission", def.MissionPoints), body.Width, 1))
         {
             Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.White);
             y += LineH;
@@ -706,6 +706,13 @@ public sealed class CommanderSelectScene : Scene
         // Source « sur saut » (commandant Cavalier) : +N points quand il saute par-dessus une unité ou un obstacle.
         if (def.JumpPoints > 0)
             foreach (var line in _card.Wrap(Loc.T("commander.points_jump", def.JumpPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
+        // Source « sur butin » (Marchand) : +N points par coffre ouvert ou recrue ramassée en combat.
+        if (def.LootPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_loot", def.LootPoints), body.Width, 1))
             {
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
                 y += LineH;
