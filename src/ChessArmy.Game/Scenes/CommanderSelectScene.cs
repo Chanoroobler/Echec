@@ -750,18 +750,36 @@ public sealed class CommanderSelectScene : Scene
             Border(sb, Inflate(r, 3), Palette.Yellow2, 2);
     }
 
-    /// <summary>Un niveau de difficulté, en bouton NUMÉROTÉ. Le niveau retenu garde un liseré or.</summary>
+    /// <summary>
+    /// Campagne déjà GAGNÉE à ce niveau avec le commandant COURANT du carrousel — un niveau plus dur compte
+    /// pour tous ceux du dessous (cf. <see cref="SaveService.HasWonWith"/>). Suit le commandant affiché :
+    /// faire défiler le carrousel remet les marques à jour.
+    /// </summary>
+    private bool AlreadyWon(int level) =>
+        level >= 0 && level < DifficultySettings.AllLevels.Count
+        && Context.Saves.HasWonWith(Selected.Id, DifficultySettings.AllLevels[level]);
+
+    /// <summary>
+    /// Un niveau de difficulté, en bouton NUMÉROTÉ. Le niveau retenu garde un liseré or ; un niveau déjà
+    /// GAGNÉ avec ce commandant passe en VERT (libellé + liseré) — le vert « fait » de la frise de missions.
+    /// </summary>
     private void DrawDifficultyButton(SpriteBatch sb, Rectangle r, int level, Point mouse, bool gp, bool focusedGp)
     {
         var selected = level == _difficultyIndex;
+        var won = AlreadyWon(level);
         var hover = !gp && r.Contains(mouse);
         var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || selected || focusedGp,
             hover && Context.Input.IsLeftDown));
         var area = r; area.Offset(0, dy);
+        // Le vert du « déjà gagné » prime sur la couleur de difficulté : c'est l'info qu'on vient chercher.
         Context.Font.DrawCentered(sb, Loc.T($"difficulty.level_{level}"), area, 2,
-            selected ? DifficultyColor(DifficultySettings.AllLevels[level]) : Palette.White);
+            won ? Palette.Green1
+            : selected ? DifficultyColor(DifficultySettings.AllLevels[level])
+            : Palette.White);
         if (selected)
             Border(sb, Inflate(r, 1), Palette.Yellow1, 2);
+        else if (won)
+            Border(sb, Inflate(r, 1), Palette.Green1, 2);   // le liseré or de la sélection reste prioritaire
         if (focusedGp)
             Border(sb, Inflate(r, 3), Palette.Yellow2, 2);
     }
@@ -803,11 +821,17 @@ public sealed class CommanderSelectScene : Scene
         if (!DifficultySettings.For(difficulty).AllowRestart)
             lines.Add(Loc.T("difficulty.no_restart"));
 
+        // Palier DÉJÀ BOUCLÉ avec ce commandant : dit en toutes lettres ce que le vert du bouton signale.
+        // Sans puce et en dernier — ce n'est pas un levier de difficulté mais un état de progression.
+        var wonLine = AlreadyWon(level) ? Loc.T("difficulty.already_won") : null;
+
         var w = Context.Font.Measure(title, 2);
         foreach (var line in lines)
             w = Math.Max(w, bullet + Context.Font.Measure(line, 1));
+        if (wonLine != null)
+            w = Math.Max(w, Context.Font.Measure(wonLine, 1));
         w += 2 * pad;
-        var h = pad + titleBlock + lines.Count * lineH + pad;
+        var h = pad + titleBlock + (lines.Count + (wonLine != null ? 1 : 0)) * lineH + pad;
 
         var x = Math.Clamp(anchor.Center.X - w / 2, bounds.X, Math.Max(bounds.X, bounds.Right - w));
         // Au-DESSUS du bouton : la barre de difficulté est déjà en bas de l'écran.
@@ -826,6 +850,8 @@ public sealed class CommanderSelectScene : Scene
                 preserveCase: true);
             ty += lineH;
         }
+        if (wonLine != null)
+            Context.Font.Draw(sb, wonLine, new Vector2(box.X + pad, ty), 1, Palette.Green1, preserveCase: true);
     }
 
     /// <summary>

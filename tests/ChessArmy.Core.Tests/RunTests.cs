@@ -26,15 +26,17 @@ public class RunTests
     // ─── Structure en 3 phases ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Constants_DescribeThreePhasesOfSixMissions()
+    public void Constants_DescribeThreePhases_LastOneShorter()
     {
         Assert.Equal(3, Run.PhaseCount);
-        Assert.Equal(6, Run.MissionsPerPhase);
-        Assert.Equal(18, Run.TotalCombats);
+        Assert.Equal(6, Run.MissionsIn(1));
+        Assert.Equal(6, Run.MissionsIn(2));
+        Assert.Equal(5, Run.MissionsIn(3));   // pas d'escarmouche avant le boss final
+        Assert.Equal(17, Run.TotalCombats);
     }
 
     [Fact]
-    public void PhaseLayout_Phase1MovesSpecialToSlot4_Phases2And3Standard()
+    public void PhaseLayout_Phase1MovesSpecialToSlot4_Phase3DropsPreBossSkirmish()
     {
         // Phase 1 : la spéciale est décalée au slot 4 (Escarmouche ×3, Speciale, Escarmouche, Boss).
         var phase1 = new[]
@@ -42,22 +44,31 @@ public class RunTests
             CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Escarmouche,
             CombatType.Speciale, CombatType.Escarmouche, CombatType.Boss,
         };
-        // Phases 2-3 : rythme standard (Escarmouche ×2, Speciale, Escarmouche ×2, Boss).
-        var standard = new[]
+        // Phase 2 : rythme standard (Escarmouche ×2, Speciale, Escarmouche ×2, Boss).
+        var phase2 = new[]
         {
             CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
             CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Boss,
         };
+        // Phase 3 : le standard SANS l'escarmouche du slot 5 — le boss final suit la mission 4.
+        var phase3 = new[]
+        {
+            CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
+            CombatType.Escarmouche, CombatType.Boss,
+        };
+        var layouts = new[] { phase1, phase2, phase3 };
 
         for (var combat = 1; combat <= Run.TotalCombats; combat++)
         {
             var run = RunAt(combat);
-            var phase = (combat - 1) / 6 + 1;
-            var mission = (combat - 1) % 6 + 1;
+            var phase = Run.PhaseOf(combat);
+            var mission = Run.MissionOf(combat);
             Assert.Equal(phase, run.PhaseIndex);
             Assert.Equal(mission, run.MissionInPhase);
+            Assert.Equal(combat, Run.CombatNumberOf(phase, mission));   // conversion réversible
+            Assert.Equal(layouts[phase - 1].Length, Run.MissionsIn(phase));
 
-            var expected = (phase == 1 ? phase1 : standard)[mission - 1];
+            var expected = layouts[phase - 1][mission - 1];
             Assert.Equal(expected, run.CurrentMission);
             Assert.Equal(expected, Run.MissionKindAt(phase, mission));   // statique == instance
         }
@@ -69,7 +80,7 @@ public class RunTests
     [InlineData(7, 2, 1)]
     [InlineData(12, 2, 6)]
     [InlineData(13, 3, 1)]
-    [InlineData(18, 3, 6)]
+    [InlineData(17, 3, 5)]   // boss final : 5e mission de la phase 3
     public void CombatNumber_MapsTo_PhaseAndMission(int combat, int phase, int mission)
     {
         var run = RunAt(combat);
@@ -99,8 +110,7 @@ public class RunTests
     [InlineData(14, 0, 5, 4, 0)]
     [InlineData(15, 0, 4, 6, 0)]
     [InlineData(16, 0, 4, 6, 0)]
-    [InlineData(17, 0, 3, 8, 0)]
-    [InlineData(18, 0, 4, 8, 1)]  // boss final + 4T2 + 8T3
+    [InlineData(17, 0, 4, 8, 1)]  // boss final (ph.3 m5) + 4T2 + 8T3
     public void BuildEnemyWave_HasExactHeadcountAndTierCounts(int combat, int t1, int t2, int t3, int bosses)
     {
         var wave = RunAt(combat).BuildEnemyWave();
@@ -158,7 +168,7 @@ public class RunTests
     public void BuildBossEnemyWave_FixedTiers_SetEscortComposition()
     {
         var tiers = new[] { 3, 2, 2 };
-        var wave = RunAt(18).BuildBossEnemyWave(tiers.Length, isSeen: null, fixedTiers: tiers);
+        var wave = RunAt(17).BuildBossEnemyWave(tiers.Length, isSeen: null, fixedTiers: tiers);
 
         Assert.True(wave[0].Essential);   // boss en tête (hors composition d'escortes)
         var escorts = wave.Where(u => !u.Essential).ToList();
@@ -170,7 +180,7 @@ public class RunTests
     [Theory]
     [InlineData(6, 4)]     // phase 1 boss : 4 escortes
     [InlineData(12, 9)]    // phase 2 boss : 9 escortes
-    [InlineData(18, 0)]    // boss SEUL (map sans case d'escorte)
+    [InlineData(17, 0)]    // boss final SEUL (map sans case d escorte)
     public void BuildBossEnemyWave_BossInFront_ExactEscortCount(int combat, int escorts)
     {
         var wave = RunAt(combat).BuildBossEnemyWave(escorts);
@@ -226,7 +236,7 @@ public class RunTests
     [Theory]
     [InlineData(6, 0)]     // phase 1 : boss NU
     [InlineData(12, 1)]    // phase 2 : un objet
-    [InlineData(18, 2)]    // phase 3 : deux
+    [InlineData(17, 2)]    // phase 3 : deux
     public void BossEquipment_FollowsThePhase(int combat, int expected)
     {
         WithEquippedBoss(() =>
@@ -244,8 +254,8 @@ public class RunTests
     {
         WithEquippedBoss(() =>
         {
-            var a = RunAt(18, seed: 7).BuildBossEnemyWave(0)[0];
-            var b = RunAt(18, seed: 7).BuildBossEnemyWave(0)[0];
+            var a = RunAt(17, seed: 7).BuildBossEnemyWave(0)[0];
+            var b = RunAt(17, seed: 7).BuildBossEnemyWave(0)[0];
 
             Assert.Equal(a.Equipments.Select(e => e.Id), b.Equipments.Select(e => e.Id));
         });
@@ -265,7 +275,7 @@ public class RunTests
                 Equipment.OfStat("c", "C", EquipStat.Hp, 3),
             });
 
-            var boss = RunAt(18).BuildBossEnemyWave(0)[0];
+            var boss = RunAt(17).BuildBossEnemyWave(0)[0];
 
             Assert.Equal(2, boss.Equipments.Count);
             Assert.DoesNotContain("b", boss.Equipments.Select(e => e.Id));
@@ -613,9 +623,9 @@ public class RunTests
     [Theory]
     [InlineData(1, true)]
     [InlineData(6, true)]
-    [InlineData(18, true)]
+    [InlineData(17, true)]    // boss final = dernier combat de l'échelle
     [InlineData(0, false)]
-    [InlineData(19, false)]   // au-delà de l'échelle actuelle : sauvegarde ignorée
+    [InlineData(18, false)]   // au-delà de l'échelle actuelle : sauvegarde ignorée
     public void RunSave_IsUsable_WithinCurrentScale(int combatNumber, bool usable)
     {
         var save = new RunSave { CombatNumber = combatNumber };
@@ -671,7 +681,7 @@ public class RunTests
     [InlineData(1, 0)]     // mission 1 : jamais de T2
     [InlineData(2, 5)]     // +5 % dès la mission 2
     [InlineData(3, 10)]
-    [InlineData(18, 85)]   // dernière mission de la campagne
+    [InlineData(17, 80)]   // dernière mission de la campagne (boss final)
     public void Tier2RecruitChance_StartsAtZero_AndGrows5PerMissionFromMission2(int combat, int expected)
     {
         Assert.Equal(expected, RunAt(combat).Tier2RecruitChance);
@@ -700,8 +710,8 @@ public class RunTests
     [Fact]
     public void RollSeenRecruit_NoTier2Discovered_AlwaysTier1_EvenLateGame()
     {
-        // Seuls les tier 1 sont vus : malgré une forte chance (mission 18), aucun T2 ne peut sortir.
-        var run = RunAt(18);
+        // Seuls les tier 1 sont vus : malgré une forte chance (dernière mission), aucun T2 ne peut sortir.
+        var run = RunAt(17);
         var rng = new Random(1);
         var seenT1 = new HashSet<string>
         {
@@ -715,8 +725,8 @@ public class RunTests
     [Fact]
     public void RollSeenRecruit_LateGame_MixesTier1AndDiscoveredTier2()
     {
-        // Mission 18 (85 %), tout découvert : sur de nombreux tirages, des T2 ET des T1 sortent.
-        var run = RunAt(18);
+        // Dernière mission (80 %), tout découvert : sur de nombreux tirages, des T2 ET des T1 sortent.
+        var run = RunAt(17);
         var rng = new Random(1);
         var results = new List<UnitSpec>();
         for (var i = 0; i < 100; i++)
@@ -845,7 +855,7 @@ public class RunTests
         Domaines.All.SelectMany(d => Run.ClassesAtTier(d.Id, 3)).ToList();
 
     /// <summary>Premier combat qui aligne du T3 dans le plan de campagne : phase 3, mission 1.</summary>
-    private const int FirstTier3Combat = 2 * Run.MissionsPerPhase + 1;
+    private static readonly int FirstTier3Combat = Run.CombatNumberOf(3, 1);
 
     [Fact]
     public void AiFresh_FreshProfile_Tier3_IsFourDistinctUndiscovered()

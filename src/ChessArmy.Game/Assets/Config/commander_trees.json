@@ -119,7 +119,7 @@
         { "id": "fou_unit_aura_puissance", "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Aura de puissance", "domaine": "Fou" } ] },
         { "id": "fou_unit_releve",     "branch": 1, "level": 2, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1, "domaine": "Fou" } ] },
         { "id": "fou_unit_lien",       "branch": 1, "level": 3, "effects": [ { "kind": "unitTrait", "trait": "Lien de puissance", "domaine": "Fou" } ] },
-        { "id": "fou_unit_pv_fou",     "branch": 1, "level": 3, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 1, "scale": "perDomaineUnit", "domaine": "Fou" } ] },
+        { "id": "fou_unit_statique",   "branch": 1, "level": 3, "effects": [ { "kind": "unitTrait", "trait": "Statique", "domaine": "Fou" } ] },
         { "id": "fou_unit_portee",     "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "attackRange", "amount": 1, "domaine": "Fou" } ] },
 
         // ── Branche 2 : la LOGISTIQUE (déploiement + réserve + fusion) ───────────────────────────
@@ -144,7 +144,7 @@
       "nodes": [
         // ── Branche 0 : le COMMANDANT (Cavalier) ────────────────────────────────────────────────
         { "id": "cav_cmd_loup",       "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Loup solitaire" } ] },
-        { "id": "cav_cmd_pv_cavalier","branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 1, "scale": "perDomaineUnit", "domaine": "Cavalier" } ] },
+        { "id": "cav_cmd_pv_cavalier","branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "hp", "amount": 2, "scale": "perDomaineUnit", "domaine": "Cavalier" } ] },
         { "id": "cav_cmd_impact",     "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Impact" } ] },
         { "id": "cav_cmd_puissance_cavalier", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDomaineUnit", "domaine": "Cavalier" } ] },
         { "id": "cav_cmd_vol",        "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Vol" } ] },

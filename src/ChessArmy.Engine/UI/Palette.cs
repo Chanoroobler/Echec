@@ -63,6 +63,9 @@ public static class Palette
     public static readonly Color White = Hex("#ede6cb"); // texte clair (crème, pas de blanc pur)
     public static readonly Color Blue1 = Hex("#9a9f87"); // libellés discrets
     public static readonly Color Blue2 = Hex("#2b454f"); // traits (visualiseur d'arbres)
+    // Seul BLEU FRANC de la palette (Cyan1 est une sarcelle grisée, trop proche du sauge du terrain et
+    // illisible en voile sur le damier) : réservé aux teintes de zone du camp joueur.
+    public static readonly Color Blue3 = Hex("#3a708e"); // zones alliées (voile sur le plateau)
 
     // ── Bleus foncés (panneaux) ─────────────────────────────────────────────────
     public static readonly Color Navy1 = Hex("#2b454f"); // bord de panneau (plus clair)

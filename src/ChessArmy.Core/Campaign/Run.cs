@@ -23,11 +23,12 @@ public enum RunPhase
 /// numéro de combat, génération des vagues ennemies (difficulté croissante) et du
 /// draft de recrutement. Boucle : Placement → Battle → Recruitment → Placement …
 ///
-/// Une run = <see cref="PhaseCount"/> phases de <see cref="MissionsPerPhase"/> missions, jouées
-/// selon le rythme par phase <see cref="PhaseLayouts"/> (phases 2-3 : Escarmouche ×2, Speciale,
-/// Escarmouche ×2, Boss ; phase 1 : spéciale décalée au slot 4), soit <see cref="TotalCombats"/>
-/// combats et 3 boss. Seul le boss FINAL (phase 3) gagne la run ;
-/// les boss des phases 1-2 enchaînent vers le recrutement. <see cref="CombatNumber"/> (1..18) est le
+/// Une run = <see cref="PhaseCount"/> phases, jouées selon le rythme par phase <see cref="PhaseLayouts"/>
+/// (phase 1 : Escarmouche ×3, Spéciale, Escarmouche, Boss ; phase 2 : Escarmouche ×2, Spéciale,
+/// Escarmouche ×2, Boss ; phase 3 : IDEM SANS l'escarmouche du slot 5, on enchaîne sur le boss final),
+/// soit <see cref="TotalCombats"/> combats et 3 boss. Le nombre de missions DÉPEND donc de la phase
+/// (<see cref="MissionsIn"/>). Seul le boss FINAL (phase 3) gagne la run ;
+/// les boss des phases 1-2 enchaînent vers le recrutement. <see cref="CombatNumber"/> (1..17) est le
 /// seul curseur : <see cref="PhaseIndex"/> et <see cref="MissionInPhase"/> en dérivent.
 ///
 /// Persistance : permadeath (les unités mortes quittent l'inventaire) + soin complet
@@ -53,11 +54,28 @@ public sealed class Run
     /// </summary>
     public static int MaxUnitTier = MaxTier;
 
-    /// <summary>Missions par phase (rythme <see cref="PhaseLayout"/>).</summary>
-    public const int MissionsPerPhase = 6;
+    /// <summary>
+    /// Missions de la phase la PLUS LONGUE. Sert à DIMENSIONNER (boucles et gabarits d'UI, tables de
+    /// réglage) — jamais à compter les missions d'une phase donnée : le rythme n'est plus uniforme
+    /// (la phase 3 en a une de moins), il se lit avec <see cref="MissionsIn"/>.
+    /// </summary>
+    public const int MaxMissionsPerPhase = 6;
 
-    /// <summary>Nombre total de combats d'une run (1..<see cref="TotalCombats"/>).</summary>
-    public const int TotalCombats = PhaseCount * MissionsPerPhase; // 18
+    /// <summary>Nombre de missions de la phase <paramref name="phaseIndex"/> (1..<see cref="PhaseCount"/>).</summary>
+    public static int MissionsIn(int phaseIndex) =>
+        PhaseLayouts[Math.Clamp(phaseIndex, 1, PhaseCount) - 1].Length;
+
+    /// <summary>Nombre total de combats d'une run (1..<see cref="TotalCombats"/>) — somme des rythmes de phase.</summary>
+    public static int TotalCombats
+    {
+        get
+        {
+            var n = 0;
+            for (var p = 1; p <= PhaseCount; p++)
+                n += MissionsIn(p);
+            return n;   // 17
+        }
+    }
 
     public const int DraftSize = 3;
 
@@ -77,8 +95,10 @@ public sealed class Run
 
     /// <summary>
     /// Rythme PROPRE À CHAQUE PHASE, indexé <c>[PhaseIndex-1]</c>. La PHASE 1 décale la mission spéciale
-    /// au slot 4 (trois escarmouches d'échauffement d'abord) ; les phases 2-3 gardent le
-    /// <see cref="StandardPhaseLayout"/> (spéciale au slot 3).
+    /// au slot 4 (trois escarmouches d'échauffement d'abord) ; la phase 2 garde le
+    /// <see cref="StandardPhaseLayout"/> (spéciale au slot 3) ; la PHASE 3 est plus COURTE d'une mission —
+    /// la dernière escarmouche saute, la phase se termine sur le boss final juste après le slot 4.
+    /// Les phases n'ont donc PAS toutes le même nombre de missions (cf. <see cref="MissionsIn"/>).
     /// </summary>
     private static readonly CombatType[][] PhaseLayouts =
     {
@@ -88,7 +108,11 @@ public sealed class Run
             CombatType.Speciale, CombatType.Escarmouche, CombatType.Boss,
         },
         StandardPhaseLayout,
-        StandardPhaseLayout,
+        new[] // Phase 3 : sans l'escarmouche d'avant-boss (5 missions).
+        {
+            CombatType.Escarmouche, CombatType.Escarmouche, CombatType.Speciale,
+            CombatType.Escarmouche, CombatType.Boss,
+        },
     };
 
     // ORDRE D'INTRODUCTION des types ennemis : un nouveau type est débloqué à chaque combat —
@@ -452,13 +476,53 @@ public sealed class Run
     public RunPhase Phase { get; private set; }
 
     /// <summary>Phase courante (1..<see cref="PhaseCount"/>), dérivée de <see cref="CombatNumber"/>.</summary>
-    public int PhaseIndex => (CombatNumber - 1) / MissionsPerPhase + 1;
+    public int PhaseIndex => PhaseOf(CombatNumber);
 
-    /// <summary>Rang de la mission dans sa phase (1..<see cref="MissionsPerPhase"/>).</summary>
-    public int MissionInPhase => (CombatNumber - 1) % MissionsPerPhase + 1;
+    /// <summary>Rang de la mission dans sa phase (1..<see cref="MissionsIn"/> de cette phase).</summary>
+    public int MissionInPhase => MissionOf(CombatNumber);
+
+    // Les phases n'ayant plus toutes le même nombre de missions, (phase, rang) ⇄ numéro de combat ne se
+    // calcule plus par division : on parcourt les phases en défalquant leur rythme. Ces trois conversions
+    // sont LE point de passage — aucun appelant ne doit refaire l'arithmétique à la main.
+
+    /// <summary>Phase (1..<see cref="PhaseCount"/>) du combat n° <paramref name="combatNumber"/>.</summary>
+    public static int PhaseOf(int combatNumber)
+    {
+        var n = Math.Max(1, combatNumber);
+        for (var p = 1; p < PhaseCount; p++)
+        {
+            if (n <= MissionsIn(p))
+                return p;
+            n -= MissionsIn(p);
+        }
+        return PhaseCount;
+    }
+
+    /// <summary>Rang dans sa phase du combat n° <paramref name="combatNumber"/>.</summary>
+    public static int MissionOf(int combatNumber)
+    {
+        var n = Math.Max(1, combatNumber);
+        for (var p = 1; p < PhaseCount; p++)
+        {
+            if (n <= MissionsIn(p))
+                return n;
+            n -= MissionsIn(p);
+        }
+        return Math.Min(n, MissionsIn(PhaseCount));
+    }
+
+    /// <summary>Numéro de combat (1..<see cref="TotalCombats"/>) de la mission (phase, rang) — l'inverse.</summary>
+    public static int CombatNumberOf(int phaseIndex, int missionInPhase)
+    {
+        var phase = Math.Clamp(phaseIndex, 1, PhaseCount);
+        var n = Math.Clamp(missionInPhase, 1, MissionsIn(phase));
+        for (var p = 1; p < phase; p++)
+            n += MissionsIn(p);
+        return n;
+    }
 
     /// <summary>Nature de la mission courante selon le rythme de la phase (<see cref="PhaseLayouts"/>).</summary>
-    public CombatType CurrentMission => PhaseLayouts[PhaseIndex - 1][MissionInPhase - 1];
+    public CombatType CurrentMission => MissionKindAt(PhaseIndex, MissionInPhase);
 
     /// <summary>Vrai si la mission courante est un combat de boss (dernière de chaque phase).</summary>
     public bool IsBossCombat => CurrentMission == CombatType.Boss;
@@ -466,11 +530,16 @@ public sealed class Run
     /// <summary>Vrai pour le boss FINAL (boss de la dernière phase) : seul à conclure la run en victoire.</summary>
     public bool IsFinalBoss => IsBossCombat && PhaseIndex == PhaseCount;
 
-    /// <summary>Nature de la mission au rang <paramref name="missionInPhase"/> (1..<see cref="MissionsPerPhase"/>)
+    /// <summary>Nature de la mission au rang <paramref name="missionInPhase"/> (1..<see cref="MissionsIn"/>)
     /// dans la phase <paramref name="phaseIndex"/> (1..<see cref="PhaseCount"/>) — cf. <see cref="PhaseLayouts"/>
-    /// (le rythme diffère en phase 1). Sert à la frise UI.</summary>
-    public static CombatType MissionKindAt(int phaseIndex, int missionInPhase) =>
-        PhaseLayouts[phaseIndex - 1][missionInPhase - 1];
+    /// (le rythme diffère par phase). Bornée : une frise dimensionnée sur la phase la plus longue peut
+    /// l'interroger hors rythme sans lever. Sert à la frise UI.</summary>
+    public static CombatType MissionKindAt(int phaseIndex, int missionInPhase)
+    {
+        var phase = Math.Clamp(phaseIndex, 1, PhaseCount);
+        var row = PhaseLayouts[phase - 1];
+        return row[Math.Clamp(missionInPhase, 1, row.Length) - 1];
+    }
 
     /// <summary>
     /// Effectif ennemi TOTAL d'une mission (phase 1..3, rang 1..6) = escortes de la table + le boss
@@ -1564,8 +1633,10 @@ public sealed class Run
     /// <summary>
     /// Réalise la fusion : retire le nombre requis d'exemplaires de la classe de <paramref name="spec"/>
     /// (cf. <see cref="FusionSizeFor"/>) et ajoute 1 unité de la classe <paramref name="evolution"/> choisie.
-    /// Renvoie le nouveau gabarit, ou <c>null</c> si la fusion est invalide (mauvaise phase, classe
+    /// Renvoie le nouveau gabarit, ou <c>null</c> si la fusion est invalide (hors PLACEMENT, classe
     /// feuille/essentielle, pas assez d'exemplaires, ou évolution étrangère à l'arbre de la classe).
+    /// Variante « libre-service » réservée au placement : en combat/recrutement, passer par la surcharge
+    /// explicite qui dit QUELLES instances consommer.
     /// </summary>
     public UnitSpec? Fuse(UnitSpec spec, UnitClass evolution)
     {
@@ -1588,9 +1659,13 @@ public sealed class Run
         if (group.Count == 0)
             return null;
         var size = FusionSizeFor(group[0]);   // taille requise pour la classe fusionnée (domaine + tier)
-        // Autorisée au PLACEMENT (drag-stack habituel) ET au RECRUTEMENT (faire de la place sous le plafond
-        // de réserve en fusionnant, cf. écrans draft/récompense).
-        if (Phase is not (RunPhase.Placement or RunPhase.Recruitment) || group.Count != size)
+        // Autorisée au PLACEMENT (drag-stack habituel), au RECRUTEMENT (faire de la place sous le plafond de
+        // réserve, cf. écrans draft/récompense) ET EN COMBAT : la révélation d'une recrue sur réserve pleine
+        // propose la même gestion (empiler/supprimer) — sans quoi on pouvait choisir une évolution sans que
+        // rien ne se passe. En combat, c'est à l'appelant de ne présenter que des pions NON DÉPLOYÉS (la
+        // scène le garantit : son panneau de combat ne liste que la réserve non engagée), le Core ne
+        // connaissant pas le plateau.
+        if (Phase is RunPhase.Victory or RunPhase.Defeat || group.Count != size)
             return null;
 
         var first = group[0];

@@ -259,8 +259,7 @@ internal sealed class MainForm : Form
 
         for (var phase = 1; phase <= Run.PhaseCount; phase++)
             _phaseBox.Items.Add(phase);
-        for (var mission = 1; mission <= Run.MissionsPerPhase; mission++)
-            _missionBox.Items.Add(mission);
+        FillMissionsFor(1);   // la liste des missions suit la PHASE (les rythmes diffèrent, cf. Run.MissionsIn)
 
         foreach (var commander in Commandes.Playable)
             _commanderBox.Items.Add(new Item(commander.Id, $"{commander.Name} ({commander.Id})"));
@@ -284,7 +283,7 @@ internal sealed class MainForm : Form
 
     private void WireEvents()
     {
-        _phaseBox.SelectedIndexChanged += (_, _) => OnCombatChanged();
+        _phaseBox.SelectedIndexChanged += (_, _) => OnPhaseChanged();
         _missionBox.SelectedIndexChanged += (_, _) => OnCombatChanged();
         _commanderBox.SelectedIndexChanged += (_, _) => OnCommanderChanged();
         _difficultyBox.SelectedIndexChanged += (_, _) => Edit(s =>
@@ -423,8 +422,9 @@ internal sealed class MainForm : Form
 
         var combat = Math.Clamp(_save.CombatNumber, 1, Run.TotalCombats);
         _save.CombatNumber = combat;
-        _phaseBox.SelectedIndex = (combat - 1) / Run.MissionsPerPhase;
-        _missionBox.SelectedIndex = (combat - 1) % Run.MissionsPerPhase;
+        _phaseBox.SelectedIndex = Run.PhaseOf(combat) - 1;
+        FillMissionsFor(Run.PhaseOf(combat));   // la phase fixe le nombre de missions proposées
+        _missionBox.SelectedIndex = Run.MissionOf(combat) - 1;
         // Une sauvegarde d'avant la v3 n'a pas d'id : on fige celui que le jeu déduirait, sinon l'écran
         // montrerait un commandant que le fichier ne nomme pas.
         _save.CommanderId = ResolvedCommander().Id;
@@ -459,6 +459,17 @@ internal sealed class MainForm : Form
     }
 
     private CommandTree CurrentTree() => CommandTrees.For(ResolvedCommander());
+
+    /// <summary>
+    /// Remplit la liste des missions au rythme de la phase donnée (toutes n'ont pas le même nombre de
+    /// missions : la phase 3 n'a pas d'escarmouche avant le boss final). Ne touche pas à la sélection.
+    /// </summary>
+    private void FillMissionsFor(int phase)
+    {
+        _missionBox.Items.Clear();
+        for (var mission = 1; mission <= Run.MissionsIn(phase); mission++)
+            _missionBox.Items.Add(mission);
+    }
 
     private void RefreshMissionKind()
     {
@@ -592,8 +603,25 @@ internal sealed class MainForm : Form
     {
         if (_loading)
             return;
-        _save.CombatNumber = _phaseBox.SelectedIndex * Run.MissionsPerPhase + _missionBox.SelectedIndex + 1;
+        _save.CombatNumber = Run.CombatNumberOf(_phaseBox.SelectedIndex + 1, _missionBox.SelectedIndex + 1);
         RefreshMissionKind();
+    }
+
+    /// <summary>
+    /// Changer de PHASE reconstruit la liste des missions (rythmes différents) en gardant le rang courant
+    /// s'il existe encore dans la nouvelle phase, puis met à jour le combat comme un changement normal.
+    /// </summary>
+    private void OnPhaseChanged()
+    {
+        if (_loading || _phaseBox.SelectedIndex < 0)
+            return;
+        var phase = _phaseBox.SelectedIndex + 1;
+        var wanted = Math.Clamp(_missionBox.SelectedIndex + 1, 1, Run.MissionsIn(phase));
+        _loading = true;                 // la reconstruction de la liste ne doit pas rejouer OnCombatChanged
+        FillMissionsFor(phase);
+        _missionBox.SelectedIndex = wanted - 1;
+        _loading = false;
+        OnCombatChanged();
     }
 
     /// <summary>

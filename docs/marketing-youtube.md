@@ -26,12 +26,17 @@
 
 ---
 
-## Short : Tremblement des pièces en danger
+## Short : tremblement des pièces en danger
 
-**Texte à l'écran** : 🇬🇧 You can finally see which pieces are in danger
+**Texte à l'écran**
+🇬🇧 `You can finally see which pieces are in danger`
 🇫🇷 *Tu vois enfin quelles pièces sont en danger*
 
 **Titre** : 🇬🇧 You can finally see which pieces are in danger
+
+Alternatives :
+- 🇬🇧 I made threatened pieces shake / 🇫🇷 J'ai fait trembler les pièces menacées
+- 🇬🇧 Players kept losing units to threats they never saw / 🇫🇷 Les joueurs perdaient des unités sans voir la menace
 
 🇫🇷
 > Chess Army est un RPG roguelike au tour par tour, inspiré du jeu d'échecs.
@@ -51,12 +56,19 @@
 
 ---
 
-## Short : Fusion : trois lanciers → un javelinier
+## Short : fusion de trois lanciers en javelinier
 
-**Texte à l'écran** : 🇬🇧 Three lancers. One javelineer.
+*Angle : le mécanisme de fusion.*
+
+**Texte à l'écran**
+🇬🇧 `Three lancers. One javelineer.`
 🇫🇷 *Trois lanciers. Un javelinier.*
 
 **Titre** : 🇬🇧 Stack three identical units and this happens
+
+Alternatives :
+- 🇬🇧 Three lancers become one javelineer / 🇫🇷 Trois lanciers deviennent un javelinier
+- 🇬🇧 This is how units evolve in my game / 🇫🇷 C'est comme ça qu'on fait évoluer une unité dans mon jeu
 
 🇫🇷
 > Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
@@ -74,11 +86,14 @@
 
 `#indiegame #roguelike #pixelart #rpg #gamedev`
 
+**Note de tournage** : l'animation complète de première découverte dure 8,4 s, elle tombe à 0,4 s ensuite. Filmer sur un profil où le javelinier n'a jamais été découvert.
+
 ---
 
-## Short : Le système d'auras
+## Short : le système d'auras
 
-**Texte à l'écran** : 🇬🇧 Everyone inside this outline takes less damage
+**Texte à l'écran**
+🇬🇧 `Everyone inside this outline takes less damage`
 🇫🇷 *Tout le monde dans ce contour prend moins de dégâts*
 
 Variante en deux cartes, si tu filmes une unité qui sort de l'aura :
@@ -105,7 +120,7 @@ Variante en deux cartes, si tu filmes une unité qui sort de l'aura :
 
 ---
 
-## Short : Duel pour un coffre, objet légendaire
+## Short : duel pour un coffre, objet légendaire
 
 **Texte à l'écran** : deux cartes
 🇬🇧 `We both wanted the same chest.` puis, à l'ouverture, `Legendary.`
@@ -133,9 +148,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #gamedev`
 
+**Note de montage** : la roulette dure 3 s et ralentit progressivement. Ne pas couper dedans, garder le son `reward_legendary` fort, et poser la carte "Legendary" sur la première salve de feu d'artifice.
+
 ---
 
-## Short : Ajout du zoom et du dézoom
+## Short : ajout du zoom et du dézoom
 
 **Texte à l'écran**
 🇬🇧 `The boss arena didn't fit on screen. Now it does.`
@@ -163,11 +180,13 @@ Alternatives :
 
 `#indiegame #gamedev #pixelart #devlog #roguelike`
 
+**Note de tournage** : filmer sur la plus grande carte, une arène de boss 12×12. Sur un 6×6 le dézoom ne résout aucun problème visible.
+
 ---
 
-## Short : Fusion : trois lanciers → un garde
+## Short : fusion de trois lanciers en garde
 
-*Suite du short javelinier. L'angle ici n'est pas la fusion, c'est le **choix** entre deux évolutions.*
+*Angle : le choix entre deux évolutions, pas le mécanisme.*
 
 **Texte à l'écran**
 🇬🇧 `Same three lancers. A different unit.`
@@ -195,9 +214,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #tacticalrpg`
 
+**À vérifier** : que le joueur choisisse bien la branche d'évolution, et les rôles réels du garde et du javelinier.
+
 ---
 
-## Short : Infobulle compacte, dépliable au besoin
+## Short : infobulle compacte, dépliable au besoin
 
 **Texte à l'écran**
 🇬🇧 `You don't need every stat. Until you do.`
@@ -225,11 +246,13 @@ Alternatives :
 
 `#indiegame #gamedev #devlog #pixelart #gameui`
 
+**Note de montage** : le clip, c'est le moment du dépliage. Survoler en compact une seconde, déplier, laisser deux secondes. Le faire deux fois sur deux unités différentes.
+
 ---
 
-## Short : L'IA s'équipe à partir de Normal
+## Short : l'IA s'équipe à partir de Normal
 
-**Texte à l'écran** : une seule phrase, fixe
+**Texte à l'écran**
 🇬🇧 `Careful: the enemy gets gear too.`
 🇫🇷 *Attention : l'ennemi aussi s'équipe.*
 
@@ -255,9 +278,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #tacticalrpg #gamedev`
 
+**Note de tournage** : montrer un badge d'équipement au-dessus d'une tête ennemie, puis une attaque qui fait moins de dégâts que prévu et la riposte qui suit.
+
 ---
 
-## Short : Un pion est perdu : autant qu'il ouvre le coffre
+## Short : un pion est perdu, autant qu'il ouvre le coffre
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `He's dead anyway, so he loots.`
@@ -291,9 +316,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #tacticalrpg #gamedev`
 
+**Note de tournage** : montrer d'abord que l'unité est condamnée (cases de danger en rouge, icône de menace), puis la faire avancer vers le coffre.
+
 ---
 
-## Short : Le commandant débloque Orage
+## Short : le commandant débloque Orage
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `Upgrade your king. Then risk him.`
@@ -325,7 +352,7 @@ Alternatives :
 
 ---
 
-## Short : Le codex
+## Short : le codex
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `Black means I haven't found it yet.`
@@ -353,11 +380,13 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #gamedev`
 
+**Note de tournage** : le sujet, ce sont les silhouettes noires. Filmer une page à moitié remplie et faire défiler lentement.
+
 ---
 
-## Short : Fusion : trois soldats → un spadassin
+## Short : fusion de trois soldats en spadassin
 
-*Troisième clip de fusion. Angle : les doublons ne sont pas de l'encombrement, ce sont des ressources.*
+*Angle : les doublons sont une ressource, pas de l'encombrement.*
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `Three weak units make one real one.`
@@ -385,11 +414,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #chess`
 
-**À vérifier** : le nom anglais du spadassin. J'ai mis « swordsman » ; utilise ce que dit ton `strings.csv`.
+**À vérifier** : le nom anglais du spadassin dans `strings.csv`.
 
 ---
 
-## Short : Sacrifier une unité pour tuer le boss
+## Short : sacrifier une unité pour tuer le boss
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `I traded a soldier for the boss.`
@@ -419,11 +448,13 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #tacticalrpg #chess`
 
+**Note de tournage** : la barre de vie du boss doit être visible au moment où l'unité meurt.
+
 ---
 
-## Short : Trois kills d'affilée au mage
+## Short : trois kills d'affilée au mage
 
-*Clip de pure satisfaction : rien à expliquer, on regarde.*
+*Clip de pure satisfaction, rien à expliquer.*
 
 **Texte à l'écran** : le plus court possible
 🇬🇧 `Three in a row.`
@@ -453,11 +484,11 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #satisfying #gamedev`
 
-**Note de montage** : pas de ralenti, pas d'explication. Garde les trois impacts au rythme naturel, le son à fond, et coupe juste après le troisième pour que ça reboucle proprement.
+**Note de montage** : pas de ralenti, pas d'explication. Les trois impacts au rythme naturel, le son fort, coupe juste après le troisième pour que ça reboucle.
 
 ---
 
-## Short : Nouvelle map de neige et tuiles de glace
+## Short : nouvelle map de neige et tuiles de glace
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `Ice doesn't let you stop.`
@@ -485,7 +516,7 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #gamedev #tacticalrpg`
 
-**À vérifier** : j'ai écrit que la pièce glisse « jusqu'à rencontrer un obstacle ». Si elle ne glisse que d'une case, ou selon une autre règle, corrige la phrase.
+**À vérifier** : la règle exacte du glissement.
 
 ---
 
@@ -523,11 +554,13 @@ Alternatives :
 
 ## Short : évolution d'un soldat en archer
 
-*Quatrième clip de fusion. Angle : l'évolution change le rôle de la pièce, pas seulement ses chiffres.*
+*Angle : l'évolution change le rôle de la pièce, pas seulement ses chiffres.*
 
 **Texte à l'écran** : une seule phrase, fixe
-🇬🇧 `Same soldier, but now it shoots.`
-🇫🇷 *Le même soldat, mais maintenant il tire.*
+🇬🇧 `Same piece, new job.`
+🇫🇷 *Même pièce, nouveau rôle.*
+
+Alternatives : 🇬🇧 `He doesn't charge anymore.` / `Same soldier, but now it shoots.`
 
 **Titre** : 🇬🇧 Evolving doesn't just make a unit stronger
 
@@ -555,7 +588,7 @@ Alternatives :
 
 ## Short : un objet légendaire
 
-*Angle différent du short "duel pour un coffre" : ici le sujet est l'objet et le choix qu'il impose.*
+*Angle : le dilemme qui suit le drop.*
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `First legendary of the run.`
@@ -589,7 +622,7 @@ Alternatives :
 
 ## Short : évolution d'un mage en sorcier
 
-*Cinquième clip de fusion. Angle : l'évolution débloque une capacité, pas seulement des statistiques.*
+*Angle : l'évolution débloque une capacité, pas seulement des statistiques.*
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `Now he calls lightning.`
@@ -619,13 +652,13 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #tacticalrpg`
 
-**À vérifier** : que le sorcier obtienne bien Orage dès le palier 2, et les noms anglais de sorcier, archimage et démoniste dans `strings.csv`.
+**À vérifier** : que le sorcier obtienne bien Orage dès le palier 2, et les noms anglais dans `strings.csv`.
 
 ---
 
 ## Short : évolution de trois archers en rôdeur
 
-*Sixième clip de fusion, et le premier sur un palier 3. Angle : le coût cumulé.*
+*Premier clip sur un palier 3. Angle : le coût cumulé.*
 
 **Texte à l'écran** : une seule phrase, fixe
 🇬🇧 `This ranger cost nine soldiers.`
@@ -653,4 +686,210 @@ Alternatives :
 
 `#indiegame #roguelike #pixelart #rpg #tacticalrpg`
 
-**À vérifier** : le nom anglais du rôdeur dans `strings.csv`, et que trois archers donnent bien un rôdeur et non l'autre feuille de la branche.
+**À vérifier** : le nom anglais du rôdeur dans `strings.csv`.
+
+---
+
+## Short : fusion de trois clercs en barde
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Three clerics. One bard.`
+🇫🇷 *Trois clercs. Un barde.*
+
+**Titre** : 🇬🇧 Three clerics make a bard
+
+Alternatives :
+- 🇬🇧 The last step of the bishop branch / 🇫🇷 Le dernier palier de la branche du fou
+- 🇬🇧 Three clerics. One bard. / 🇫🇷 Trois clercs. Un barde.
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le clerc appartient à la branche du fou, celle qui se déplace en diagonale. Trois clercs donnent un barde, palier 3, une des feuilles de sa branche. Il n'y a pas de niveaux dans ce jeu : une unité ne progresse qu'en fusionnant ou en s'équipant, et chaque fusion engage définitivement une voie plutôt qu'une autre.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The cleric belongs to the bishop branch, the one that moves diagonally. Three clerics make a bard, tier 3, one of the leaves of its branch. There are no levels in this game: a unit only progresses by fusing or by gearing up, and every fusion commits it to one path instead of another.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À compléter** : ce que fait le barde, pour rendre la description spécifique.
+
+---
+
+## Short : fusion de trois spadassins en maître d'armes
+
+*Angle : chaque fusion ferme des portes. Vend la rejouabilité.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `28 classes. Never in one run.`
+🇫🇷 *28 classes. Jamais dans une seule run.*
+
+**Titre** : 🇬🇧 You'll never see all 28 classes in one run
+
+Alternatives :
+- 🇬🇧 Three swordsmen make a weapon master / 🇫🇷 Trois spadassins donnent un maître d'armes
+- 🇬🇧 Every fusion closes another door / 🇫🇷 Chaque fusion ferme une autre porte
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois spadassins donnent un maître d'armes, palier 3. En prenant la voie du spadassin, tu avais déjà écarté l'archer et ses deux évolutions. En prenant le maître d'armes, tu écartes le barbare. Sur les quatre feuilles de la branche du soldat, trois resteront fermées cette fois. Il y a 28 classes au total et une seule partie n'en montre jamais qu'une poignée.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three swordsmen make a weapon master, tier 3. By going down the swordsman path you had already ruled out the archer and its two evolutions. By taking the weapon master you rule out the barbarian. Of the four leaves on the soldier branch, three stay closed this time. There are 28 classes in total and a single run only ever shows you a handful.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À vérifier** : les noms anglais de maître d'armes, barbare et arbalétrier dans `strings.csv`.
+
+---
+
+## Short : un deuxième objet légendaire
+
+*Suite du short "premier légendaire". Angle : concentrer ou répartir.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Second legendary this run.`
+🇫🇷 *Deuxième légendaire de la run.*
+
+**Titre** : 🇬🇧 Two legendaries in one run
+
+Alternatives :
+- 🇬🇧 Second legendary this run / 🇫🇷 Deuxième légendaire de cette run
+- 🇬🇧 Now I have to choose how to spread them / 🇫🇷 Maintenant il faut choisir comment les répartir
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Deuxième légendaire de la run. À partir de là la question change : concentrer les deux sur une seule pièce pour en faire une menace que rien n'arrête, ou les répartir pour que la perte d'une unité ne coûte pas tout. La mort est définitive et l'équipement part avec son porteur, donc les deux options se défendent. C'est le genre de décision qui se paie trois combats plus tard.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Second legendary of the run. From here the question changes: stack both on one piece and turn it into something nothing stops, or spread them so losing one unit doesn't cost everything. Death is permanent and equipment goes with its bearer, so both answers hold up. It's the kind of decision you pay for three fights later.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #gamedev`
+
+---
+
+## Short : fusion de trois mages en clerc
+
+*Miroir du short "mage en sorcier". Angle : la branche du fou a deux directions opposées.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Not every evolution is about damage.`
+🇫🇷 *Toutes les évolutions ne servent pas à taper.*
+
+Alternative : 🇬🇧 `Same mage. Opposite direction.`
+
+**Titre** : 🇬🇧 Not every evolution is about damage
+
+Alternatives :
+- 🇬🇧 Three mages make a cleric / 🇫🇷 Trois mages donnent un clerc
+- 🇬🇧 The mage has two futures, and they're opposites / 🇫🇷 Le mage a deux avenirs, et ils sont opposés
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois mages donnent un clerc. C'est l'autre voie de la branche du fou : le sorcier part vers l'offensive et la foudre, le clerc part dans la direction inverse. Une même pièce de départ, deux armées complètement différentes selon la fusion que tu choisis. Le clerc évolue ensuite en prêtresse ou en barde.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three mages make a cleric. It's the other path on the bishop branch: the sorcerer heads for offence and lightning, the cleric goes the opposite way. Same starting piece, two completely different armies depending on which fusion you take. The cleric later evolves into a priestess or a bard.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À compléter** : ce que fait le clerc concrètement. La description reste volontairement vague là-dessus. Une phrase de ta part et elle devient aussi précise que celle du sorcier avec Orage.
+
+---
+
+## Short : la puissance d'un palier 3, le rôdeur
+
+*Suite du short "ce rôdeur a coûté neuf soldats". Angle : ce que ça donne sur le plateau.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `A tier 3 doesn't fight fair.`
+🇫🇷 *Un palier 3 ne se bat pas à la loyale.*
+
+Alternative : 🇬🇧 `One tier 3 changes the whole fight.`
+
+**Titre** : 🇬🇧 A tier 3 unit doesn't fight fair
+
+Alternatives :
+- 🇬🇧 What a tier 3 ranger actually does / 🇫🇷 Ce que fait vraiment un rôdeur de palier 3
+- 🇬🇧 One tier 3 changes the whole fight / 🇫🇷 Une unité de palier 3 change tout le combat
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Le rôdeur est un palier 3, le sommet de sa branche, et ça se voit sur le plateau : une seule pièce de ce niveau peut porter un combat entier. C'est la récompense de neuf unités de base accumulées. Le revers, c'est qu'en fin de run l'ennemi aligne lui aussi des paliers 3, et que la mort reste définitive. Une armée bâtie autour d'une seule pièce forte est une armée qui peut s'effondrer en un tour.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The ranger is a tier 3, the top of its branch, and it shows on the board: one piece at that level can carry an entire fight. That's what nine base units buy you. The catch is that late in a run the enemy fields tier 3 units too, and death is still permanent. An army built around a single strong piece is an army that can collapse in one turn.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**Note de tournage** : montrer le rôdeur enchaîner plusieurs actions décisives dans le même combat. Le clip doit donner envie d'en avoir un, pas expliquer comment on l'obtient, ça c'est l'autre short.
+
+---
+
+## Short : fusion de trois sorciers en démoniste
+
+*Angle : le palier 3 est le bout du chemin. Après, il ne reste que l'équipement.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Tier 3 is the end of the line.`
+🇫🇷 *Le palier 3, c'est le bout du chemin.*
+
+Alternative : 🇬🇧 `After this, only gear makes him stronger.`
+
+**Titre** : 🇬🇧 After tier 3, only equipment makes a unit stronger
+
+Alternatives :
+- 🇬🇧 Three sorcerers make a warlock / 🇫🇷 Trois sorciers donnent un démoniste
+- 🇬🇧 There is no tier 4 / 🇫🇷 Il n'y a pas de palier 4
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois sorciers donnent un démoniste, palier 3. C'est le bout de la branche : il n'y a pas de palier 4. À partir de là, la seule façon de rendre cette pièce plus forte, c'est de l'équiper. Le jeu n'a que deux leviers de progression, la fusion et l'équipement, et tu viens d'épuiser le premier sur cette unité.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three sorcerers make a warlock, tier 3. That's the end of the branch: there is no tier 4. From here, the only way to make this piece stronger is to gear it up. The game has exactly two levers of progression, fusion and equipment, and you just used up the first one on this unit.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #tacticalrpg`
+
+**À vérifier** : le nom anglais du démoniste dans `strings.csv`.

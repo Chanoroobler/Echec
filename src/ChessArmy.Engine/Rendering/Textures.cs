@@ -256,6 +256,30 @@ public static class Textures
         return texture;
     }
 
+    /// <summary>
+    /// Tuile de HACHURES diagonales (45°, sens « / ») : blanc opaque sur les traits, transparent ailleurs —
+    /// la teinte vient donc du SpriteBatch. Sert à marquer une zone du plateau sans la masquer.
+    /// <paramref name="period"/> DOIT diviser <paramref name="size"/> : c'est ce qui fait que les traits se
+    /// prolongent d'une tuile à la suivante au lieu de repartir à zéro sur chaque case. Dessiner la tuile à
+    /// sa taille NATIVE (pas de mise à l'échelle fractionnaire, cf. rendu pixel-perfect) : on en génère une
+    /// par taille de case utile. <paramref name="phase"/> décale le motif — une texture par pas d'animation.
+    /// </summary>
+    public static Texture2D CreateDiagonalStripes(GraphicsDevice graphicsDevice, int size, int period,
+        int thickness, int phase)
+    {
+        var data = new Color[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var d = ((x + y + phase) % period + period) % period;   // modulo positif (phase négative admise)
+                data[y * size + x] = d < thickness ? Color.White : Color.Transparent;
+            }
+
+        var texture = new Texture2D(graphicsDevice, size, size);
+        texture.SetData(data);
+        return texture;
+    }
+
     /// <summary>Charge un PNG depuis le disque, ou renvoie <c>null</c> s'il est absent/illisible.</summary>
     public static Texture2D? LoadPngOrNull(GraphicsDevice graphicsDevice, string path)
     {

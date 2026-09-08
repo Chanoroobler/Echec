@@ -14,6 +14,7 @@ public sealed record MissionSetup(int MapSize, IReadOnlyList<int> Tiers);
 /// <summary>
 /// Plan de campagne : pour chaque (phase, mission) — <c>[phase-1][mission-1]</c> — la taille de map et la
 /// composition ennemie. SOURCE DE VÉRITÉ du nombre d'ennemis, de leurs tiers et de la taille du plateau.
+/// Le nombre de missions dépend de la PHASE (cf. <see cref="Run.MissionsIn"/>) : la 3 en compte une de moins.
 /// Chargé depuis <c>Assets/Config/campaign.json</c> ; à défaut, <see cref="Defaults"/> (repli codé, qui DOIT
 /// refléter le JSON livré). Réglage « facile » : éditer le JSON suffit, aucun code à toucher.
 ///
@@ -26,9 +27,9 @@ public sealed record MissionSetup(int MapSize, IReadOnlyList<int> Tiers);
 /// </summary>
 public static class CampaignPlan
 {
-    /// <summary>Nombre de phases et de missions par phase attendus (aligné sur <see cref="Run.PhaseCount"/> / <see cref="Run.MissionsPerPhase"/>).</summary>
-    public const int Phases = 3;
-    public const int MissionsPerPhase = 6;
+    /// <summary>Nombre de phases attendu (aligné sur <see cref="Run.PhaseCount"/>). Le nombre de missions
+    /// dépend de la PHASE (cf. <see cref="Run.MissionsIn"/>) : la phase 3 en compte une de moins.</summary>
+    public const int Phases = Run.PhaseCount;
 
     private static IReadOnlyList<IReadOnlyList<MissionSetup>> _table = Defaults();
 
@@ -63,7 +64,8 @@ public static class CampaignPlan
 
         if (!IsComplete(table))
             throw new FormatException(
-                $"campaign.json : attendu {Phases} phases de {MissionsPerPhase} missions, avec mapSize > 0 et une liste 'enemies' non vide (tiers 1..3).");
+                $"campaign.json : attendu {Phases} phases de respectivement {ExpectedCounts()} missions, "
+                + "avec mapSize > 0 et une liste 'enemies' non vide (tiers 1..3).");
         return table;
     }
 
@@ -78,10 +80,17 @@ public static class CampaignPlan
         return new MissionSetup(m.MapSize, m.Enemies);
     }
 
+    /// <summary>Rythme attendu, phase par phase (« 6/6/5 ») — pour le message d'erreur.</summary>
+    private static string ExpectedCounts() =>
+        string.Join("/", Enumerable.Range(1, Phases).Select(Run.MissionsIn));
+
+    // Une ligne = une PHASE, et sa longueur doit coller au rythme de cette phase (Run.MissionsIn) : la
+    // table de réglage et le rythme joué ne peuvent pas diverger sans qu'on s'en aperçoive au chargement.
     private static bool IsComplete(IReadOnlyList<IReadOnlyList<MissionSetup>> t) =>
         t.Count == Phases
-        && t.All(r => r.Count == MissionsPerPhase
-                      && r.All(s => s.MapSize > 0 && s.Tiers.Count > 0 && s.Tiers.All(v => v is >= 1 and <= 3)));
+        && t.Select((r, i) => (Row: r, Phase: i + 1))
+            .All(x => x.Row.Count == Run.MissionsIn(x.Phase)
+                      && x.Row.All(s => s.MapSize > 0 && s.Tiers.Count > 0 && s.Tiers.All(v => v is >= 1 and <= 3)));
 
     // Repli codé — DOIT rester aligné sur Assets/Config/campaign.json. Reprend l'ancienne table WaveTiers
     // (effectif + tiers) et l'ancienne logique MapSizeFor (ph.1 = 6, sauf missions 4-5 = 7 ; ph.2 = 7 ; ph.3 = 8).
@@ -105,14 +114,13 @@ public static class CampaignPlan
             new(7, new[] { 1, 1, 2, 2, 2, 2, 2, 2, 2, 2 }),     // m5 : 2× T1 + 8× T2
             new(7, new[] { 1, 1, 1, 2, 2, 2, 2, 2, 2, 2 }),     // m6 Boss : + 3× T1 + 7× T2
         },
-        new MissionSetup[] // Phase 3 — fin de run (T2 → T3)
+        new MissionSetup[] // Phase 3 — fin de run (T2 → T3), 5 missions : pas d'escarmouche avant le boss
         {
             new(8, new[] { 2, 2, 2, 2, 2, 3, 3, 3 }),           // m1 : 5× T2 + 3× T3
             new(8, new[] { 2, 2, 2, 2, 2, 3, 3, 3, 3 }),        // m2 : 5× T2 + 4× T3
             new(8, new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 }),     // m3 Spéciale : 4× T2 + 6× T3
             new(8, new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3 }),     // m4 : 4× T2 + 6× T3
-            new(8, new[] { 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 }),  // m5 : 3× T2 + 8× T3
-            new(8, new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 }), // m6 BossFinal : + 4× T2 + 8× T3
+            new(8, new[] { 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 }), // m5 BossFinal : + 4× T2 + 8× T3
         },
     };
 

@@ -196,6 +196,9 @@ public sealed class InputManager
     /// <summary>Gâchette droite MAINTENUE (analogique &gt; 0,5) — ex. révéler les zones de danger.</summary>
     public bool IsRightTriggerDown => _currentPad.Triggers.Right > 0.5f;
 
+    /// <summary>Bouton de tranche GAUCHE maintenu — ex. révéler les zones d'attaque alliées.</summary>
+    public bool IsLeftShoulderDown => _currentPad.IsButtonDown(Buttons.LeftShoulder);
+
     /// <summary>Seuil de « pression » d'une gâchette analogique (au-delà = enfoncée).</summary>
     private const float TriggerThreshold = 0.5f;
 

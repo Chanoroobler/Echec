@@ -104,6 +104,9 @@ public sealed class GameplayScene : Scene
     private bool _recrueAdded;                               // recrue posée dans l'inventaire (phase « pause » : on laisse voir le slot)
     private bool _recrueFlying;                              // phase VOL : les cartes filent vers la réserve
     private float _recrueFlightTimer;                        // temps restant du vol (partagé par toutes les cartes)
+    // Slot de réserve visé par chaque recrue en vol : sa PLACE DANS L'ORDRE (cf. CompareReserve), pas la fin
+    // de la liste — sinon le pion atterrit à droite puis saute à sa place au tri. Calculé au départ du vol.
+    private readonly List<int> _recrueFlightSlots = new();
     private float _recrueSettle;                             // temps restant d'affichage du panneau après l'atterrissage
     private const float RecrueSettleDuration = 0.7f;         // le panneau reste ce temps après l'atterrissage avant de fermer
     // Looks du pion recrue : chaque paire <Nom>_front.png (+ <Nom>_back.png optionnel) de Assets/Objects/ =
@@ -716,6 +719,7 @@ public sealed class GameplayScene : Scene
         foreach (var sprite in _unitSprites.Values)
             sprite?.Dispose();
         _unitSprites.Clear();
+        DisposeStripeTiles();   // hachures des zones de danger / alliées (une texture par pas de phase)
         _chestSprite?.Dispose();
         _chestSprite = null;
         _chestAnim?.Dispose();
@@ -865,8 +869,8 @@ public sealed class GameplayScene : Scene
         MapData? chosen = null;
         for (var n = 1; n <= combatNumber; n++)
         {
-            var phase = (n - 1) / Run.MissionsPerPhase + 1;
-            var mission = (n - 1) % Run.MissionsPerPhase + 1;
+            var phase = Run.PhaseOf(n);
+            var mission = Run.MissionOf(n);
             if (Run.MissionKindAt(phase, mission) != CombatType.Escarmouche)
                 continue;
             var pool = ShuffledEscarmouchePool(phase, mission);
@@ -908,7 +912,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private MapData? BossMapFor(int phaseIndex, int missionInPhase)
     {
-        var combatNumber = (phaseIndex - 1) * Run.MissionsPerPhase + missionInPhase;
+        var combatNumber = Run.CombatNumberOf(phaseIndex, missionInPhase);
         var all = MapsOfType(CombatType.Boss);
         var ofPhase = all.Where(m => m.Phase == phaseIndex || m.Phase == 0).ToList();
         return PickMap(ofPhase.Count > 0 ? ofPhase : all, phaseIndex, combatNumber);
@@ -930,7 +934,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private MapData? SpecialMapFor(int phaseIndex, int missionInPhase)
     {
-        var combatNumber = (phaseIndex - 1) * Run.MissionsPerPhase + missionInPhase;
+        var combatNumber = Run.CombatNumberOf(phaseIndex, missionInPhase);
         var size = MapSizeFor(phaseIndex, missionInPhase);
         var specials = MapsOfType(CombatType.Speciale)
             .Where(m => m.Phase == phaseIndex || m.Phase == 0)   // réservées à cette phase, ou « toutes phases »
@@ -1220,6 +1224,7 @@ public sealed class GameplayScene : Scene
         _recrueAdded = false;
         _recrueFlying = false;
         _recrueFlightTimer = 0f;
+        _recrueFlightSlots.Clear();
         _recrueSettle = 0f;
         _chestConsumed.Clear();
         _chestPrev.Clear();
@@ -1297,6 +1302,7 @@ public sealed class GameplayScene : Scene
         foreach (var spec in _run.Roster)
             if (spec != commander)
                 _pending.Add(spec);
+        SortReserve(_pending);   // réserve toujours rangée par tier puis domaine (cf. CompareReserve)
 
         // La vague ennemie est posée dès le placement : le joueur voit le déploiement
         // adverse avant de positionner ses pièces (rangées 0-1, hors zone joueur). MISSION SPÉCIALE :
@@ -1631,7 +1637,7 @@ public sealed class GameplayScene : Scene
 
         var spec = _recrueReveals[index];
         _run.AddUnit(spec);     // rejoint l'armée…
-        _pending.Add(spec);     // …et la vue locale de la réserve
+        AddToReserve(spec);     // …et la vue locale de la réserve
         _recrueReveals.RemoveAt(index);
         _recruitFocus = System.Math.Clamp(_recruitFocus, 0, System.Math.Max(0, _recrueReveals.Count - 1));
         ClampInvScroll();
@@ -1650,6 +1656,7 @@ public sealed class GameplayScene : Scene
         _recrueAdded = false;
         _recrueFlying = false;
         _recrueFlightTimer = 0f;
+        _recrueFlightSlots.Clear();
     }
 
     private void TriggerRecrue(Cell c)
@@ -1668,6 +1675,7 @@ public sealed class GameplayScene : Scene
         var rng = new System.Random();
         _recrueReveals.Clear();
         _recrueFlying = false;
+        _recrueFlightSlots.Clear();
         _recrueAdded = false;
         _recruitFocus = 0;   // manette : la 1re carte est désignée (sert au choix à l'unité si la place manque)
         for (var i = 0; i < _run.RecruitTileUnits; i++)
@@ -1803,7 +1811,14 @@ public sealed class GameplayScene : Scene
         UpdateLootFireworks(dt);   // les salves de récompense éclatent en parallèle de la révélation
         switch (_chestPhase)
         {
+            // Ouverture et défilement sont de la MISE EN SCÈNE : le tirage est déjà fait (cf. OpenChest).
+            // Un clic (ou Entrée / A) saute donc droit au résultat, sans rien changer à ce qu'on gagne.
             case ChestPhase.Opening:
+                if (ChestSkipPressed())
+                {
+                    FinishChestRoll();
+                    break;
+                }
                 if (_chestPhaseTimer >= ChestOpenDuration)
                 {
                     _chestPhase = ChestPhase.Rolling;      // le défilement « machine à sous » démarre
@@ -1816,11 +1831,16 @@ public sealed class GameplayScene : Scene
                 break;
 
             case ChestPhase.Rolling:   // l'objet monte en défilant vite (décélère) puis se fige sur le gagné
+                if (ChestSkipPressed())
+                {
+                    FinishChestRoll();
+                    break;
+                }
                 UpdateChestRoll(dt);
                 break;
 
             case ChestPhase.Item:   // l'objet flotte au-dessus du coffre + description ; on attend le clic
-                if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+                if (ChestSkipPressed())
                 {
                     _chestPhase = ChestPhase.Fly;
                     _chestPhaseTimer = 0;
@@ -1868,15 +1888,7 @@ public sealed class GameplayScene : Scene
 
         if (_chestPhaseTimer >= ChestRollDuration)
         {
-            LockChestRolls();
-            _chestPhase = ChestPhase.Item;
-            _chestPhaseTimer = 0;
-            Context.Sounds.Play("reward");   // jingle positif à l'instant où les objets se figent
-            // Plusieurs objets : c'est la MEILLEURE rareté du coffre qui décide de la fanfare et du feu d'artifice.
-            var best = _chestReveals.Max(i => i.Rarity);
-            if (best == EquipmentRarity.Legendary)
-                Context.Sounds.Play("reward_legendary");   // fanfare EN PLUS pour un légendaire (par-dessus le feu d'artifice)
-            QueueLootFireworks(best);   // rare = petit feu d'artifice, légendaire = grand bouquet
+            FinishChestRoll();
             return;
         }
 
@@ -1892,6 +1904,44 @@ public sealed class GameplayScene : Scene
             for (var i = 0; i < _chestRollItems.Count; i++)
                 _chestRollItems[i] = RandomRollItem();
         }
+    }
+
+    /// <summary>
+    /// Laps mort en début de phase avant qu'un clic ne compte. Le coffre s'ouvre dans la foulée du
+    /// déplacement qui a amené le pion dessus : sans ce délai, le clic qui a JOUÉ le coup sauterait
+    /// l'ouverture dans la même image, et le joueur ne verrait jamais l'animation qu'il n'a pas demandé
+    /// à passer. Sert aussi à ne pas enchaîner deux phases sur un seul clic.
+    /// </summary>
+    private const double ChestSkipDelay = 0.15;
+
+    /// <summary>Clic / Entrée / A : avance la révélation du coffre (passer le défilement, puis ranger l'objet).</summary>
+    private bool ChestSkipPressed() =>
+        _chestPhaseTimer >= ChestSkipDelay
+        && (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed);
+
+    /// <summary>
+    /// Termine le défilement : roues figées sur les objets GAGNÉS, jingle, feu d'artifice selon la meilleure
+    /// rareté, puis phase Item. Appelée à la fin naturelle du défilement ET quand le joueur le passe au clic
+    /// — l'un comme l'autre doivent donner exactement le même résultat (le tirage est fait depuis OpenChest,
+    /// la mise en scène ne le change jamais).
+    /// </summary>
+    private void FinishChestRoll()
+    {
+        // Saut depuis l'OUVERTURE : les roues n'ont pas encore été peuplées, on les crée déjà gagnantes.
+        if (_chestRollItems.Count != _chestReveals.Count)
+        {
+            _chestRollItems.Clear();
+            _chestRollItems.AddRange(_chestReveals);
+        }
+        LockChestRolls();
+        _chestPhase = ChestPhase.Item;
+        _chestPhaseTimer = 0;
+        Context.Sounds.Play("reward");   // jingle positif à l'instant où les objets se figent
+        // Plusieurs objets : c'est la MEILLEURE rareté du coffre qui décide de la fanfare et du feu d'artifice.
+        var best = _chestReveals.Max(i => i.Rarity);
+        if (best == EquipmentRarity.Legendary)
+            Context.Sounds.Play("reward_legendary");   // fanfare EN PLUS pour un légendaire (par-dessus le feu d'artifice)
+        QueueLootFireworks(best);   // rare = petit feu d'artifice, légendaire = grand bouquet
     }
 
     /// <summary>Fige chaque roue sur l'objet réellement gagné de sa colonne.</summary>
@@ -2737,7 +2787,7 @@ public sealed class GameplayScene : Scene
         // panneau). Sans quoi un pion posé ne pouvait plus quitter le plateau que par un échange.
         if (Context.Input.WasRightShoulderPressed && !_carryPile && _dragSpec is { Essential: false } stashed)
         {
-            _pending.Add(stashed);
+            AddToReserve(stashed);
             _dragSpec = null;
             _dragFrom = null;
             Context.Sounds.Play("unit_pick");
@@ -3092,7 +3142,7 @@ public sealed class GameplayScene : Scene
             if (_dragFrom is { } from && _match.UnitAt(from) == null)
                 PlacePlayer(spec, from);
             else
-                _pending.Add(spec);
+                AddToReserve(spec);
             _dragSpec = null;
             _dragFrom = null;
             return;
@@ -3119,12 +3169,12 @@ public sealed class GameplayScene : Scene
             if (_dragFrom is { } src)
                 PlacePlayer(occSpec, src);              // l'occupant rejoint la case d'origine
             else
-                _pending.Add(occSpec);                  // pièce prise dans l'inventaire : l'occupant y retourne
+                AddToReserve(occSpec);                  // pièce prise dans l'inventaire : l'occupant y retourne
             Context.Sounds.Play("unit_place");
         }
         else if (!spec.Essential && overPanel)
         {
-            _pending.Add(spec);                         // retour à l'inventaire (jamais le commandant)
+            AddToReserve(spec);                         // retour à l'inventaire (jamais le commandant)
             Context.Sounds.Play("unit_pick");
         }
         else if (_dragFrom is { } from && _match.UnitAt(from) == null)
@@ -3134,7 +3184,7 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            _pending.Add(spec);                         // venait de l'inventaire : y retourne
+            AddToReserve(spec);                         // venait de l'inventaire : y retourne
             Context.Sounds.Play("unit_pick");
         }
 
@@ -3151,7 +3201,7 @@ public sealed class GameplayScene : Scene
         if (_dragFrom is { } from && _match.UnitAt(from) == null)
             PlacePlayer(_dragSpec, from);
         else
-            _pending.Add(_dragSpec);
+            AddToReserve(_dragSpec);
 
         _dragSpec = null;
         _dragFrom = null;
@@ -3518,7 +3568,7 @@ public sealed class GameplayScene : Scene
         _recycleRecruits.Clear();
         foreach (var spec in granted)
         {
-            _pending.Add(spec);        // vue locale de la réserve (posable dès le retour au placement)
+            AddToReserve(spec);        // vue locale de la réserve (posable dès le retour au placement)
             _recycleRecruits.Add(spec);
         }
         ClampInvScroll();
@@ -3555,7 +3605,7 @@ public sealed class GameplayScene : Scene
         var replacement = _run.RerollUnit(spec, new System.Random(), Context.Saves.IsUnitDiscovered, loot);
         if (replacement == null)
             return false;
-        _pending.Add(replacement);        // le remplaçant rejoint la réserve
+        AddToReserve(replacement);        // le remplaçant rejoint la réserve
         ClampInvScroll();
         Context.Sounds.Play("recruit");   // son positif : nouveau pion obtenu
         // Nœud « butin de relance » (Marchand) : la relance a AUSSI donné un équipement (déjà en inventaire) —
@@ -3825,20 +3875,30 @@ public sealed class GameplayScene : Scene
 
     private readonly List<UnitSpec> _engagedBuffer = new();
 
+    /// <summary>Slot VISUEL du portrait ENGAGÉ d'indice <paramref name="k"/> : à la suite des portraits et de la pile.</summary>
+    private int EngagedVisualSlot(int k) =>
+        _pending.Count + (ReservePileSlot() is null ? 0 : 1) + k;
+
     /// <summary>Case du portrait ENGAGÉ d'indice <paramref name="k"/> : à la suite des portraits de réserve et de la pile.</summary>
-    private Rectangle EngagedCardRect(int k) =>
-        SlotRect(_pending.Count + (ReservePileSlot() is null ? 0 : 1) + k);
+    private Rectangle EngagedCardRect(int k) => SlotRect(EngagedVisualSlot(k));
 
     /// <summary>Nombre de slots occupés dans la grille (portraits + éventuelle pile de fusion + engagés).</summary>
     private int InvSlotCount() =>
         _pending.Count + (ReservePileSlot() is null ? 0 : 1) + EngagedCount();
 
+    /// <summary>
+    /// Vrai quand le panneau porte les boutons du bas (COMMANDEMENT / COMBATTRE) : au PLACEMENT seulement.
+    /// Ailleurs (révélation de recrue en combat, recrutement, récompense) le panneau n'a que ses lignes
+    /// d'aide : la grille peut descendre plus bas, et LEUR garder la place amputait une rangée pour rien.
+    /// </summary>
+    private bool PanelHasBottomButtons => _run.Phase == RunPhase.Placement;
+
     /// <summary>Y sous lequel la grille ne doit pas déborder (au-dessus des lignes d'aide et des boutons).</summary>
     private int InvGridBottom()
     {
         var panel = PanelRect();
-        var firstBtnTop = ShowCommandTreeButton ? CommandTreeButtonRect().Y
-            : ShowFightButton ? FightButtonRect().Y
+        var firstBtnTop = PanelHasBottomButtons && ShowCommandTreeButton ? CommandTreeButtonRect().Y
+            : PanelHasBottomButtons && ShowFightButton ? FightButtonRect().Y
             : panel.Bottom - 24;
         return firstBtnTop - InvHintReserve;
     }
@@ -3859,6 +3919,22 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Borne le défilement à la plage valide (réserve rétrécie par un drag/fusion, etc.).</summary>
     private void ClampInvScroll() => _invScrollRow = System.Math.Clamp(_invScrollRow, 0, InvMaxScrollRow());
+
+    /// <summary>
+    /// Molette sur le panneau : fait défiler la grille de réserve quand elle déborde. Vrai si le geste a
+    /// été CONSOMMÉ (sinon il retombe sur le zoom du plateau). Partagé par tous les écrans qui montrent ce
+    /// panneau — au placement comme au recrutement/récompense, où la grille peut aussi déborder.
+    /// </summary>
+    private bool UpdateReserveScroll()
+    {
+        var scroll = Context.Input.ScrollDelta;
+        if (scroll == 0 || _equipPhase || CommandTreeOpen
+            || !IsOverPanel(Context.Input.MousePosition) || InvMaxScrollRow() == 0)
+            return false;
+        _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
+        ClampInvScroll();
+        return true;
+    }
 
     /// <summary>Manette : fait défiler pour que le portrait focalisé reste visible.</summary>
     private void EnsureInvFocusVisible()
@@ -4058,7 +4134,8 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            _pending.AddRange(_fusionGroup);   // sécurité : pas assez d'exemplaires
+            foreach (var back in _fusionGroup)   // sécurité : pas assez d'exemplaires
+                AddToReserve(back);
             _fusionGroup.Clear();
         }
     }
@@ -4075,11 +4152,12 @@ public sealed class GameplayScene : Scene
             {
                 PlacePlayer(_fusionGroup[0], cell);                 // la base reprend sa case
                 for (var i = 1; i < _fusionGroup.Count; i++)
-                    _pending.Add(_fusionGroup[i]);                  // le surplus va en réserve
+                    AddToReserve(_fusionGroup[i]);                  // le surplus va en réserve
             }
             else
             {
-                _pending.AddRange(_fusionGroup);
+                foreach (var back in _fusionGroup)
+                    AddToReserve(back);
             }
         }
         _fusionGroup.Clear();
@@ -4121,14 +4199,13 @@ public sealed class GameplayScene : Scene
         }
         else
         {
-            _pending.Add(fused);               // pile de réserve : va en réserve, prête à déployer
-            source = PanelCardRect(_pending.Count - 1);
+            source = PanelCardRect(AddToReserve(fused));   // pile de réserve : va en réserve, prête à déployer
         }
 
         // Nœud « fusion » de l'arbre : chaque fusion offre EN PLUS des tier 1 déjà découverts. La fusion
         // consomme 3 pions pour 1, la réserve a donc toujours la place — on garde quand même le garde-fou.
         foreach (var bonus in GrantFusionRecruits())
-            _pending.Add(bonus);
+            AddToReserve(bonus);
 
         // Version LONGUE (grand moment) uniquement la 1re fois qu'on obtient l'unité ; sinon version courte.
         var firstTime = !Context.Saves.IsUnitDiscovered(fused.UnitClass.Asset);
@@ -4398,6 +4475,7 @@ public sealed class GameplayScene : Scene
                 {
                     _recrueFlying = true;
                     _recrueFlightTimer = RecruitFlightDuration;
+                    BeginRecrueFlight();    // chaque pion vise DÉJÀ le slot où le tri va le ranger
                     _gpInventory = false;   // la place est faite : plus de focus réserve pendant le vol
                     Context.Sounds.Play("unit_place");
                 }
@@ -4407,11 +4485,15 @@ public sealed class GameplayScene : Scene
                 _recrueFlightTimer -= dt;
                 if (_recrueFlightTimer <= 0f)
                 {
-                    foreach (var gained in _recrueReveals)
+                    for (var i = 0; i < _recrueReveals.Count; i++)
                     {
+                        var gained = _recrueReveals[i];
                         _run.AddUnit(gained);   // la recrue rejoint l'armée (réserve), dans son slot
-                        _pending.Add(gained);   // …ET la vue locale du panneau, sinon elle disparaît à la fin du vol
+                        // …ET la vue locale du panneau, sinon elle disparaît à la fin du vol. Exactement le
+                        // slot visé pendant le vol (calculé par BeginRecrueFlight) : aucun saut à l'atterrissage.
+                        _pending.Insert(System.Math.Clamp(RecrueFlightSlot(i), 0, _pending.Count), gained);
                     }
+                    _recrueFlightSlots.Clear();
                     _recrueFlying = false;
                     _recrueAdded = true;
                     _recrueSettle = RecrueSettleDuration;
@@ -5461,6 +5543,12 @@ public sealed class GameplayScene : Scene
         if (_run.Phase == RunPhase.Recruitment)
             SetupReserveScreen();   // réserve = armée dans _pending → fusion façon placement (empiler → popup)
 
+        // Campagne GAGNÉE : on retient le palier (commandant × difficulté) pour l'écran de sélection, qui
+        // marque en vert les difficultés déjà bouclées avec ce commandant. Seul le MAXIMUM est gardé, donc
+        // un niveau élevé vaut aussi pour ceux du dessous (cf. SaveService.RecordCampaignWin).
+        if (_run.Phase == RunPhase.Victory)
+            Context.Saves.RecordCampaignWin(_run.CommanderDef.Id, _run.Difficulty);
+
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
         if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)
         {
@@ -5913,6 +6001,10 @@ public sealed class GameplayScene : Scene
         if (_reserveFullFlash > 0f)   // feedback « plus de place » (draft ou récompense)
             _reserveFullFlash -= dt;
 
+        // Le panneau de réserve est là aussi (draft / récompense) et peut déborder : la molette le défile
+        // comme au placement (ici la caméra ne tourne pas, donc rien d'autre ne lit la molette).
+        UpdateReserveScroll();
+
         // FUSION (façon placement) : popup de choix ouverte ou animation d'évolution → prioritaires, gèlent le reste.
         if (EvoPlaying) { UpdateEvolutionAnimation(dt); return; }
         if (FusionOpen) { UpdateFusionPopup(); return; }
@@ -6071,7 +6163,7 @@ public sealed class GameplayScene : Scene
             if (Context.Input.WasLeftReleased)
             {
                 if (!TryStackOnReserve(dragged, mouse))
-                    _pending.Add(dragged);
+                    AddToReserve(dragged);
                 _dragSpec = null;
                 _dragFrom = null;
             }
@@ -6112,8 +6204,13 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawReservePanelFusion(SpriteBatch sb)
     {
+        // On ne dessine QUE les slots de la fenêtre de défilement — exactement ceux que PanelCardAt accepte.
+        // Sans ce filtre, une réserve qui déborde affichait des portraits sous la zone cliquable : ils avaient
+        // l'air normaux mais ne répondaient ni au clic gauche (empiler) ni au clic droit (supprimer).
+        ClampInvScroll();
         for (var i = 0; i < _pending.Count; i++)
-            DrawInventoryCard(sb, _pending[i], PendingCardRect(i));
+            if (InvSlotVisible(PendingVisualSlot(i)))
+                DrawInventoryCard(sb, _pending[i], PendingCardRect(i));
         DrawFusionStack(sb);   // pile « N/3 » + bouton X (comme au placement)
 
         // Pions ENGAGÉS sur le plateau : en TRANSPARENT à la suite, pour que la grille dise la même chose que
@@ -6121,7 +6218,10 @@ public sealed class GameplayScene : Scene
         // _pending (cf. PanelCardAt, _invFocus), donc ils ne sont ni fusionnables ni supprimables.
         var engaged = EngagedSpecs();
         for (var k = 0; k < engaged.Count; k++)
-            DrawInventoryCard(sb, engaged[k], EngagedCardRect(k), EngagedCardAlpha);
+            if (InvSlotVisible(EngagedVisualSlot(k)))
+                DrawInventoryCard(sb, engaged[k], EngagedCardRect(k), EngagedCardAlpha);
+
+        DrawInventoryScrollbar(sb);   // la grille déborde : on le VOIT et la molette défile
 
         var panel = PanelRect();
         var counter = Loc.T("reserve.count", _run.ReserveCount, _run.ReserveLimit);
@@ -6958,11 +7058,9 @@ public sealed class GameplayScene : Scene
         // grille peut donc y déborder alors qu'elle tenait avant. Elle défile à la molette comme au placement.
         var scrollableReserve = _run.Phase == RunPhase.Placement || _recrueReveals.Count > 0;
         var scroll = Context.Input.ScrollDelta;
-        if (scroll != 0 && scrollableReserve && !_equipPhase && !CommandTreeOpen
-            && IsOverPanel(Context.Input.MousePosition) && InvMaxScrollRow() > 0)
+        if (scrollableReserve && UpdateReserveScroll())
         {
-            _invScrollRow += scroll < 0 ? 1 : -1;   // molette bas = descendre dans la liste
-            ClampInvScroll();
+            // molette consommée par la réserve (pas de zoom du plateau)
         }
         else if (scroll != 0 && _equipPhase && !CommandTreeOpen
             && IsOverPanel(Context.Input.MousePosition) && EquipMaxScroll() > 0)
@@ -7177,7 +7275,7 @@ public sealed class GameplayScene : Scene
             case RunPhase.Placement:
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, board);
-                if (BoardAssembled) DrawEnemyThreat(sb, board);
+                if (BoardAssembled) DrawThreatZones(sb, board);
                 if (BoardAssembled) DrawAuraHalos(sb, board);   // halos d'aura : c'est au placement qu'on s'y range
                 DrawChests(sb, board);                   // coffres (sous les unités : un allié peut être dessus)
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
@@ -7207,6 +7305,9 @@ public sealed class GameplayScene : Scene
                     DrawCarriedAtCursor(sb, board);          // pion porté AU-DESSUS des pièces
                     if (BoardAssembled)
                         DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
+                    // Objets du plateau (coffre, recrue, buisson, chute…) : la même infobulle qu'en combat.
+                    // Sous la sous-phase Équipement elle vient déjà de DrawCombatCards (cf. branche ci-dessus).
+                    DrawHoveredEnvironmentTooltip(sb, board);
                     DrawPanelBackground(sb);
                     DrawPlacementPanel(sb);
                     DrawInventoryFocusHighlight(sb);
@@ -7249,7 +7350,7 @@ public sealed class GameplayScene : Scene
             case RunPhase.Battle:
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawHighlights(sb, board);
-                DrawEnemyThreat(sb, board);
+                DrawThreatZones(sb, board);
                 DrawAuraHalos(sb, board);                // halos d'aura, par-dessus les zones mais sous les pions
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
@@ -7392,7 +7493,7 @@ public sealed class GameplayScene : Scene
         if (_run.Phase == RunPhase.Placement)
         {
             if (BoardAssembled && !_equipPhase) DrawDeploymentZone(sb, nb);
-            if (BoardAssembled) DrawEnemyThreat(sb, nb);
+            if (BoardAssembled) DrawThreatZones(sb, nb);
             if (BoardAssembled) DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
@@ -7410,7 +7511,7 @@ public sealed class GameplayScene : Scene
         }
         else   // Battle
         {
-            DrawHighlights(sb, nb); DrawEnemyThreat(sb, nb); DrawAuraHalos(sb, nb);
+            DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawBossSkulls(sb, nb);
@@ -7856,6 +7957,7 @@ public sealed class GameplayScene : Scene
         {
             $"{(gp ? "SELECT" : "F1")} : {Loc.T("hud.toggle_grid")}",
             $"{(gp ? "RT" : "ESPACE")} : {Loc.T("hud.danger_zones")}",
+            $"{(gp ? "LB" : "ALT")} : {Loc.T("hud.ally_zones")}",
         };
         // Le damier n'a pas de raccourci manette : la ligne n'apparaît qu'au clavier (jamais de touche affichée
         // qui ne correspond pas au périphérique actif).
@@ -7972,24 +8074,133 @@ public sealed class GameplayScene : Scene
                 DrawZoneBorder(sb, layout, cell, HealColor, 1);
     }
 
+    /// <summary>Vue d'ensemble des zones ENNEMIES (« zones de danger ») : Espace maintenu, ou RT à la manette.</summary>
+    private bool DangerZonesHeld => Context.Input.IsKeyDown(Keys.Space) || Context.Input.IsRightTriggerDown;
+
     /// <summary>
-    /// Au survol d'une unité ENNEMIE, prévisualise sa portée d'attaque : les cases qu'elle menace
-    /// sont teintées en rouge, l'ennemi survolé est cerclé. Au MAINTIEN d'Espace, on affiche d'un
-    /// coup les cases menacées par TOUS les ennemis (zones de danger globales). Aide à anticiper.
+    /// Vue d'ensemble des zones ALLIÉES (portée d'attaque de nos pions) : ALT maintenu, ou LB à la manette.
+    /// Pendant du <see cref="DangerZonesHeld"/> : LB était le dernier bouton libre en combat (A/B agissent,
+    /// X/Y et RB/LT/RT/Start/Select/L3/R3 servent déjà ailleurs).
     /// </summary>
-    private void DrawEnemyThreat(SpriteBatch sb, GridLayout layout)
+    private bool AllyZonesHeld =>
+        Context.Input.IsKeyDown(Keys.LeftAlt) || Context.Input.IsKeyDown(Keys.RightAlt)
+        || Context.Input.IsLeftShoulderDown;
+
+    // ── Hachures lumineuses des zones maintenues ──────────────────────────────────────────────────
+    // Un voile PLAT se confond avec le damier : sur une case sombre il ne change presque rien et l'œil ne
+    // « voit » plus la zone. On y ajoute donc des TRAITS diagonaux clairs, qui traversent la zone de case
+    // en case (la période divise la taille de case, cf. Textures.CreateDiagonalStripes) : ils se lisent sur
+    // n'importe quel fond, ils dessinent la frontière de la zone, et ils glissent lentement — le mouvement
+    // accroche l'œil sans clignotement fatigant. Chaque trait est doublé d'un halo plus large et plus
+    // discret : c'est lui qui donne la LUMIÈRE, le trait fin en étant le cœur.
+
+    private const int StripePeriod = 16;      // écart entre deux traits (px) — DOIT diviser la taille de case
+    private const int StripeCoreWidth = 2;    // épaisseur du trait
+    private const int StripeGlowWidth = 6;    // épaisseur du halo (centré sur le trait, cf. StripeGlowPhase)
+    private const int StripeGlowPhase = -2;   // décale le halo pour qu'il déborde des DEUX côtés du trait
+    private const float StripeCoreAlpha = 0.55f;
+    private const float StripeGlowAlpha = 0.16f;
+    private const float StripeSpeed = 7f;     // défilement des traits (px/s)
+
+    // Une texture de hachures par pas de phase, à la taille de case COURANTE (jamais mise à l'échelle :
+    // règle pixel-perfect). Reconstruites au changement de zoom, qui est rare.
+    private int _stripeTileSize;
+    private Texture2D[]? _stripeCore;
+    private Texture2D[]? _stripeGlow;
+
+    // Union des cases menacées, par camp. Champs (pas de locales) : réutilisés à chaque frame.
+    private readonly HashSet<Cell> _dangerUnion = new();
+    private readonly HashSet<Cell> _allyUnion = new();
+
+    /// <summary>Jeux de hachures pour la taille de case donnée (régénérés si le zoom a changé).</summary>
+    private void EnsureStripeTiles(int tileSize)
     {
-        // Espace (clavier) ou gâchette droite (manette) maintenu : toutes les zones de danger.
-        if (Context.Input.IsKeyDown(Keys.Space) || Context.Input.IsRightTriggerDown)
+        if (_stripeCore != null && _stripeTileSize == tileSize)
+            return;
+        DisposeStripeTiles();
+        _stripeTileSize = tileSize;
+        _stripeCore = new Texture2D[StripePeriod];
+        _stripeGlow = new Texture2D[StripePeriod];
+        for (var phase = 0; phase < StripePeriod; phase++)
         {
+            _stripeCore[phase] = Textures.CreateDiagonalStripes(
+                Context.GraphicsDevice, tileSize, StripePeriod, StripeCoreWidth, phase);
+            _stripeGlow[phase] = Textures.CreateDiagonalStripes(
+                Context.GraphicsDevice, tileSize, StripePeriod, StripeGlowWidth, phase + StripeGlowPhase);
+        }
+    }
+
+    private void DisposeStripeTiles()
+    {
+        if (_stripeCore != null)
+            foreach (var t in _stripeCore)
+                t.Dispose();
+        if (_stripeGlow != null)
+            foreach (var t in _stripeGlow)
+                t.Dispose();
+        _stripeCore = null;
+        _stripeGlow = null;
+    }
+
+    /// <summary>
+    /// Peint une zone : voile uni <paramref name="tint"/> à <paramref name="alpha"/>, puis les hachures
+    /// diagonales en <paramref name="shine"/> (halo large et discret + trait fin et vif). Trois quads par
+    /// case, les traits venant d'une texture dessinée à sa taille native.
+    /// </summary>
+    private void DrawHatchedZones(SpriteBatch sb, GridLayout layout, HashSet<Cell> cells,
+        Color tint, Color shine, float alpha)
+    {
+        if (cells.Count == 0)
+            return;
+        EnsureStripeTiles(layout.TileSize);
+        // Défilement : la phase avance dans le temps, en sens INVERSE pour que les traits descendent vers
+        // la droite (le motif est en « / », un décalage positif le remonte).
+        var phase = (StripePeriod - (int)(_time * StripeSpeed) % StripePeriod) % StripePeriod;
+        var core = _stripeCore![phase];
+        var glow = _stripeGlow![phase];
+
+        foreach (var cell in cells)
+        {
+            var top = layout.CellToScreen(cell.Column, cell.Row);
+            var rect = new Rectangle((int)top.X, (int)top.Y, layout.TileSize, layout.TileSize);
+            DrawRect(sb, rect, tint * alpha);
+            sb.Draw(glow, rect, shine * StripeGlowAlpha);
+            sb.Draw(core, rect, shine * StripeCoreAlpha);
+        }
+    }
+
+    /// <summary>
+    /// Au survol d'une unité ENNEMIE, prévisualise sa portée d'attaque : ses cases menacées, dans le MÊME
+    /// rendu que la vue d'ensemble (voile rouge + hachures lumineuses), l'ennemi survolé étant cerclé en
+    /// plus. Au MAINTIEN d'Espace, ce sont les cases menacées par TOUS les ennemis (zones de danger
+    /// globales) ; ALT fait de même pour NOS pions (en bleu). Aide à anticiper. Les deux vues se cumulent.
+    /// </summary>
+    private void DrawThreatZones(SpriteBatch sb, GridLayout layout)
+    {
+        // Vue d'ensemble maintenue : zones de danger (Espace / RT) et/ou zones alliées (ALT / LB).
+        var danger = DangerZonesHeld;
+        var ally = AllyZonesHeld;
+        if (danger || ally)
+        {
+            // UNION des cases par camp (tampons réutilisés : aucune allocation par frame). Une case menacée
+            // par trois pions n'est peinte qu'UNE fois : les voiles s'empilaient et la zone virait au blanc
+            // là où les portées se recoupent, ce qui brouillait justement la lecture.
+            _dangerUnion.Clear();
+            _allyUnion.Clear();
             foreach (var (cell, unit) in _match.Units())
             {
-                if (unit.Faction != Faction.Enemy)
+                var enemy = unit.Faction == Faction.Enemy;
+                if (!(enemy ? danger : ally))
                     continue;
                 _match.ThreatenedCells(cell, _threatCells);
+                var union = enemy ? _dangerUnion : _allyUnion;
                 foreach (var threat in _threatCells)
-                    DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
+                    union.Add(threat);
             }
+            // Allié : BLEU FRANC (Blue3) un peu plus opaque que le rouge ennemi. La sarcelle grisée du camp
+            // joueur (Cyan1) se noyait dans le sauge du terrain ; elle sert maintenant de reflet.
+            DrawHatchedZones(sb, layout, _dangerUnion, Palette.Purple5, Palette.Brown5, 0.30f);
+            DrawHatchedZones(sb, layout, _allyUnion, Palette.Blue3, Palette.Cyan1, 0.42f);
             if (!_showGrid)   // si le quadrillage permanent est déjà là, pas besoin de le redessiner
                 DrawBoardGrid(sb, layout, Palette.Green4);   // + grille pleine VERT foncé sur toute la map
             return;
@@ -8000,12 +8211,15 @@ public sealed class GameplayScene : Scene
         if (probe is not { } hovered || _match.UnitAt(hovered) is not { Faction: Faction.Enemy })
             return;
 
+        // MÊME rendu que la vue d'ensemble (Espace) : voile + hachures lumineuses. Le survol montrait avant
+        // un voile plat cerclé case par case, qui se lisait mal sur le damier — deux rendus différents pour
+        // la même information n'avaient pas lieu d'être.
         _match.ThreatenedCells(hovered, _threatCells);  // buffer réutilisé (pas d'allocation par frame)
+        _dangerUnion.Clear();                           // libre ici : la vue d'ensemble est sortie plus haut
         foreach (var threat in _threatCells)
-            DrawZone(sb, layout, threat, Palette.Purple5 * 0.30f);
-        foreach (var threat in _threatCells)               // quadrillage de la portée de l'ennemi survolé
-            DrawZoneBorder(sb, layout, threat, Palette.Purple5 * 0.6f, 1);
-        DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);
+            _dangerUnion.Add(threat);
+        DrawHatchedZones(sb, layout, _dangerUnion, Palette.Purple5, Palette.Brown5, 0.30f);
+        DrawZoneBorder(sb, layout, hovered, Palette.Purple5, 2);   // + l'ennemi décrit reste cerclé
     }
 
     // ── Barrière d'aura ──────────────────────────────────────────────────────────
@@ -9826,7 +10040,7 @@ public sealed class GameplayScene : Scene
             {
                 var card = DraftCardRect(i, count, availW, viewport.Height);
                 DrawUnitFlight(sb, _recrueReveals[i],
-                    new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f), _pending.Count + i, t);
+                    new Vector2(card.X + card.Width / 2f, card.Y + card.Height / 2f), RecrueFlightSlot(i), t);
             }
         }
     }
@@ -10335,6 +10549,10 @@ public sealed class GameplayScene : Scene
             // nom/rareté tant qu'ils ne sont pas figés.
             for (var i = 0; i < _chestRollItems.Count; i++)
                 DrawEquipSpriteAt(sb, _chestRollItems[i], ChestRollItemRect(chestRect, i, count));
+            // Même invite qu'à la phase Item : le clic passe le défilement et montre tout de suite le
+            // résultat (déjà tiré, cf. FinishChestRoll). Sans elle, rien ne dit qu'on peut abréger.
+            Context.Font.DrawCentered(sb, Loc.T("recrue.continue"),
+                new Rectangle(0, chestRect.Bottom + 18, availW, 12), 1, Palette.Cyan1);
         }
         else if (_chestPhase == ChestPhase.Item)
         {
@@ -11371,14 +11589,42 @@ public sealed class GameplayScene : Scene
         else
         {
             // Case nue (objet visible) : tooltip flottant juste au-dessus de la case (repli en dessous).
-            var vp = VirtualViewport;
+            // Bornée à la zone de JEU (AvailableWidth), pas au canvas : au placement, le panneau de droite
+            // occupe la fin de l'écran et l'infobulle d'une case de bord viendrait se glisser dessous.
+            var availW = AvailableWidth();
             var top = layout.CellToScreen(cell.Column, cell.Row);
             int cx = (int)top.X + layout.TileSize / 2;
-            int x = System.Math.Clamp(cx - EnvTooltipWidth / 2, 8, vp.Width - EnvTooltipWidth - 8);
+            int x = System.Math.Clamp(cx - EnvTooltipWidth / 2, 8, availW - EnvTooltipWidth - 8);
             int y = (int)top.Y - h - 6;
             if (y < 8) y = (int)top.Y + layout.TileSize + 6;
             DrawEnvTooltipPanel(sb, env.Name, env.Desc, x, y);
         }
+    }
+
+    /// <summary>
+    /// Infobulle d'environnement de la case survolée pour les écrans qui NE passent PAS par
+    /// <see cref="DrawCombatCards"/> — c'est-à-dire le PLACEMENT hors sous-phase Équipement. Les objets de
+    /// plateau (coffre, recrue/paysan, buisson, chute, obstacle, glace) se lisaient alors seulement une fois
+    /// le combat lancé, or c'est justement au placement qu'on décide où poser ses pions. Même règle de
+    /// position qu'en combat : au-dessus de la carte du pion s'il y en a un sur la case, sinon au-dessus
+    /// de la case.
+    /// </summary>
+    private void DrawHoveredEnvironmentTooltip(SpriteBatch sb, GridLayout layout)
+    {
+        if (!BoardAssembled || BoardOverlayActive)
+            return;
+        // Manette : la case décrite est celle du curseur — sauf quand le focus est parti dans le panneau
+        // (réserve / boutons), où le curseur ne désigne plus rien à l'écran.
+        if (Context.Input.UsingGamepad && (_gpInventory || _gpButtons))
+            return;
+        var hovered = Context.Input.UsingGamepad ? (Cell?)_cursor : HoverCellForCards();
+        if (hovered is not { } cell)
+            return;
+
+        // Pendant un glisser (pion ou pile porté), aucune carte d'aperçu n'est dessinée : l'infobulle
+        // reprend sa place flottante juste au-dessus de la case.
+        var card = _dragSpec is null && !_carryPile ? UnitCardRect(cell, layout) : null;
+        DrawEnvironmentTooltip(sb, layout, cell, card is null ? null : cell, card);
     }
 
     /// <summary>Hauteur du cadre tooltip d'environnement (nom + description repliée), largeur fixe.</summary>
@@ -12627,7 +12873,7 @@ public sealed class GameplayScene : Scene
 
         // Pion de la carte choisie en VOL vers son emplacement de réserve (par-dessus le reste).
         if (_recruitChoice is { } choice && _recruitHold > 0f)
-            DrawRecruitFlight(sb, choice, _pending.Count);   // nouveau slot = à la suite de la réserve
+            DrawRecruitFlight(sb, choice, ReserveInsertIndex(_pending, choice));   // slot = sa place dans l'ordre
     }
 
     /// <summary>
@@ -12817,6 +13063,77 @@ public sealed class GameplayScene : Scene
         Context.Font.DrawCentered(sb, label, r, 1, Palette.Yellow2);
     }
 
+    // ─── ORDRE DE LA RÉSERVE ──────────────────────────────────────────────────────────────────────
+    // Le panneau affiche la réserve DANS L'ORDRE DE LA LISTE (le slot N = l'élément N, cf. PanelCardAt) :
+    // trier l'affichage, c'est donc trier la liste elle-même. Ordre retenu : TIER décroissant (les pions
+    // les plus évolués en tête, ce sont ceux qu'on déploie en premier), puis DOMAINE, puis CLASSE — les
+    // exemplaires identiques finissent toujours côte à côte, ce qui saute aux yeux pour la fusion.
+
+    /// <summary>Comparaison d'ordre de réserve : tier décroissant, puis domaine, puis classe.</summary>
+    private static int CompareReserve(UnitSpec a, UnitSpec b)
+    {
+        var tier = b.UnitClass.Tier.CompareTo(a.UnitClass.Tier);
+        if (tier != 0)
+            return tier;
+        var domaine = ((int)a.Domaine).CompareTo((int)b.Domaine);
+        if (domaine != 0)
+            return domaine;
+        return string.CompareOrdinal(a.UnitClass.Asset, b.UnitClass.Asset);
+    }
+
+    /// <summary>
+    /// Indice où <paramref name="spec"/> doit se ranger dans <paramref name="reserve"/> (supposée déjà
+    /// triée) : APRÈS ses semblables, pour qu'un pion qui rentre ne double pas ceux déjà en place.
+    /// </summary>
+    private static int ReserveInsertIndex(List<UnitSpec> reserve, UnitSpec spec)
+    {
+        var i = reserve.Count;
+        while (i > 0 && CompareReserve(spec, reserve[i - 1]) < 0)
+            i--;
+        return i;
+    }
+
+    /// <summary>Trie la réserve (cf. <see cref="CompareReserve"/>). Tri STABLE : deux pions de même classe
+    /// mais d'équipement différent ne permutent jamais d'un tri à l'autre.</summary>
+    private static void SortReserve(List<UnitSpec> reserve)
+    {
+        var sorted = reserve
+            .OrderByDescending(u => u.UnitClass.Tier)
+            .ThenBy(u => (int)u.Domaine)
+            .ThenBy(u => u.UnitClass.Asset, System.StringComparer.Ordinal)
+            .ToList();
+        reserve.Clear();
+        reserve.AddRange(sorted);
+    }
+
+    /// <summary>
+    /// Fige le slot d'arrivée de chaque recrue en vol : on simule les insertions successives dans la
+    /// réserve pour que le vol vise DÉJÀ la place définitive (pas la fin de la liste).
+    /// </summary>
+    private void BeginRecrueFlight()
+    {
+        _recrueFlightSlots.Clear();
+        var preview = new List<UnitSpec>(_pending);
+        foreach (var spec in _recrueReveals)
+        {
+            var i = ReserveInsertIndex(preview, spec);
+            preview.Insert(i, spec);
+            _recrueFlightSlots.Add(i);
+        }
+    }
+
+    /// <summary>Slot visé par la recrue en vol d'indice <paramref name="i"/> (repli : à la suite de la réserve).</summary>
+    private int RecrueFlightSlot(int i) =>
+        i >= 0 && i < _recrueFlightSlots.Count ? _recrueFlightSlots[i] : _pending.Count + i;
+
+    /// <summary>Range un pion dans la réserve À SA PLACE et renvoie son indice (= son slot d'affichage).</summary>
+    private int AddToReserve(UnitSpec spec)
+    {
+        var i = ReserveInsertIndex(_pending, spec);
+        _pending.Insert(i, spec);
+        return i;
+    }
+
     /// <summary>L'armée actuelle hors commandant — affichée dans le panneau d'inventaire au recrutement.</summary>
     private List<UnitSpec> ArmyMinusCommander()
     {
@@ -12825,6 +13142,7 @@ public sealed class GameplayScene : Scene
         foreach (var spec in _run.Roster)
             if (spec != commander)
                 army.Add(spec);
+        SortReserve(army);
         return army;
     }
 
@@ -12841,6 +13159,7 @@ public sealed class GameplayScene : Scene
         foreach (var spec in _run.Roster)
             if (spec != commander && !deployed.Contains(spec))
                 reserve.Add(spec);
+        SortReserve(reserve);
         return reserve;
     }
 
@@ -13390,7 +13709,7 @@ public sealed class GameplayScene : Scene
         // Ancré EN HAUT À DROITE (au niveau de la frise) au lieu d'être centré sous elle : dégage le centre du
         // plateau. Calé au bord droit, mais borné pour ne jamais chevaucher la frise (résolution étroite / texte
         // localisé large) — son bord droit sert de butée gauche.
-        const int count = Run.MissionsPerPhase;
+        var count = TimelineCount();
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
         var frameRight = (railW + contentW) / 2 + 14;               // bord droit du fond de la frise
         var boxW = textW + 28;
@@ -13653,7 +13972,14 @@ public sealed class GameplayScene : Scene
     private const int TimelineTopY = 24;        // haut des nœuds (le libellé est au-dessus)
 
     /// <summary>
-    /// Frise en haut de l'écran : les <see cref="Run.MissionsPerPhase"/> missions de la PHASE courante,
+    /// Nombre de nœuds de la frise = missions de la PHASE COURANTE. Les phases n'ont pas toutes le même
+    /// rythme (la 3 n'a pas d'escarmouche avant le boss final), donc la frise se dimensionne à la phase.
+    /// </summary>
+    private int TimelineCount() => Run.MissionsIn(_run.PhaseIndex);
+
+    /// <summary>
+    /// Frise en haut de l'écran : les missions de la PHASE courante (leur nombre dépend de la phase,
+    /// cf. <see cref="TimelineCount"/> — la phase 3 en a une de moins),
     /// une icône par nature (escarmouche / spéciale / boss). Avancement lisible : missions passées =
     /// liseré vert + connecteur doré ; mission en cours = liseré doré pulsé ; à venir = sombre. Overlay
     /// dessiné au-dessus du plateau, centré dans la zone à gauche du panneau (jamais sous lui). Repère de
@@ -13665,7 +13991,7 @@ public sealed class GameplayScene : Scene
         if (_tutorial != null)
             return;
 
-        const int count = Run.MissionsPerPhase;
+        var count = TimelineCount();
         const int pitch = TimelineNodeSize + TimelineGap;
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
         // Même largeur de centrage que le PLATEAU (cf. CenteringWidth) : la frise reste alignée avec lui
@@ -13673,7 +13999,7 @@ public sealed class GameplayScene : Scene
         var railW = (int)CenteringWidth();
         var startX = (railW - contentW) / 2;
         var centerY = TimelineTopY + TimelineNodeSize / 2;
-        var current = _run.MissionInPhase;                          // 1..6
+        var current = _run.MissionInPhase;                          // 1..count
 
         sb.Begin(samplerState: SamplerState.PointClamp);
 
@@ -13723,7 +14049,7 @@ public sealed class GameplayScene : Scene
     /// <summary>Rectangle du nœud de rang <paramref name="i"/> (0-based) de la frise.</summary>
     private Rectangle TimelineNodeRect(int i)
     {
-        const int count = Run.MissionsPerPhase;
+        var count = TimelineCount();
         const int pitch = TimelineNodeSize + TimelineGap;
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
         var startX = ((int)CenteringWidth() - contentW) / 2;
@@ -13733,7 +14059,7 @@ public sealed class GameplayScene : Scene
     /// <summary>Cadre tramé de la frise (fond + nœuds), tel que dessiné par <see cref="DrawPhaseTimeline"/>.</summary>
     private Rectangle TimelineFrameRect()
     {
-        const int count = Run.MissionsPerPhase;
+        var count = TimelineCount();
         var contentW = count * TimelineNodeSize + (count - 1) * TimelineGap;
         var startX = ((int)CenteringWidth() - contentW) / 2;
         return new Rectangle(startX - 14, 6, contentW + 28, TimelineTopY + TimelineNodeSize + 2);
@@ -13759,7 +14085,7 @@ public sealed class GameplayScene : Scene
             return;
 
         var mouse = Context.Input.MousePosition;
-        for (var i = 0; i < Run.MissionsPerPhase; i++)
+        for (var i = 0; i < TimelineCount(); i++)
         {
             var area = TimelineNodeRect(i);
             if (!area.Contains(mouse))

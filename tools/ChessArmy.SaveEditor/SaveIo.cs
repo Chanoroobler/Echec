@@ -54,4 +54,11 @@ internal sealed class ProfileDto
     /// porter : sans ce champ, réécrire le profil remettrait le compteur du joueur à zéro.
     /// </summary>
     public int ChestsOpened { get; set; }
+
+    /// <summary>
+    /// Difficulté la plus haute GAGNÉE par commandant (id → valeur de <c>Difficulty</c>) : marque en vert les
+    /// boutons de difficulté du carrousel. Même raison que <see cref="ChestsOpened"/> — l'éditeur ne l'expose
+    /// pas mais DOIT le porter, sinon réécrire le profil effacerait ces victoires.
+    /// </summary>
+    public Dictionary<string, int> CommanderWins { get; set; } = new();
 }

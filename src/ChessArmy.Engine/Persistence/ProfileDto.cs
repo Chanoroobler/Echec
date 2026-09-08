@@ -35,4 +35,12 @@ public sealed class ProfileDto
     /// chaque partie. Absent d'un vieux profil → 0.
     /// </summary>
     public int ChestsOpened { get; set; }
+
+    /// <summary>
+    /// Méta-progression : pour chaque commandant (<c>CommandeDef.Id</c>), la difficulté la PLUS HAUTE avec
+    /// laquelle la campagne a été GAGNÉE — valeur de l'énumération <c>Difficulty</c> (0 = Facile). Comme on
+    /// ne garde que le maximum, terminer un niveau élevé vaut d'office pour tous les niveaux en dessous.
+    /// Absent d'un vieux profil ou commandant absent de la table → jamais gagné.
+    /// </summary>
+    public System.Collections.Generic.Dictionary<string, int> CommanderWins { get; set; } = new();
 }

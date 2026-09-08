@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using ChessArmy.Core.Campaign;
+using ChessArmy.Core.Battle;
 using ChessArmy.Engine.Settings;
 
 namespace ChessArmy.Engine.Persistence;
@@ -209,18 +210,72 @@ public sealed class SaveService
         });
     }
 
-    /// <summary>Efface toute la méta-progression (unités, équipements découverts, commandants débloqués ET coffres ouverts). Garde le reste du profil.</summary>
+    // ── Méta-progression : campagnes GAGNÉES (commandant × difficulté) ──────────────
+    // On ne retient que la difficulté la PLUS HAUTE gagnée avec chaque commandant : « terminer un niveau
+    // élevé termine les niveaux inférieurs » tombe alors tout seul (une simple comparaison), et le profil
+    // ne garde qu'un entier par commandant.
+
+    private Dictionary<string, int>? _commanderWins;
+
+    private Dictionary<string, int> CommanderWinSet() =>
+        _commanderWins ??= new Dictionary<string, int>(
+            TryRead<ProfileDto>(ProfilePath)?.CommanderWins ?? new Dictionary<string, int>());
+
+    /// <summary>
+    /// Difficulté la plus haute GAGNÉE avec ce commandant, ou <c>null</c> s'il n'a jamais fini de campagne.
+    /// </summary>
+    public Difficulty? BestWinWith(string commanderId) =>
+        !string.IsNullOrEmpty(commanderId) && CommanderWinSet().TryGetValue(commanderId, out var level)
+            ? (Difficulty)level
+            : null;
+
+    /// <summary>
+    /// Vrai si la campagne a déjà été gagnée avec ce commandant à <paramref name="difficulty"/> OU à un
+    /// niveau SUPÉRIEUR (un niveau plus dur vaut pour tous ceux du dessous).
+    /// </summary>
+    public bool HasWonWith(string commanderId, Difficulty difficulty) =>
+        BestWinWith(commanderId) is { } best && (int)best >= (int)difficulty;
+
+    /// <summary>
+    /// Enregistre une campagne gagnée avec ce commandant à ce niveau. Ne redescend JAMAIS le record.
+    /// Renvoie <c>true</c> si c'était un nouveau palier. Mémoire mise à jour SYNCHRONE ; persistance disque
+    /// (lecture-modification-écriture sous verrou pour préserver les autres champs) en arrière-plan.
+    /// </summary>
+    public bool RecordCampaignWin(string commanderId, Difficulty difficulty)
+    {
+        if (string.IsNullOrEmpty(commanderId))
+            return false;
+        var wins = CommanderWinSet();
+        if (wins.TryGetValue(commanderId, out var best) && best >= (int)difficulty)
+            return false;
+        wins[commanderId] = (int)difficulty;
+        var snapshot = new Dictionary<string, int>(wins);
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.CommanderWins = snapshot;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+        return true;
+    }
+
+    /// <summary>Efface toute la méta-progression (unités, équipements découverts, commandants débloqués, coffres ouverts ET campagnes gagnées). Garde le reste du profil.</summary>
     public void ResetMetaProgression()
     {
         _discovered = new HashSet<string>();
         _discoveredEquip = new HashSet<string>();
         _unlockedCommanders = new HashSet<string>();
         _chestsOpened = 0;
+        _commanderWins = new Dictionary<string, int>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
         dto.DiscoveredEquipment = new List<string>();
         dto.UnlockedCommanders = new List<string>();
         dto.ChestsOpened = 0;
+        dto.CommanderWins = new Dictionary<string, int>();
         TryWrite(ProfilePath, dto);
     }
 

@@ -118,7 +118,7 @@ public class FusionTests
     }
 
     [Fact]
-    public void Fuse_OnlyDuringPlacement()
+    public void Fuse_BySpec_OnlyDuringPlacement()
     {
         var run = RunWith(Soldat(), Soldat(), Soldat());
         var soldat = run.Roster.First(u => !u.Essential);
@@ -126,6 +126,35 @@ public class FusionTests
         run.StartBattle(); // on n'est plus en placement
         Assert.False(run.CanFuse(soldat));
         Assert.Null(run.Fuse(soldat, Domaines.Dame.BaseClass.Evolutions[0]));
+    }
+
+    [Fact]
+    public void FuseGroup_WorksDuringBattle_ForTheRecruitRevealPanel()
+    {
+        // Réserve pleine + tuile recrue en plein combat : le panneau propose d'empiler 3 pions NON déployés
+        // pour faire de la place. La fusion explicite doit donc aboutir EN COMBAT (sinon on choisit une
+        // évolution et rien ne se passe).
+        var run = RunWith(Soldat(), Soldat(), Soldat());
+        var group = run.Roster.Where(u => !u.Essential).Take(3).ToList();
+        var evolution = Domaines.Dame.BaseClass.Evolutions[0];
+
+        run.StartBattle();
+        var fused = run.Fuse(group, evolution);
+
+        Assert.NotNull(fused);
+        Assert.Equal(evolution, fused!.UnitClass);
+        Assert.DoesNotContain(run.Roster, u => group.Contains(u));   // les 3 exemplaires sont consommés
+    }
+
+    [Fact]
+    public void FuseGroup_IsRefused_OnceTheRunIsOver()
+    {
+        var run = RunWith(Soldat(), Soldat(), Soldat());
+        var group = run.Roster.Where(u => !u.Essential).Take(3).ToList();
+
+        run.StartBattle();
+        run.Defeat();   // run terminée : plus aucune fusion
+        Assert.Null(run.Fuse(group, Domaines.Dame.BaseClass.Evolutions[0]));
     }
 
     [Fact]

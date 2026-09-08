@@ -228,7 +228,7 @@ internal sealed class RecapForm : Form
         for (var p = 1; p <= Run.PhaseCount; p++)
         {
             var set = new SortedSet<int>();
-            for (var m = 1; m <= Run.MissionsPerPhase; m++)
+            for (var m = 1; m <= Run.MissionsIn(p); m++)
                 if (Run.MissionKindAt(p, m) == CombatType.Escarmouche)
                     set.Add(CampaignPlan.For(p, m).MapSize);
             map[p] = set;

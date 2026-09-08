@@ -11,7 +11,8 @@ namespace ChessArmy.Core.Tests;
 /// </summary>
 public class CampaignPlanTests
 {
-    // Table complète minimale (3 phases x 6 missions). Phase 1 m1 est unique ("enemies": [1, 2]) pour la retrouver.
+    // Table complète minimale (phases de 6 / 6 / 5 missions, cf. Run.MissionsIn — la phase 3 n'a pas
+    // d'escarmouche avant le boss). Phase 1 m1 est unique ("enemies": [1, 2]) pour la retrouver.
     private const string FullJson = """
     {
       "phases": [
@@ -26,7 +27,7 @@ public class CampaignPlanTests
         ] },
         { "missions": [
           { "mapSize": 8, "enemies": [3] }, { "mapSize": 8, "enemies": [3] }, { "mapSize": 8, "enemies": [3] },
-          { "mapSize": 8, "enemies": [3] }, { "mapSize": 8, "enemies": [3] }, { "mapSize": 8, "enemies": [3, 3, 3] }
+          { "mapSize": 8, "enemies": [3] }, { "mapSize": 8, "enemies": [3, 3, 3] }
         ] }
       ]
     }
@@ -38,12 +39,14 @@ public class CampaignPlanTests
         var table = CampaignPlan.FromJson(FullJson);
 
         Assert.Equal(3, table.Count);
-        Assert.All(table, phase => Assert.Equal(6, phase.Count));
+        Assert.Equal(6, table[0].Count);
+        Assert.Equal(6, table[1].Count);
+        Assert.Equal(5, table[2].Count);   // phase 3 : une mission de moins
 
         Assert.Equal(6, table[0][0].MapSize);
         Assert.Equal(new[] { 1, 2 }, table[0][0].Tiers);   // 2 ennemis : T1 + T2
-        Assert.Equal(8, table[2][5].MapSize);
-        Assert.Equal(3, table[2][5].Tiers.Count);          // phase 3 m6 : 3 ennemis
+        Assert.Equal(8, table[2][4].MapSize);
+        Assert.Equal(3, table[2][4].Tiers.Count);          // phase 3 m5 (boss final) : 3 ennemis
     }
 
     [Fact]
@@ -71,15 +74,15 @@ public class CampaignPlanTests
         Assert.Equal(7, CampaignPlan.For(1, 4).MapSize);        // spéciale ph.1 : 7x7
         Assert.Equal(7, CampaignPlan.For(1, 5).MapSize);        // escarmouche ph.1 m5 : 7x7
         Assert.Equal(6, CampaignPlan.For(1, 6).MapSize);        // boss ph.1 : 6x6
-        Assert.Equal(8, CampaignPlan.For(3, 6).MapSize);
-        Assert.Equal(12, CampaignPlan.For(3, 6).Tiers.Count);   // boss final : 12 (gabarit d'escortes)
+        Assert.Equal(8, CampaignPlan.For(3, 5).MapSize);
+        Assert.Equal(12, CampaignPlan.For(3, 5).Tiers.Count);   // boss final (ph.3 m5) : 12 (gabarit d'escortes)
     }
 
     [Fact]
     public void For_ClampsOutOfRange_WithoutThrowing()
     {
         Assert.Equal(CampaignPlan.For(1, 1), CampaignPlan.For(0, 0));
-        Assert.Equal(CampaignPlan.For(3, 6), CampaignPlan.For(99, 99));
+        Assert.Equal(CampaignPlan.For(3, 5), CampaignPlan.For(99, 99));   // dernière mission de la dernière phase
     }
 
     [Fact]

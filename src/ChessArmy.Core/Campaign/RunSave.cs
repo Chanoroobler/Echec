@@ -22,13 +22,15 @@ public sealed class RunSave
     /// v4 = le récap de run (<see cref="Stats"/>) est persisté (compteurs de fin de run).
     /// v3 = le commandant choisi (<see cref="CommanderId"/>) et la difficulté (<see cref="Difficulty"/>) sont
     /// persistés ; ces sauvegardes restent LISIBLES (récap absent → compteur neuf).
-    /// v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> = 18) : ces sauvegardes
-    /// restent LISIBLES — sans id, le commandant est retrouvé par l'asset de sa classe, et la difficulté
-    /// absente vaut Normal.
+    /// v2 = campagne en 3 phases de 6 missions (<see cref="Run.TotalCombats"/> valait alors 18) : ces
+    /// sauvegardes restent LISIBLES — sans id, le commandant est retrouvé par l'asset de sa classe, et la
+    /// difficulté absente vaut Normal. La phase 3 ayant depuis PERDU son escarmouche d'avant-boss (17
+    /// combats), un CombatNumber de 13 à 17 y désigne une mission décalée d'un cran, et 18 sort de la
+    /// grille : la sauvegarde est alors ignorée (cf. <see cref="IsUsable"/>). Migration acceptée telle quelle.
     /// v1 = ancienne boucle plate de 6 combats : LISIBLES aussi (leur
-    /// <see cref="CombatNumber"/> 1..6 tombe dans 1..18 et pointe désormais vers la nouvelle grille —
+    /// <see cref="CombatNumber"/> 1..6 tombe dans la grille et pointe désormais vers la nouvelle —
     /// combat 6 devient le boss de la PHASE 1, non plus le boss final ; migration acceptée telle quelle).
-    /// En revanche un <see cref="CombatNumber"/> hors [1..18] est impossible sous ce format → à ignorer
+    /// En revanche un <see cref="CombatNumber"/> hors [1..<see cref="Run.TotalCombats"/>] est à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
     public int Version { get; set; } = 6;

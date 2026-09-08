@@ -20,8 +20,8 @@
           {
             "name": "Archer", "asset": "archer", "hp": 14, "damage": 13, "moveRange": 1, "attackRange": 2, "traits": ["Zone morte","Transpercement"],
             "evolutions": [
-              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 3, "traits": ["Zone morte", "Balistique","Transpercement"] },
-              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 18, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Recule","Transpercement"] }
+              { "name": "Arbalétrier", "asset": "arbaletrier", "hp": 16, "damage": 16, "moveRange": 2, "attackRange": 2, "traits": ["Zone morte", "Recule","Transpercement"] },
+              { "name": "Rôdeur",      "asset": "rodeur",      "hp": 16, "damage": 15, "moveRange": 2, "attackRange": 2, "traits": ["Loup solitaire","Transpercement"] }
             ]
           },
           {
@@ -42,15 +42,15 @@
           {
             "name": "Clerc", "asset": "clerc", "hp": 12, "damage": 12, "moveRange": 2, "attackRange": 3, "traits": ["Soin"],
             "evolutions": [
-              { "name": "Pretresse", "asset": "pretresse", "hp": 12, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de célérité"] },
-              { "name": "Barde",      "asset": "barde",      "hp": 14, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
+              { "name": "Pretresse", "asset": "pretresse", "hp": 13, "damage": 14, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de célérité"] },
+              { "name": "Barde",      "asset": "barde",      "hp": 15, "damage": 12, "moveRange": 2, "attackRange": 4, "traits": ["Soin", "Aura de puissance"] }
             ]
           },
           {
             "name": "Sorcier", "asset": "sorcier", "hp": 10, "damage": 18, "moveRange": 2, "attackRange": 3, "traits": ["Orage"],
             "evolutions": [
               { "name": "Archimage", "asset": "archimage", "hp": 12, "damage": 22, "moveRange": 2, "attackRange": 3, "traits": ["Tempête"] },
-              { "name": "Démoniste", "asset": "demoniste", "hp": 16, "damage": 20, "moveRange": 3, "attackRange": 3, "traits": ["Drain de vie"] }
+              { "name": "Démoniste", "asset": "demoniste", "hp": 20, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Drain de vie"] }
             ]
           }
         ]
@@ -65,14 +65,14 @@
             "name": "Cavalier lourd", "asset": "cavalier_lourd", "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement"],
             "evolutions": [
               { "name": "Paladin",          "asset": "paladin",          "hp": 22, "damage": 18, "moveRange": 3, "attackRange": 3, "traits": ["Franchissement", "Impact"] },
-              { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 20, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
+              { "name": "Cavalier griffon", "asset": "cavalier_griffon", "hp": 24, "damage": 16, "moveRange": 3, "attackRange": 3, "traits": ["Vol"] }
             ]
           },
           {
             "name": "Archer monté", "asset": "archer_monte", "hp": 14, "damage": 12, "moveRange": 3, "attackRange": 2, "traits": ["Zone morte", "Franchissement", "Attaque libre"],
             "evolutions": [
-              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 14, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
-              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 15, "moveRange": 3, "attackRange": 3, "traits": ["Zone morte", "Attaque libre", "Balistique"] }
+              { "name": "Archer griffon",     "asset": "archer_griffon",     "hp": 16, "damage": 13, "moveRange": 3, "attackRange": 3, "piercesAllies": true, "traits": ["Zone morte", "Vol", "Attaque libre"] },
+              { "name": "Arbalétrier monté", "asset": "arbaletrier_monte", "hp": 18, "damage": 15, "moveRange": 3, "attackRange": 2, "traits": ["Zone morte", "Attaque libre", "Recule"] }
             ]
           }
         ]
@@ -87,7 +87,7 @@
             "name": "Garde", "asset": "garde", "hp": 20, "damage": 12, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart"],
             "evolutions": [
               { "name": "Phalange",   "asset": "phalange",   "hp": 24, "damage": 14, "moveRange": 2, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Rage"] },
-              { "name": "Forteresse", "asset": "forteresse", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
+              { "name": "Forteresse", "asset": "forteresse", "hp": 30, "damage": 12, "moveRange": 1, "attackRange": 2, "piercesAllies": true, "traits": ["Rempart", "Aura de rempart"] }
             ]
           },
           {

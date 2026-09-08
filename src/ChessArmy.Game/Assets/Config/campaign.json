@@ -1,18 +1,20 @@
-// Plan de campagne : pour CHAQUE mission (3 phases x 6 missions), la taille du plateau et les ennemis.
+// Plan de campagne : pour CHAQUE mission (phases 1 et 2 = 6 missions, phase 3 = 5), la taille du plateau
+// et les ennemis.
 //   mapSize : cote du plateau (6 = 6x6, 7 = 7x7, ...).
 //   enemies : liste de TIERS. La LONGUEUR = nombre d'ennemis, chaque VALEUR = le tier d'un ennemi (1, 2 ou 3).
 //             ex. [1,1,2] = 3 ennemis : 2 de tier 1 + 1 de tier 2.
 //
 // Rythme des missions par phase (cf. le jeu) :
 //   Phase 1 : Escarmouche, Escarmouche, Escarmouche, SPECIALE, Escarmouche, BOSS
-//   Phase 2-3 : Escarmouche, Escarmouche, SPECIALE, Escarmouche, Escarmouche, BOSS
+//   Phase 2 : Escarmouche, Escarmouche, SPECIALE, Escarmouche, Escarmouche, BOSS
+//   Phase 3 : Escarmouche, Escarmouche, SPECIALE, Escarmouche, BOSS FINAL  (pas d'escarmouche avant le boss)
 //
 // Selon le type de mission :
 //   - ESCARMOUCHE : effectif = longueur de "enemies" ; taille = "mapSize". (C'est ici qu'on regle escarmouches.)
 //   - SPECIALE / BOSS : "enemies" sert de GABARIT de tiers (cycle) ; l'effectif vient des cases de la map
 //     dessinee, et "mapSize" ne sert que de repli "terrain aleatoire". La taille reelle vient de la map.
 //
-// Ce fichier doit contenir EXACTEMENT 3 phases de 6 missions (sinon repli sur les valeurs codees).
+// Ce fichier doit contenir EXACTEMENT 3 phases de 6 / 6 / 5 missions (sinon repli sur les valeurs codees).
 {
   "phases": [
     {
@@ -41,8 +43,7 @@
         { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 2, 2, 3, 3] },     // m2 Escarmouche
         { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3] },  // m3 Speciale (gabarit)
         { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3] },  // m4 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3] },   // m5 Escarmouche
-        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3] } // m6 Boss final (gabarit des escortes)
+        { "mapSize": 8, "enemies": [2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3] } // m5 Boss final (gabarit des escortes)
       ]
     }
   ]
