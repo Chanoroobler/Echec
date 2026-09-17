@@ -85,6 +85,16 @@
     { "id": "EpineRare", "name": "Cactus", "rarity": "Rare", "effects": [{ "trait": "Épines" } ], "enemyAllowed": true},
     { "id": "EpineLegendaire", "name": "Cactus", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Épines" } ], "enemyAllowed": true},
     { "id": "auraCeleriteRare", "name": "Botte de célérité", "rarity": "Rare", "effects": [{ "trait": "Aura de célérité" } ], "enemyAllowed": true, "demo": false},
-    { "id": "auraCeleriteLegendaire", "name": "Botte de célérité", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Aura de célérité" } ], "enemyAllowed": true, "demo": false}
+    { "id": "auraCeleriteLegendaire", "name": "Botte de célérité", "rarity": "Legendary", "effects": [{ "stat": "Hp", "amount": 6 }, { "trait": "Aura de célérité" } ], "enemyAllowed": true, "demo": false},
+
+    // ── OBJETS À LANCER (commandant DUO) ───────────────────────────────────────────────────────────
+    // "sacoche": true = objet qui ne sort JAMAIS d'un coffre ni d'une vague ennemie : il ne se ramasse que
+    // sur une SACOCHE du terrain, et seulement par Basile. Il tient sur son pion comme un équipement normal
+    // (bonus de puissance + trait) mais se BRISE dès qu'il a servi UNE attaque (cf. Trait.Thrown / Match).
+    { "id": "grenade", "name": "Grenade", "rarity": "Common", "sacoche": true, "enemyAllowed": false, "effects": [ { "stat": "Damage", "amount": 8 }, { "trait": "Grenade" } ] },
+    { "id": "balleRebondissante", "name": "Balle rebondissante", "rarity": "Common", "sacoche": true, "enemyAllowed": false, "effects": [ { "stat": "Damage", "amount": 4 }, { "trait": "Balle rebondissante" } ] },
+    { "id": "javelotMeurtrier", "name": "Javelot meurtrier", "rarity": "Common", "sacoche": true, "enemyAllowed": false, "effects": [ { "stat": "Damage", "amount": 25 }, { "trait": "Javelot meurtrier" } ] },
+    { "id": "flecheCupidon", "name": "Flèche de Cupidon", "rarity": "Common", "sacoche": true, "enemyAllowed": false, "effects": [ { "stat": "Damage", "amount": -10 }, { "trait": "Flèche de Cupidon" } ] },
+    { "id": "seringue", "name": "Seringue", "rarity": "Common", "sacoche": true, "enemyAllowed": false, "effects": [ { "stat": "Damage", "amount": 4 }, { "trait": "Seringue" } ] }
   ]
 }

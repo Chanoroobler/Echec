@@ -262,14 +262,33 @@ public sealed class Run
     /// filtre par domaine.
     /// </summary>
     public IReadOnlyList<CommandNode> ActiveNodesFor(bool commander, Domaine? domaine = null) =>
+        ActiveNodesFor(commander ? BuffTarget.Commander : BuffTarget.Units, domaine);
+
+    /// <summary>
+    /// Même chose avec la cible EXPLICITE : un DUO a deux meneurs, et un nœud qui améliore Basile n'a rien à
+    /// faire sur la carte de l'artisan (cf. <see cref="BuffTarget"/>).
+    /// </summary>
+    public IReadOnlyList<CommandNode> ActiveNodesFor(BuffTarget target, Domaine? domaine = null) =>
         Tree.Nodes
-            .Where(n => _unlocked.Contains(n.Id) && n.Effects.Any(e => Affects(e, commander, domaine)))
+            .Where(n => _unlocked.Contains(n.Id) && n.Effects.Any(e => Affects(e, target, domaine)))
             .ToList();
 
+    /// <summary>Nœuds actifs sur ce gabarit précis (troupe, commandant ou second meneur).</summary>
+    public IReadOnlyList<CommandNode> ActiveNodesFor(UnitSpec spec) =>
+        ActiveNodesFor(TargetOf(spec), spec.Domaine);
+
     /// <summary>Vrai si <paramref name="effect"/> agit RÉELLEMENT sur la cible décrite (cf. <see cref="ActiveNodesFor"/>).</summary>
-    private static bool Affects(CommandEffect effect, bool commander, Domaine? domaine) =>
-        (commander ? effect.TargetsCommander : effect.TargetsUnits)
-        && (commander || domaine is null || effect.Domaine is not { } d || d == domaine);
+    private static bool Affects(CommandEffect effect, BuffTarget target, Domaine? domaine)
+    {
+        var hits = target switch
+        {
+            BuffTarget.Commander => effect.TargetsCommander,
+            BuffTarget.Companion => effect.TargetsCompanion,
+            _ => effect.TargetsUnits,
+        };
+        return hits && (target != BuffTarget.Units || domaine is null
+            || effect.Domaine is not { } d || d == domaine);
+    }
 
     /// <summary>
     /// Nombre de PAIRES DE CLASSES DISTINCTES du roster hors commandant (classes distinctes ÷ 2, arrondi
@@ -367,6 +386,31 @@ public sealed class Run
         return CommanderDef.LootPoints;
     }
 
+    /// <summary>
+    /// Soins de MENEUR déjà comptabilisés pour les points ce combat. Remis à zéro à chaque
+    /// <see cref="StartBattle"/>. Comparé à <c>CommandeDef.HealCap</c>.
+    /// </summary>
+    private int _healEvents;
+
+    /// <summary>Soins déjà comptabilisés ce combat (pour l'UI : « 1/2 »).</summary>
+    public int HealEventsThisCombat => _healEvents;
+
+    /// <summary>
+    /// Source de points « sur soin » (commandant DUO) : crédite <c>CommandeDef.HealPoints</c> pour UN soin
+    /// repris par l'un des meneurs en combat — trousse, drain, soin allié, peu importe la source —, dans la
+    /// limite de <c>CommandeDef.HealCap</c> soins par combat. À appeler AU MOMENT du soin (gain immédiat,
+    /// comme le feedback). Renvoie les points réellement crédités : 0 si le plafond est atteint ou si ce n'est
+    /// pas la source du commandant.
+    /// </summary>
+    public int GrantHealPoint()
+    {
+        if (CommanderDef.HealPoints <= 0 || _healEvents >= CommanderDef.HealCap)
+            return 0;
+        _healEvents++;
+        CommandPoints += CommanderDef.HealPoints;
+        return CommanderDef.HealPoints;
+    }
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {
@@ -416,6 +460,78 @@ public sealed class Run
     /// <summary>Pions tier 1 offerts à CHAQUE équipement recyclé (nœud « ferraille »). 0 = aucun.</summary>
     public int RecycleRecruits => TotalOf(CommandEffectKind.RecycleRecruit);
 
+    // ── COMMANDANT DUO : trousses de soin, sacoches, liens entre les deux meneurs ──────────────────
+
+    /// <summary>Vrai si un nœud est acheté (au moins un effet de ce type).</summary>
+    private bool Has(CommandEffectKind kind) => ActiveEffects.Any(e => e.Kind == kind);
+
+    /// <summary>Les TUILES RECRUE des maps sont des TROUSSES DE SOIN (nœud acheté). Sinon elles sont retirées.</summary>
+    public bool HealKitTiles => Has(CommandEffectKind.HealKitTiles);
+
+    /// <summary>Les COFFRES des maps sont des SACOCHES (nœud acheté). Sinon ils sont retirés.</summary>
+    public bool SatchelChests => Has(CommandEffectKind.SatchelChests);
+
+    /// <summary>Le COMMANDANT peut lui aussi prendre un objet dans une sacoche : il le rapporte à son COMPAGNON.</summary>
+    public bool SatchelForCompanion => Has(CommandEffectKind.SatchelForCompanion);
+
+    /// <summary>« Sacoche aimantée » : le COMPAGNON tire sur une sacoche à portée pour en faire venir un objet.</summary>
+    public bool SatchelPull => Has(CommandEffectKind.SatchelPull);
+
+    /// <summary>Une mise à mort du COMMANDANT fait apparaître une trousse de soin sur une case libre.</summary>
+    public bool HealKitOnKill => Has(CommandEffectKind.HealKitOnKill);
+
+    /// <summary>PV max gagnés (définitivement, sur la run) par TROUSSE DE SOIN utilisée. 0 = aucun.</summary>
+    public int HealKitMaxHp => TotalOf(CommandEffectKind.HealKitMaxHp);
+
+    /// <summary>PV max gagnés (définitivement, sur la run) par OBJET pris dans une sacoche. 0 = aucun.</summary>
+    public int SatchelMaxHp => TotalOf(CommandEffectKind.SatchelMaxHp);
+
+    /// <summary>« Roque » : les deux meneurs échangent leurs places quand l'un se déplace sur l'autre.</summary>
+    public bool Roque => Has(CommandEffectKind.Roque);
+
+    /// <summary>
+    /// Puissance gagnée par le COMMANDANT pour chaque tranche de <see cref="CommandEffect.CrossKillStep"/> mises
+    /// à mort de son COMPAGNON. 0 = nœud non acheté.
+    /// </summary>
+    public int CrossKillPower => TotalOf(CommandEffectKind.CrossKillPower);
+
+    /// <summary>
+    /// PV max GAGNÉS sur le terrain par les meneurs de ce DUO (trousses utilisées × <see cref="HealKitMaxHp"/>
+    /// + objets de sacoche × <see cref="SatchelMaxHp"/>), cumulés sur toute la run et PERSISTÉS avec elle.
+    /// Ajoutés aux PV max des deux meneurs au spawn (cf. <see cref="BonusMaxHp"/>).
+    /// </summary>
+    public int LeaderBonusHp { get; private set; }
+
+    /// <summary>
+    /// Enregistre un ramassage de terrain du DUO et crédite les PV max correspondants (nœuds « +1 PV max par
+    /// trousse / par objet de sacoche »). <paramref name="healKit"/> vrai = trousse de soin, faux = sacoche.
+    /// Renvoie les PV max réellement gagnés (0 si le nœud n'est pas acheté).
+    /// </summary>
+    public int GrantLeaderBonusHp(bool healKit)
+    {
+        var gain = healKit ? HealKitMaxHp : SatchelMaxHp;
+        if (!healKit)
+        {
+            // « Barda » : PLAFONNÉ PAR COMBAT. La sacoche ne se consomme pas — sans plafond, il suffirait d'y
+            // revenir en boucle pour empiler des PV max à l'infini.
+            gain = Math.Min(gain, SatchelMaxHpPerCombat - _satchelHpEvents);
+            if (gain <= 0)
+                return 0;
+            _satchelHpEvents += gain;
+        }
+        LeaderBonusHp += gain;
+        return gain;
+    }
+
+    /// <summary>PV max définitifs que « Barda » (sacoches) peut rapporter au maximum dans UN combat.</summary>
+    public const int SatchelMaxHpPerCombat = 2;
+
+    /// <summary>PV max déjà pris sur des sacoches dans le combat en cours (remis à zéro à chaque combat).</summary>
+    private int _satchelHpEvents;
+
+    /// <summary>PV max déjà gagnés sur des sacoches dans ce combat (cf. <see cref="SatchelMaxHpPerCombat"/>).</summary>
+    public int SatchelHpThisCombat => _satchelHpEvents;
+
     /// <summary>
     /// Vrai si la « Renaissance ultime » du commandant a DÉJÀ servi dans cette partie : le trait disparaît alors
     /// de ses buffs (cf. <see cref="BuffEffects"/>). Persisté avec la run.
@@ -433,8 +549,16 @@ public sealed class Run
     /// seule la scène le sait, absent → ces bonus valent 0.
     /// </summary>
     public CommandBuffs BuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount = null) =>
-        CommandBuffs.From(BuffEffects, spec.Essential, DistinctPairs, spec.Domaine, DomaineUnitCount,
-            deployedCount, EquippedItemCount, spec.Equipments.Count);
+        CommandBuffs.From(BuffEffects, TargetOf(spec), DistinctPairs, spec.Domaine, DomaineUnitCount,
+                deployedCount, EquippedItemCount, spec.Equipments.Count)
+            // DUO : les PV max ramassés sur le terrain (trousses, sacoches) profitent aux DEUX meneurs.
+            .Plus(EquipStat.Hp, spec.Essential ? LeaderBonusHp : 0);
+
+    /// <summary>Cible d'arbre d'un gabarit : le second meneur d'un DUO, le commandant, ou la troupe.</summary>
+    private static BuffTarget TargetOf(UnitSpec spec) =>
+        spec.Companion ? BuffTarget.Companion
+        : spec.Essential ? BuffTarget.Commander
+        : BuffTarget.Units;
 
     /// <summary>
     /// Nombre d'équipements POSSÉDÉS : ceux posés sur une unité de l'armée (commandant compris) PLUS ceux qui
@@ -522,7 +646,19 @@ public sealed class Run
     }
 
     /// <summary>Nature de la mission courante selon le rythme de la phase (<see cref="PhaseLayouts"/>).</summary>
-    public CombatType CurrentMission => MissionKindAt(PhaseIndex, MissionInPhase);
+    public CombatType CurrentMission => MissionKindFor(PhaseIndex, MissionInPhase);
+
+    /// <summary>
+    /// Nature de la mission (phase, rang) POUR CETTE RUN : <see cref="MissionKindAt"/>, sauf pour un
+    /// commandant SANS ARMÉE (cf. <see cref="NoArmy"/>) dont les missions SPÉCIALES deviennent des
+    /// escarmouches — sauver ou protéger des paysans n'a aucun sens quand on ne recrute jamais. C'est cette
+    /// version que la frise et la génération de combat doivent lire ; la statique reste le rythme « nu ».
+    /// </summary>
+    public CombatType MissionKindFor(int phaseIndex, int missionInPhase)
+    {
+        var kind = MissionKindAt(phaseIndex, missionInPhase);
+        return NoArmy && kind == CombatType.Speciale ? CombatType.Escarmouche : kind;
+    }
 
     /// <summary>Vrai si la mission courante est un combat de boss (dernière de chaque phase).</summary>
     public bool IsBossCombat => CurrentMission == CombatType.Boss;
@@ -552,6 +688,21 @@ public sealed class Run
     public UnitSpec Commander => _roster.First(u => u.Essential);
 
     /// <summary>
+    /// TOUS les meneurs de la run : le commandant, plus son SECOND meneur si c'est un DUO (cf.
+    /// <see cref="Battle.CommandeDef.CompanionId"/>). La chute de N'IMPORTE LEQUEL perd la run.
+    /// </summary>
+    public IReadOnlyList<UnitSpec> Commanders => _roster.Where(u => u.Essential).ToList();
+
+    /// <summary>SECOND meneur du DUO (rôle compagnon), ou <c>null</c> pour un commandant solo.</summary>
+    public UnitSpec? CompanionSpec => _roster.FirstOrDefault(u => u.Companion);
+
+    /// <summary>
+    /// Commandant SANS ARMÉE (cf. <see cref="Battle.CommandeDef.NoArmy"/>) : ni réserve, ni recrutement, ni
+    /// fusion, ni équipement, ni relance, ni mission spéciale ; coffres et tuiles recrue retirés des maps.
+    /// </summary>
+    public bool NoArmy => CommanderDef.NoArmy;
+
+    /// <summary>
     /// (Re)démarre une campagne : le commandant COURANT (celui choisi à la création — <see cref="Reset"/> n'en
     /// change pas) et ses pions de départ, combat 1, arbre de commandement vierge.
     /// </summary>
@@ -559,6 +710,9 @@ public sealed class Run
     {
         _roster.Clear();
         _roster.Add(ToSpec(CommanderDef));
+        // DUO : le second meneur arrive avec le commandant, ESSENTIEL comme lui (sa chute perd la run aussi).
+        if (Commandes.CompanionById(CommanderDef.CompanionId) is { } companion)
+            _roster.Add(new UnitSpec(companion.Movement, companion.BaseClass, essential: true, companion: true));
         foreach (var domaine in CommanderDef.StartingUnits)
             _roster.Add(new UnitSpec(domaine, Domaines.Of(domaine).BaseClass));
         _draft.Clear();
@@ -573,7 +727,10 @@ public sealed class Run
         _aiFreshT2 = null;          // nouveauté IA retirée à neuf : recalculée au 1er combat qui aligne le tier
         _aiFreshT3 = null;
         UltimateReviveUsed = false; // « Renaissance ultime » : une fois par PARTIE, donc rendue à la nouvelle
+        LeaderBonusHp = 0;          // DUO : les PV max ramassés sur le terrain repartent de zéro
         _lootEvents = 0;
+        _healEvents = 0;
+        _satchelHpEvents = 0;
         Phase = RunPhase.Placement;
     }
 
@@ -598,10 +755,11 @@ public sealed class Run
         int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
         string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null,
         IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null,
-        bool ultimateReviveUsed = false)
+        bool ultimateReviveUsed = false, int leaderBonusHp = 0)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
         run.UltimateReviveUsed = ultimateReviveUsed;
+        run.LeaderBonusHp = Math.Max(0, leaderBonusHp);   // DUO : PV max ramassés sur le terrain
         if (stats != null)
             run.Stats = stats;   // récap repris de la sauvegarde (sinon compteur neuf du constructeur)
         // Nouveauté IA figée pour la run (null = à recalculer au 1er combat du tier concerné) : la reprise
@@ -1456,6 +1614,8 @@ public sealed class Run
         if (Phase == RunPhase.Placement)
             Phase = RunPhase.Battle;
         _lootEvents = 0;   // le plafond de points « sur butin » (Marchand) est PAR COMBAT
+        _healEvents = 0;   // idem pour le plafond de points « sur soin » (DUO)
+        _satchelHpEvents = 0;   // …et le plafond de PV max « Barda » (DUO)
     }
 
     /// <summary>Repasse en phase de placement SANS avancer le combat (fin du tutoriel → combat 1).</summary>
@@ -1479,7 +1639,12 @@ public sealed class Run
             return;
         }
 
-        BuildDraft(defeatedEnemies);
+        // SANS ARMÉE : rien à drafter (le commandant DUO ne recrute jamais). L'écran post-combat s'ouvre
+        // quand même — draft vide — et la scène enchaîne aussitôt sur le placement suivant.
+        if (!NoArmy)
+            BuildDraft(defeatedEnemies);
+        else
+            _draft.Clear();
         Phase = RunPhase.Recruitment;
     }
 

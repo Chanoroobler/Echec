@@ -236,6 +236,9 @@ public sealed class GameplayScene : Scene
     private readonly HashSet<Cell> _chestPrev = new();
     private Texture2D? _chestSprite;        // PNG du coffre fermé (placeholder coloré si absent)
     private Texture2D? _chestAnim;          // spritesheet d'ouverture (256×64 = 4 frames de 64×64)
+    private Texture2D? _trousseSprite;      // DUO : PNG de la trousse de soin (placeholder si absent)
+    private Texture2D? _petiteTrousseSprite;// DUO : PNG de la PETITE trousse (repli sur la normale si absent)
+    private Texture2D? _sacocheSprite;      // DUO : PNG de la sacoche (placeholder si absent)
 
     // Révélation MODALE à l'ouverture d'un coffre (fige le combat), calquée sur la recrue. Machine à phases :
     // Opening (anim du coffre) → Rolling (« machine à sous » : l'objet monte en défilant vite pendant ~3 s puis
@@ -335,6 +338,16 @@ public sealed class GameplayScene : Scene
     // Orage / Tempête : éclairs sur tous les pions à l'attaque d'un porteur. Cases et chiffres figés
     // AVANT l'attaque (le domaine applique la foudre instantanément), déclenchés à l'impact.
     private readonly StormFx _storm = new();
+
+    /// <summary>« Balle rebondissante » (DUO) : la balle ricoche d'ennemi en ennemi, en arc, après le coup direct.</summary>
+    private readonly BounceFx _bounce = new();
+    // « Réaction en chaîne » : l'artisan SAUTE de victime en victime ; chaque maillon n'est résolu qu'à son
+    // atterrissage (cf. UpdateChainFx), puis il rentre d'un dernier bond sur _chainHome.
+    private readonly ChainFx _chain = new();
+    private Cell? _chainHome;   // case RÉELLE de l'artisan (le moteur ne le bouge pas) : il y revient à la fin
+
+    /// <summary>Trajectoire en attente : la balle part au CONTACT de l'attaque (comme les éclairs d'orage), pas avant.</summary>
+    private (Cell From, List<Cell> Path)? _pendingBounce;
     private List<Cell>? _pendingStormBolts;                    // pions à foudroyer (visuel)
     private List<(Cell Cell, int Damage)>? _pendingStormHits;  // ennemis touchés + dégâts (chiffres)
     // Impact / Recule (traits d'action) : chiffres de dégâts figés APRÈS l'attaque, déclenchés à l'impact
@@ -342,6 +355,9 @@ public sealed class GameplayScene : Scene
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
     private List<(Cell Cell, int Damage)>? _pendingThorns;      // assaillants piqués par les « Épines » de leur cible
     private List<Cell>? _pendingImpactZone;                     // zone AoE de l'« Impact » à l'attaque (tremblement des tuiles), reportée à l'impact
+    private Cell? _pendingGrenade;                              // « Grenade » : case visée, souffle reporté à l'impact
+    private (Cell Center, float T)? _grenadeBlast;              // souffle EN COURS (avancement [0,1]) : anneau + flash
+    private const float GrenadeBlastDuration = 0.34f;           // durée du souffle (s) : court, c'est une détonation
     private (Cell Cell, int Damage)? _pendingReculeSlam;        // cible plaquée par le « Recule » (dégât bonus)
     private const float ReculeSlamPopupDelay = 0.24f;          // délai (s) avant le « +N » de plaquage, pour le lire APRÈS le chiffre direct
     // « Recule » qui ACHÈVE : la cible survit au coup direct (flash) mais meurt du +5 de plaquage. On DIFFÈRE sa
@@ -542,6 +558,8 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _attackTargets = new();   // cases avec un ennemi réellement à portée
     private readonly List<Cell> _attackReach = new();     // toute la PORTÉE de tir (cases atteintes, même vides)
     private readonly List<Cell> _healTargets = new();     // trait « Soin » : alliés blessés à portée, ciblables pour soigner
+    private readonly List<Cell> _satchelTargets = new();  // « Sacoche aimantée » (DUO) : sacoches LIBRES dans la ligne de tir
+    private readonly List<Cell> _satchelReach = new();    // …tampon de portée pour les calculer (pas d'allocation)
     // Couleur du feedback de SOIN pour la CASE (zone), l'aperçu de PV et le chiffre « +N ».
     private static readonly Color HealColor = Palette.Green2;   // vert #314e3f
     // Couleur du HALO (aura autour des alliés soignables) : distincte de la case.
@@ -681,6 +699,11 @@ public sealed class GameplayScene : Scene
         // Objets recrue (pion « ? ») et buisson : PNG optionnels, repli sur un placeholder dessiné.
         LoadRecrueSprites();   // tous les looks recrue (Assets/Objects/*_front.png) : une variante par case
         _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
+        // Commandant DUO : trousse de soin (remplace la tuile recrue) et sacoche (remplace le coffre).
+        // PNG 64×64 OPTIONNELS — sans eux, un placeholder est dessiné (croix verte / besace brune).
+        _trousseSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/trousse.png"));
+        _petiteTrousseSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/trousse_petite.png"));
+        _sacocheSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/sacoche.png"));
         _chuteSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/chute.png"));
         _equipSlotBg = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Equipment/background.png"));
         _rerollIcon = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/relance.png"));
@@ -724,6 +747,12 @@ public sealed class GameplayScene : Scene
         _chestSprite = null;
         _chestAnim?.Dispose();
         _chestAnim = null;
+        _trousseSprite?.Dispose();
+        _trousseSprite = null;
+        _petiteTrousseSprite?.Dispose();
+        _petiteTrousseSprite = null;
+        _sacocheSprite?.Dispose();
+        _sacocheSprite = null;
         foreach (var (front, back) in _recrueLooks)
         {
             front.Dispose();
@@ -871,7 +900,7 @@ public sealed class GameplayScene : Scene
         {
             var phase = Run.PhaseOf(n);
             var mission = Run.MissionOf(n);
-            if (Run.MissionKindAt(phase, mission) != CombatType.Escarmouche)
+            if (_run.MissionKindFor(phase, mission) != CombatType.Escarmouche)
                 continue;
             var pool = ShuffledEscarmouchePool(phase, mission);
             chosen = pool.Count == 0
@@ -1170,6 +1199,8 @@ public sealed class GameplayScene : Scene
         // coffres communs. Les buissons doivent être recensés AVANT le Match (ils modifient les dégâts).
         _bushCells.Clear();
         _recrueCells.Clear();
+        _petiteTrousseCells.Clear();
+        _trousseToss.Clear();
         _chestCells.Clear();
         _chuteCells.Clear();
         _chuteArmed.Clear();
@@ -1180,10 +1211,9 @@ public sealed class GameplayScene : Scene
                 switch (o.Kind)
                 {
                     case MapObjectKind.Bush: _bushCells.Add(o.Cell); break;
-                    case MapObjectKind.Recruit: _recrueCells.Add(o.Cell); break;
-                    case MapObjectKind.ChestCommon: _chestCells.Add(o.Cell); break;
                     case MapObjectKind.Chute: _chuteCells.Add(o.Cell); break;
                 }
+        RefreshLootObjects();   // recrues + coffres (ou trousses + sacoches du DUO, selon les nœuds achetés)
 
         // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
         // éliminer tous les ennemis ne gagne PAS le combat : le joueur poursuit son objectif (seule la chute
@@ -1199,11 +1229,8 @@ public sealed class GameplayScene : Scene
         var playerBlocked = IsProtectMission ? _recrueCells : null;
         // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé », « Formation renforcée »… (cf. Run + Match).
         _match = new Match(Columns, Rows, _battlefield, _bushCells,
-            eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked,
-            rempartBonus: _run.RempartBonus,
-            tueurGeantsBonus: _run.TueurDeGeantsBonus, formationBonus: _run.FormationBonus);
-        _match.ImpactBonus = _run.ImpactBonus;              // « Impact renforcé »
-        _match.ExtraTurnDomaine = _run.ExtraTurnDomaine;   // nœud « charge » : un kill de ce domaine rend la main
+            eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
+        ApplyTreeTuningToMatch();
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
         _specialBriefOpen = _specialMission;
@@ -1220,6 +1247,8 @@ public sealed class GameplayScene : Scene
         _recrueConsumed.Clear();
         _recrueCaptured.Clear();
         _recruePrev.Clear();
+        _leaderHp.Clear();          // DUO : le suivi des soins repart à neuf (les pions sont neufs aussi)
+        _trousseKillsSeen = null;   // DUO : les trousses posées sur mise à mort se recomptent par combat
         _recrueReveals.Clear();
         _recrueAdded = false;
         _recrueFlying = false;
@@ -1265,11 +1294,18 @@ public sealed class GameplayScene : Scene
         _dragFrom = null;
         _damagePopups.Clear();   // pas de chiffre/explosion reporté du combat précédent
         _storm.Clear();
+        _bounce.Clear();
+        _chain.Clear();
+        _chainHome = null;
+
+        _pendingBounce = null;
         _tremor.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingGrenade = null;
+        _grenadeBlast = null;
         _pendingThorns = null;
         _pendingReculeSlam = null;
         _victimMove = null;
@@ -1299,8 +1335,19 @@ public sealed class GameplayScene : Scene
         var commander = _run.Commander;
         PlacePlayer(commander, commanderCell);
 
+        // COMMANDANT DUO : le SECOND meneur est essentiel lui aussi — il entre donc sur le plateau comme le
+        // premier, jamais par la réserve (qui ne sert qu'aux pions de troupe). Posé sur la case de
+        // déploiement libre la plus proche ; le joueur les repositionne ensuite tous les deux à la souris.
+        var companion = _run.CompanionSpec;
+        if (companion != null)
+        {
+            var spot = PlayerDeployCells().FirstOrDefault(c => _match.UnitAt(c) == null, commanderCell);
+            if (_match.UnitAt(spot) == null)
+                PlacePlayer(companion, spot);
+        }
+
         foreach (var spec in _run.Roster)
-            if (spec != commander)
+            if (spec != commander && spec != companion)
                 _pending.Add(spec);
         SortReserve(_pending);   // réserve toujours rangée par tier puis domaine (cf. CompareReserve)
 
@@ -1402,6 +1449,8 @@ public sealed class GameplayScene : Scene
         _boardIntro = _boardIntroTotal = 0f;                    // pas d'animation d'assemblage en tutoriel
         _bushCells.Clear();
         _recrueCells.Clear();
+        _petiteTrousseCells.Clear();
+        _trousseToss.Clear();
         _chestCells.Clear();
         _chestConsumed.Clear();
         _chestPrev.Clear();
@@ -1424,11 +1473,18 @@ public sealed class GameplayScene : Scene
         _dragFrom = null;
         _damagePopups.Clear();
         _storm.Clear();
+        _bounce.Clear();
+        _chain.Clear();
+        _chainHome = null;
+
+        _pendingBounce = null;
         _tremor.Clear();
         _pendingStormBolts = null;
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingGrenade = null;
+        _grenadeBlast = null;
         _pendingThorns = null;
         _pendingReculeSlam = null;
         _victimMove = null;
@@ -1584,22 +1640,54 @@ public sealed class GameplayScene : Scene
     /// Objets « recrue » : quand un allié ENTRE sur une de ces cases en combat (déplacement terminé),
     /// on gagne un pion aléatoire (tier 1) en réserve et l'objet est consommé (usage unique). La
     /// détection par transition (absent→présent) évite de se déclencher sur une unité simplement placée là.
+    /// Un pion qui FRANCHIT la case en dérapant sur la glace la ramasse aussi (cf. <see cref="SlidOver"/>).
     /// </summary>
     private void CheckRecrueObjects()
     {
         if (_recrueCells.Count == 0)
             return;
 
-        foreach (var c in _recrueCells)
+        // Copie : le nœud « atelier de campagne » peut AJOUTER une tuile pendant le combat (cf. TrackTrousseKills).
+        foreach (var c in _recrueCells.ToList())
         {
             if (_recrueConsumed.Contains(c))
                 continue;
             var allyOn = _match.UnitAt(c) is { Faction: Faction.Player };
-            if (allyOn && !_recruePrev.Contains(c))
-                TriggerRecrue(c);
+            // Allié qui ENTRE dessus… ou qui l'a TRAVERSÉE en dérapant, sans pouvoir s'y arrêter.
+            var passerBy = allyOn ? null : SlidOver(c);
+            if ((allyOn && !_recruePrev.Contains(c)) || passerBy != null)
+            {
+                // Commandant DUO : la tuile est une TROUSSE DE SOIN, pas un recrutement.
+                if (TrousseMode) TriggerTrousse(c, passerBy);
+                else TriggerRecrue(c);
+            }
             if (allyOn) _recruePrev.Add(c); else _recruePrev.Remove(c);
         }
     }
+
+    /// <summary>
+    /// « Glace » : le pion qui a FRANCHI <paramref name="cell"/> pendant la dernière glissade, ou <c>null</c>.
+    /// Un pion qui atterrit sur un objet posé sur une tuile glissante DÉRAPE au-delà : l'occupation seule ne le
+    /// verra jamais dessus, et l'objet resterait à tout jamais hors d'atteinte — on ne peut pas s'arrêter sur la
+    /// glace. On le lui donne donc AU PASSAGE. La case de REPOS est exclue : celle-là est déjà vue par
+    /// l'occupation courante. La glissade n'est récoltée qu'UNE fois (<see cref="_slideHarvested"/>) : le moteur
+    /// garde son chemin jusqu'à l'action suivante, et une sacoche ne se consomme pas.
+    /// </summary>
+    private Unit? SlidOver(Cell cell)
+    {
+        if (_match.LastSlide is not { Count: > 1 } path || ReferenceEquals(path, _slideHarvested))
+            return null;
+        for (var i = 0; i < path.Count - 1; i++)
+            if (path[i] == cell)
+                return _match.UnitAt(path[^1]) is { Faction: Faction.Player } slider ? slider : null;
+        return null;
+    }
+
+    /// <summary>
+    /// Dernière glissade DÉJÀ récoltée (cf. <see cref="SlidOver"/>) : le moteur conserve son chemin jusqu'à
+    /// l'action suivante, on ne ramasse donc pas le même objet à chaque frame.
+    /// </summary>
+    private IReadOnlyList<Cell>? _slideHarvested;
 
     /// <summary>
     /// Mission « protéger les paysans » : quand un ENNEMI (IA offensive) atteint une case paysan, celui-ci
@@ -1689,6 +1777,7 @@ public sealed class GameplayScene : Scene
     /// Coffres : quand un allié ENTRE sur une case coffre en combat (déplacement terminé), le coffre s'ouvre
     /// (équipement commun en inventaire) et est consommé (usage unique). Détection par transition (absent→présent),
     /// comme les tuiles recrue, pour ne pas déclencher sur une unité simplement posée là au placement.
+    /// Un pion qui FRANCHIT la case en dérapant sur la glace l'ouvre aussi (cf. <see cref="SlidOver"/>).
     /// </summary>
     private void CheckChests()
     {
@@ -1700,8 +1789,14 @@ public sealed class GameplayScene : Scene
             if (_chestConsumed.Contains(c))
                 continue;
             var allyOn = _match.UnitAt(c) is { Faction: Faction.Player };
-            if (allyOn && !_chestPrev.Contains(c))
-                OpenChest(c);
+            var passerBy = allyOn ? null : SlidOver(c);
+            if ((allyOn && !_chestPrev.Contains(c)) || passerBy != null)
+            {
+                // Commandant DUO : le coffre est une SACOCHE — elle ne s'ouvre pas, Basile y PREND un objet
+                // à lancer et elle reste en place (cf. TriggerSacoche).
+                if (SacocheMode) TriggerSacoche(c, passerBy);
+                else OpenChest(c);
+            }
             if (allyOn) _chestPrev.Add(c); else _chestPrev.Remove(c);
         }
     }
@@ -2386,7 +2481,11 @@ public sealed class GameplayScene : Scene
             _commandTree.Update(_run, CommandTreeArea(), (float)gameTime.ElapsedGameTime.TotalSeconds,
                 canClose: _tutorial == null);   // en tuto, on ne sort qu'après avoir acheté un nœud
             if (!CommandTreeOpen)
+            {
                 RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
+                ApplyTreeTuningToMatch();        // …et le moteur ses réglages (Roque, renforcements de traits, charge)
+                RefreshLootObjects();            // DUO : « trousse de soin » / « sacoche » garnissent la map EN COURS
+            }
             return;
         }
 
@@ -3047,8 +3146,8 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Cibles de la croix EN COMBAT : avec un pion sélectionné, TOUS ses coups possibles — ennemis à portée,
-    /// alliés soignables ET cases de déplacement légales, dans un même parcours ; sans sélection (ou si le
-    /// pion ne peut rien faire), les pions alliés.
+    /// alliés soignables, sacoches aimantables ET cases de déplacement légales, dans un même parcours ; sans
+    /// sélection (ou si le pion ne peut rien faire), les pions alliés.
     /// </summary>
     private List<Cell> CombatSnapTargets()
     {
@@ -3056,6 +3155,7 @@ public sealed class GameplayScene : Scene
         {
             var acts = new List<Cell>(_attackTargets);
             acts.AddRange(_healTargets);
+            acts.AddRange(_satchelTargets);
             acts.AddRange(_legalMoves);
             if (acts.Count > 0) return acts;
         }
@@ -3495,11 +3595,30 @@ public sealed class GameplayScene : Scene
         var top = layout.CellToScreen(cell.Column, cell.Row);
         var size = layout.TileSize;
         var spriteLift = (int)(size * SpriteLiftFraction);
-        var cx = (int)top.X + size / 2;
-        var y = (int)top.Y - spriteLift - s - 2;                 // juste au-dessus du sommet du sprite
+        // Le badge est COLLÉ au pion : il suit son soulèvement et ses glissements (sélection, rebond d'arrivée,
+        // recul, dérapage sur la glace…). Sans ça l'icône reste plantée sur la case pendant que le pion bouge.
+        var move = UnitBadgeOffset(cell, layout);
+        var cx = (int)top.X + size / 2 + move.X;
+        var y = (int)top.Y - spriteLift - s - 2 + move.Y;        // juste au-dessus du sommet du sprite
         var count = System.Math.Max(1, slots);
         var left = cx - count * s / 2;
         return new Rectangle(left + System.Math.Clamp(slot, 0, count - 1) * s, y, s, s);
+    }
+
+    /// <summary>
+    /// Décalage de dessin du pion posé sur <paramref name="cell"/> : soulèvement (sélection / rebond
+    /// d'arrivée) et glissements (recul de victime, repli, dérapage, tremblement de tuile « chute »).
+    /// MÊME calcul que <see cref="DrawUnit"/> — ce qui s'accroche au pion (badge d'objet) doit le suivre.
+    /// </summary>
+    private Point UnitBadgeOffset(Cell cell, GridLayout layout)
+    {
+        var size = layout.TileSize;
+        var kb = IsFxVictim(cell) ? VictimKnockback(size)
+               : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
+               : VictimMoveOffset(cell, layout);
+        kb += _pierceRecoil.Offset(cell, size);
+        kb.Y += ChuteTrembleY(cell) - UnitLift(cell, size);
+        return kb;
     }
 
     /// <summary>Slots d'équipement affichés au-dessus d'un pion posé (0 = il ne s'équipe pas : le commandant, sauf arbre du Marchand).</summary>
@@ -3636,6 +3755,9 @@ public sealed class GameplayScene : Scene
     {
         // Masquée pendant le tuto, SAUF la leçon dédiée « relance » qui a justement besoin de la montrer.
         if (_tutorial is not (null or { Step: TutorialStep.RerollLesson }))
+            return;
+        // Commandant SANS ARMÉE : rien à relancer ni à recycler (ni pion ni équipement) — pas d'icône.
+        if (_run.NoArmy)
             return;
 
         var frame = RerollIconRect();
@@ -4386,6 +4508,9 @@ public sealed class GameplayScene : Scene
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point (coup reçu Lancier / coup à distance Fou)
+        TrackLeaderHeals();              // DUO : un meneur qui reprend des PV rapporte un point (plafonné par combat)
+        UpdateTrousseToss(dt);           // DUO : les petites trousses en vol suivent leur arc (posées par TrackTrousseKills)
+        UpdateGrenadeBlast(dt);          // souffle de grenade en cours (DUO)
         ConsumeUltimateRevive();         // « Renaissance ultime » déclenchée : consommée pour TOUTE la partie
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
 
@@ -4406,8 +4531,12 @@ public sealed class GameplayScene : Scene
                 CheckPaysanCapture();
             if (!IsProtectMission)
                 CheckRecrueObjects();
+            TrackTrousseKills();   // DUO : une mise à mort de l'artisan lance une petite trousse de soin
             CheckChests();         // ouverture d'un coffre si un allié vient d'entrer dessus
             UpdateChuteTiles();    // arme les tuiles « chute » occupées ; effondre celles qu'un pion vient de quitter
+            // Glissade sur glace RÉCOLTÉE (objets franchis au passage, cf. SlidOver) : le moteur garde son chemin
+            // jusqu'à l'action suivante, on ne la ramasse donc qu'une seule fois.
+            _slideHarvested = _match.LastSlide;
         }
 
         // Révélation modale du coffre : combat FIGÉ pendant toute la séquence (ouverture → objet → vol).
@@ -4519,6 +4648,7 @@ public sealed class GameplayScene : Scene
                 else OnImpact();
             }
             _storm.Update(dt);    // les éclairs avancent en parallèle de la fin de l'anim d'attaque
+            UpdateBounceFx(dt);   // …et la balle ricoche pendant ce temps-là
             return;
         }
 
@@ -4527,6 +4657,23 @@ public sealed class GameplayScene : Scene
         if (_storm.Active)
         {
             _storm.Update(dt);
+            UpdateBounceFx(dt);
+            return;
+        }
+
+        // « Balle rebondissante » : la balle finit sa trajectoire avant que quoi que ce soit d'autre
+        // n'avance — sinon l'ennemi jouerait pendant qu'elle est encore en l'air.
+        if (_bounce.Active)
+        {
+            UpdateBounceFx(dt);
+            return;
+        }
+
+        // « Réaction en chaîne » : l'attaquant enchaîne ses bonds, un maillon à la fois. Rien d'autre n'avance
+        // tant qu'il frappe — chaque victime doit encaisser SOUS LES YEUX du joueur, à l'arrivée du poing.
+        if (_chain.Active)
+        {
+            UpdateChainFx(dt);
             return;
         }
 
@@ -4705,7 +4852,8 @@ public sealed class GameplayScene : Scene
     /// combat comme aux découvertes de terrain (coffres, tuiles recrue).
     /// </summary>
     private bool BattleSettled =>
-        !_fx.Active && !_storm.Active && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active
+        !_fx.Active && !_storm.Active && !_bounce.Active && !_chain.Active
+        && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active
         && _pendingSlide is null && _pendingRiposte is null && _pendingInterceptions.Count == 0
         && _pendingSlamDissolve is null && _pendingPierceDissolve is null;
 
@@ -5198,6 +5346,14 @@ public sealed class GameplayScene : Scene
         if (_tutorial != null)   // en tuto : pas de recrutement/défaite/sauvegarde — géré par le guide
             return;
 
+        // DUO : les unités retournées par une « Flèche de Cupidon » disparaissent à la clôture — elles ne
+        // comptent ni dans les pertes ni dans le butin. Retirées AVANT tout décompte.
+        if (_match.IsOver)
+        {
+            RemoveCharmedUnits();
+            ClearSatchelItems();
+        }
+
         // Défaite (commandant tombé / armée anéantie) : décisive dans TOUS les modes, y compris spéciale.
         if (_match.IsOver && _match.Winner == Faction.Enemy)
         {
@@ -5429,6 +5585,434 @@ public sealed class GameplayScene : Scene
         Context.Sounds.Play("command_point");
     }
 
+    // ═══ COMMANDANT DUO : trousses de soin, sacoches, objets à lancer ══════════════════════════════
+
+    /// <summary>PV rendus par une TROUSSE DE SOIN ramassée sur le terrain.</summary>
+    private const int TrousseHeal = 15;
+
+    /// <summary>
+    /// PV rendus par une PETITE TROUSSE DE SOIN : celles que le nœud « atelier de campagne » envoie sur le
+    /// terrain à chaque mise à mort. Bien moins qu'une vraie trousse — elles sont gratuites et répétables.
+    /// </summary>
+    private const int PetiteTrousseHeal = 5;
+
+    /// <summary>Durée du saut d'une petite trousse vers sa case (s) : le temps de LIRE d'où elle part.</summary>
+    private const float TrousseTossDuration = 0.35f;
+
+    /// <summary>
+    /// Les tuiles RECRUE de la map sont des TROUSSES DE SOIN : commandant SANS ARMÉE dont le nœud d'arbre
+    /// est acheté. Sans le nœud, ces tuiles sont simplement retirées de la map (cf. la configuration du combat).
+    /// </summary>
+    private bool TrousseMode => _run is { NoArmy: true, HealKitTiles: true };
+
+    /// <summary>Les COFFRES de la map sont des SACOCHES (même règle que <see cref="TrousseMode"/>).</summary>
+    private bool SacocheMode => _run is { NoArmy: true, SatchelChests: true };
+
+    /// <summary>Le SECOND meneur du duo (Basile) tel qu'il est sur le plateau, ou null s'il n'y est pas.</summary>
+    private Unit? Basile => _playerSpec.FirstOrDefault(kv => kv.Value.Companion).Key;
+
+    /// <summary>
+    /// Applique SÉANCE TENANTE aux deux meneurs POSÉS les PV max que la run vient de leur créditer (trousse,
+    /// sacoche). Sans ça le gain serait purement comptable : il n'entrerait dans leurs stats qu'au spawn du
+    /// combat SUIVANT (les buffs d'arbre sont figés à la pose), alors qu'il se ramasse en pleine bataille.
+    /// La run garde le total (<see cref="Run.LeaderBonusHp"/>) : au respawn, c'est elle qui le rend.
+    /// </summary>
+    private void GrantLeadersMaxHp(int bonus)
+    {
+        if (bonus <= 0)
+            return;
+        foreach (var (unit, spec) in _playerSpec)
+            if (spec.Essential && unit.IsAlive)
+                unit.GainMaxHp(bonus);
+    }
+
+    /// <summary>PV des meneurs à la frame précédente : toute REMONTÉE rapporte un point de commandement.</summary>
+    private readonly Dictionary<Unit, int> _leaderHp = new();
+
+    /// <summary>
+    /// Mises à mort du commandant DÉJÀ converties en trousse (nœud « atelier de campagne »). <c>null</c> au
+    /// début d'un combat : <see cref="Battle.Unit.Kills"/> est un compteur À VIE, on le relève donc à la
+    /// première frame pour ne compter que les kills de CE combat (sinon tout son passé pleuvrait d'un coup).
+    /// </summary>
+    private int? _trousseKillsSeen;
+
+    /// <summary>
+    /// Cases de <see cref="_recrueCells"/> qui portent une PETITE trousse (posée par une mise à mort) et non
+    /// une vraie trousse de la map : elles ne rendent que <see cref="PetiteTrousseHeal"/> PV.
+    /// </summary>
+    private readonly HashSet<Cell> _petiteTrousseCells = new();
+
+    /// <summary>
+    /// Petites trousses EN VOL : elles sautent de l'artisan vers leur case (<c>T</c> = avancement [0,1]).
+    /// Tant qu'une trousse vole, sa case n'est pas encore dans <see cref="_recrueCells"/> — elle n'existe
+    /// qu'à l'atterrissage (cf. <see cref="UpdateTrousseToss"/>). Purement cosmétique : ne gèle pas le tour.
+    /// </summary>
+    private readonly List<(Cell From, Cell To, float T)> _trousseToss = new();
+
+    /// <summary>
+    /// Reporte sur le MOTEUR tous les réglages qui viennent de l'arbre de commandement : renforcements de
+    /// traits (Rempart, Tueur de géants, Formation, Impact), nœud « charge », et les deux liens du DUO
+    /// (puissance sur les kills de l'autre meneur, Roque).
+    ///
+    /// Appelée à la création du Match ET quand l'arbre se referme : un nœud acheté doit agir sur la mission
+    /// où on l'achète, pas seulement sur la suivante. Les bonus portés par les UNITÉS suivent un autre chemin
+    /// (<see cref="RespawnPlayerUnitsFromSpecs"/>) ; ceux-ci vivent sur le <see cref="Match"/> lui-même.
+    /// </summary>
+    private void ApplyTreeTuningToMatch()
+    {
+        _match.RempartBonus = _run.RempartBonus;             // « Rempart renforcé »
+        _match.TueurDeGeantsBonus = _run.TueurDeGeantsBonus; // « Tueur de géants renforcé »
+        _match.FormationBonus = _run.FormationBonus;         // « Formation renforcée »
+        _match.ImpactBonus = _run.ImpactBonus;               // « Impact renforcé »
+        _match.ExtraTurnDomaine = _run.ExtraTurnDomaine;     // nœud « charge » : un kill de ce domaine rend la main
+        _match.CrossKillPower = _run.CrossKillPower;         // DUO : puissance gagnée sur les kills de l'AUTRE meneur
+        _match.RoqueEnabled = _run.Roque;                    // DUO : les deux meneurs échangent leurs places
+    }
+
+    /// <summary>
+    /// (Re)recense les objets de BUTIN de la map : tuiles recrue et coffres. Le commandant SANS ARMÉE les
+    /// remplace par des trousses de soin et des sacoches — mais SEULEMENT une fois le nœud d'arbre acheté ;
+    /// sans lui, l'objet est retiré de la map (il ne lui servirait à rien).
+    ///
+    /// Rappelée quand l'arbre se referme : acheter « trousse de soin » ou « sacoche » doit garnir la map
+    /// EN COURS, pas celle d'après — le joueur dépense ses points en regardant le terrain sur lequel il va
+    /// se battre. Sans danger : l'arbre ne s'achète qu'en PLACEMENT, où rien n'a encore été consommé.
+    /// </summary>
+    private void RefreshLootObjects()
+    {
+        _recrueCells.Clear();
+        _petiteTrousseCells.Clear();
+        _trousseToss.Clear();
+        _chestCells.Clear();
+        _recruePrev.Clear();
+        _chestPrev.Clear();
+        _slideHarvested = null;
+        if (_map is not { } map)
+            return;
+
+        foreach (var o in map.Objects)
+            switch (o.Kind)
+            {
+                case MapObjectKind.Recruit when TrousseMode || !_run.NoArmy: _recrueCells.Add(o.Cell); break;
+                case MapObjectKind.ChestCommon when SacocheMode || !_run.NoArmy: _chestCells.Add(o.Cell); break;
+            }
+    }
+
+    /// <summary>
+    /// TROUSSE DE SOIN : un meneur BLESSÉ qui entre sur la case reprend <see cref="TrousseHeal"/> PV et
+    /// consomme la trousse. Un pion à PV pleins ne la déclenche pas — elle reste sur le terrain pour plus
+    /// tard, plutôt que de se gâcher. Le point de commandement, lui, vient de la remontée de PV
+    /// (cf. <see cref="TrackLeaderHeals"/>), comme n'importe quelle autre source de soin.
+    /// </summary>
+    /// <param name="c">Case de la trousse.</param>
+    /// <param name="passerBy">
+    /// Pion qui a FRANCHI la case en dérapant sur la glace : il n'est plus dessus, mais il a bien pris la
+    /// trousse au passage (cf. <see cref="SlidOver"/>). <c>null</c> = le pion qui s'y tient.
+    /// </param>
+    private void TriggerTrousse(Cell c, Unit? passerBy = null)
+    {
+        if ((passerBy ?? _match.UnitAt(c)) is not { Faction: Faction.Player } unit || unit.Hp >= unit.MaxHp)
+            return;
+
+        _recrueConsumed.Add(c);
+        var petite = _petiteTrousseCells.Contains(c);
+        var healed = unit.Heal(petite ? PetiteTrousseHeal : TrousseHeal);
+        // Les « + » s'affichent sur le PION, pas sur la trousse : en dérapage il a déjà quitté cette case.
+        c = _match.CellOf(unit) ?? c;
+        _damagePopups.SpawnText(c, "+" + healed, HealColor);
+        // Nœud « remède durable » : chaque trousse du TERRAIN donne des PV max DÉFINITIFS aux DEUX meneurs.
+        // Les PETITES (posées par « atelier de campagne ») n'y donnent pas droit : elles se produisent à la
+        // chaîne au fil des mises à mort, ça ferait une source de PV max sans fin.
+        if (!petite && _run.GrantLeaderBonusHp(healKit: true) is > 0 and var bonus)
+        {
+            GrantLeadersMaxHp(bonus);
+            _damagePopups.SpawnText(c, Loc.T("fx.max_hp", bonus), Palette.Yellow1, new Vector2(0f, -0.5f));
+        }
+        Context.Sounds.Play("reward");
+    }
+
+    /// <summary>
+    /// SACOCHE : seul BASILE (le second meneur) y prend un OBJET À LANCER, et seulement s'il n'en porte pas
+    /// déjà un. La sacoche ne se consomme JAMAIS — il peut revenir en chercher un autre après avoir lancé le
+    /// sien. Tout autre pion qui passe dessus ne déclenche rien.
+    /// </summary>
+    /// <param name="c">Case de la sacoche.</param>
+    /// <param name="passerBy">Pion qui l'a FRANCHIE en dérapant sur la glace (cf. <see cref="SlidOver"/>).</param>
+    private void TriggerSacoche(Cell c, Unit? passerBy = null)
+    {
+        if ((passerBy ?? _match.UnitAt(c)) is not { Faction: Faction.Player } picker || !CanTakeFromSatchel(picker))
+            return;
+        if (Basile is not { IsAlive: true } basile)
+            return;
+        if (Equipments.RollSatchel(new System.Random()) is not { } item)
+            return;
+
+        basile.AddEquipment(item);
+        if (_playerSpec.TryGetValue(basile, out var spec))
+            spec.AddEquipment(item);   // le gabarit aussi : la carte du pion et le rendu le montrent
+        Context.Saves.DiscoverEquipment(item.Id);   // codex : l'objet est vu
+        // Pas de « +NOM DE L'OBJET » ici : l'icône apparaît aussitôt au-dessus de sa tête et le tooltip de
+        // survol donne déjà son nom. Un troisième rappel au même endroit ne fait que masquer le plateau.
+        // Nœud « barda » : chaque objet pris donne des PV max DÉFINITIFS aux DEUX meneurs.
+        if (_run.GrantLeaderBonusHp(healKit: false) is > 0 and var bonus)
+        {
+            GrantLeadersMaxHp(bonus);
+            _damagePopups.SpawnText(c, Loc.T("fx.max_hp", bonus), Palette.Yellow1);
+        }
+        Context.Sounds.Play("reward");
+    }
+
+    /// <summary>
+    /// Vrai si ce pion peut PUISER dans une sacoche maintenant : c'est le compagnon (ou le commandant avec le
+    /// nœud « coursier », qui fouille POUR lui), Basile est vivant et il n'a pas déjà un objet à lancer — il
+    /// doit d'abord s'en servir avant d'en reprendre un.
+    /// </summary>
+    private bool CanTakeFromSatchel(Unit picker) =>
+        (picker.IsCompanion || (_run.SatchelForCompanion && picker.IsEssential))
+        && Basile is { IsAlive: true } basile
+        && !basile.Equipments.Any(e => e.Satchel);
+
+    /// <summary>
+    /// « Sacoche aimantée » : sacoches que le pion de <paramref name="from"/> peut TIRER à lui plutôt que
+    /// d'aller marcher dessus — nœud acheté, pion capable d'y puiser (cf. <see cref="CanTakeFromSatchel"/>)
+    /// et sacoche dans sa LIGNE DE TIR. Une sacoche OCCUPÉE est écartée : l'ennemi posté dessus en fait une
+    /// cible d'attaque ordinaire (le tir le frappe, et rien n'est ramassé).
+    /// </summary>
+    private void RefreshSatchelTargets(Cell from)
+    {
+        _satchelTargets.Clear();
+        if (!SacocheMode || !_run.SatchelPull || _chestCells.Count == 0)
+            return;
+        if (_match.UnitAt(from) is not { Faction: Faction.Player } picker || !CanTakeFromSatchel(picker))
+            return;
+
+        _match.ThreatenedCells(from, _satchelReach);
+        foreach (var c in _chestCells)
+            if (_match.UnitAt(c) is null && _satchelReach.Contains(c))
+                _satchelTargets.Add(c);
+    }
+
+    /// <summary>
+    /// « Sacoche aimantée » : le tir part sur la sacoche et en ramène un objet à Basile. Le tour est consommé
+    /// comme pour une attaque (cf. <see cref="Match.TrySpendAction"/>) — la sacoche, elle, reste sur le terrain
+    /// comme d'habitude : on peut y revenir une fois l'objet lancé.
+    /// </summary>
+    private void ResolveSatchelPull(Cell from, Cell satchel)
+    {
+        if (_match.UnitAt(from) is not { } shooter)
+            return;
+        FaceToward(shooter, from, satchel);
+        Context.Sounds.Play("unit_shoot");
+        TriggerSacoche(satchel, shooter);
+        _match.TrySpendAction(from);
+    }
+
+    /// <summary>
+    /// Source de points « sur soin » (commandant DUO) : toute REMONTÉE de PV d'un meneur — trousse, drain,
+    /// soin allié — rapporte un point, dans la limite du plafond par combat. Détectée par comparaison avec
+    /// les PV de la frame précédente : le moteur n'a pas à connaître cette règle de campagne. Appelée chaque
+    /// frame de combat. Sans effet pour un commandant dont ce n'est pas la source.
+    /// </summary>
+    private void TrackLeaderHeals()
+    {
+        if (_run.CommanderDef.HealPoints <= 0)
+            return;
+
+        foreach (var (unit, spec) in _playerSpec)
+        {
+            if (!spec.Essential)
+                continue;
+            var before = _leaderHp.TryGetValue(unit, out var hp) ? hp : unit.Hp;
+            _leaderHp[unit] = unit.Hp;
+            if (unit.Hp <= before || !unit.IsAlive)
+                continue;
+            var points = _run.GrantHealPoint();
+            if (points <= 0)
+                continue;
+            if (_match.CellOf(unit) is { } cell)
+                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", points), Palette.Yellow1);
+            Context.Sounds.Play("command_point");
+        }
+    }
+
+    /// <summary>
+    /// Nœud « atelier de campagne » : chaque MISE À MORT du commandant (l'artisan meurtrier) envoie une PETITE
+    /// TROUSSE DE SOIN sur une case libre — la plus proche de lui. Suit son compteur de kills du combat : une
+    /// trousse par mise à mort nouvelle. Sans effet si le nœud n'est pas acheté ou si le plateau est plein.
+    ///
+    /// La trousse ne se pose pas d'un coup : elle SAUTE depuis l'artisan (cf. <see cref="UpdateTrousseToss"/>),
+    /// pour qu'on voie d'où elle vient et où elle atterrit. Elle n'entre dans le terrain qu'à l'arrivée.
+    ///
+    /// Appelée seulement quand le combat est POSÉ (cf. <c>BattleSettled</c>, comme les coffres et les tuiles
+    /// recrue) : le moteur crédite la mise à mort INSTANTANÉMENT, alors que le coup se joue en différé. Sans
+    /// cette garde, une riposte (ou une réaction en chaîne) verrait la trousse partir AVANT son animation.
+    /// Rien n'est perdu — le compteur de kills attend — la trousse part juste une fois le coup joué, et depuis
+    /// la case où l'artisan se tient VRAIMENT à ce moment-là.
+    /// </summary>
+    private void TrackTrousseKills()
+    {
+        if (!_run.NoArmy || !_run.HealKitOnKill)
+            return;
+        var artisan = _playerSpec.FirstOrDefault(kv => kv.Value.Essential && !kv.Value.Companion).Key;
+        if (artisan is null || _match.CellOf(artisan) is not { } from)
+            return;
+        // Première frame du combat : on part de son total À VIE — seuls les kills d'ICI posent une trousse.
+        var seen = _trousseKillsSeen ??= artisan.Kills;
+        if (artisan.Kills <= seen)
+            return;
+
+        while (seen < artisan.Kills)
+        {
+            _trousseKillsSeen = ++seen;
+            if (FreeCellNear(from) is not { } spot)
+                break;   // plus une case libre : la trousse est perdue (elle n'est pas reportée)
+            _trousseToss.Add((from, spot, 0f));
+            Context.Sounds.Play("unit_shoot");   // le lancer, pas la récompense (le son de pose vient à l'arrivée)
+        }
+    }
+
+    /// <summary>
+    /// Fait avancer les petites trousses EN VOL. À l'atterrissage, la case devient une vraie trousse du
+    /// terrain (ramassable comme les autres) mais marquée PETITE : elle ne rendra que
+    /// <see cref="PetiteTrousseHeal"/> PV. Cosmétique : rien n'est gelé pendant le vol.
+    /// </summary>
+    private void UpdateTrousseToss(float dt)
+    {
+        if (_trousseToss.Count == 0)
+            return;
+
+        for (var i = _trousseToss.Count - 1; i >= 0; i--)
+        {
+            var toss = _trousseToss[i];
+            toss.T += dt / TrousseTossDuration;
+            if (toss.T < 1f)
+            {
+                _trousseToss[i] = toss;
+                continue;
+            }
+
+            _trousseToss.RemoveAt(i);
+            if (_recrueCells.Contains(toss.To))
+                continue;   // une autre trousse s'est posée là entre-temps : celle-ci se perd
+            _recrueCells.Add(toss.To);
+            _petiteTrousseCells.Add(toss.To);
+            // Pas de libellé : on a VU la trousse sauter jusqu'à sa case et elle y reste posée. Le tooltip de
+            // survol donne son nom et ce qu'elle rend.
+            Context.Sounds.Play("unit_place");
+        }
+    }
+
+    /// <summary>
+    /// Petites trousses EN VOL : le PNG de la trousse suit un ARC entre l'artisan et sa case, comme la balle
+    /// rebondissante. Dessinée au-dessus du plateau — elle passe par-dessus les pions.
+    /// </summary>
+    private void DrawTrousseToss(SpriteBatch sb, GridLayout layout)
+    {
+        if (_trousseToss.Count == 0)
+            return;
+
+        var size = layout.TileSize;
+        var half = new Vector2(size / 2f, size / 2f);
+        var lift = size * 0.7f;   // l'arc monte plus haut que la balle : la trousse est lourde, elle est LANCÉE
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        foreach (var (fromCell, toCell, t) in _trousseToss)
+        {
+            var from = layout.CellToScreen(fromCell.Column, fromCell.Row) + half;
+            var to = layout.CellToScreen(toCell.Column, toCell.Row) + half;
+            var at = Vector2.Lerp(from, to, t) - new Vector2(0, lift * System.MathF.Sin(MathHelper.Pi * t));
+            if (PetiteTrousseSprite is { } sprite)
+            {
+                sb.Draw(sprite, new Rectangle((int)(at.X - size / 2f), (int)(at.Y - size / 2f), size, size),
+                    Color.White);
+                continue;
+            }
+            // Placeholder : la même mallette barrée d'une croix verte que sur le terrain, en plus petit.
+            var kit = size / 3;
+            var kr = new Rectangle((int)at.X - kit / 2, (int)at.Y - kit / 2, kit, kit * 3 / 4);
+            DrawRect(sb, kr, Palette.White);
+            DrawRectBorder(sb, kr, Palette.Black1, 2);
+            var arm = System.Math.Max(2, kit / 6);
+            DrawRect(sb, new Rectangle(kr.Center.X - arm / 2, kr.Y + kr.Height / 5, arm, kr.Height * 3 / 5),
+                Palette.Green2);
+            DrawRect(sb, new Rectangle(kr.X + kr.Width / 5, kr.Center.Y - arm / 2, kr.Width * 3 / 5, arm),
+                Palette.Green2);
+        }
+        sb.End();
+    }
+
+    /// <summary>PNG de la PETITE trousse, ou celui de la trousse normale s'il n'a pas encore été dessiné.</summary>
+    private Texture2D? PetiteTrousseSprite => _petiteTrousseSprite ?? _trousseSprite;
+
+    /// <summary>Le PNG à poser sur une case trousse : petit ou normal selon son origine.</summary>
+    private Texture2D? TrousseSpriteFor(Cell c) =>
+        _petiteTrousseCells.Contains(c) ? PetiteTrousseSprite : _trousseSprite;
+
+    /// <summary>
+    /// Case LIBRE la plus proche de <paramref name="from"/> (anneaux croissants) où poser une trousse :
+    /// sans unité, franchissable, et encore vierge de tout objet. Null si le plateau est plein.
+    /// </summary>
+    private Cell? FreeCellNear(Cell from)
+    {
+        for (var radius = 1; radius < System.Math.Max(Columns, Rows); radius++)
+            for (var dc = -radius; dc <= radius; dc++)
+                for (var dr = -radius; dr <= radius; dr++)
+                {
+                    if (System.Math.Max(System.Math.Abs(dc), System.Math.Abs(dr)) != radius)
+                        continue;   // seulement l'ANNEAU de ce rayon (l'intérieur a déjà été balayé)
+                    var c = new Cell(from.Column + dc, from.Row + dr);
+                    if (!_match.InBounds(c) || _match.UnitAt(c) != null)
+                        continue;
+                    if (_battlefield.Contains(c) && _battlefield[c].BlocksMovement)
+                        continue;
+                    if (_recrueCells.Contains(c) || _chestCells.Contains(c)
+                        || _bushCells.Contains(c) || _chuteCells.Contains(c))
+                        continue;
+                    if (_trousseToss.Exists(t => t.To == c))
+                        continue;   // une trousse vole déjà vers cette case : la suivante cherche ailleurs
+                    return c;
+                }
+        return null;
+    }
+
+    /// <summary>
+    /// OBJET À LANCER consommé par l'attaque qui vient d'être résolue : le moteur l'a déjà retiré du pion,
+    /// il reste à le retirer du GABARIT (sinon il revient au combat suivant) et à l'annoncer. Appelée après
+    /// chaque action de combat.
+    /// </summary>
+    private void SyncBrokenThrownItem()
+    {
+        if (_match.LastBrokenItem is not { } item)
+            return;
+        foreach (var (unit, spec) in _playerSpec)
+            if (spec.Essential && !unit.Equipments.Contains(item))
+                spec.RemoveEquipment(item);
+        Context.Sounds.Play("equip_lost");
+    }
+
+    /// <summary>
+    /// Retire du plateau les unités RETOURNÉES par une « Flèche de Cupidon » : elles se battent pour le
+    /// joueur le temps du combat puis disparaissent. Appelée à la clôture du combat, AVANT le décompte des
+    /// pertes et des kills — elles n'appartiennent à personne et ne doivent compter nulle part.
+    /// </summary>
+    private void RemoveCharmedUnits()
+    {
+        foreach (var (cell, unit) in _match.Units().ToList())
+            if (unit.Charmed)
+                _match.Remove(cell);
+    }
+
+    /// <summary>
+    /// Retire des gabarits les OBJETS À LANCER non utilisés à la fin du combat : ils ne se gardent pas d'une
+    /// mission à l'autre (la sacoche, elle, est toujours là au combat suivant). Sans quoi Basile les
+    /// accumulerait et la sous-phase Équipement s'ouvrirait pour un commandant qui ne s'équipe pas.
+    /// </summary>
+    private void ClearSatchelItems()
+    {
+        foreach (var spec in _run.Roster)
+            foreach (var item in spec.Equipments.Where(e => e.Satchel).ToList())
+                spec.RemoveEquipment(item);
+    }
+
     /// <summary>
     /// Feedback « pendant le combat » des sources de points PROPRES au commandant : à chaque coup qui RAPPORTE
     /// vraiment un point (sous le plafond), fait jaillir un « +N » doré sur la case du commandant + un son.
@@ -5578,8 +6162,14 @@ public sealed class GameplayScene : Scene
         _pending.AddRange(ArmyMinusCommander());
     }
 
+    /// <summary>
+    /// Vrai si TOUS les meneurs déployés sont debout. Un commandant DUO en a DEUX (cf.
+    /// <see cref="Run.Commanders"/>) et la chute de l'un OU l'autre perd la run : c'est bien « tous »,
+    /// pas « au moins un ». Sert à distinguer les deux causes de défaite.
+    /// </summary>
     private bool CommanderAlive() =>
-        _playerSpec.Any(kv => kv.Value.Essential && kv.Key.IsAlive);
+        _playerSpec.Any(kv => kv.Value.Essential)
+        && _playerSpec.Where(kv => kv.Value.Essential).All(kv => kv.Key.IsAlive);
 
     private void UpdatePlayerTurn()
     {
@@ -5629,6 +6219,12 @@ public sealed class GameplayScene : Scene
             EndPlayerAction();
             return;
         }
+        if (_selected is { } selS && _satchelTargets.Contains(cell))   // « Sacoche aimantée » : tir sur une sacoche
+        {
+            ResolveSatchelPull(selS, cell);
+            EndPlayerAction();
+            return;
+        }
         if (_selected is { } sel2 && _legalMoves.Contains(cell))
         {
             TryMoveWithFx(sel2, cell);
@@ -5647,6 +6243,7 @@ public sealed class GameplayScene : Scene
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach);
             _match.HealTargets(cell, _healTargets);
+            RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
             FilterTutorialActions();
 
             // Manette : le curseur se pose d'emblée sur l'ennemi attaquable le PLUS PROCHE — attaquer ne
@@ -5678,7 +6275,8 @@ public sealed class GameplayScene : Scene
         if (_tutorial is not { } t)
             return;
 
-        _healTargets.Clear();   // le tuto n'a pas de soigneur : aucun soin proposé pendant les leçons
+        _healTargets.Clear();     // le tuto n'a pas de soigneur : aucun soin proposé pendant les leçons
+        _satchelTargets.Clear();  // ni sacoche : le tuto ne joue pas le commandant DUO
 
         switch (t.Step)
         {
@@ -5760,6 +6358,13 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        if (_selected is not null && _satchelTargets.Contains(cell))   // « Sacoche aimantée » : tir sur une sacoche
+        {
+            ResolveSatchelPull(_selected.Value, cell);
+            EndPlayerAction();
+            return;
+        }
+
         if (_selected is not null && _legalMoves.Contains(cell))
         {
             var from = _selected.Value;
@@ -5780,6 +6385,7 @@ public sealed class GameplayScene : Scene
             _match.AttackTargets(cell, _attackTargets);
             _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
             _match.HealTargets(cell, _healTargets);     // trait « Soin » : alliés blessés ciblables
+            RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
             FilterTutorialActions();
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
@@ -5814,6 +6420,11 @@ public sealed class GameplayScene : Scene
         else if (_healTargets.Contains(cell))       // glissé sur un allié blessé : soin (trait « Soin »)
         {
             ResolveHeal(from, cell);
+            EndPlayerAction();
+        }
+        else if (_satchelTargets.Contains(cell))    // glissé sur une sacoche à portée : on l'aimante
+        {
+            ResolveSatchelPull(from, cell);
             EndPlayerAction();
         }
         else if (_legalMoves.Contains(cell))
@@ -6615,6 +7226,7 @@ public sealed class GameplayScene : Scene
         _attackTargets.Clear();
         _attackReach.Clear();
         _healTargets.Clear();
+        _satchelTargets.Clear();
         _combatDragFrom = null;
     }
 
@@ -6812,6 +7424,33 @@ public sealed class GameplayScene : Scene
 
         RecordIfEnemyKilled(victim);
 
+        // DUO : coups COLLATÉRAUX de l'action (éclaboussure de grenade, tir en ligne, réaction en chaîne).
+        // Leurs chiffres rejoignent ceux de l'« Impact » : ils jaillissent AU CONTACT de l'attaque, comme le
+        // chiffre principal, et pas une frame trop tôt. La zone AoE reste nulle (aucun tremblement de tuile :
+        // ce ne sont pas des ondes de choc).
+        if (_match.LastSplashHits.Count > 0)
+        {
+            _pendingImpactHits ??= new List<(Cell, int)>();
+            foreach (var (cell, dmg, _) in _match.LastSplashHits)
+                _pendingImpactHits.Add((cell, dmg));
+        }
+        // …sauf la GRENADE, qui est bien une onde de choc : son souffle (anneau + secousse des 9 cases) part
+        // au contact, avec les chiffres. Reporté comme eux : le moteur a déjà tout résolu.
+        _pendingGrenade = _match.LastGrenadeBlast;
+        // Les REBONDS ne sont pas encore portés : le moteur n'a calculé que la trajectoire. La balle les
+        // infligera un par un en se posant (cf. UpdateBounceFx) — sinon tout le monde encaisserait et
+        // mourrait avant même de la voir partir. On ne met ici que le vol en attente du contact.
+        _pendingBounce = _match.LastBounceFrom is { } bounceFrom && _match.HasPendingBounce
+            ? (bounceFrom, _match.PendingBouncePath.ToList())
+            : null;
+        // DUO : « Flèche de Cupidon » — la cible a changé de camp pour le reste du combat.
+        if (_match.LastCharm is { } charmed)
+        {
+            _damagePopups.SpawnText(charmed, Loc.T("fx.charm"), Palette.Cyan1, new Vector2(0f, -0.5f));
+            Context.Sounds.Play("unit_cast");
+        }
+        SyncBrokenThrownItem();   // DUO : l'objet à lancer a servi — il se brise aussi sur le gabarit
+
         // « Queue de phénix » : la cible a encaissé un coup létal mais renaît à 1 PV (son équipement s'est brisé).
         _pendingPhenix = victim is { IsAlive: true } && victim.Equipments.Count < victimEquipBefore;
 
@@ -6917,6 +7556,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingGrenade = null;
         _pendingThorns = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
@@ -6938,6 +7578,7 @@ public sealed class GameplayScene : Scene
         _pendingStormHits = null;
         _pendingImpactHits = null;
         _pendingImpactZone = null;
+        _pendingGrenade = null;
         _pendingThorns = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
@@ -7286,6 +7927,7 @@ public sealed class GameplayScene : Scene
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // objets ennemis visibles DÈS le placement : ça se prépare
+                DrawSatchelBadges(sb, board);            // DUO : objet à lancer porté par un meneur
                 DrawBossSkulls(sb, board);          // crâne du boss : même icône que la frise des phases
                 if (_equipPhase)
                 {
@@ -7361,6 +8003,7 @@ public sealed class GameplayScene : Scene
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // icône de l'objet porté par un ennemi
+                DrawSatchelBadges(sb, board);            // DUO : objet à lancer porté par un meneur
                 DrawBossSkulls(sb, board);          // crâne du boss : même icône que la frise des phases
                 DrawAllyThreatIcons(sb, board);          // « ! » au-dessus des alliés à portée d'un ennemi
                 DrawCarriedUnit(sb, board);
@@ -7375,6 +8018,9 @@ public sealed class GameplayScene : Scene
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
                 if (_storm.Active)
                     DrawStormFx(sb, board);        // éclairs d'orage sur les ennemis foudroyés (sous les chiffres)
+                DrawBounceFx(sb, board);           // balle rebondissante en vol (DUO)
+                DrawTrousseToss(sb, board);        // petites trousses de soin en vol (DUO)
+                DrawGrenadeBlast(sb, board);       // souffle de la grenade (DUO)
                 _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
 
                 if (_battleIntroTimer > 0)
@@ -7497,7 +8143,7 @@ public sealed class GameplayScene : Scene
             if (BoardAssembled) DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawBossSkulls(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
             else DrawFusionBoardStack(sb, nb);   // le pion attrapé passe par la couche curseur (par-dessus tout)
             // MANETTE : la couche curseur (RenderGhostLayer) ne sert qu'à la souris — pion porté ET curseur
@@ -7514,7 +8160,7 @@ public sealed class GameplayScene : Scene
             DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawBossSkulls(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             DrawAllyThreatIcons(sb, nb);
             DrawCarriedUnitNative(sb, nb);   // liseré de case cible (le pion soulevé = couche curseur)
             DrawGamepadBattleCursor(sb, nb); // curseur de case manette : sur le plateau, sinon invisible en dézoom
@@ -7524,6 +8170,9 @@ public sealed class GameplayScene : Scene
             DrawEquipDissolves(sb, nb);
             _sparks.Draw(sb, Context.Pixel);
             if (_storm.Active) DrawStormFx(sb, nb);
+            DrawBounceFx(sb, nb);
+            DrawTrousseToss(sb, nb);
+            DrawGrenadeBlast(sb, nb);
             _damagePopups.Draw(sb, Context.Font, nb);
         }
 
@@ -8008,7 +8657,7 @@ public sealed class GameplayScene : Scene
         // Unité sélectionnée : on garde son aperçu (buffers remplis à la sélection).
         if (_selected is { } sel)
         {
-            DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets);
+            DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets, _satchelTargets);
             foreach (var c in _attackTargets) _trembleTargets.Add(c);
             return;
         }
@@ -8045,7 +8694,8 @@ public sealed class GameplayScene : Scene
     /// <summary>Surbrillances déplacement/attaque d'une unité : cerclage + portée de tir + cases de
     /// déplacement + cibles réellement à portée. Partagé par la sélection et l'aperçu au survol.</summary>
     private void DrawMoveAttackZones(SpriteBatch sb, GridLayout layout, Cell origin,
-        List<Cell> reach, List<Cell> moves, List<Cell> targets, List<Cell>? heals = null)
+        List<Cell> reach, List<Cell> moves, List<Cell> targets, List<Cell>? heals = null,
+        List<Cell>? satchels = null)
     {
         DrawZoneBorder(sb, layout, origin, Palette.Yellow2, 3);
 
@@ -8062,6 +8712,10 @@ public sealed class GameplayScene : Scene
             foreach (var cell in heals) // trait « Soin » : allié blessé ciblable (couleur de soin)
                 DrawZone(sb, layout, cell, HealColor * 0.55f);
 
+        if (satchels != null)
+            foreach (var cell in satchels)  // « Sacoche aimantée » : sacoche tirable à soi (couleur du butin)
+                DrawZone(sb, layout, cell, Palette.Yellow1 * 0.55f);
+
         // Quadrillage de la portée PAR-DESSUS les remplissages (contour par case) : déplacement/attaque.
         foreach (var cell in reach)
             DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.45f, 1);
@@ -8072,6 +8726,9 @@ public sealed class GameplayScene : Scene
         if (heals != null)
             foreach (var cell in heals)
                 DrawZoneBorder(sb, layout, cell, HealColor, 1);
+        if (satchels != null)
+            foreach (var cell in satchels)
+                DrawZoneBorder(sb, layout, cell, Palette.Yellow1, 1);
     }
 
     /// <summary>Vue d'ensemble des zones ENNEMIES (« zones de danger ») : Espace maintenu, ou RT à la manette.</summary>
@@ -8344,6 +9001,10 @@ public sealed class GameplayScene : Scene
         _match.FormationAllies(focus, _lienArcBuffer);
         foreach (var ally in _lienArcBuffer)
             _lienAllies.Add(ally);
+        // « Position stratégique » (DUO) : même lecture — les camarades à portée qui tiennent son bonus.
+        _match.PositionStrategiqueAllies(focus, _lienArcBuffer);
+        foreach (var ally in _lienArcBuffer)
+            _lienAllies.Add(ally);
     }
 
     /// <summary>Teinte des liens de puissance (« Lien de puissance » ET « Formation »), arcs comme halos :
@@ -8353,7 +9014,8 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Traits de PLACEMENT (« Lien de puissance » sur la portée de déplacement, « Formation » sur les 8 cases
-    /// autour) : de petits ARCS ÉLECTRIQUES relient CHAQUE porteur du plateau à CHACUN des alliés qui lui
+    /// autour, « Position stratégique » sur la portée déplacement OU attaque) : de petits ARCS ÉLECTRIQUES
+    /// relient CHAQUE porteur du plateau à CHACUN des alliés qui lui
     /// donnent ses +2 de puissance. Affichés EN PERMANENCE (pas seulement sous le curseur) : ce sont des bonus
     /// contextuels qui s'allument et s'éteignent au fil des déplacements, on doit lire l'état du plateau d'un
     /// coup d'œil. ROUGE dans les deux camps (cf. <see cref="LienTint"/>) : la couleur dit « puissance en
@@ -8384,7 +9046,74 @@ public sealed class GameplayScene : Scene
                 _match.FormationAllies(carrier, _lienArcBuffer);
                 DrawLinkNetwork(sb, layout, carrier, size, block, flicker, pulse, salt: 5501);
             }
+            // « Position stratégique » (DUO) : même réseau, sur la portée SOCIALE (déplacement ou attaque).
+            if (unit.HasTrait(Trait.PositionStrategique))
+            {
+                _match.PositionStrategiqueAllies(carrier, _lienArcBuffer);
+                DrawLinkNetwork(sb, layout, carrier, size, block, flicker, pulse, salt: 9137);
+            }
         }
+
+        DrawAmitieChains(sb, layout, size, block, pulse);
+    }
+
+    /// <summary>Teinte de « Lien d'amitié » : de l'OR. Une couleur à part des liens de puissance (rouges) —
+    /// ici rien ne gonfle la puissance, c'est la douleur qui se répartit.</summary>
+    private static readonly Color AmitieTint = Palette.Yellow1;
+
+    /// <summary>
+    /// Pions concernés par un « Lien d'amitié » ACTIF : les porteurs et les camarades qui prendront une part
+    /// de leurs dégâts. Reconstruit à chaque frame par <see cref="DrawAmitieChains"/> (dessiné AVANT la passe
+    /// des pions), lu par <see cref="DrawUnit"/> pour leur poser l'aura dorée.
+    /// </summary>
+    private readonly HashSet<Cell> _amitieCells = new();
+
+    /// <summary>
+    /// « Lien d'amitié » : une CHAÎNE dorée relie chaque porteur à tous les camarades qui partageront ses
+    /// dégâts, et les deux bouts s'entourent d'une aura de la même couleur (cf. <see cref="_amitieCells"/>).
+    /// Permanent, dans les deux camps : le lien s'allume et s'éteint au fil des déplacements, il faut voir
+    /// AVANT de frapper qui va encaisser à la place de qui. La liste vient du moteur
+    /// (<see cref="Match.LienDAmitieAllies"/>) : l'UI ne redéduit jamais la portée.
+    /// </summary>
+    private void DrawAmitieChains(SpriteBatch sb, GridLayout layout, int size, int block, float pulse)
+    {
+        _amitieCells.Clear();
+        foreach (var (carrier, unit) in _match.Units())
+        {
+            if (!unit.HasTrait(Trait.LienDAmitie))
+                continue;
+            _match.LienDAmitieAllies(carrier, _lienArcBuffer);
+            if (_lienArcBuffer.Count == 0)
+                continue;   // personne à portée : le lien est éteint, rien à montrer
+
+            _amitieCells.Add(carrier);
+            var from = LienAnchor(layout, carrier, size);
+            foreach (var ally in _lienArcBuffer)
+            {
+                _amitieCells.Add(ally);
+                DrawAmitieChain(sb, from, LienAnchor(layout, ally, size), block, pulse);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Une chaîne : des maillons alternés (gros/petit, deux ors) posés à intervalle régulier le long du
+    /// segment. Pas d'ondulation — contrairement aux arcs électriques, une chaîne est TENDUE.
+    /// </summary>
+    private void DrawAmitieChain(SpriteBatch sb, Vector2 a, Vector2 b, int block, float pulse)
+    {
+        var length = (b - a).Length();
+        if (length < 1f)
+            return;
+
+        // Que des GROS maillons, espacés : les petits carrés intercalaires faisaient du bruit à cette échelle.
+        var links = System.Math.Max(2, (int)(length / System.Math.Max(12, block * 8)));
+        var alpha = 0.45f + 0.30f * pulse;
+        // Pas de Begin/End ici : on dessine DANS le batch de la passe d'auras (cf. DrawAuraHalos), comme les
+        // arcs du lien de puissance.
+        for (var i = 0; i <= links; i++)
+            DrawBlockSnapped(sb, Vector2.Lerp(a, b, i / (float)links),
+                System.Math.Max(3, block * 2), AmitieTint * alpha);
     }
 
     /// <summary>
@@ -8754,7 +9483,13 @@ public sealed class GameplayScene : Scene
     private void DrawUnits(SpriteBatch sb, GridLayout layout)
     {
         foreach (var (cell, unit) in _match.Units())
-            DrawUnit(sb, layout, cell, unit);
+            if (!_chain.Active || cell != _chainHome)
+                DrawUnit(sb, layout, cell, unit);
+
+        // « Réaction en chaîne » : le bondisseur passe EN DERNIER — il survole le plateau, il doit donc passer
+        // par-dessus les pions qu'il saute, pas se glisser dessous au hasard de l'ordre de parcours.
+        if (_chain.Active && _chainHome is { } home && _match.UnitAt(home) is { } jumper)
+            DrawUnit(sb, layout, home, jumper);
     }
 
     /// <summary>
@@ -8806,6 +9541,7 @@ public sealed class GameplayScene : Scene
                : _slideGlide.Active && cell == _slideGlide.RestCell ? _slideGlide.Offset(cell, layout)
                : VictimMoveOffset(cell, layout);
         kb += _pierceRecoil.Offset(cell, size);
+        kb += ChainLungeOffset(cell, layout);   // « Réaction en chaîne » : il bondit sur chaque victime
         kb.Y += ChuteTrembleY(cell);   // le pion vibre avec la tuile « chute » qu'il occupe
         zx += kb.X;
         zy += kb.Y;
@@ -8831,6 +9567,10 @@ public sealed class GameplayScene : Scene
         // ROUGE dans les deux camps, comme les arcs électriques (cf. LienTint).
         if (sprite != null && _lienAllies.Contains(cell))
             DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, LienTint, 2.5f);
+        // « Lien d'amitié » : aura DORÉE sur le porteur ET sur les camarades qui prendront une part de ses
+        // dégâts — les deux bouts de la chaîne (cf. DrawAmitieChains, qui remplit _amitieCells juste avant).
+        if (sprite != null && _amitieCells.Contains(cell))
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, AmitieTint, 3f);
         // « Loup solitaire » ACTIF : halo VERT lent sur le porteur qui n'a AUCUN allié adjacent — le bonus
         // s'allume et s'éteint au fil des déplacements, il faut le voir sur le plateau sans ouvrir la fiche.
         // Le moteur est seul juge de la condition (cf. Match.LoupSolitairePowerBonus).
@@ -8953,6 +9693,11 @@ public sealed class GameplayScene : Scene
 
         BuildAllyThreatPreviews();
 
+        // Notre propre visée aussi : si la cible a « Lien d'amitié », une partie du coup ira sur ses camarades.
+        // Leurs jauges doivent le montrer, sinon l'aperçu annonce des dégâts qui tomberont ailleurs.
+        if (aimSource is { } shareFrom && aimed is { } shareTarget)
+            AddSharePreviews(shareFrom, shareTarget);
+
         foreach (var (cell, unit) in _match.Units())
         {
             if (_combatDragFrom == cell)            // pion porté : pas de barre sur sa case
@@ -9003,9 +9748,30 @@ public sealed class GameplayScene : Scene
                 var dmg = _match.PreviewDamage(cell, t);
                 if (dmg > 0 && (!_allyThreatPreview.TryGetValue(t, out var best) || dmg > best))
                     _allyThreatPreview[t] = dmg;
+                // « Lien d'amitié » : le coup ne tombe pas que sur lui. Ses camarades liés en prendront leur
+                // part — leur jauge doit l'annoncer, sinon la menace paraît locale alors qu'elle éclabousse.
+                AddSharePreviews(cell, t);
             }
         }
     }
+
+    /// <summary>
+    /// Ajoute aux aperçus de menace la part que les camarades LIÉS de <paramref name="target"/> prendraient
+    /// sur une attaque venue de <paramref name="from"/> (« Lien d'amitié »). On garde le MAXIMUM par case,
+    /// comme pour le reste : l'IA ne joue qu'une action par tour.
+    /// </summary>
+    private void AddSharePreviews(Cell from, Cell target)
+    {
+        var share = _match.PreviewSharedDamage(from, target, _sharePreview);
+        if (share <= 0)
+            return;
+        foreach (var ally in _sharePreview)
+            if (!_allyThreatPreview.TryGetValue(ally, out var best) || share > best)
+                _allyThreatPreview[ally] = share;
+    }
+
+    /// <summary>Tampon des camarades liés d'une cible (cf. <see cref="AddSharePreviews"/>).</summary>
+    private readonly List<Cell> _sharePreview = new();
 
     /// <summary>
     /// Barre de PV VERTICALE sur le bord droit d'un pion, affichée uniquement quand il est blessé.
@@ -9122,8 +9888,15 @@ public sealed class GameplayScene : Scene
 
         // Ombre projetée des objets (comme les pions), seulement si l'objet a un PNG. Le coffre et le
         // buisson sont ancrés au sol comme la recrue ; le buisson n'est jamais consommé (couvert permanent).
-        DrawObjectCastShadows(sb, layout, _recrueCells, RecrueSpriteFor, _recrueConsumed);
-        DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, ChestShadowShear);
+        // Commandant DUO : ces mêmes cases portent une trousse de soin / une sacoche — c'est leur silhouette
+        // qu'il faut projeter au sol, pas celle de l'objet remplacé.
+        // Commandant DUO : la TROUSSE et la SACOCHE ne projettent AUCUNE ombre. Leur dessin flotte au milieu
+        // de son cadre 64×64, si bien que la silhouette rabattue tombait à côté d'elles au lieu de partir de
+        // leur pied. Rien plutôt qu'une ombre décrochée — ce sont de petits objets posés au sol.
+        if (!TrousseMode)
+            DrawObjectCastShadows(sb, layout, _recrueCells, RecrueSpriteFor, _recrueConsumed);
+        if (!SacocheMode)
+            DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, ChestShadowShear);
         DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
     }
 
@@ -9408,6 +10181,181 @@ public sealed class GameplayScene : Scene
         DrawRect(sb, new Rectangle(cx - cr, cy - cr, cr * 2, cr * 2), core);
     }
 
+    /// <summary>
+    /// « Balle rebondissante » : avance la trajectoire et, CHAQUE FOIS que la balle se pose sur une victime,
+    /// lui INFLIGE son coup (cf. <see cref="Match.ResolveNextBounce"/>) puis en sort le chiffre, une gerbe
+    /// d'étincelles et le bruit du ricochet. Le pion ne perd ses PV — et ne tombe — qu'à cet instant : le
+    /// moteur n'avait fait que calculer la trajectoire.
+    /// </summary>
+    /// <summary>
+    /// « Réaction en chaîne » : fait avancer le bond de l'attaquant. Le maillon n'est demandé au moteur qu'à
+    /// l'instant où le poing arrive — le chiffre, l'étincelle et la mort sortent ENSEMBLE, sur la victime que
+    /// le joueur est en train de regarder. Le bond fini, on enchaîne sur la victime suivante s'il y en a une.
+    /// </summary>
+    private void UpdateChainFx(float dt)
+    {
+        if (!_chain.Active)
+            return;
+        if (!_chain.Advance(dt))
+            return;   // encore en l'air
+
+        var landed = _chain.To;
+        if (!_chain.Strikes)
+        {
+            _chain.Clear();   // retour au bercail : la chaîne est finie
+            return;
+        }
+
+        // Le pied se pose : C'EST MAINTENANT que la victime encaisse.
+        var killed = false;
+        if (_match.ResolveNextChainLink() is { } hit)
+        {
+            if (hit.Damage > 0)
+                _damagePopups.Spawn(hit.Cell, hit.Damage);
+            var layout = BuildLayout();
+            var center = layout.CellToScreen(landed.Column, landed.Row)
+                         + new Vector2(layout.TileSize / 2f, layout.TileSize / 2f);
+            _sparks.EmitFirework(center, 8, 1);
+            Context.Sounds.Play("unit_attack");
+            killed = hit.Killed;
+        }
+
+        // Maillon suivant : un ennemi à portée de la victime qu'il vient d'abattre. Sinon, retour à sa case.
+        if (killed && _match.PendingChainTarget is { } next)
+        {
+            _chain.Begin(landed, next, strikes: true);
+            Context.Sounds.Play("unit_charge");
+            return;
+        }
+        _chain.Begin(landed, _chainHome ?? landed, strikes: false);
+    }
+
+    /// <summary>
+    /// Décalage du sprite de l'artisan pendant sa « Réaction en chaîne » : il SAUTE de victime en victime
+    /// puis rentre sur sa case. Le moteur, lui, ne l'a jamais bougé — tout se joue ici, en pixels, depuis sa
+    /// case de départ (<see cref="_chainHome"/>). Zéro pour toute autre case.
+    /// </summary>
+    private Point ChainLungeOffset(Cell cell, GridLayout layout)
+    {
+        if (!_chain.Active || _chainHome != cell)
+            return Point.Zero;
+
+        var size = layout.TileSize;
+        var t = _chain.T;
+        // Position INTERPOLÉE du sauteur, relative à sa case réelle (celle où le moteur le tient).
+        var x = (_chain.From.Column - cell.Column + (_chain.To.Column - _chain.From.Column) * t) * size;
+        var y = (_chain.From.Row - cell.Row + (_chain.To.Row - _chain.From.Row) * t) * size;
+        return new Point((int)x, (int)(y - _chain.Height * size));   // …moins l'arc du bond
+    }
+
+    private void UpdateBounceFx(float dt)
+    {
+        if (_bounce.Advance(dt) <= 0)
+            return;
+        if (_match.ResolveNextBounce() is not { } hit || hit.Damage <= 0)
+            return;
+
+        _damagePopups.Spawn(hit.Cell, hit.Damage);
+        // Gerbe d'étincelles au point d'impact : la balle a bien TOUCHÉ ce pion, elle n'a pas fait que passer.
+        var layout = BuildLayout();
+        var center = layout.CellToScreen(hit.Cell.Column, hit.Cell.Row)
+                     + new Vector2(layout.TileSize / 2f, layout.TileSize / 2f);
+        _sparks.EmitFirework(center, 10, 1);
+        Context.Sounds.Play("unit_shoot");
+    }
+
+    /// <summary>Les 9 cases du souffle d'une grenade (la cible + ses 8 voisines), bord du plateau exclu.</summary>
+    private List<Cell> GrenadeZone(Cell center)
+    {
+        var zone = new List<Cell>(9);
+        for (var dc = -1; dc <= 1; dc++)
+            for (var dr = -1; dr <= 1; dr++)
+            {
+                var c = new Cell(center.Column + dc, center.Row + dr);
+                if (_match.InBounds(c))
+                    zone.Add(c);
+            }
+        return zone;
+    }
+
+    /// <summary>Avance le souffle de la grenade ; il s'éteint tout seul au bout de <see cref="GrenadeBlastDuration"/>.</summary>
+    private void UpdateGrenadeBlast(float dt)
+    {
+        if (_grenadeBlast is not { } blast)
+            return;
+        var t = blast.T + dt / GrenadeBlastDuration;
+        _grenadeBlast = t >= 1f ? null : (blast.Center, t);
+    }
+
+    /// <summary>
+    /// SOUFFLE de la grenade : un anneau de pixels qui s'ouvre de la case visée jusqu'au bord de son AoE
+    /// (une case et demie), doublé d'un flash chaud au centre qui retombe aussitôt. Dessiné au-dessus du
+    /// plateau — c'est le geste qui explique d'un coup d'œil pourquoi les voisins ont pris des dégâts.
+    /// </summary>
+    private void DrawGrenadeBlast(SpriteBatch sb, GridLayout layout)
+    {
+        if (_grenadeBlast is not { } blast)
+            return;
+
+        var size = layout.TileSize;
+        var center = layout.CellToScreen(blast.Center.Column, blast.Center.Row)
+                     + new Vector2(size / 2f, size / 2f);
+        var block = System.Math.Max(2, size / 16);
+        var t = blast.T;
+        var radius = size * 1.5f * System.MathF.Sqrt(t);   // rapide au départ, puis s'étale : une détonation
+        var fade = 1f - t;
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        // Flash central : un carré chaud qui se referme (il ne survit pas au premier tiers du souffle).
+        if (t < 0.35f)
+        {
+            var flash = (int)(size * 0.7f * (1f - t / 0.35f));
+            if (flash > 0)
+                DrawRect(sb, new Rectangle((int)center.X - flash / 2, (int)center.Y - flash / 2, flash, flash),
+                    Palette.Yellow2 * (0.75f * fade));
+        }
+        // Anneau : des braises réparties sur le cercle, alternées clair/chaud pour le grain pixel-art.
+        var steps = System.Math.Max(12, (int)(radius / block) * 4);
+        for (var i = 0; i < steps; i++)
+        {
+            var ang = MathHelper.TwoPi * i / steps;
+            var at = center + new Vector2(System.MathF.Cos(ang), System.MathF.Sin(ang) * 0.75f) * radius;
+            DrawBlockSnapped(sb, at, block, (i % 3 == 0 ? Palette.Yellow2 : Palette.Brown5) * (0.85f * fade));
+        }
+        sb.End();
+    }
+
+    /// <summary>
+    /// La BALLE en vol entre deux ennemis : une bille claire qui suit un ARC (parabole) d'une case à l'autre,
+    /// avec une courte traînée derrière elle. Rendue au-dessus du plateau, comme les éclairs d'orage.
+    /// </summary>
+    private void DrawBounceFx(SpriteBatch sb, GridLayout layout)
+    {
+        if (_bounce.Segment is not { } seg)
+            return;
+
+        var size = layout.TileSize;
+        var half = new Vector2(size / 2f, size / 2f);
+        var from = layout.CellToScreen(seg.From.Column, seg.From.Row) + half;
+        var to = layout.CellToScreen(seg.To.Column, seg.To.Row) + half;
+        var lift = size * 0.55f;                 // hauteur de l'arc : la balle passe bien au-dessus des pions
+        var block = System.Math.Max(2, size / 12);
+
+        // Position sur l'arc : interpolation droite + cloche sinusoïdale (0 aux deux bouts, max au milieu).
+        Vector2 At(float t) =>
+            Vector2.Lerp(from, to, t) - new Vector2(0, lift * System.MathF.Sin(MathHelper.Pi * t));
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        // Traînée : 3 billes plus petites et plus pâles, en arrière sur l'arc.
+        for (var i = 3; i >= 1; i--)
+        {
+            var t = MathHelper.Clamp(seg.T - i * 0.10f, 0f, 1f);
+            DrawBlockSnapped(sb, At(t), System.Math.Max(1, block - i), Palette.Yellow1 * (0.55f - i * 0.12f));
+        }
+        DrawBlockSnapped(sb, At(seg.T), block, Palette.Yellow2);   // la balle
+        sb.End();
+    }
+
     /// <summary>Éclairs d'ORAGE/TEMPÊTE : un éclair pixel-art s'abat sur chaque pion foudroyé, légèrement
     /// désynchronisés, puis s'éteignent. Rendu au-dessus du plateau, sous les chiffres de dégâts.</summary>
     private void DrawStormFx(SpriteBatch sb, GridLayout layout)
@@ -9544,6 +10492,15 @@ public sealed class GameplayScene : Scene
             _pendingStormHits = null;
         }
 
+        // DUO — « Balle rebondissante » : au contact, la balle repart de la cible directe et ricoche. Les
+        // chiffres ne sortent PAS ici : chacun attend que la balle arrive sur sa victime (cf. UpdateBattle).
+        if (_pendingBounce is { } pb)
+        {
+            _bounce.Begin(pb.From, pb.Path);
+            Context.Sounds.Play("unit_shoot");
+            _pendingBounce = null;
+        }
+
         // Impact (trait) : chiffres sur les ennemis frappés + tremblement des tuiles de l'AoE + son, au contact de l'attaque.
         if (_pendingImpactHits != null)
         {
@@ -9561,6 +10518,27 @@ public sealed class GameplayScene : Scene
                 ShakeAoeZone(_pendingImpactZone);
             _pendingImpactHits = null;
             _pendingImpactZone = null;
+        }
+
+        // « Réaction en chaîne » : la cible directe est tombée, l'artisan enchaîne. Il BONDIT sur sa victime
+        // suivante et ne frappe qu'à l'arrivée (cf. UpdateChainFx) : rien n'est encore résolu côté moteur.
+        if (_match.PendingChainTarget is { } chainTarget && _match.ChainAttackerCell is { } chainFrom)
+        {
+            _chainHome = chainFrom;   // sa case réelle : il y reviendra d'un dernier bond
+            _chain.Begin(chainFrom, chainTarget, strikes: true);
+            Context.Sounds.Play("unit_charge");
+        }
+
+        // « Grenade » : la détonation. Anneau de souffle + braises + les 9 cases qui tremblent.
+        if (_pendingGrenade is { } blast)
+        {
+            _grenadeBlast = (blast, 0f);
+            var layout = BuildLayout();
+            var center = layout.CellToScreen(blast.Column, blast.Row)
+                         + new Vector2(layout.TileSize / 2f, layout.TileSize / 2f);
+            _sparks.EmitFirework(center, 26, 2);
+            ShakeAoeZone(GrenadeZone(blast));
+            _pendingGrenade = null;
         }
 
         // « Épines » : au contact, l'assaillant encaisse en retour la moitié de son propre coup.
@@ -10250,7 +11228,7 @@ public sealed class GameplayScene : Scene
                 DrawSpecPreviewCard(sb, _pending[System.Math.Clamp(_invFocus, 0, _pending.Count - 1)]);
             else if (!_gpInventory && !_gpButtons && _match.UnitAt(_cursor) is { } cu)
                 DrawPreviewCard(sb, cu.Class, cu.Faction, cu.Domaine, cu.Hp, cu.MaxHp, cu.Equipments, cu.Buffs,
-                    TreeNodesFor(cu), cu.Kills, subject: _cursor, essential: cu.IsEssential);
+                    TreeNodesFor(cu), cu.Kills, subject: _cursor, essential: cu.IsEssential, companion: cu.IsCompanion);
             return;
         }
 
@@ -10266,7 +11244,7 @@ public sealed class GameplayScene : Scene
         // Sinon : pièce posée sous le curseur souris (joueur ou ennemi déjà déployé), hors frise.
         if (HoverCellForCards() is { } cell && _match.UnitAt(cell) is { } unit)
             DrawPreviewCard(sb, unit.Class, unit.Faction, unit.Domaine, unit.Hp, unit.MaxHp, unit.Equipments, unit.Buffs,
-                TreeNodesFor(unit), unit.Kills, subject: cell, essential: unit.IsEssential);
+                TreeNodesFor(unit), unit.Kills, subject: cell, essential: unit.IsEssential, companion: unit.IsCompanion);
     }
 
     /// <summary>
@@ -10277,7 +11255,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawPreviewCard(SpriteBatch sb, UnitClass c, Faction faction, Domaine domaine, int hp, int maxHp,
         IReadOnlyList<Equipment>? equip = null, CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
-        Cell? subject = null, bool essential = false)
+        Cell? subject = null, bool essential = false, bool companion = false)
     {
         var layout = BuildLayout();
         var board = BoardRect(layout);
@@ -10311,13 +11289,13 @@ public sealed class GameplayScene : Scene
             // Condensée : traits en noms inline, donc aucun popup de mots-clés à différer.
             _deferredCards.Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c, domaine, hp, maxHp,
                 equip, buffs, kills, granted, contextualDmg, 0, contextualMove,
-                nameOverride: CommanderCardName(essential, faction)));
+                nameOverride: CommanderCardName(essential, companion, faction)));
             return;
         }
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
             equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills,
             granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove,
-            nameOverride: CommanderCardName(essential, faction)));
+            nameOverride: CommanderCardName(essential, companion, faction)));
         _deferredKeywordPopups.Add((c, rect, equip, buffs, granted, faction));
     }
 
@@ -10332,7 +11310,7 @@ public sealed class GameplayScene : Scene
                     + spec.Equipments.BonusFor(EquipStat.Hp)
                     + buffs.BonusFor(EquipStat.Hp);
         DrawPreviewCard(sb, spec.UnitClass, Faction.Player, spec.Domaine, maxHp, maxHp, spec.Equipments, buffs,
-            _run.ActiveNodesFor(spec.Essential, spec.Domaine), spec.Kills, essential: spec.Essential);
+            _run.ActiveNodesFor(spec), spec.Kills, essential: spec.Essential, companion: spec.Companion);
     }
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon, float alpha = 1f)
@@ -10359,10 +11337,25 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(c.Column, c.Row);
             var zx = (int)top.X;
             var zy = (int)top.Y + introY;
-            if (_chestSprite != null)
+            // Commandant DUO : la case porte une SACOCHE, pas un coffre.
+            var sprite = SacocheMode ? _sacocheSprite : _chestSprite;
+            if (sprite != null)
             {
                 // PNG 64×64 rendu sur la surface de la case, CARRÉ (jamais déformé), comme un pion.
-                sb.Draw(_chestSprite, new Rectangle(zx, zy, size, size), Color.White * introA);
+                sb.Draw(sprite, new Rectangle(zx, zy, size, size), Color.White * introA);
+                continue;
+            }
+            if (SacocheMode)
+            {
+                // Placeholder SACOCHE : besace brune à rabat clair et bandoulière (aucun fermoir doré :
+                // elle ne s'ouvre pas, on y pioche).
+                var bag = size * 5 / 8;
+                var br = new Rectangle(zx + (size - bag) / 2, zy + (size - bag) / 2 + size / 12, bag, bag);
+                DrawRect(sb, br, Palette.Brown2 * introA);
+                DrawRect(sb, new Rectangle(br.X, br.Y, br.Width, br.Height / 3), Palette.Brown3 * introA);
+                DrawRect(sb, new Rectangle(br.Center.X - br.Width / 8, br.Y - size / 10, br.Width / 4, size / 10),
+                    Palette.Brown1 * introA);
+                DrawRectBorder(sb, br, Palette.Black1 * introA, 2);
                 continue;
             }
             // Placeholder dessiné dans un carré centré (proportions fixes) : coffre brun, couvercle, serrure.
@@ -10431,6 +11424,27 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(c.Column, c.Row);
             var zx = (int)top.X;
             var zy = (int)top.Y + introY;
+            // Commandant DUO : la case porte une TROUSSE DE SOIN, posée à plat (ce n'est pas un pion : pas de
+            // remontée de sprite ni de variante par case).
+            if (TrousseMode)
+            {
+                if (TrousseSpriteFor(c) is { } trousse)
+                {
+                    sb.Draw(trousse, new Rectangle(zx, zy, size, size), Color.White * introA);
+                    continue;
+                }
+                // Placeholder TROUSSE : mallette claire barrée d'une croix verte.
+                var kit = size / 2;
+                var kr = new Rectangle(zx + (size - kit) / 2, zy + (size - kit) / 2 + size / 10, kit, kit * 3 / 4);
+                DrawRect(sb, kr, Palette.White * introA);
+                DrawRectBorder(sb, kr, Palette.Black1 * introA, 2);
+                var arm = System.Math.Max(2, kit / 6);
+                DrawRect(sb, new Rectangle(kr.Center.X - arm / 2, kr.Y + kr.Height / 5, arm, kr.Height * 3 / 5),
+                    Palette.Green2 * introA);
+                DrawRect(sb, new Rectangle(kr.X + kr.Width / 5, kr.Center.Y - arm / 2, kr.Width * 3 / 5, arm),
+                    Palette.Green2 * introA);
+                continue;
+            }
             if (RecrueSpriteFor(c) is { } sprite)
             {
                 // Positionné comme un pion classique (cf. DrawUnit) : remonté de spriteLift, centré sur la case.
@@ -10727,6 +11741,47 @@ public sealed class GameplayScene : Scene
             for (var i = 0; i < unit.Equipments.Count; i++)
                 DrawEquipIcon(sb, unit.Equipments[i], EquipBadgeRect(cell, layout, i, unit.Equipments.Count));
         }
+    }
+
+    /// <summary>
+    /// OBJET À LANCER porté par un pion du JOUEUR (commandant DUO) : icône au-dessus de sa tête, en TOUTE
+    /// phase. Les autres équipements du joueur ne s'affichent sur le plateau qu'en sous-phase Équipement
+    /// (cf. <see cref="DrawEquipBadgesPlacement"/>), que ce commandant ne voit jamais — or l'objet de sacoche
+    /// se ramasse et se consomme EN PLEIN COMBAT : c'est l'information la plus volatile de son tour, elle doit
+    /// se lire sur le plateau sans passer par la carte. Même rendu informatif que les badges ennemis (sans
+    /// fond de slot : rien ne se dépose là-dessus).
+    /// </summary>
+    private void DrawSatchelBadges(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Player)
+                continue;
+            for (var i = 0; i < unit.Equipments.Count; i++)
+                if (unit.Equipments[i].Satchel)
+                    DrawEquipIcon(sb, unit.Equipments[i],
+                        CarriedBadgeRect(cell, layout, i, unit.Equipments.Count)
+                        ?? EquipBadgeRect(cell, layout, i, unit.Equipments.Count));
+        }
+    }
+
+    /// <summary>
+    /// Emplacement du badge quand le pion est PORTÉ à la souris (glisser de combat) : au-dessus du sprite
+    /// soulevé, sous le curseur (cf. <see cref="DrawCarriedUnit"/>). <c>null</c> si ce pion n'est pas porté —
+    /// l'appelant retombe alors sur la case. En DÉZOOM le pion porté vit dans la couche fantôme (repère
+    /// différent) : on laisse le badge sur sa case plutôt que de le poser à côté.
+    /// </summary>
+    private Rectangle? CarriedBadgeRect(Cell cell, GridLayout layout, int slot, int slots)
+    {
+        if (Dezoomed || _combatDragFrom != cell)
+            return null;
+        const int s = 34;
+        var size = layout.TileSize;
+        var m = Context.Input.MousePosition;
+        var spriteTop = m.Y - size / 2 - (int)(size * CarriedLiftFraction);
+        var count = System.Math.Max(1, slots);
+        var left = m.X - count * s / 2;
+        return new Rectangle(left + System.Math.Clamp(slot, 0, count - 1) * s, spriteTop - s - 2, s, s);
     }
 
     /// <summary>
@@ -11548,10 +12603,16 @@ public sealed class GameplayScene : Scene
     {
         if (_bushCells.Contains(cell))
             return (Loc.T("env.bush.name"), Loc.T("env.bush.desc"));
+        // Commandant DUO : les mêmes cases portent une SACOCHE (coffre) et une TROUSSE DE SOIN (recrue).
         if (_chestCells.Contains(cell) && !_chestConsumed.Contains(cell))
-            return (Loc.T("env.chest.name"), Loc.T("env.chest.desc"));
+            return SacocheMode
+                ? (Loc.T("env.sacoche.name"), Loc.T("env.sacoche.desc"))
+                : (Loc.T("env.chest.name"), Loc.T("env.chest.desc"));
         if (_recrueCells.Contains(cell) && !_recrueConsumed.Contains(cell))
-            return IsProtectMission
+            return TrousseMode && _petiteTrousseCells.Contains(cell)
+                ? (Loc.T("env.petite_trousse.name"), Loc.T("env.petite_trousse.desc"))
+                : TrousseMode ? (Loc.T("env.trousse.name"), Loc.T("env.trousse.desc"))
+                : IsProtectMission
                 ? (Loc.T("env.paysan.name"), Loc.T("env.paysan.desc"))
                 : (Loc.T("env.recrue.name"), Loc.T("env.recrue.desc"));
         // Tuile « chute » encore intacte (piège) : explique qu'elle s'effondre quand le pion la quitte.
@@ -11752,7 +12813,7 @@ public sealed class GameplayScene : Scene
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
         var faction = unit.Faction; var domaine = unit.Domaine; var hp = unit.Hp; var maxHp = unit.MaxHp;
         var equip = unit.Equipments; var buffs = unit.Buffs; var treeNodes = TreeNodesFor(unit); var kills = unit.Kills;
-        var title = CommanderCardName(unit.IsEssential, faction);
+        var title = CommanderCardName(unit.IsEssential, unit.IsCompanion, faction);
         if (condensed)
         {
             // Version condensée (combat) : traits en NOMS inline, donc AUCUN popup de mots-clés à différer.
@@ -11774,9 +12835,12 @@ public sealed class GameplayScene : Scene
     /// plutôt que celui de sa classe de base (« MAGE »), qui ne le distingue pas d'un pion ordinaire du même
     /// domaine. Null pour tout le reste = la carte garde le nom de classe. Le BOSS n'est pas concerné : sa
     /// classe de profil porte déjà son propre nom.
+    ///
+    /// Le SECOND MENEUR d'un duo est essentiel lui aussi, mais ce n'est pas le commandant : il garde SON nom
+    /// (« BASILE »), sinon les deux pions du duo portent le même titre sur leur carte.
     /// </summary>
-    private string? CommanderCardName(bool essential, Faction faction) =>
-        essential && faction == Faction.Player
+    private string? CommanderCardName(bool essential, bool companion, Faction faction) =>
+        essential && !companion && faction == Faction.Player
             ? Loc.TOr("commander." + _run.CommanderDef.Id, _run.CommanderDef.Name)
             : null;
 
@@ -11822,7 +12886,10 @@ public sealed class GameplayScene : Scene
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
         var b = buffs ?? CommandBuffs.None;
-        var hpBonus = equip.BonusFor(EquipStat.Hp) + b.BonusFor(EquipStat.Hp);
+        // PV : le « +N » se DÉDUIT du total affiché plutôt que de recompter équipement + arbre. Les buffs sont
+        // figés au spawn, donc les PV max ramassés en plein combat (trousse, sacoche) n'y figurent pas — mais
+        // ils sont bien dans le maxHp qu'on nous passe (cf. Unit.BonusMaxHp). Même valeur qu'avant partout ailleurs.
+        var hpBonus = maxHp - c.MaxHp;
         var dmgBonus = equip.BonusFor(EquipStat.Damage) + b.BonusFor(EquipStat.Damage);
         // Berserk : +1 puissance par ennemi tué (bonus intrinsèque TOUJOURS actif, cf. Match.EffectivePower) —
         // on l'intègre au « +N » de la puissance pour que la carte montre la vraie valeur de combat.
@@ -12129,7 +13196,10 @@ public sealed class GameplayScene : Scene
     /// un pion qu'il ne touche pas. Null pour un ennemi — l'arbre ne le concerne jamais.
     /// </summary>
     private IReadOnlyList<CommandNode>? TreeNodesFor(Unit unit) =>
-        unit.Faction == Faction.Player ? _run.ActiveNodesFor(unit.IsEssential, unit.Domaine) : null;
+        unit.Faction != Faction.Player ? null
+        // DUO : le second meneur a ses propres nœuds — ceux du commandant n'ont rien à faire sur sa carte.
+        : _run.ActiveNodesFor(unit.IsCompanion ? BuffTarget.Companion
+            : unit.IsEssential ? BuffTarget.Commander : BuffTarget.Units, unit.Domaine);
 
     /// <summary>
     /// Une ligne de caractéristique : icône 32×32 à gauche, libellé, valeur alignée à droite. Si
@@ -14024,7 +15094,7 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < count; i++)
         {
             var mission = i + 1;
-            var type = Run.MissionKindAt(_run.PhaseIndex, mission);
+            var type = _run.MissionKindFor(_run.PhaseIndex, mission);
             var area = new Rectangle(startX + i * pitch, TimelineTopY, TimelineNodeSize, TimelineNodeSize);
             var past = mission < current;
 
@@ -14091,7 +15161,7 @@ public sealed class GameplayScene : Scene
             if (!area.Contains(mouse))
                 continue;
             sb.Begin(samplerState: SamplerState.PointClamp);
-            DrawMissionTooltip(sb, area, Run.MissionKindAt(_run.PhaseIndex, i + 1), TimelineEnemyCount(_run.PhaseIndex, i + 1));
+            DrawMissionTooltip(sb, area, _run.MissionKindFor(_run.PhaseIndex, i + 1), TimelineEnemyCount(_run.PhaseIndex, i + 1));
             sb.End();
             break;
         }
@@ -14109,7 +15179,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private int TimelineEnemyCount(int phaseIndex, int missionInPhase)
     {
-        var kind = Run.MissionKindAt(phaseIndex, missionInPhase);
+        var kind = _run.MissionKindFor(phaseIndex, missionInPhase);
         if (kind == CombatType.Speciale
             && SpecialMapFor(phaseIndex, missionInPhase) is { Type: CombatType.Speciale } sp)
             return sp.EnemySpawns.Count;

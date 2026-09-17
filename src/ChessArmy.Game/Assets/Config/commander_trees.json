@@ -224,6 +224,51 @@
         { "id": "mar_logi_reserve_2", "asset": "lan_logi_reserve_1", "branch": 2, "level": 3, "effects": [ { "kind": "reserveSlots", "amount": 4 } ] },
         { "id": "mar_logi_deploy_3",  "asset": "logi_deploiement_2", "branch": 2, "level": 4, "effects": [ { "kind": "deploySlots",  "amount": 4 } ] }
       ]
+    },
+
+    // ── Arbre du commandant DUO (tree "commandantDuo") ───────────────────────────────────────────────
+    // Deux meneurs, deux branches : l'ARTISAN MEURTRIER a gauche (branche 0, autour de la TROUSSE DE SOIN),
+    // BASILE a droite (branche 2, autour de la SACOCHE) et, au centre (branche 1), ce qui les LIE.
+    // Effets propres a ce commandant (cf. CommandEffectKind) :
+    //   { "kind": "companionStat", "stat": "attackRange", "amount": 1 }  ← vise BASILE seul
+    //   { "kind": "companionTrait", "trait": "Recule" }                  ← idem (commanderStat/Trait = l'artisan seul)
+    //   { "kind": "healKitTiles" }    ← les tuiles recrue des maps deviennent des TROUSSES DE SOIN
+    //   { "kind": "satchelChests" }   ← les coffres des maps deviennent des SACOCHES
+    //   { "kind": "satchelForCompanion" } ← l'ARTISAN peut fouiller une sacoche : l'objet part chez BASILE
+    //   { "kind": "healKitOnKill" }   ← chaque mise a mort de l'artisan pose une trousse sur une case libre
+    //   { "kind": "healKitMaxHp",  "amount": 1 }  ← +1 PV max DEFINITIF par trousse utilisee (les deux meneurs)
+    //   { "kind": "satchelMaxHp",  "amount": 1 }  ← +1 PV max DEFINITIF par objet pris dans une sacoche
+    //   { "kind": "roque" }           ← les deux meneurs echangent leurs places en se marchant dessus
+    //   { "kind": "crossKillPower", "amount": 1 } ← +1 puissance a l'ARTISAN par tranche de 3 kills de BASILE
+    // SANS le nœud "duo_trousse_terrain" (resp. "duo_sacoche_terrain"), les tuiles recrue (resp. les coffres)
+    // sont simplement RETIREES des maps : c'est le premier achat qui ouvre l'economie de ce commandant.
+    // ICÔNES À DESSINER : Assets/CommandTree/<id>.png (32×32) pour tous les nœuds sans "asset".
+    {
+      "id": "commandantDuo",
+      "nodes": [
+        // ── Branche 0 : L'ARTISAN MEURTRIER et les TROUSSES DE SOIN ──────────────────────────────
+        { "id": "duo_trousse_kill",     "branch": 0, "level": 1, "effects": [ { "kind": "healKitOnKill" } ] },
+        { "id": "duo_roque",            "branch": 0, "level": 1, "effects": [ { "kind": "roque" } ] },        
+        { "id": "duo_art_riposte", "asset": "lan_cmd_riposte", "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },        
+        { "id": "duo_kills_partages",   "branch": 0, "level": 3, "effects": [ { "kind": "crossKillPower", "amount": 1 } ] },
+        { "id": "duo_art_mouvement", "asset": "cmd_mouvement", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "moveRange", "amount": 1 } ] },
+        { "id": "duo_art_chaine",       "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Réaction en chaîne" } ] },
+
+        // ── Branche 1 : ce qui LIE les deux meneurs ──────────────────────────────────────────────
+        { "id": "duo_trousse_terrain",  "branch": 1, "level": 1, "effects": [ { "kind": "healKitTiles" } ] },
+        { "id": "duo_lien_amitie",      "branch": 1, "level": 2, "effects": [
+            { "kind": "commanderTrait", "trait": "Lien d'amitié" },
+            { "kind": "companionTrait", "trait": "Lien d'amitié" } ] },
+        { "id": "duo_trousse_pv",       "branch": 1, "level": 2, "effects": [ { "kind": "healKitMaxHp", "amount": 2 } ] },
+
+        // ── Branche 2 : BASILE et les SACOCHES ───────────────────────────────────────────────────
+        { "id": "duo_sacoche_terrain",  "branch": 2, "level": 1, "effects": [ { "kind": "satchelChests" } ] },        
+        { "id": "duo_sacoche_artisan",  "branch": 2, "level": 2, "effects": [ { "kind": "satchelForCompanion" } ] },
+        { "id": "duo_sacoche_pv",       "branch": 2, "level": 2, "effects": [ { "kind": "satchelMaxHp", "amount": 1 } ] },
+        { "id": "duo_sacoche_aimant", "asset": "duo_sacoche_aimant", "branch": 2, "level": 3, "effects": [ { "kind": "satchelPull" } ] },
+        { "id": "duo_bas_portee", "asset": "lan_cmd_portee", "branch": 2, "level": 3, "effects": [ { "kind": "companionStat", "stat": "attackRange", "amount": 1 } ] },
+        { "id": "duo_bas_ligne",        "branch": 2, "level": 4, "effects": [ { "kind": "companionTrait", "trait": "Tir en ligne" } ] }
+      ]
     }
   ]
 }

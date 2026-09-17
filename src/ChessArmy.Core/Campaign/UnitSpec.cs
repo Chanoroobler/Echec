@@ -16,11 +16,12 @@ namespace ChessArmy.Core.Campaign;
 /// </summary>
 public sealed class UnitSpec
 {
-    public UnitSpec(Domaine domaine, UnitClass unitClass, bool essential = false)
+    public UnitSpec(Domaine domaine, UnitClass unitClass, bool essential = false, bool companion = false)
     {
         Domaine = domaine;
         UnitClass = unitClass;
         Essential = essential;
+        Companion = companion;
     }
 
     private readonly List<Equipment> _equipment = new();
@@ -28,6 +29,13 @@ public sealed class UnitSpec
     public Domaine Domaine { get; }
     public UnitClass UnitClass { get; }
     public bool Essential { get; }
+
+    /// <summary>
+    /// SECOND meneur d'un commandant DUO (cf. <see cref="Battle.CommandeDef.CompanionId"/>) : essentiel comme
+    /// le commandant, mais distingué de lui pour que l'arbre puisse viser l'un OU l'autre (effets
+    /// <c>companionStat</c> / <c>companionTrait</c>). Toujours <c>false</c> pour un commandant solo.
+    /// </summary>
+    public bool Companion { get; }
 
     /// <summary>
     /// Équipements portés, dans l'ordre où ils ont été posés. Le NOMBRE DE SLOTS n'est pas porté ici mais par
@@ -68,5 +76,9 @@ public sealed class UnitSpec
     /// ennemi ou un spawn hors campagne.
     /// </summary>
     public Unit Spawn(Faction faction, CommandBuffs? buffs = null) =>
-        new(Domaine, faction, UnitClass, _equipment, buffs, Kills) { IsEssential = Essential };
+        new(Domaine, faction, UnitClass, _equipment, buffs, Kills)
+        {
+            IsEssential = Essential,
+            IsCompanion = Companion,
+        };
 }

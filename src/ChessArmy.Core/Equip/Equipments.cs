@@ -47,7 +47,20 @@ public static class Equipments
     /// <summary>Équipements d'une rareté donnée : pool de tirage d'un coffre (ou d'une vague ennemie). En mode
     /// démo (<see cref="DemoOnly"/>), les équipements réservés au jeu complet en sont exclus.</summary>
     public static IReadOnlyList<Equipment> OfRarity(EquipmentRarity rarity) =>
-        _all.Where(e => e.Rarity == rarity && (!DemoOnly || e.Demo)).ToList();
+        _all.Where(e => e.Rarity == rarity && !e.Satchel && (!DemoOnly || e.Demo)).ToList();
+
+    /// <summary>
+    /// OBJETS À LANCER du commandant DUO (cf. <see cref="Equipment.Satchel"/>) : le pool d'une SACOCHE du
+    /// terrain. Hors de tout autre tirage — ni coffre, ni vague ennemie.
+    /// </summary>
+    public static IReadOnlyList<Equipment> Satchel => _all.Where(e => e.Satchel).ToList();
+
+    /// <summary>Tire UN objet à lancer au hasard dans le pool des sacoches (null si le pool est vide).</summary>
+    public static Equipment? RollSatchel(Random rng)
+    {
+        var pool = Satchel;
+        return pool.Count == 0 ? null : pool[rng.Next(pool.Count)];
+    }
 
     /// <summary>
     /// Tire un équipement dans le pool d'une rareté (null si le pool est vide). <paramref name="filter"/>

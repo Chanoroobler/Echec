@@ -9,6 +9,9 @@ PNG des objets posés sur le plateau (calque `objects` des maps, cf. `Assets/Map
 | `buisson.png` | Buisson (couvert, −4 dégâts reçus) | `B` | ✅ |
 | `coffre_cle.png` | Coffre à clé (rare) | `K` | à venir |
 | `cle.png` | Clé | `k` | à venir |
+| `trousse.png` | Trousse de soin (commandant DUO) | `R` | ✅ |
+| `trousse_petite.png` | Petite trousse de soin (posée par « atelier de campagne ») | — | ✅ (repli sur `trousse.png`) |
+| `sacoche.png` | Sacoche (commandant DUO) | `C` | ✅ |
 
 Taille : **64×64** — rendu sur la surface de la case en **carré** (jamais déformé / étiré),
 exactement comme un sprite d'unité. Cadre ton art avec sa transparence dans ce 64×64.
@@ -32,10 +35,27 @@ Dépose simplement le fichier au **nom exact** ci-dessus dans ce dossier
 (`src/ChessArmy.Game/Assets/Objects/`) : il est copié à côté de l'exe au build et chargé
 automatiquement (aucun code à toucher). Relance le jeu pour le voir.
 
+## Commandant DUO : trousse et sacoche
+
+Ce commandant joue **sans armée** : ses nœuds d'arbre transforment les cases `R` en **trousses de
+soin** et les cases `C` en **sacoches** (sans le nœud, l'objet est simplement retiré de la map).
+Ce sont donc les MÊMES cases, avec un autre PNG — `trousse.png` et `sacoche.png`, posés à plat sur
+la case (pas de remontée de sprite ni de variantes par case, contrairement au recrutement).
+
+Le nœud « atelier de campagne » ajoute une **petite trousse** (`trousse_petite.png`, 5 PV au lieu de
+15) : elle n'est sur aucune map, c'est chaque mise à mort de l'artisan qui l'envoie — en arc, depuis
+lui — sur la case libre la plus proche. Tant que le PNG n'existe pas, elle emprunte `trousse.png`.
+
+Les **objets à lancer** que Basile prend dans une sacoche sont, eux, des équipements : leur icône
+**32×32** va dans `Assets/Equipment/` (`grenade.png`, `balleRebondissante.png`,
+`javelotMeurtrier.png`, `flecheCupidon.png`, `seringue.png`), et elle s'affiche au-dessus de sa tête tant qu'il
+porte l'objet.
+
 ## Repli automatique
 
 Tant que le PNG n'existe pas, le jeu dessine un **placeholder** : coffre brun (couvercle clair +
-serrure), pion-jeton avec un « ? » jaune pour le recrutement, touffe verte pour le buisson. Tu peux
-donc ajouter l'art progressivement.
+serrure), pion-jeton avec un « ? » jaune pour le recrutement, touffe verte pour le buisson,
+mallette blanche à croix verte pour la trousse, besace brune pour la sacoche. Tu peux donc ajouter
+l'art progressivement.
 
 > Pour l'instant ces objets sont de simples PNG. L'**animation** (ouverture du coffre, etc.) viendra plus tard.

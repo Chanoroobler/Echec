@@ -57,7 +57,7 @@ public sealed class EquipEffect
 public sealed class Equipment
 {
     private Equipment(string id, string name, EquipmentRarity rarity, IReadOnlyList<EquipEffect> effects,
-        string? icon, bool enemyAllowed, bool demo)
+        string? icon, bool enemyAllowed, bool demo, bool satchel = false)
     {
         Id = id;
         Name = name;
@@ -66,6 +66,7 @@ public sealed class Equipment
         Icon = string.IsNullOrWhiteSpace(icon) ? id : icon!;
         EnemyAllowed = enemyAllowed;
         Demo = demo;
+        Satchel = satchel;
     }
 
     /// <summary>Identifiant stable : clé de sauvegarde et de tirage.</summary>
@@ -92,6 +93,13 @@ public sealed class Equipment
     /// N'affecte ni le jeu complet ni la résolution par Id (chargement de sauvegarde).
     /// </summary>
     public bool Demo { get; }
+
+    /// <summary>
+    /// OBJET À LANCER du commandant DUO : il ne sort JAMAIS d'un coffre ni d'une vague ennemie (exclu des
+    /// pools, cf. <see cref="Equipments.OfRarity"/>) — il ne se ramasse que sur une SACOCHE du terrain, et se
+    /// brise dès qu'il a servi une attaque. Défaut <c>false</c>.
+    /// </summary>
+    public bool Satchel { get; }
 
     /// <summary>Bonus TOTAL apporté à <paramref name="stat"/> (somme des effets de stat qui la visent ; 0 sinon).</summary>
     public int BonusFor(EquipStat stat) =>
@@ -121,6 +129,7 @@ public sealed class Equipment
 
     /// <summary>Crée un équipement à PLUSIEURS effets (mélange libre de stats et de traits).</summary>
     public static Equipment Of(string id, string name, EquipmentRarity rarity,
-        IReadOnlyList<EquipEffect> effects, string? icon = null, bool enemyAllowed = true, bool demo = true) =>
-        new(id, name, rarity, effects, icon, enemyAllowed, demo);
+        IReadOnlyList<EquipEffect> effects, string? icon = null, bool enemyAllowed = true, bool demo = true,
+        bool satchel = false) =>
+        new(id, name, rarity, effects, icon, enemyAllowed, demo, satchel);
 }

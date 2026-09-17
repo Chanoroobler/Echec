@@ -401,10 +401,31 @@ internal sealed class MainForm : Form
         {
             Domaine = commander.Movement, Class = commander.BaseClass.Asset, Essential = true,
         });
+        SyncCompanion(save, commander);
         foreach (var domaine in commander.StartingUnits)
             save.Roster.Add(new UnitSpecSave { Domaine = domaine, Class = Domaines.Of(domaine).BaseClass.Asset });
         save.CommanderId = commander.Id;
         return save;
+    }
+
+    /// <summary>
+    /// COMMANDANT DUO : aligne le SECOND meneur du roster sur le commandant choisi. Il est ESSENTIEL comme
+    /// lui (sa chute perd la run) et n'est jamais recruté : c'est la sauvegarde qui doit le porter, sinon le
+    /// jeu démarrerait la run avec un seul meneur. Un commandant solo n'en a aucun : l'entrée est retirée.
+    /// </summary>
+    private static void SyncCompanion(RunSave save, CommandeDef commander)
+    {
+        save.Roster.RemoveAll(u => u.Companion);
+        if (Commandes.CompanionById(commander.CompanionId) is not { } companion)
+            return;
+        var index = save.Roster.FindIndex(u => u.Essential);
+        save.Roster.Insert(index + 1, new UnitSpecSave
+        {
+            Domaine = companion.Movement,
+            Class = companion.BaseClass.Asset,
+            Essential = true,
+            Companion = true,
+        });
     }
 
     private void ResetSave()
@@ -454,7 +475,7 @@ internal sealed class MainForm : Form
     {
         if (Commandes.ById(_save.CommanderId) is { } byId)
             return byId;
-        var asset = _save.Roster.FirstOrDefault(u => u.Essential)?.Class;
+        var asset = _save.Roster.FirstOrDefault(u => u.Essential && !u.Companion)?.Class;
         return Commandes.Playable.FirstOrDefault(c => c.BaseClass.Asset == asset) ?? Commandes.Commander;
     }
 
@@ -492,7 +513,7 @@ internal sealed class MainForm : Form
                 : "—";
             _rosterList.Items.Add(new ListViewItem(new[]
             {
-                unit.Essential ? "Commandant" : "Pion",
+                unit.Companion ? "Compagnon" : unit.Essential ? "Commandant" : "Pion",
                 unit.Domaine.ToString(),
                 ClassNameOf(unit),
                 equipment,
@@ -635,7 +656,7 @@ internal sealed class MainForm : Form
             return;
 
         _save.CommanderId = def.Id;
-        var essential = _save.Roster.FirstOrDefault(u => u.Essential);
+        var essential = _save.Roster.FirstOrDefault(u => u.Essential && !u.Companion);
         if (essential is null)
         {
             essential = new UnitSpecSave { Essential = true };
@@ -644,6 +665,7 @@ internal sealed class MainForm : Form
         essential.Domaine = def.Movement;
         essential.Class = def.BaseClass.Asset;
         essential.EquipmentIds = new List<string>();
+        SyncCompanion(_save, def);   // DUO : le second meneur suit le commandant choisi (ou disparaît)
 
         _save.CommandNodes.Clear();
         RefreshRoster();

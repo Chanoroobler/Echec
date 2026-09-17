@@ -22,10 +22,14 @@ public static class DomaineCatalog
     public static IReadOnlyList<DomaineDef> FromJson(string json) =>
         Deserialize(json).Domaines.Select(ToDef).ToList();
 
-    /// <summary>Construit les COMMANDANTS (role = Commander) depuis le même JSON. Les boss ont leur propre
-    /// chargeur (<see cref="BossesFromJson"/>) car leur format diffère (profils par phase).</summary>
+    /// <summary>Construit les COMMANDANTS (role = Commander) et leurs COMPAGNONS (role = Companion, second
+    /// meneur d'un commandant DUO) depuis le même JSON. Les boss ont leur propre chargeur
+    /// (<see cref="BossesFromJson"/>) car leur format diffère (profils par phase).</summary>
     public static IReadOnlyList<CommandeDef> CommandesFromJson(string json) =>
-        Deserialize(json).Commandes.Where(c => RoleOf(c) == CommandeRole.Commander).Select(ToCommande).ToList();
+        Deserialize(json).Commandes
+            .Where(c => RoleOf(c) is CommandeRole.Commander or CommandeRole.Companion)
+            .Select(c => ToCommande(c, RoleOf(c)))
+            .ToList();
 
     /// <summary>Construit les BOSS (role = Boss) depuis le même JSON : identité + profils (stats/traits) par phase.</summary>
     public static IReadOnlyList<BossDef> BossesFromJson(string json) =>
@@ -40,7 +44,7 @@ public static class DomaineCatalog
             ? role
             : throw new InvalidOperationException($"Role de commande inconnu dans units.json : '{c.Role}'.");
 
-    private static CommandeDef ToCommande(CommandeConfig c)
+    private static CommandeDef ToCommande(CommandeConfig c, CommandeRole role)
     {
         if (!Enum.TryParse<Domaine>(c.Domaine, ignoreCase: true, out var domaine))
             throw new InvalidOperationException($"Domaine de mouvement inconnu pour la commande '{c.Name}' : '{c.Domaine}'.");
@@ -52,15 +56,17 @@ public static class DomaineCatalog
                 : throw new InvalidOperationException(
                     $"Domaine de pion de départ inconnu pour le commandant '{c.Name}' : '{d}'.")).ToList();
 
-        return new CommandeDef(CommandeRole.Commander, domaine,
+        return new CommandeDef(role, domaine,
             new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange,
-                traits: c.Traits),
+                c.PiercesAllies, c.MinAttackRange ?? 1, c.Traits, ParseAttackDomaine(c.AttackDomaine, c.Name)),
             c.Deployments ?? 5, c.ReserveSize ?? 8, c.Tree ?? "commandant", c.FusionPoints ?? 0,
             c.Id, starting, c.Unlocked ?? true, c.OnHitPoints ?? 0, c.OnHitCap ?? int.MaxValue,
             c.RangedHitPoints ?? 0, c.RangedHitCap ?? int.MaxValue,
             c.JumpPoints ?? 0, c.JumpCap ?? int.MaxValue,
             c.LootPoints ?? 0, c.LootCap ?? int.MaxValue,
-            c.MissionPoints ?? Campaign.Run.PointsPerMission);
+            c.MissionPoints ?? Campaign.Run.PointsPerMission,
+            c.HealPoints ?? 0, c.HealCap ?? int.MaxValue,
+            c.Companion, c.NoArmy ?? false);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

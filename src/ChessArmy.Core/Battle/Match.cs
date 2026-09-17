@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
+using ChessArmy.Core.Command;
+using ChessArmy.Core.Equip;
 using ChessArmy.Core.Map;
 
 namespace ChessArmy.Core.Battle;
@@ -248,7 +251,16 @@ public sealed class Match
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (InBounds(to) && _units[to.Column, to.Row] == null && (flies || !BlocksMovement(to))
+                if (!InBounds(to))
+                    continue;
+                // « Roque » (DUO) : la case de l'AUTRE meneur est une arrivée valide — les deux échangent.
+                if (_units[to.Column, to.Row] is { } occupant)
+                {
+                    if (CanRoque(unit, occupant))
+                        result.Add(to);
+                    continue;
+                }
+                if ((flies || !BlocksMovement(to))
                     && !BlocksPlayerLanding(to, unit))   // le joueur ne se pose pas sur un paysan (mission « protéger »)
                     result.Add(to);
             }
@@ -275,8 +287,15 @@ public sealed class Match
                     if (phases) continue;   // Franchissement : traverse l'obstacle (eau/montagne/mur) sans s'y poser
                     break;                  // obstacle infranchissable (sauf l'unité qui vole)
                 }
-                if (_units[to.Column, to.Row] != null)
+                if (_units[to.Column, to.Row] is { } occupant)
                 {
+                    // « Roque » (DUO) : l'autre meneur n'est pas un obstacle — on va sur sa case et ils
+                    // échangent. Le rayon s'arrête là pour autant (on ne le traverse pas).
+                    if (CanRoque(unit, occupant))
+                    {
+                        result.Add(to);
+                        break;
+                    }
                     if (phases) continue;   // Franchissement : on enjambe l'unité (sans pouvoir s'y poser)
                     break;                  // sinon une unité borne le déplacement
                 }
@@ -451,6 +470,17 @@ public sealed class Match
 
         ResetActionFx();
         RecordObstacleJump(unit, from, to);   // saut du cavalier PAR-DESSUS quelque chose (compté AVANT de bouger)
+
+        // « Roque » (DUO) : la case d'arrivée porte l'AUTRE meneur → les deux ÉCHANGENT leurs places. Aucun
+        // autre effet de déplacement ne s'applique (ni glace, ni interception, ni impact) : c'est un échange.
+        if (_units[to.Column, to.Row] is { } partner && CanRoque(unit, partner))
+        {
+            _units[to.Column, to.Row] = unit;
+            _units[from.Column, from.Row] = partner;
+            EndTurn();
+            return MoveKind.Moved;
+        }
+
         MoveUnit(from, to);
         // « Glace » : si la case d'arrivée est glissante, l'unité glisse au-delà (peut dépasser sa portée). Les
         // traits (interception/impact) se déclenchent depuis sa case de REPOS réelle.
@@ -482,7 +512,11 @@ public sealed class Match
         var attackerStanding = CellOf(unit) != null;
 
         // Drain de vie : l'attaquant récupère 50 % des dégâts RÉELLEMENT infligés (réductions incluses).
-        if (attackerStanding && unit.HasTrait(Trait.DrainDeVie))
+        // « Seringue » (objet à lancer) : drain INTÉGRAL — tout ce qui a été infligé revient en PV. Prioritaire
+        // sur « Drain de vie » (50 %) : les deux ne se cumulent pas, le meilleur gagne.
+        if (attackerStanding && unit.HasTrait(Trait.Seringue))
+            unit.Heal(victimHpBefore - victim.Hp);
+        else if (attackerStanding && unit.HasTrait(Trait.DrainDeVie))
             unit.Heal((victimHpBefore - victim.Hp) / 2);
 
         // Source de points « sur coup à distance » (commandant du Fou) : un coup DIRECT qui TOUCHE vraiment
@@ -500,6 +534,19 @@ public sealed class Match
         // 3 cibles pour l'Orage, 5 pour la Tempête (cf. StormTargetsFor).
         if (attackerStanding && StormDamageFor(unit) is > 0 and var storm)
             StormStrike(unit, target, storm);
+
+        // DUO — « Tir en ligne » : toutes les autres cibles alignées à portée encaissent le même coup.
+        if (attackerStanding && unit.HasTrait(Trait.TirEnLigne))
+            ApplyTirEnLigne(unit, from, target);
+
+        // DUO — OBJET À LANCER (sacoche) : effet propre de l'objet (zone, rebonds, retournement), puis il se
+        // BRISE. Résolu AVANT que l'attaquant ne prenne la place d'une cible abattue : les portées se
+        // comptent depuis la case d'où le coup est parti.
+        if (attackerStanding && unit.Equipments.Count > 0)
+        {
+            ResolveThrownItem(unit, from, target);
+            ConsumeThrownItem(unit);
+        }
 
         MoveKind kind;
         if (!victim.IsAlive && TryReviveWithEquipment(victim))
@@ -548,6 +595,12 @@ public sealed class Match
             }
             kind = MoveKind.Attacked; // l'attaquant reste sur place
         }
+
+        // DUO — « Réaction en chaîne » : la mise à mort enchaîne sur une unité au CONTACT DU CORPS, et ainsi
+        // de suite tant qu'il tue. Elle part donc de la case VISÉE (là où la victime est tombée), pas de celle
+        // de l'attaquant — qui, en tir, est resté à distance.
+        if (kind == MoveKind.Killed && unit.HasTrait(Trait.ReactionEnChaine))
+            ArmChainReaction(unit, target);
 
         // « Impact » : le porteur frappe les ennemis autour de sa position FINALE (from, ou la case prise sur
         // un kill) — jamais si un contre l'a abattu (CellOf renvoie null). Déclenché par sa seule attaque.
@@ -748,7 +801,9 @@ public sealed class Match
     /// (pas du placement) et se calculent à part.
     /// </summary>
     public int ContextualPowerBonus(Cell cell) =>
-        AuraPowerBonus(cell) + FormationPowerBonus(cell) + LienPuissancePowerBonus(cell) + LoupSolitairePowerBonus(cell);
+        AuraPowerBonus(cell) + FormationPowerBonus(cell) + LienPuissancePowerBonus(cell) + LoupSolitairePowerBonus(cell)
+        + PositionStrategiquePowerBonus(cell)
+        + (UnitAt(cell) is { } u ? CrossKillPowerBonus(u) : 0);
 
     /// <summary>
     /// « Loup solitaire » : vrai si <paramref name="unit"/>, postée en <paramref name="cell"/>, porte le trait
@@ -871,6 +926,8 @@ public sealed class Match
         power += AuraPowerBonus(cell);
         power += FormationPowerBonus(cell);
         power += LienPuissancePowerBonus(cell);   // « Lien de puissance » : +2 par allié dans la portée de déplacement
+        power += PositionStrategiquePowerBonus(cell);   // DUO : +5 tant qu'un allié est à portée
+        power += CrossKillPowerBonus(unit);             // DUO : +1 par tranche de 3 kills du COMPAGNON
         return System.Math.Max(0, power);
     }
 
@@ -921,6 +978,11 @@ public sealed class Match
     /// </summary>
     private void ApplyDamage(Unit unit, int amount, Unit? attacker)
     {
+        if (amount <= 0)
+            return;
+        // « Lien d'amitié » (DUO) : une partie du coup part sur les alliés liés à portée ; la victime
+        // n'encaisse que ce qu'il en reste.
+        amount = ShareFriendshipDamage(unit, amount, attacker);
         if (amount <= 0)
             return;
         unit.TakeDamage(amount);
@@ -1024,7 +1086,10 @@ public sealed class Match
         var victim = UnitAt(target);
         if (attacker == null || victim == null)
             return 0;
-        return System.Math.Min(EffectiveDamage(attacker, from, victim, target), victim.Hp);
+        // « Lien d'amitié » : la cible ne prend que SA part. On l'annonce ici, sinon l'aperçu (et le chiffre
+        // qui jaillit à l'impact) promettrait le coup entier alors que ses camarades en portent la moitié.
+        var raw = AfterFriendshipShare(victim, target, EffectiveDamage(attacker, from, victim, target));
+        return System.Math.Min(raw, victim.Hp);
     }
 
     /// <summary>Part « Tueur de géants » des dégâts de l'attaque de <paramref name="from"/> sur
@@ -1209,7 +1274,565 @@ public sealed class Match
         _interceptions.Clear();
         _lastSlide = null;
         _thorns.Clear();
+        _splashHits.Clear();
+        _bounceHits.Clear();
+        _bounceFrom = null;
+        // Filet : une nouvelle action ne doit jamais démarrer avec une balle encore en l'air (la scène gèle
+        // le tour tant qu'elle vole, donc la file est normalement déjà vidée).
+        _bounceQueue.Clear();
+        _bounceAttacker = null;
+        _chainAttacker = null;
+        _chainLinksLeft = 0;
+        _lastCharm = null;
+        _brokenItem = null;
+        _grenadeBlast = null;
         LastGrantedExtraTurn = false;
+    }
+
+    // ═══ COMMANDANT DUO : liens entre meneurs, trousses, objets à lancer ══════════════════════════
+
+    /// <summary>+puissance du trait « Position stratégique » quand un allié est à portée (déplacement OU attaque).</summary>
+    private const int PositionStrategiquePower = 5;
+
+    /// <summary>Portée (Chebyshev) d'un rebond de la « Balle rebondissante » : la case d'à côté, pas plus.</summary>
+    private const int BalleRebondRange = 1;
+
+    /// <summary>Garde-fou : nombre maximal de maillons d'une chaîne (réaction en chaîne, rebonds).</summary>
+    private const int MaxChainLinks = 8;
+
+    /// <summary>Alliés à portée (tampon réutilisé) : « Lien d'amitié » et « Position stratégique ».</summary>
+    private readonly List<Cell> _reachBuffer = new();
+
+    /// <summary>Un partage de dégâts (« Lien d'amitié ») est en cours : JAMAIS relayé (sinon boucle infinie).</summary>
+    private bool _sharing;
+
+    /// <summary>Coups COLLATÉRAUX de l'action (éclaboussure de grenade, rebonds, tir en ligne, réaction en chaîne).</summary>
+    private readonly List<(Cell Cell, int Damage, bool Killed)> _splashHits = new();
+
+    /// <summary>« Flèche de Cupidon » : case de l'unité retournée par l'action (null si aucune).</summary>
+    private Cell? _lastCharm;
+
+    /// <summary>
+    /// « Balle rebondissante » : les REBONDS de l'action, DANS L'ORDRE où la balle les a touchés (la cible
+    /// directe n'y figure pas — c'est le point de départ, cf. <see cref="LastBounceFrom"/>). Tenus à part des
+    /// autres coups collatéraux : la scène les anime un par un le long de la trajectoire de la balle, au lieu
+    /// de tout faire jaillir au contact de l'attaque.
+    /// </summary>
+    private readonly List<(Cell Cell, int Damage, bool Killed)> _bounceHits = new();
+
+    /// <summary>Case d'où la balle repart pour son premier rebond (la cible directe), ou null si aucun rebond.</summary>
+    private Cell? _bounceFrom;
+
+    /// <summary>Objet à lancer CONSOMMÉ par l'action (null si aucun) : la scène l'annonce et le retire du pion.</summary>
+    private Equipment? _brokenItem;
+
+    /// <summary>Coups collatéraux de la dernière action (grenade, rebonds, tir en ligne, réaction en chaîne).</summary>
+    public IReadOnlyList<(Cell Cell, int Damage, bool Killed)> LastSplashHits => _splashHits;
+
+    /// <summary>Case où la dernière action a fait EXPLOSER une grenade, ou null. La scène y joue le souffle.</summary>
+    public Cell? LastGrenadeBlast => _grenadeBlast;
+
+    private Cell? _grenadeBlast;
+
+    /// <summary>Case de l'unité retournée par une « Flèche de Cupidon » lors de la dernière action, ou null.</summary>
+    public Cell? LastCharm => _lastCharm;
+
+    /// <summary>
+    /// REBONDS de la « Balle rebondissante » de la dernière action, dans l'ordre de la trajectoire. La scène
+    /// s'en sert pour faire voler la balle d'ennemi en ennemi et ne sortir chaque chiffre qu'à son arrivée.
+    /// </summary>
+    public IReadOnlyList<(Cell Cell, int Damage, bool Killed)> LastBounceHits => _bounceHits;
+
+    /// <summary>Point de départ de la trajectoire des rebonds (la cible directe), ou null si la balle n'a pas rebondi.</summary>
+    public Cell? LastBounceFrom => _bounceFrom;
+
+    /// <summary>Objet à lancer brisé par la dernière action (null si aucun) : la scène le retire du gabarit.</summary>
+    public Equipment? LastBrokenItem => _brokenItem;
+
+    /// <summary>
+    /// COMMANDANT DUO : puissance gagnée par le COMMANDANT pour chaque tranche de
+    /// <see cref="CommandEffect.CrossKillStep"/> mises à mort de son COMPAGNON. 0 = nœud non acheté.
+    /// Réglé par la scène depuis la run au lancement du combat.
+    /// </summary>
+    public int CrossKillPower { get; set; }
+
+    /// <summary>
+    /// COMMANDANT DUO : « Roque » acheté — les deux meneurs ÉCHANGENT leurs places quand l'un se déplace sur
+    /// l'autre. Réglé par la scène depuis la run au lancement du combat.
+    /// </summary>
+    public bool RoqueEnabled { get; set; }
+
+    /// <summary>
+    /// L'AUTRE meneur du duo (même camp, essentiel, pas le même rôle compagnon/commandant), ou null. Cherché
+    /// dans <see cref="_essential"/> : la liste garde aussi les meneurs TOMBÉS, ce qui est voulu — la puissance
+    /// gagnée sur les mises à mort de l'autre reste acquise quand il n'est plus là.
+    /// </summary>
+    private Unit? OtherLeader(Unit leader)
+    {
+        if (!leader.IsEssential)
+            return null;
+        foreach (var u in _essential)
+            if (u.Faction == leader.Faction && !ReferenceEquals(u, leader) && u.IsCompanion != leader.IsCompanion)
+                return u;
+        return null;
+    }
+
+    /// <summary>
+    /// Puissance que le COMMANDANT tient des mises à mort de son COMPAGNON (nœud « fierté partagée » de l'arbre
+    /// du DUO) : <see cref="CrossKillPower"/> par tranche de <see cref="CommandEffect.CrossKillStep"/> kills.
+    /// Sens UNIQUE : le compagnon ne gagne rien des kills du commandant. 0 hors duo ou nœud non acheté.
+    /// </summary>
+    private int CrossKillPowerBonus(Unit unit) =>
+        CrossKillPower <= 0 || unit.IsCompanion || OtherLeader(unit) is not { } other
+            ? 0
+            : CrossKillPower * (other.Kills / CommandEffect.CrossKillStep);
+
+    /// <summary>
+    /// Vrai si les deux unités sont les DEUX meneurs d'un même duo et que le « Roque » est acheté : l'une peut
+    /// alors se déplacer sur l'autre pour échanger leurs places.
+    /// </summary>
+    private bool CanRoque(Unit mover, Unit? occupant) =>
+        RoqueEnabled && occupant != null && mover.IsEssential && occupant.IsEssential
+        && mover.Faction == occupant.Faction && mover.IsCompanion != occupant.IsCompanion;
+
+    /// <summary>
+    /// Ajoute à <paramref name="result"/> (vidé) les ALLIÉS de <paramref name="unit"/> qui sont à SA PORTÉE —
+    /// déplacement OU attaque. Le déplacement suit <see cref="AppendAlliesInMoveRange"/> (rayons du motif, que
+    /// rien ne borne sauf le bord) ; l'attaque suit les rayons du motif d'ATTAQUE jusqu'à la portée de tir,
+    /// même règle. C'est la portée « sociale » du DUO : « Lien d'amitié » y partage les dégâts, « Position
+    /// stratégique » y cherche un camarade. Sans doublon, l'unité elle-même exclue.
+    /// </summary>
+    private void AppendAlliesInReach(Cell from, Unit unit, List<Cell> result)
+    {
+        result.Clear();
+        AppendAlliesInMoveRange(from, unit, result);
+
+        var attackVectors = Movement.Vectors(unit.AttackDomaine);
+        if (Movement.Kind(unit.AttackDomaine) == MovementKind.Jump)
+        {
+            foreach (var offset in attackVectors)
+            {
+                var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
+                if (UnitAt(to) is { } j && j.Faction == unit.Faction && !result.Contains(to))
+                    result.Add(to);
+            }
+            return;
+        }
+
+        foreach (var dir in attackVectors)
+            for (var step = 1; step <= unit.AttackRange; step++)
+            {
+                var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
+                if (!InBounds(to))
+                    break;   // seul le bord du plateau arrête le rayon
+                if (_units[to.Column, to.Row] is { } occ && occ.Faction == unit.Faction && !result.Contains(to))
+                    result.Add(to);
+            }
+    }
+
+    /// <summary>
+    /// « Position stratégique » : +<see cref="PositionStrategiquePower"/> de puissance tant qu'AU MOINS UN allié
+    /// est à portée de déplacement ou d'attaque (cf. <see cref="AppendAlliesInReach"/>). 0 sans le trait ou
+    /// isolé. Effet CONTEXTUEL au placement, comme les auras : l'UI doit le demander ici.
+    /// </summary>
+    public int PositionStrategiquePowerBonus(Cell cell)
+    {
+        if (UnitAt(cell) is not { } u || !u.HasTrait(Trait.PositionStrategique))
+            return 0;
+        _reachBuffer.Clear();
+        AppendAlliesInReach(cell, u, _reachBuffer);
+        return _reachBuffer.Count > 0 ? PositionStrategiquePower : 0;
+    }
+
+    /// <summary>
+    /// Alliés qui déclenchent « Position stratégique » sur le pion de <paramref name="cell"/> : ceux à SA
+    /// portée (déplacement ou attaque). Vide si le pion n'a pas le trait. Sert au RENDU (le lien de puissance
+    /// tracé entre le porteur et ses camarades) — le bonus, lui, ne dépend que de leur EXISTENCE.
+    /// </summary>
+    public void PositionStrategiqueAllies(Cell cell, List<Cell> result)
+    {
+        result.Clear();
+        if (UnitAt(cell) is { } u && u.HasTrait(Trait.PositionStrategique))
+            AppendAlliesInReach(cell, u, result);
+    }
+
+    /// <summary>
+    /// Alliés qui PARTAGERAIENT les dégâts du pion de <paramref name="cell"/> (« Lien d'amitié ») : ceux à SA
+    /// portée (déplacement ou attaque). Vide si le pion n'a pas le trait. Sert au RENDU : c'est exactement la
+    /// liste que <see cref="ShareFriendshipDamage"/> ferait encaisser, pour que la chaîne montrée à l'écran ne
+    /// mente jamais sur qui va prendre une part.
+    /// </summary>
+    public void LienDAmitieAllies(Cell cell, List<Cell> result)
+    {
+        result.Clear();
+        if (UnitAt(cell) is { } u && u.HasTrait(Trait.LienDAmitie))
+            AppendAlliesInReach(cell, u, result);
+    }
+
+    /// <summary>
+    /// « Lien d'amitié » : les dégâts subis par le porteur sont DIVISÉS à parts égales entre lui et TOUS ses
+    /// alliés à portée (déplacement ou attaque) — le trait est porté par la VICTIME seule, les alliés qui
+    /// encaissent une part n'ont rien à porter. Renvoie ce qu'il reste à encaisser à la victime (le reste de
+    /// la division lui revient). JAMAIS relayé (<see cref="_sharing"/>) : les parts distribuées ne se
+    /// repartagent pas, y compris entre deux porteurs. Les alliés qui tombent sur leur part sont retirés du plateau.
+    /// </summary>
+    private int ShareFriendshipDamage(Unit victim, int amount, Unit? attacker)
+    {
+        if (CellOf(victim) is not { } here)
+            return amount;
+
+        // Liste LOCALE : la distribution rentre dans ApplyDamage (épines, esquive…) qui peut réutiliser le
+        // tampon partagé. Les cases sont figées avant application (un replié ne doit pas encaisser deux fois).
+        var partners = new List<Unit>();
+        var reach = new List<Cell>();
+        var share = FriendshipShare(victim, here, amount, reach);
+        if (share <= 0)
+            return amount;
+        foreach (var c in reach)
+            if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
+                partners.Add(ally);
+
+        _sharing = true;
+        foreach (var partner in partners)
+        {
+            if (CellOf(partner) is not { } pc)
+                continue;
+            var before = partner.Hp;
+            ApplyDamage(partner, share, attacker);
+            // Chiffre de dégâts sur le camarade : sans lui le partage est INVISIBLE (on ne verrait que le
+            // total sur la victime, sans comprendre pourquoi les PV de l'autre descendent aussi).
+            if (before - partner.Hp is > 0 and var dealt)
+                _splashHits.Add((pc, dealt, !partner.IsAlive));
+            RemoveDeadAt(pc, attacker);
+        }
+        _sharing = false;
+        return amount - share * partners.Count;   // la victime garde sa part ET le reste de la division
+    }
+
+    /// <summary>
+    /// Part que « Lien d'amitié » ferait porter à CHACUN des alliés de <paramref name="victim"/> pour un coup
+    /// de <paramref name="amount"/>, et remplit <paramref name="reach"/> de leurs cases (la victime comprise).
+    /// 0 = pas de partage (trait absent, personne à portée, coup trop petit à diviser, ou partage déjà en cours).
+    /// PARTAGÉE entre l'application réelle et l'APERÇU (<see cref="PreviewDamage"/>), pour que le chiffre
+    /// annoncé au joueur soit exactement celui qu'il va voir descendre.
+    /// </summary>
+    private int FriendshipShare(Unit victim, Cell here, int amount, List<Cell> reach)
+    {
+        reach.Clear();
+        if (_sharing || amount <= 1 || !victim.HasTrait(Trait.LienDAmitie))
+            return 0;
+
+        AppendAlliesInReach(here, victim, reach);
+        var partners = 0;
+        foreach (var c in reach)
+            if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
+                partners++;
+        return partners == 0 ? 0 : amount / (partners + 1);
+    }
+
+    /// <summary>
+    /// Ce qu'il RESTERAIT à encaisser à <paramref name="victim"/> sur un coup de <paramref name="amount"/>
+    /// une fois « Lien d'amitié » appliqué (sa part plus le reste de la division). Égal à
+    /// <paramref name="amount"/> sans partage.
+    /// </summary>
+    private int AfterFriendshipShare(Unit victim, Cell here, int amount)
+    {
+        var share = FriendshipShare(victim, here, amount, _previewReach);
+        if (share <= 0)
+            return amount;
+        var partners = 0;
+        foreach (var c in _previewReach)
+            if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
+                partners++;
+        return amount - share * partners;
+    }
+
+    /// <summary>Tampon de l'APERÇU de partage : jamais mêlé à <see cref="_reachBuffer"/> (lu pendant un coup).</summary>
+    private readonly List<Cell> _previewReach = new();
+
+    /// <summary>
+    /// APERÇU du « Lien d'amitié » sur une attaque de <paramref name="from"/> vers <paramref name="target"/> :
+    /// renvoie la part que prendrait CHACUN des camarades liés de la cible et remplit <paramref name="allies"/>
+    /// de leurs cases. 0 (et liste vide) sans partage. La cible, elle, ne garde que
+    /// <see cref="PreviewDamage"/> — les deux se lisent ensemble.
+    /// </summary>
+    public int PreviewSharedDamage(Cell from, Cell target, List<Cell> allies)
+    {
+        allies.Clear();
+        if (UnitAt(from) is not { } attacker || UnitAt(target) is not { } victim)
+            return 0;
+
+        var share = FriendshipShare(victim, target, EffectiveDamage(attacker, from, victim, target), _previewReach);
+        if (share <= 0)
+            return 0;
+        foreach (var c in _previewReach)
+            if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
+                allies.Add(c);
+        return share;
+    }
+
+    /// <summary>
+    /// « Réaction en chaîne » : l'attaque qui TUE sa cible enchaîne sur une autre unité ennemie au CONTACT
+    /// (portée 1 autour de l'attaquant), et recommence tant qu'elle tue. L'attaquant ne bouge pas sur les
+    /// maillons ; la chaîne s'arrête au premier survivant, faute de cible, ou au garde-fou
+    /// <see cref="MaxChainLinks"/>.
+    ///
+    /// ARMÉE ici, JOUÉE maillon par maillon par <see cref="ResolveNextChainLink"/> : la scène fait bondir
+    /// l'attaquant sur chaque victime et ne résout le coup qu'à SON ARRIVÉE. Tout résoudre d'un bloc ferait
+    /// mourir toute la file avant même qu'on ait vu le premier bond partir (même principe que les rebonds de
+    /// la « Balle rebondissante », cf. <see cref="PlanBounce"/>).
+    /// </summary>
+    private void ArmChainReaction(Unit attacker, Cell target)
+    {
+        _chainAttacker = attacker;
+        _chainOrigin = target;
+        _chainLinksLeft = MaxChainLinks;
+    }
+
+    private Unit? _chainAttacker;
+    private Cell _chainOrigin;
+    private int _chainLinksLeft;
+
+    /// <summary>Case de l'attaquant dont la chaîne est en cours (là où le moteur le tient), ou null.</summary>
+    public Cell? ChainAttackerCell => _chainAttacker is { } a ? CellOf(a) : null;
+
+    /// <summary>
+    /// Case de la prochaine victime de la chaîne : le premier ennemi au CONTACT de la DERNIÈRE abattue — la
+    /// chaîne se propage de proche en proche à partir du corps, pas autour de l'attaquant resté en arrière.
+    /// Null quand elle est finie (personne autour, attaquant tombé, victime survivante, garde-fou atteint).
+    /// </summary>
+    public Cell? PendingChainTarget
+    {
+        get
+        {
+            if (_chainAttacker is not { IsAlive: true } a || _chainLinksLeft <= 0 || CellOf(a) is null)
+                return null;
+            foreach (var (dc, dr) in Neighbors8)
+            {
+                var c = new Cell(_chainOrigin.Column + dc, _chainOrigin.Row + dr);
+                if (UnitAt(c) is { } u && u.Faction != a.Faction)
+                    return c;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>Vrai s'il reste un maillon de « Réaction en chaîne » à jouer.</summary>
+    public bool HasPendingChain => PendingChainTarget != null;
+
+    /// <summary>
+    /// Résout le maillon suivant AU MOMENT où le coup porte — la scène l'appelle quand l'attaquant arrive sur
+    /// sa victime. Renvoie (case, dégâts réels, tuée) ou null s'il n'y avait plus rien à frapper. La chaîne
+    /// s'éteint d'elle-même dès qu'une victime SURVIT.
+    /// </summary>
+    public (Cell Cell, int Damage, bool Killed)? ResolveNextChainLink()
+    {
+        if (_chainAttacker is not { } attacker || PendingChainTarget is not { } target
+            || CellOf(attacker) is not { } from || UnitAt(target) is not { } victim)
+        {
+            _chainAttacker = null;
+            return null;
+        }
+
+        _chainLinksLeft--;
+        var before = victim.Hp;
+        ApplyDamage(victim, EffectiveDamage(attacker, from, victim, target), attacker);
+        var killed = !victim.IsAlive;
+        var dealt = before - victim.Hp;
+        RemoveDeadAt(target, attacker);
+        _chainOrigin = target;       // le maillon suivant se cherche autour de CE corps
+        if (!killed)
+            _chainAttacker = null;   // la chaîne ne se propage que sur une mise à mort
+        UpdateWinner();
+        return (target, dealt, killed);
+    }
+
+    /// <summary>
+    /// « Tir en ligne » : l'attaque touche TOUTES les cibles alignées à portée — autrement dit toutes les cases
+    /// que le motif d'attaque atteint (cf. <see cref="AttackTargets(Cell)"/>), pas seulement celle visée. La
+    /// cible directe <paramref name="target"/> est exclue (elle a déjà encaissé le coup principal).
+    /// </summary>
+    private void ApplyTirEnLigne(Unit attacker, Cell from, Cell target)
+    {
+        var others = AttackTargets(from);
+        foreach (var c in others)
+        {
+            if (c == target || UnitAt(c) is not { } victim || victim.Faction == attacker.Faction)
+                continue;
+            var before = victim.Hp;
+            ApplyDamage(victim, EffectiveDamage(attacker, from, victim, c), attacker);
+            var killed = !victim.IsAlive;
+            if (before - victim.Hp is > 0 and var dealt)
+                _splashHits.Add((c, dealt, killed));
+            RemoveDeadAt(c, attacker);
+        }
+    }
+
+    /// <summary>
+    /// « Grenade » (objet à lancer) : les 8 cases autour de la CIBLE encaissent la MOITIÉ des dégâts de
+    /// l'attaque. Les alliés de l'attaquant sont épargnés (c'est un objet qu'on donne à son meneur, pas un
+    /// piège pour son camarade).
+    /// </summary>
+    private void ApplyGrenade(Unit attacker, Cell from, Cell target)
+    {
+        _grenadeBlast = target;   // la grenade explose même sans victime autour : la scène a de quoi la montrer
+        var victims = new List<Cell>();
+        foreach (var (dc, dr) in Neighbors8)
+        {
+            var c = new Cell(target.Column + dc, target.Row + dr);
+            if (UnitAt(c) is { } u && u.Faction != attacker.Faction)
+                victims.Add(c);
+        }
+
+        foreach (var c in victims)
+        {
+            if (UnitAt(c) is not { } victim)
+                continue;
+            var before = victim.Hp;
+            ApplyDamage(victim, EffectiveDamage(attacker, from, victim, c) / 2, attacker);
+            var killed = !victim.IsAlive;
+            if (before - victim.Hp is > 0 and var dealt)
+                _splashHits.Add((c, dealt, killed));
+            RemoveDeadAt(c, attacker);
+        }
+    }
+
+    /// <summary>
+    /// « Balle rebondissante » (objet à lancer) : PRÉPARE la trajectoire sans rien appliquer. La balle
+    /// ricoche de victime en victime, chaque fois sur un ennemi ADJACENT (<see cref="BalleRebondRange"/>) au
+    /// dernier touché, JAMAIS deux fois sur le même (la cible directe comprise). S'arrête faute de voisin, ou
+    /// au garde-fou <see cref="MaxChainLinks"/>.
+    ///
+    /// Les dégâts sont CALCULÉS ici — tant que l'objet est encore sur le pion, donc son bonus compte — mais
+    /// INFLIGÉS un par un par <see cref="ResolveNextBounce"/>, quand la balle arrive vraiment sur sa victime.
+    /// Sans quoi tout le monde encaisserait et mourrait avant même de voir la balle partir.
+    /// </summary>
+    private void PlanBounce(Unit attacker, Cell from, Cell target)
+    {
+        var hit = new HashSet<Unit>();
+        if (UnitAt(target) is { } first)
+            hit.Add(first);
+        var origin = target;
+
+        for (var bounce = 0; bounce < MaxChainLinks; bounce++)
+        {
+            Cell? next = null;
+            foreach (var (cell, unit) in Units())
+                if (unit.Faction != attacker.Faction && !hit.Contains(unit)
+                    && ChebyshevDistance(origin, cell) <= BalleRebondRange)
+                {
+                    next = cell;
+                    break;
+                }
+            if (next is not { } c || UnitAt(c) is not { } victim)
+                break;
+
+            hit.Add(victim);
+            _bounceQueue.Add((c, EffectiveDamage(attacker, from, victim, c)));
+            origin = c;   // le rebond suivant part de la case qui vient d'être touchée
+        }
+
+        if (_bounceQueue.Count > 0)
+        {
+            _bounceFrom = target;       // la balle part de la cible directe
+            _bounceAttacker = attacker; // c'est lui qui encaisse les épines et récolte les mises à mort
+        }
+    }
+
+    /// <summary>Rebonds CALCULÉS mais pas encore infligés, dans l'ordre de la trajectoire.</summary>
+    private readonly List<(Cell Cell, int Damage)> _bounceQueue = new();
+
+    /// <summary>Lanceur de la balle en vol : crédité des mises à mort, cible des éventuelles épines.</summary>
+    private Unit? _bounceAttacker;
+
+    /// <summary>Vrai tant que la balle a encore des rebonds à porter (cf. <see cref="ResolveNextBounce"/>).</summary>
+    public bool HasPendingBounce => _bounceQueue.Count > 0;
+
+    /// <summary>
+    /// Trajectoire RESTANTE de la balle, dans l'ordre : la scène s'en sert pour l'animer d'un pion à l'autre.
+    /// Vide si la balle n'a pas rebondi.
+    /// </summary>
+    public IReadOnlyList<Cell> PendingBouncePath =>
+        _bounceQueue.ConvertAll(b => b.Cell);
+
+    /// <summary>
+    /// Inflige le PROCHAIN rebond : c'est ici que la victime encaisse et, le cas échéant, tombe. Appelé par
+    /// la scène AU MOMENT où la balle se pose sur elle. Renvoie la case touchée, les dégâts réellement
+    /// encaissés et si le coup l'a abattue ; <c>null</c> quand il n'y a plus rien à résoudre.
+    ///
+    /// La victoire est réévaluée à chaque rebond : la balle peut très bien abattre le dernier ennemi.
+    /// </summary>
+    public (Cell Cell, int Damage, bool Killed)? ResolveNextBounce()
+    {
+        if (_bounceQueue.Count == 0)
+            return null;
+
+        var (cell, damage) = _bounceQueue[0];
+        _bounceQueue.RemoveAt(0);
+        var attacker = _bounceAttacker;
+        // Lanceur abattu en route (épines d'un rebond) ou cible disparue : la balle retombe, on solde la file.
+        if (attacker is null || CellOf(attacker) is null || UnitAt(cell) is not { } victim)
+        {
+            _bounceQueue.Clear();
+            return null;
+        }
+
+        var before = victim.Hp;
+        ApplyDamage(victim, damage, attacker);
+        var killed = !victim.IsAlive;
+        var dealt = before - victim.Hp;
+        RemoveDeadAt(cell, attacker);
+        if (dealt > 0)
+            _bounceHits.Add((cell, dealt, killed));
+        UpdateWinner();
+        return (cell, dealt, killed);
+    }
+
+    /// <summary>
+    /// « Flèche de Cupidon » (objet à lancer) : la cible SURVIVANTE change de camp pour le reste du combat
+    /// (cf. <see cref="Unit.Charm"/>). Une cible abattue par le coup n'est pas retournée — elle est morte.
+    /// Noté dans <see cref="_lastCharm"/> pour le feedback.
+    /// </summary>
+    private void ApplyCharm(Unit attacker, Cell target)
+    {
+        if (UnitAt(target) is not { IsAlive: true } victim || victim.Faction == attacker.Faction)
+            return;
+        if (victim.IsEssential)
+            return;   // un boss ne se retourne pas : le combat se gagne en l'abattant
+        victim.Charm(attacker.Faction);
+        _lastCharm = target;
+        UpdateWinner();   // le camp de la cible a changé : le combat peut être décidé par ce seul retournement
+    }
+
+    /// <summary>
+    /// Objets à lancer : résout l'effet propre de celui que porte l'attaquant, APRÈS le coup principal. Un seul
+    /// objet à la fois (Basile n'en prend un que s'il n'en a pas) ; le « Javelot meurtrier » n'a pas d'effet
+    /// ici — sa puissance est déjà dans le coup.
+    /// </summary>
+    private void ResolveThrownItem(Unit attacker, Cell from, Cell target)
+    {
+        if (attacker.HasTrait(Trait.Grenade))
+            ApplyGrenade(attacker, from, target);
+        if (attacker.HasTrait(Trait.BalleRebondissante))
+            PlanBounce(attacker, from, target);   // trajectoire calculée ; les coups partent à l'atterrissage
+        if (attacker.HasTrait(Trait.FlecheDeCupidon))
+            ApplyCharm(attacker, target);
+    }
+
+    /// <summary>
+    /// Brise l'objet à lancer que porte <paramref name="unit"/> (il ne sert qu'UNE attaque) et le note dans
+    /// <see cref="_brokenItem"/> : la scène l'annonce et le retire aussi du GABARIT pour que l'objet ne
+    /// revienne pas au combat suivant. Sans effet si l'unité n'en porte pas.
+    /// </summary>
+    private void ConsumeThrownItem(Unit unit)
+    {
+        foreach (var item in unit.Equipments)
+            if (item.Traits.Any(t => Trait.Thrown.Contains(t)))
+            {
+                unit.BreakEquipment(item);
+                _brokenItem = item;
+                return;
+            }
     }
 
     /// <summary>
@@ -1442,6 +2065,22 @@ public sealed class Match
             return MoveKind.Invalid;
 
         UnitAt(target)!.Heal(HealAmount(unit, from));
+        EndTurn();
+        return MoveKind.Moved;   // action de soutien : tour consommé
+    }
+
+    /// <summary>
+    /// Consomme l'ACTION de l'unité de <paramref name="from"/> pour un geste de CAMPAGNE que le moteur ne
+    /// connaît pas (« Sacoche aimantée » : la sacoche est un objet de la MAP, pas une pièce). Rien n'est
+    /// résolu ici — la scène a déjà appliqué l'effet —, mais le tour se termine exactement comme après une
+    /// attaque (fins de tour comprises). <see cref="MoveKind.Invalid"/> si ce n'est pas le tour de l'unité.
+    /// </summary>
+    public MoveKind TrySpendAction(Cell from)
+    {
+        if (ActiveUnitAt(from) == null)
+            return MoveKind.Invalid;
+
+        ResetActionFx();
         EndTurn();
         return MoveKind.Moved;   // action de soutien : tour consommé
     }

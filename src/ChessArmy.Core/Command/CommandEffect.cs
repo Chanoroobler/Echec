@@ -78,6 +78,52 @@ public enum CommandEffectKind
     /// rapproche d'une fusion — ou la classe de base d'un <see cref="CommandEffect.Domaine"/> précis s'il est fixé.
     /// </summary>
     RecycleRecruit,
+
+    // ── Commandant DUO (Basile + l'artisan meurtrier) ─────────────────────────────────────────────
+
+    /// <summary>Bonus de STAT sur le SECOND meneur seulement (cf. <see cref="Battle.CommandeDef.CompanionId"/>).</summary>
+    CompanionStat,
+
+    /// <summary>Octroi d'un TRAIT de combat au SECOND meneur seulement.</summary>
+    CompanionTrait,
+
+    /// <summary>Les TUILES RECRUE des maps deviennent des TROUSSES DE SOIN (sans ce nœud, elles sont retirées).</summary>
+    HealKitTiles,
+
+    /// <summary>Les COFFRES des maps deviennent des SACOCHES (sans ce nœud, ils sont retirés).</summary>
+    SatchelChests,
+
+    /// <summary>
+    /// Le COMMANDANT peut lui aussi puiser dans une sacoche — mais l'objet à lancer part chez son COMPAGNON,
+    /// seul capable de s'en servir. Sans ce nœud, une sacoche ne répond qu'au compagnon lui-même.
+    /// </summary>
+    SatchelForCompanion,
+
+    /// <summary>
+    /// « Sacoche aimantée » : le COMPAGNON peut TIRER sur une sacoche à portée d'attaque pour en faire venir
+    /// un objet jusqu'à lui — il n'a plus à marcher dessus. Un ennemi posté sur la sacoche en fait une cible
+    /// d'attaque ordinaire : le tir le frappe, et rien n'est ramassé.
+    /// </summary>
+    SatchelPull,
+
+    /// <summary>Chaque mise à mort du COMMANDANT fait apparaître une trousse de soin sur une case libre.</summary>
+    HealKitOnKill,
+
+    /// <summary>+<see cref="CommandEffect.Amount"/> PV max (définitif, sur la run) par TROUSSE DE SOIN utilisée.</summary>
+    HealKitMaxHp,
+
+    /// <summary>+<see cref="CommandEffect.Amount"/> PV max (définitif, sur la run) par OBJET pris dans une sacoche.</summary>
+    SatchelMaxHp,
+
+    /// <summary>« Roque » : les deux meneurs ÉCHANGENT leurs places quand l'un se déplace sur l'autre.</summary>
+    Roque,
+
+    /// <summary>
+    /// Le COMMANDANT gagne <see cref="CommandEffect.Amount"/> de puissance par TRANCHE DE
+    /// <see cref="CrossKillStep"/> mises à mort de son COMPAGNON (compteur à vie, cf. <see cref="Battle.Unit.Kills"/>).
+    /// Sens unique : le compagnon ne gagne rien des kills du commandant.
+    /// </summary>
+    CrossKillPower,
 }
 
 /// <summary>
@@ -170,8 +216,14 @@ public sealed class CommandEffect
     /// </summary>
     public Domaine? Domaine { get; }
 
-    /// <summary>Vrai si l'effet vise le COMMANDANT (stat ou trait).</summary>
+    /// <summary>Nombre de mises à mort du COMPAGNON par palier de <see cref="CommandEffectKind.CrossKillPower"/>.</summary>
+    public const int CrossKillStep = 3;
+
+    /// <summary>Vrai si l'effet vise le COMMANDANT (stat ou trait). Un DUO : le commandant SEUL, pas son compagnon.</summary>
     public bool TargetsCommander => Kind is CommandEffectKind.CommanderStat or CommandEffectKind.CommanderTrait;
+
+    /// <summary>Vrai si l'effet vise le SECOND meneur d'un DUO (stat ou trait).</summary>
+    public bool TargetsCompanion => Kind is CommandEffectKind.CompanionStat or CommandEffectKind.CompanionTrait;
 
     /// <summary>Vrai si l'effet vise les unités NON essentielles (stat ou trait).</summary>
     public bool TargetsUnits => Kind is CommandEffectKind.UnitStat or CommandEffectKind.UnitTrait;
@@ -257,4 +309,14 @@ public sealed class CommandEffect
 
     public static CommandEffect RecycleRecruit(int amount = 1, Domaine? domaine = null) =>
         new(CommandEffectKind.RecycleRecruit, default, amount, null, CommandScale.Flat, domaine);
+
+    public static CommandEffect CompanionStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat) =>
+        new(CommandEffectKind.CompanionStat, stat, amount, null, scale, null);
+
+    public static CommandEffect CompanionTrait(string trait) =>
+        new(CommandEffectKind.CompanionTrait, default, 0, trait, CommandScale.Flat, null);
+
+    /// <summary>Effet de DUO sans valeur (sa seule présence compte) : trousses, sacoches, roque…</summary>
+    public static CommandEffect Flag(CommandEffectKind kind, int amount = 1) =>
+        new(kind, default, amount, null, CommandScale.Flat, null);
 }

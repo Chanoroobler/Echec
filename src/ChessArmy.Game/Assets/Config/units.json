@@ -225,6 +225,48 @@
       "startingUnits": [ "Dame", "Fou", "Tour" ],
       "unlocked": false
     },
+    // Commandant DUO : L'ARTISAN MEURTRIER + BASILE. Deux meneurs, tous deux ESSENTIELS (la chute de l'un OU
+    // de l'autre perd la run). Il joue SANS ARMEE ("noArmy") : ni reserve, ni recrutement, ni fusion, ni
+    // equipement, ni relance, ni mission speciale, et les COFFRES comme les TUILES RECRUE sont retires des
+    // maps. Son arbre "commandantDuo" les y remet sous une autre forme : trousses de soin (tuiles recrue) et
+    // sacoches (coffres). Revenu : AUCUNE condition a remplir sur le terrain, mais 3 points par mission
+    // reussie (missionPoints:3) la ou les autres en touchent 2.
+    // "companion" = id de l'entree role "Companion" ci-dessous : elle amene le SECOND meneur.
+    // ASSETS A DESSINER : Assets/Units/Commandant_artisan_{front,back,ia_front,ia_back}.png et
+    // Assets/Units/Basile_{front,back,ia_front,ia_back}.png (64x64). STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Commander",
+      "id": "Commandant_duo",
+      "domaine": "Dame",
+      "name": "L'artisan meurtrier",
+      "asset": "Commandant_artisan",
+      "hp": 35,
+      "damage": 14,
+      "moveRange": 2,
+      "attackRange": 1,
+      "deployments": 2,
+      "reserveSize": 0,
+      "tree": "commandantDuo",
+      "missionPoints": 3,
+      "companion": "Basile",
+      "noArmy": true,
+      "startingUnits": [],
+      "unlocked": true
+    },
+    // SECOND meneur du commandant DUO. Role "Companion" : jamais propose au carrousel, il n'entre en jeu que
+    // par le champ "companion" du commandant ci-dessus. Basile tire a distance (domaine Tour, lignes) la ou
+    // l'artisan frappe au contact ; c'est LUI qui ramasse les objets des sacoches.
+    {
+      "role": "Companion",
+      "id": "Basile",
+      "domaine": "Dame",
+      "name": "Basile",
+      "asset": "Basile",
+      "hp": 30,
+      "damage": 10,
+      "moveRange": 1,
+      "attackRange": 2
+    },
     {
       "role": "Boss",
       "name": "Commandant_brute",

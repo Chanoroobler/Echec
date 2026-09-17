@@ -84,6 +84,18 @@ public static class CommandTreeCatalog
             "rerollequipment" => CommandEffect.RerollEquipment(amount),
             "recruitextraunit" => CommandEffect.RecruitExtraUnit(amount),
             "recyclerecruit" => CommandEffect.RecycleRecruit(amount, DomaineOf(e, nodeId)),
+            // ── Commandant DUO ─────────────────────────────────────────────────────────────────────
+            "companionstat" => CommandEffect.CompanionStat(Stat(e, nodeId), amount, Scale(e, nodeId)),
+            "companiontrait" => CommandEffect.CompanionTrait(TraitOf(e, nodeId)),
+            "healkittiles" => CommandEffect.Flag(CommandEffectKind.HealKitTiles),
+            "satchelchests" => CommandEffect.Flag(CommandEffectKind.SatchelChests),
+            "satchelforcompanion" => CommandEffect.Flag(CommandEffectKind.SatchelForCompanion),
+            "satchelpull" => CommandEffect.Flag(CommandEffectKind.SatchelPull),
+            "healkitonkill" => CommandEffect.Flag(CommandEffectKind.HealKitOnKill, amount),
+            "healkitmaxhp" => CommandEffect.Flag(CommandEffectKind.HealKitMaxHp, amount),
+            "satchelmaxhp" => CommandEffect.Flag(CommandEffectKind.SatchelMaxHp, amount),
+            "roque" => CommandEffect.Flag(CommandEffectKind.Roque),
+            "crosskillpower" => CommandEffect.Flag(CommandEffectKind.CrossKillPower, amount),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }

@@ -526,12 +526,19 @@ public class CommandTreeTests
     private static string AssetPath(params string[] parts) =>
         System.IO.Path.Combine(new[] { RepoRoot(), "src", "ChessArmy.Game", "Assets" }.Concat(parts).ToArray());
 
+    /// <summary>Vrai si ce commandant a une source de points PROPRE, en plus des missions (cf. CommandeDef).</summary>
+    private static bool HasOwnIncome(ChessArmy.Core.Battle.CommandeDef def) =>
+        def.FusionPoints > 0 || def.OnHitPoints > 0 || def.RangedHitPoints > 0
+        || def.JumpPoints > 0 || def.LootPoints > 0 || def.HealPoints > 0;
+
     [Fact]
     public void ShippedTrees_Parse_AndEveryNodeHasItsLocalizedLabelAndDescription()
     {
         var trees = CommandTreeCatalog.FromJson(
             System.IO.File.ReadAllText(AssetPath("Config", "commander_trees.json")));
         Assert.NotEmpty(trees);
+        var commandes = ChessArmy.Core.Battle.Config.DomaineCatalog.CommandesFromJson(
+            System.IO.File.ReadAllText(AssetPath("Config", "units.json")));
 
         // strings.csv : chaque nœud DOIT avoir « tree.<id> » et « tree.<id>.desc », sinon l'infobulle affiche
         // la clé brute (le bug d'un id renommé sans sa traduction). Idem pour les libellés de branche et la
@@ -559,8 +566,12 @@ public class CommandTreeTests
             for (var branch = 0; branch < tree.BranchCount; branch++)
                 Assert.True(keys.Contains($"tree.{tree.Id}.branch{branch}"),
                     $"libellé de branche manquant : tree.{tree.Id}.branch{branch}");
-            Assert.True(keys.Contains($"tree.{tree.Id}.income"),
-                $"ligne de gain manquante : tree.{tree.Id}.income");
+            // La ligne de gain n'existe que pour un commandant qui a une source de points PROPRE (fusion,
+            // coup reçu, butin…). Celui qui vit de ses seules missions n'en a pas — la ligne « points par
+            // mission », commune à tous, dit déjà tout (cf. CommandTreeView.DrawTreeHeader).
+            if (commandes.FirstOrDefault(c => c.TreeId == tree.Id) is { } def && HasOwnIncome(def))
+                Assert.True(keys.Contains($"tree.{tree.Id}.income"),
+                    $"ligne de gain manquante : tree.{tree.Id}.income");
         }
     }
 
@@ -633,8 +644,8 @@ public class CommandTreeTests
     public void UnitStat_DomaineFilter_OnlyBuffsThatDomaine()
     {
         var effects = new[] { CommandEffect.UnitStat(EquipStat.Hp, 4, domaine: Domaine.Tour) };
-        var tour = CommandBuffs.From(effects, commander: false, distinctPairs: 0, targetDomaine: Domaine.Tour);
-        var dame = CommandBuffs.From(effects, commander: false, distinctPairs: 0, targetDomaine: Domaine.Dame);
+        var tour = CommandBuffs.From(effects, BuffTarget.Units, distinctPairs: 0, targetDomaine: Domaine.Tour);
+        var dame = CommandBuffs.From(effects, BuffTarget.Units, distinctPairs: 0, targetDomaine: Domaine.Dame);
         Assert.Equal(4, tour.BonusFor(EquipStat.Hp));   // unité du bon domaine : bonus appliqué
         Assert.Equal(0, dame.BonusFor(EquipStat.Hp));   // autre domaine : pas touchée
     }
@@ -643,7 +654,7 @@ public class CommandTreeTests
     public void PerDomaineUnit_ScalesByDomaineUnitCount()
     {
         var effects = new[] { CommandEffect.CommanderStat(EquipStat.Hp, 3, CommandScale.PerDomaineUnit, Domaine.Tour) };
-        var buffs = CommandBuffs.From(effects, commander: true, distinctPairs: 0,
+        var buffs = CommandBuffs.From(effects, BuffTarget.Commander, distinctPairs: 0,
             targetDomaine: null, domaineCount: d => d == Domaine.Tour ? 2 : 0);
         Assert.Equal(6, buffs.BonusFor(EquipStat.Hp));   // 3 × 2 unités du domaine Tour
     }
@@ -652,8 +663,8 @@ public class CommandTreeTests
     public void UnitTrait_DomaineFilter_OnlyGrantsToThatDomaine()
     {
         var effects = new[] { CommandEffect.UnitTrait(Trait.AuraDePuissance, Domaine.Tour) };
-        Assert.True(CommandBuffs.From(effects, false, 0, Domaine.Tour).GrantsTrait(Trait.AuraDePuissance));
-        Assert.False(CommandBuffs.From(effects, false, 0, Domaine.Fou).GrantsTrait(Trait.AuraDePuissance));
+        Assert.True(CommandBuffs.From(effects, BuffTarget.Units, 0, Domaine.Tour).GrantsTrait(Trait.AuraDePuissance));
+        Assert.False(CommandBuffs.From(effects, BuffTarget.Units, 0, Domaine.Fou).GrantsTrait(Trait.AuraDePuissance));
     }
 
     [Fact]
@@ -814,12 +825,12 @@ public class CommandTreeTests
         };
 
         // 3 cavaliers posés → +6 ; le compteur de ROSTER (domaineCount) ne doit pas être utilisé.
-        var buffs = CommandBuffs.From(effects, commander: false, distinctPairs: 0, Domaine.Cavalier,
+        var buffs = CommandBuffs.From(effects, BuffTarget.Units, distinctPairs: 0, Domaine.Cavalier,
             domaineCount: _ => 99, deployedCount: _ => 3);
         Assert.Equal(6, buffs.BonusFor(EquipStat.Damage));
 
         // Sans compteur de déploiement (aperçu hors plateau) : le bonus vaut 0.
-        var none = CommandBuffs.From(effects, commander: false, distinctPairs: 0, Domaine.Cavalier,
+        var none = CommandBuffs.From(effects, BuffTarget.Units, distinctPairs: 0, Domaine.Cavalier,
             domaineCount: _ => 99);
         Assert.Equal(0, none.BonusFor(EquipStat.Damage));
     }

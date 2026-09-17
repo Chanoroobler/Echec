@@ -14,7 +14,11 @@ namespace ChessArmy.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v6 = la nouveauté IA figée de la run (<see cref="AiFreshTier2"/> /
+    /// Version du format. v7 = le commandant DUO : le SECOND meneur est marqué dans le roster
+    /// (<see cref="UnitSpecSave.Companion"/>) et ses PV max ramassés sur le terrain sont persistés
+    /// (<see cref="LeaderBonusHp"/>). Une sauvegarde v6 ou antérieure reste LISIBLE : sans commandant duo,
+    /// les deux champs valent leur défaut et rien ne change.
+    /// v6 = la nouveauté IA figée de la run (<see cref="AiFreshTier2"/> /
     /// <see cref="AiFreshTier3"/>) est persistée ; une sauvegarde v5 ou antérieure reste LISIBLE (nouveauté
     /// absente → null → retirée au 1er combat du tier, la reprise reste jouable).
     /// v5 = le chronomètre de la run (<see cref="RunStatsSave.PlayTime"/>) est persisté ;
@@ -33,7 +37,7 @@ public sealed class RunSave
     /// En revanche un <see cref="CombatNumber"/> hors [1..<see cref="Run.TotalCombats"/>] est à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 6;
+    public int Version { get; set; } = 7;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -96,6 +100,13 @@ public sealed class RunSave
     /// partie. Absent (vieux save) → false.</summary>
     public bool UltimateReviveUsed { get; set; }
 
+    /// <summary>
+    /// COMMANDANT DUO : PV max GAGNÉS sur le terrain par les deux meneurs (trousses de soin utilisées +
+    /// objets de sacoche ramassés, cf. <see cref="Run.LeaderBonusHp"/>). Cumulé sur la run, donc persisté.
+    /// Absent (vieux save, ou tout autre commandant) → 0.
+    /// </summary>
+    public int LeaderBonusHp { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -120,6 +131,7 @@ public sealed class RunSave
             AiFreshTier2 = run.AiFreshTier2?.ToList(),
             AiFreshTier3 = run.AiFreshTier3?.ToList(),
             UltimateReviveUsed = run.UltimateReviveUsed,
+            LeaderBonusHp = run.LeaderBonusHp,
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -139,7 +151,7 @@ public sealed class RunSave
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
             CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats(),
-            AiFreshTier2, AiFreshTier3, UltimateReviveUsed);
+            AiFreshTier2, AiFreshTier3, UltimateReviveUsed, LeaderBonusHp);
     }
 }
 
@@ -197,6 +209,12 @@ public sealed class UnitSpecSave
     public bool Essential { get; set; }
 
     /// <summary>
+    /// SECOND meneur d'un commandant DUO (cf. <see cref="UnitSpec.Companion"/>) : essentiel comme lui, mais
+    /// distingué pour que l'arbre vise le bon. Absent (vieux save, commandant solo) → false.
+    /// </summary>
+    public bool Companion { get; set; }
+
+    /// <summary>
     /// HÉRITÉ (sauvegardes mono-slot) : id de l'UNIQUE équipement porté. Plus jamais écrit — relu seulement si
     /// <see cref="EquipmentIds"/> est absent. Cf. <see cref="ToSpec"/>.
     /// </summary>
@@ -216,6 +234,7 @@ public sealed class UnitSpecSave
         Domaine = spec.Domaine,
         Class = spec.UnitClass.Asset,
         Essential = spec.Essential,
+        Companion = spec.Companion,
         EquipmentIds = spec.Equipments.Select(e => e.Id).ToList(),
         Kills = spec.Kills,
     };
@@ -225,9 +244,12 @@ public sealed class UnitSpecSave
         UnitSpec spec;
         if (Essential)
         {
-            // Unité COMMANDE (commandant) : retrouvée par asset dans le registre, repli sur le commandant.
+            // Unité COMMANDE (commandant ou second meneur d'un DUO) : retrouvée par asset dans le registre,
+            // repli sur le commandant. Le rôle sauvegardé prime, et le registre le confirme (un asset de
+            // compagnon reste un compagnon même si le drapeau manque — vieille sauvegarde).
             var def = Commandes.All.FirstOrDefault(c => c.BaseClass.Asset == Class) ?? Commandes.Commander;
-            spec = new UnitSpec(def.Movement, def.BaseClass, essential: true) { Kills = Kills };
+            var companion = Companion || def.Role == CommandeRole.Companion;
+            spec = new UnitSpec(def.Movement, def.BaseClass, essential: true, companion) { Kills = Kills };
         }
         else
         {

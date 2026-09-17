@@ -15,6 +15,23 @@ namespace ChessArmy.Core.Command;
 /// moment, cf. <see cref="CommandScale.PerDistinctPair"/>), puis passé à <see cref="Campaign.UnitSpec.Spawn"/>.
 /// Les ennemis n'en reçoivent jamais : ils spawnent avec <see cref="None"/>.
 /// </summary>
+/// <summary>
+/// CIBLE d'une agrégation de bonus d'arbre. Les trois sont EXCLUSIVES : un effet <c>commanderStat</c> ne
+/// touche pas le compagnon d'un DUO, et réciproquement — c'est ce qui permet à l'arbre du commandant DUO
+/// d'améliorer Basile ou l'artisan séparément.
+/// </summary>
+public enum BuffTarget
+{
+    /// <summary>Les pions NON essentiels (l'armée).</summary>
+    Units,
+
+    /// <summary>Le commandant lui-même.</summary>
+    Commander,
+
+    /// <summary>Le SECOND meneur d'un commandant DUO (cf. <see cref="Campaign.UnitSpec.Companion"/>).</summary>
+    Companion,
+}
+
 public sealed class CommandBuffs
 {
     /// <summary>Aucun bonus (ennemis, tests, commandant sans arbre acheté).</summary>
@@ -41,8 +58,22 @@ public sealed class CommandBuffs
     public bool GrantsTrait(string trait) => Traits.Contains(trait);
 
     /// <summary>
-    /// Agrège les effets qui visent la cible voulue. <paramref name="commander"/> vrai → on ne retient que
-    /// les effets <see cref="CommandEffect.TargetsCommander"/> ; faux → <see cref="CommandEffect.TargetsUnits"/>.
+    /// Copie de ces bonus avec <paramref name="amount"/> EN PLUS sur <paramref name="stat"/> (rendue telle
+    /// quelle si le montant est nul). Sert aux bonus qui ne viennent pas d'un nœud mais de ce que la run a
+    /// ramassé — les PV max gagnés sur le terrain par les meneurs du DUO (cf. <c>Run.LeaderBonusHp</c>).
+    /// </summary>
+    public CommandBuffs Plus(EquipStat stat, int amount)
+    {
+        if (amount == 0)
+            return this;
+        var stats = new Dictionary<EquipStat, int>(_stats);
+        stats[stat] = stats.GetValueOrDefault(stat, 0) + amount;
+        return new CommandBuffs(stats, Traits);
+    }
+
+    /// <summary>
+    /// Agrège les effets qui visent la cible voulue (<paramref name="target"/> : les troupes, le commandant,
+    /// ou le second meneur d'un DUO — les trois jeux d'effets sont disjoints).
     /// Les effets de méta (slots, fusion) sont ignorés ici (lus directement par la <see cref="Campaign.Run"/>).
     /// <paramref name="distinctPairs"/> met à l'échelle les bonus « par paire ». Pour une unité,
     /// <paramref name="targetDomaine"/> filtre les effets restreints à un domaine (cf. <see cref="CommandEffect.Domaine"/>) ;
@@ -57,7 +88,7 @@ public sealed class CommandBuffs
     /// Nombre d'équipements que porte la CIBLE elle-même : échelle <see cref="CommandScale.PerOwnEquippedItem"/>.
     /// 0 par défaut → ces bonus valent 0 (cas de tous les pions et des commandants sans emplacement).
     /// </param>
-    public static CommandBuffs From(IEnumerable<CommandEffect> effects, bool commander, int distinctPairs,
+    public static CommandBuffs From(IEnumerable<CommandEffect> effects, BuffTarget target, int distinctPairs,
         Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null,
         Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0)
     {
@@ -66,15 +97,22 @@ public sealed class CommandBuffs
 
         foreach (var e in effects)
         {
-            if (commander ? !e.TargetsCommander : !e.TargetsUnits)
+            var kept = target switch
+            {
+                BuffTarget.Commander => e.TargetsCommander,
+                BuffTarget.Companion => e.TargetsCompanion,
+                _ => e.TargetsUnits,
+            };
+            if (!kept)
                 continue;
 
-            // Effets d'UNITÉ restreints à un domaine : ignorés pour une unité d'un autre domaine. Le
-            // commandant, lui, n'est jamais filtré (son domaine sert seulement à l'échelle par domaine).
-            if (!commander && e.Domaine is { } fd && targetDomaine != fd)
+            // Effets d'UNITÉ restreints à un domaine : ignorés pour une unité d'un autre domaine. Les MENEURS,
+            // eux, ne sont jamais filtrés (leur domaine sert seulement à l'échelle par domaine).
+            if (target == BuffTarget.Units && e.Domaine is { } fd && targetDomaine != fd)
                 continue;
 
-            if (e.Kind is CommandEffectKind.CommanderTrait or CommandEffectKind.UnitTrait)
+            if (e.Kind is CommandEffectKind.CommanderTrait or CommandEffectKind.UnitTrait
+                or CommandEffectKind.CompanionTrait)
             {
                 if (e.Trait is { } t && !traits.Contains(t))
                     traits.Add(t);

@@ -191,7 +191,12 @@ public sealed class CommanderSelectScene : Scene
         // L'indice de bas de page reste collé au bas : c'est une aide, pas un élément de la composition.
         l.Hint = new Rectangle(panel.X, panel.Bottom - 16, panel.Width, 10);
 
-        var startBlockH = labelH + (starts.Count > 0 ? labelGap + UnitCardRenderer.TileH : 0);
+        // Le bloc « unités de départ » réserve TOUJOURS sa rangée de pions, même pour un commandant qui
+        // commence seul (le DUO) : sinon la pile entière — titre, portrait, nom — se recalcule plus haut et
+        // TOUT L'ÉCRAN SAUTE en faisant défiler le carrousel. La hauteur de la composition ne doit dépendre
+        // que du gabarit, jamais du commandant sélectionné. La ligne « il commence seul » s'écrit dans cette
+        // place réservée (cf. Draw).
+        var startBlockH = labelH + labelGap + UnitCardRenderer.TileH;
         var stackH = titleH + gapTitle + SpriteBox + gapSprite + NameH + gapName + indexH
                      + startBlockH + BarH + gapButtons + BtnH;
 
@@ -225,11 +230,21 @@ public sealed class CommanderSelectScene : Scene
 
         l.StartLabel = new Rectangle(panel.X, y, panel.Width, labelH);
         l.StartTiles = new List<(UnitClass, Domaine, Rectangle)>();
-        var rowW = starts.Count * UnitCardRenderer.TileW + Math.Max(0, starts.Count - 1) * TileGap;
+        // Les pions avec lesquels le commandant démarre : la classe de base de chaque domaine déclaré, plus
+        // — pour un commandant DUO — son SECOND MENEUR en tête de rangée. Il n'est pas une « unité de départ »
+        // au sens du roster (il ne se recrute ni ne se fusionne), mais c'est bien avec lui qu'on part : le
+        // joueur doit le voir ici, sinon le duo a l'air de commencer seul.
+        var tiles = new List<(UnitClass Cls, Domaine Domaine)>();
+        if (Commandes.CompanionById(Selected.CompanionId) is { } companion)
+            tiles.Add((companion.BaseClass, companion.Movement));
+        foreach (var d in starts)
+            tiles.Add((Domaines.Of(d).BaseClass, d));
+
+        var rowW = tiles.Count * UnitCardRenderer.TileW + Math.Max(0, tiles.Count - 1) * TileGap;
         var rowX = cx - rowW / 2;
         var rowY = l.StartLabel.Bottom + labelGap;
-        for (var i = 0; i < starts.Count; i++)
-            l.StartTiles.Add((Domaines.Of(starts[i]).BaseClass, starts[i],
+        for (var i = 0; i < tiles.Count; i++)
+            l.StartTiles.Add((tiles[i].Cls, tiles[i].Domaine,
                 new Rectangle(rowX + i * (UnitCardRenderer.TileW + TileGap), rowY,
                     UnitCardRenderer.TileW, UnitCardRenderer.TileH)));
         y += startBlockH + breathe;
@@ -715,6 +730,20 @@ public sealed class CommanderSelectScene : Scene
             foreach (var line in _card.Wrap(Loc.T("commander.points_loot", def.LootPoints), body.Width, 1))
             {
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
+        // Source « sur soin » (DUO) : +N points chaque fois qu'un des deux meneurs reprend des PV.
+        if (def.HealPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_heal", def.HealPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
+        // DUO : rappeler que ce commandant en a DEUX et que la chute de l'un OU l'autre perd la run.
+        if (def.CompanionId != null)
+            foreach (var line in _card.Wrap(Loc.T("commander.duo_leaders"), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Yellow2);
                 y += LineH;
             }
     }

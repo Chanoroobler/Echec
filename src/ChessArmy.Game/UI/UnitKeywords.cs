@@ -53,6 +53,16 @@ public static class UnitKeywords
         ["Loup solitaire"] = "kw.loup_solitaire",
         ["Épines"] = "kw.epines",
         ["Renaissance ultime"] = "kw.renaissance_ultime",
+        // ── Commandant DUO (arbre) et OBJETS À LANCER (sacoche) ───────────────────────────────────
+        ["Lien d'amitié"] = "kw.lien_amitie",
+        ["Position stratégique"] = "kw.position_strategique",
+        ["Réaction en chaîne"] = "kw.reaction_chaine",
+        ["Tir en ligne"] = "kw.tir_ligne",
+        ["Grenade"] = "kw.grenade",
+        ["Balle rebondissante"] = "kw.balle_rebondissante",
+        ["Javelot meurtrier"] = "kw.javelot",
+        ["Flèche de Cupidon"] = "kw.fleche_cupidon",
+        ["Seringue"] = "kw.seringue",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

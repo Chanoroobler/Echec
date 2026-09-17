@@ -47,6 +47,19 @@ public static class Trait
     public const string Epines = "Épines";                   // renvoie à l'assaillant la MOITIÉ des dégâts réellement encaissés (jamais relayé : le renvoi ne renvoie pas)
     public const string RenaissanceUltime = "Renaissance ultime"; // ARBRE (Marchand) : à la mort, revient à PV PLEINS — UNE fois par PARTIE (cf. Run.UltimateReviveUsed)
 
+    // ── Commandant DUO (Basile + l'artisan meurtrier) ─────────────────────────────────────────────
+    public const string LienDAmitie = "Lien d'amitié";       // les dégâts subis sont DIVISÉS à parts égales entre le porteur et TOUS ses alliés à portée de déplacement ou d'attaque (eux n'ont pas besoin du trait)
+    public const string PositionStrategique = "Position stratégique"; // +PositionStrategiquePower de puissance s'il y a un allié à portée de déplacement ou d'attaque
+    public const string ReactionEnChaine = "Réaction en chaîne"; // si l'attaque TUE sa cible, bondit sur une unité au contact du CORPS et la frappe (et ainsi de suite tant qu'il tue)
+    public const string TirEnLigne = "Tir en ligne";         // l'attaque touche TOUTES les cibles alignées avec l'attaquant dans sa portée d'attaque
+
+    // ── OBJETS À LANCER (sacoche du commandant DUO) : consommés par la PREMIÈRE attaque du porteur ──
+    public const string Grenade = "Grenade";                 // l'attaque éclabousse les 8 cases autour de la cible (moitié des dégâts)
+    public const string BalleRebondissante = "Balle rebondissante"; // le coup rebondit d'ennemi en ennemi (2 cases max), jamais deux fois sur le même
+    public const string JavelotMeurtrier = "Javelot meurtrier"; // pur bonus de puissance (l'objet ne fait rien d'autre)
+    public const string FlecheDeCupidon = "Flèche de Cupidon"; // la cible touchée CHANGE DE CAMP jusqu'à la fin du combat, puis disparaît
+    public const string Seringue = "Seringue";               // l'attaquant se soigne de 100 % des dégâts infligés (drain INTÉGRAL, cf. DrainDeVie = 50 %)
+
     /// <summary>Tous les traits (pour piocher / valider une configuration de classe).</summary>
     public static readonly string[] All =
     {
@@ -55,5 +68,16 @@ public static class Trait
         DrainDeVie, ZoneMorte, Balistique, Vol, Formation, Esquive, Orage, Tempete, AttaqueLibre,
         Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
         LienDePuissance, RepositionnementStrategique, LoupSolitaire, Epines, RenaissanceUltime,
+        LienDAmitie, PositionStrategique, ReactionEnChaine, TirEnLigne,
+        Grenade, BalleRebondissante, JavelotMeurtrier, FlecheDeCupidon, Seringue,
+    };
+
+    /// <summary>
+    /// Traits portés par un OBJET À LANCER de la sacoche : leur porteur les perd (l'objet se brise) dès qu'il
+    /// a attaqué une fois. Cf. <c>Match.ConsumeThrownItem</c> et l'arbre du commandant DUO.
+    /// </summary>
+    public static readonly string[] Thrown =
+    {
+        Grenade, BalleRebondissante, JavelotMeurtrier, FlecheDeCupidon, Seringue,
     };
 }

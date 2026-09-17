@@ -20,6 +20,9 @@ public static class Commandes
         _all = defs;
     }
 
+    /// <summary>Restaure le repli codé (réinitialise l'état statique partagé après un test).</summary>
+    public static void ResetToDefaults() => _all = Defaults();
+
     public static IReadOnlyList<CommandeDef> All => _all;
 
     /// <summary>Commandants JOUABLES, dans l'ordre du JSON : c'est la source du carrousel de sélection.</summary>
@@ -37,6 +40,17 @@ public static class Commandes
         string.IsNullOrWhiteSpace(id)
             ? null
             : _all.FirstOrDefault(c => c.Role == CommandeRole.Commander
+                && string.Equals(c.Id, id, System.StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// SECOND meneur d'un commandant DUO par son id (rôle <see cref="CommandeRole.Companion"/>), ou
+    /// <c>null</c>. Un compagnon n'est jamais jouable seul : il n'entre en jeu que par le
+    /// <see cref="CommandeDef.CompanionId"/> du commandant qui l'amène.
+    /// </summary>
+    public static CommandeDef? CompanionById(string? id) =>
+        string.IsNullOrWhiteSpace(id)
+            ? null
+            : _all.FirstOrDefault(c => c.Role == CommandeRole.Companion
                 && string.Equals(c.Id, id, System.StringComparison.OrdinalIgnoreCase));
 
     // Repli codé (doit rester aligné avec Assets/Config/units.json). Les boss sont dans Bosses.Defaults.

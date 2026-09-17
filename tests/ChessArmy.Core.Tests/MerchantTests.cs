@@ -606,7 +606,7 @@ public class MerchantTests
     {
         var cls = new UnitClass("Chef", "chef", tier: 1, maxHp: 20, damage: 0, moveRange: 1, attackRange: 1);
         var buffs = CommandBuffs.From(
-            new[] { CommandEffect.CommanderTrait(Trait.RenaissanceUltime) }, commander: true, distinctPairs: 0);
+            new[] { CommandEffect.CommanderTrait(Trait.RenaissanceUltime) }, BuffTarget.Commander, distinctPairs: 0);
         var commander = new Unit(Domaine.Dame, Faction.Player, cls, buffs: buffs);
 
         commander.TakeDamage(999);

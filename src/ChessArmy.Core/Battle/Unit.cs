@@ -29,7 +29,13 @@ public sealed class Unit
     }
 
     public Domaine Domaine { get; }
-    public Faction Faction { get; }
+
+    /// <summary>
+    /// Camp de l'unité. Fixé à la création, il ne change qu'au retournement d'une « Flèche de Cupidon »
+    /// (cf. <see cref="Charm"/>) — et seulement pour la durée du combat.
+    /// </summary>
+    public Faction Faction { get; private set; }
+
     public UnitClass Class { get; }
 
     /// <summary>
@@ -130,6 +136,13 @@ public sealed class Unit
     public bool IsEssential { get; init; }
 
     /// <summary>
+    /// SECOND meneur d'un commandant DUO (cf. <see cref="Campaign.UnitSpec.Companion"/>) : essentiel comme le
+    /// commandant, mais distingué de lui — le moteur s'en sert pour les effets qui lient les deux meneurs
+    /// (« Roque », puissance gagnée sur les mises à mort de l'AUTRE). Faux partout ailleurs.
+    /// </summary>
+    public bool IsCompanion { get; init; }
+
+    /// <summary>
     /// Comportement d'IA de cette unité (ennemis seulement). <see cref="AiKind.Normal"/> par défaut :
     /// fonce sur le joueur. <see cref="AiKind.Defensif"/> : garde une position (mission spéciale),
     /// posé à la pose de la vague selon la case de spawn de la map. Voir <see cref="EnemyAi"/>.
@@ -137,7 +150,27 @@ public sealed class Unit
     public AiKind AiKind { get; set; } = AiKind.Normal;
 
     public MovementKind MovementKind => Movement.Kind(Domaine);
-    public int MaxHp => Stat(EquipStat.Hp, Class.MaxHp);
+    public int MaxHp => Stat(EquipStat.Hp, Class.MaxHp) + BonusMaxHp;
+
+    /// <summary>
+    /// PV max gagnés EN PLEIN COMBAT (commandant DUO : trousses de soin et sacoches ramassées sur le terrain).
+    /// Les <see cref="Buffs"/> sont figés au spawn : sans ce cumul, un bonus ramassé au tour 3 n'aurait d'effet
+    /// qu'au combat SUIVANT. Vit sur l'unité seule — au respawn, c'est la run qui le rend via ses buffs, donc
+    /// aucun double compte.
+    /// </summary>
+    public int BonusMaxHp { get; private set; }
+
+    /// <summary>
+    /// Ajoute <paramref name="amount"/> PV max SÉANCE TENANTE, et autant de PV courants : un gain de PV max
+    /// qui ne remplit pas la jauge ne se verrait pas et n'aiderait pas le pion qui vient de le ramasser.
+    /// </summary>
+    public void GainMaxHp(int amount)
+    {
+        if (amount <= 0)
+            return;
+        BonusMaxHp += amount;
+        Hp += amount;
+    }
     public int Damage => Stat(EquipStat.Damage, Class.Damage);
     public int MoveRange => Stat(EquipStat.MoveRange, Class.MoveRange);
     public int AttackRange => Stat(EquipStat.AttackRange, Class.AttackRange);
@@ -208,8 +241,40 @@ public sealed class Unit
         return true;
     }
 
-    /// <summary>Soigne l'unité (borné à ses PV max).</summary>
-    public void Heal(int amount) => Hp = System.Math.Min(MaxHp, Hp + amount);
+    /// <summary>Soigne l'unité (borné à ses PV max). Renvoie les PV RÉELLEMENT repris (0 si elle était pleine).</summary>
+    public int Heal(int amount)
+    {
+        var before = Hp;
+        Hp = System.Math.Min(MaxHp, Hp + System.Math.Max(0, amount));
+        return Hp - before;
+    }
+
+    /// <summary>
+    /// BRISE un équipement porté (le retire du pion) : objet à lancer consommé par l'attaque, « Queue de
+    /// phénix »… Le gabarit, lui, est mis à jour par la scène. Faux s'il ne le portait pas.
+    /// </summary>
+    public bool BreakEquipment(Equipment equipment) => _equipment.Remove(equipment);
+
+    /// <summary>
+    /// Pose un équipement EN PLEIN COMBAT (objet à lancer ramassé sur une sacoche). Les PV COURANTS ne
+    /// bougent pas : un objet qui donne des PV max ne soigne pas, il élargit la jauge. L'appelant met le
+    /// gabarit à jour de son côté. Aucun contrôle d'emplacement ici.
+    /// </summary>
+    public void AddEquipment(Equipment equipment) => _equipment.Add(equipment);
+
+    /// <summary>
+    /// « Flèche de Cupidon » : l'unité CHANGE DE CAMP pour le reste du combat. Elle est marquée
+    /// <see cref="Charmed"/> — la scène la retire du plateau à la fin du combat (elle ne rejoint jamais
+    /// l'armée) et ne la compte ni dans les pertes ni dans le butin.
+    /// </summary>
+    public void Charm(Faction faction)
+    {
+        Faction = faction;
+        Charmed = true;
+    }
+
+    /// <summary>Vrai si l'unité a été retournée par une « Flèche de Cupidon » : elle disparaît en fin de combat.</summary>
+    public bool Charmed { get; private set; }
 
     /// <summary>
     /// Vrai si l'unité porte ce <paramref name="trait"/> (cf. <see cref="Trait"/>) — par sa classe, par son

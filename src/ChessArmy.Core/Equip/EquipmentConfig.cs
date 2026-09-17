@@ -31,6 +31,10 @@ public sealed class EquipmentEntry
     /// réservé au jeu complet, filtré du pool en mode démo. Cf. Equipment.Demo / Equipments.DemoOnly.</summary>
     public bool Demo { get; set; } = true;
 
+    /// <summary>OBJET À LANCER (commandant DUO) : exclu des coffres et des vagues ennemies, ramassé seulement
+    /// sur une SACOCHE du terrain. Défaut <c>false</c>. Cf. Equipment.Satchel.</summary>
+    public bool Sacoche { get; set; }
+
     /// <summary>Effets multiples (prioritaire s'il est présent). Chaque effet = stat+amount OU trait.</summary>
     public List<EquipEffectEntry>? Effects { get; set; }
 

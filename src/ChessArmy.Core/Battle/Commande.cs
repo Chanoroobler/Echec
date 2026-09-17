@@ -6,7 +6,9 @@ namespace ChessArmy.Core.Battle;
 public enum CommandeRole
 {
     Commander, // commandant du joueur : sa mort = défaite
-    Boss       // boss ennemi : le tuer = victoire du combat de boss
+    Boss,      // boss ennemi : le tuer = victoire du combat de boss
+    Companion  // SECOND meneur d'un commandant DUO : jamais proposé au carrousel, amené par le commandant
+               // qui le référence (cf. CommandeDef.CompanionId). Essentiel comme lui : sa mort = défaite.
 }
 
 /// <summary>
@@ -28,8 +30,14 @@ public sealed class CommandeDef
         int rangedHitPoints = 0, int rangedHitCap = int.MaxValue,
         int jumpPoints = 0, int jumpCap = int.MaxValue,
         int lootPoints = 0, int lootCap = int.MaxValue,
-        int missionPoints = Campaign.Run.PointsPerMission)
+        int missionPoints = Campaign.Run.PointsPerMission,
+        int healPoints = 0, int healCap = int.MaxValue,
+        string? companionId = null, bool noArmy = false)
     {
+        HealPoints = healPoints;
+        HealCap = healCap;
+        CompanionId = companionId;
+        NoArmy = noArmy;
         LootPoints = lootPoints;
         LootCap = lootCap;
         MissionPoints = missionPoints;
@@ -156,6 +164,34 @@ public sealed class CommandeDef
     /// ramasser trois par combat sur le terrain). Cf. <see cref="Campaign.Run.MissionPoints"/>.
     /// </summary>
     public int MissionPoints { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés chaque fois qu'un de ses MENEURS (lui ou son
+    /// <see cref="CompanionId"/>) REPREND DES PV en combat — trousse de soin, drain, soin allié, peu importe la
+    /// source —, plafonnés à <see cref="HealCap"/> soins par combat. Source de gain du commandant DUO, qui n'a
+    /// ni fusion ni butin à monnayer. 0 = ce commandant ne gagne pas de points ainsi.
+    /// Cf. <see cref="Campaign.Run.GrantHealPoint"/>.
+    /// </summary>
+    public int HealPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de soins comptabilisés par combat pour <see cref="HealPoints"/>.</summary>
+    public int HealCap { get; }
+
+    /// <summary>
+    /// COMMANDANT DUO : <see cref="Id"/> du SECOND meneur (une <see cref="CommandeDef"/> de rôle
+    /// <see cref="CommandeRole.Companion"/>, cf. <see cref="Commandes.CompanionById"/>). Il arrive au
+    /// <see cref="Campaign.Run.Reset"/> comme second pion ESSENTIEL : les deux comptent dans le déploiement, et
+    /// la chute de l'UN OU L'AUTRE perd la run. <c>null</c> = commandant solo (le cas général).
+    /// </summary>
+    public string? CompanionId { get; }
+
+    /// <summary>
+    /// COMMANDANT SANS ARMÉE : il ne joue qu'avec ses meneurs. Pas de réserve, pas de recrutement, pas de
+    /// fusion, pas d'équipement, pas de relance, pas de mission spéciale, et les COFFRES comme les TUILES
+    /// RECRUE sont retirés des maps (son arbre les remplace par des trousses de soin et des sacoches).
+    /// Défaut <c>false</c>.
+    /// </summary>
+    public bool NoArmy { get; }
 
     public string Name => BaseClass.Name;
 }

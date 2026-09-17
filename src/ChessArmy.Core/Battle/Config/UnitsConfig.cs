@@ -26,6 +26,16 @@ public sealed class CommandeConfig
     public int MoveRange { get; set; }
     public int AttackRange { get; set; }
 
+    /// <summary>COMMANDANT : tire à travers ses alliés (comme le Lancier). Absent/false = ligne bloquée.
+    /// (Pour un boss, se déclare par phase dans <see cref="Phases"/>.)</summary>
+    public bool PiercesAllies { get; set; }
+
+    /// <summary>COMMANDANT : portée de tir MINIMALE (« X à Y » : X). Absent → 1 (peut frapper au contact).</summary>
+    public int? MinAttackRange { get; set; }
+
+    /// <summary>COMMANDANT : domaine du pattern d'ATTAQUE s'il diffère du déplacement. Absent → attaque = déplacement.</summary>
+    public string? AttackDomaine { get; set; }
+
     /// <summary>
     /// BOSS, format HÉRITÉ (une seule variante) : phase de campagne (1..3) à laquelle ce boss est réservé,
     /// ou <c>0</c>/absent. Sert uniquement quand <see cref="Phases"/> est absent (repli sans traits). Ignoré
@@ -87,6 +97,24 @@ public sealed class CommandeConfig
 
     /// <summary>COMMANDANT : points gagnés à chaque MISSION RÉUSSIE. Absent → <c>Run.PointsPerMission</c> (2).</summary>
     public int? MissionPoints { get; set; }
+
+    /// <summary>COMMANDANT : points gagnés chaque fois qu'un de ses meneurs REPREND DES PV en combat (DUO). Absent → 0.</summary>
+    public int? HealPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de soins comptabilisés par combat pour <c>healPoints</c>. Absent → illimité.</summary>
+    public int? HealCap { get; set; }
+
+    /// <summary>
+    /// COMMANDANT DUO : id du SECOND meneur, une entrée de rôle <c>Companion</c> du même fichier. Il entre en
+    /// jeu avec le commandant et sa mort perd la run, comme la sienne. Absent → commandant solo.
+    /// </summary>
+    public string? Companion { get; set; }
+
+    /// <summary>
+    /// COMMANDANT : joue SANS ARMÉE (ni réserve, ni recrutement, ni fusion, ni équipement, ni relance, ni
+    /// mission spéciale ; coffres et tuiles recrue retirés des maps). Absent → <c>false</c>.
+    /// </summary>
+    public bool? NoArmy { get; set; }
 
     /// <summary>COMMANDANT : traits de combat NATIFS (cf. Trait), avant tout nœud d'arbre. Absent → aucun.
     /// (Pour un boss, les traits se déclarent par phase dans <see cref="Phases"/>.)</summary>

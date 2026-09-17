@@ -325,6 +325,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.LootPoints > 0)   // Marchand : coffre ouvert ou recrue ramassée
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.LootPoints, run.CommanderDef.LootCap));
+        else if (run.CommanderDef.HealPoints > 0)   // DUO : un meneur qui reprend des PV
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.HealPoints, run.CommanderDef.HealCap));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>
