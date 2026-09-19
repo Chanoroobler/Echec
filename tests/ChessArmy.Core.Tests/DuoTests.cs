@@ -26,6 +26,7 @@ public class DuoTests : IDisposable
         Commandes.ResetToDefaults();
         Equipments.ResetToDefaults();
         CommandTrees.ResetToDefaults();
+        Bosses.ResetToDefaults();   // le test du boss ARTISAN charge son propre pool
     }
 
     // ── Fabriques ────────────────────────────────────────────────────────────────
@@ -255,8 +256,8 @@ public class DuoTests : IDisposable
 
         m.TryAttack(new Cell(3, 0), new Cell(0, 0));
 
-        Assert.Equal(25, artisan.Hp);   // 10 divisés en deux : 5 pour lui…
-        Assert.Equal(25, basile.Hp);    // …5 pour son camarade
+        Assert.Equal(26, artisan.Hp);   // 10 divisés en deux : 5 pour lui, moins 1 d'absorption…
+        Assert.Equal(26, basile.Hp);    // …et autant pour son camarade
     }
 
     /// <summary>
@@ -280,10 +281,10 @@ public class DuoTests : IDisposable
 
         m.TryAttack(new Cell(3, 0), new Cell(0, 0));
 
-        // 12 dégâts pour 3 unités liées : 4 chacun (aucun reste).
-        Assert.Equal(26, bearer.Hp);
-        Assert.Equal(26, plain1.Hp);
-        Assert.Equal(26, plain2.Hp);
+        // 12 dégâts pour 3 unités liées : 4 chacun (aucun reste), moins 1 d'absorption chacune.
+        Assert.Equal(27, bearer.Hp);
+        Assert.Equal(27, plain1.Hp);
+        Assert.Equal(27, plain2.Hp);
         Assert.Equal(30, m.UnitAt(new Cell(5, 5))!.Hp);
     }
 
@@ -299,8 +300,58 @@ public class DuoTests : IDisposable
 
         m.TryAttack(new Cell(3, 0), new Cell(0, 0));
 
-        Assert.Equal(24, bearer.Hp);   // 11 pour deux : 5 au camarade, 6 (part + reste) pour la victime
-        Assert.Equal(25, ally.Hp);
+        Assert.Equal(25, bearer.Hp);   // 11 pour deux : 6 (part + reste) pour la victime moins 1 = 5
+        Assert.Equal(26, ally.Hp);     // …et 5 pour le camarade moins 1 = 4
+    }
+
+    /// <summary>
+    /// L'absorption est PAR UNITÉ TOUCHÉE : chaque part perd 1, la victime comme chacun de ses camarades.
+    /// Le lien est donc d'autant plus solide qu'il y a de monde autour — trois camarades effacent 4 dégâts
+    /// du coup total, pas 1.
+    /// </summary>
+    [Fact]
+    public void LienDAmitie_TakesOneOffEveryShare_NotJustTheVictims()
+    {
+        var m = Board();
+        var bearer = Make(Faction.Enemy, 30, 0, new[] { Trait.LienDAmitie });
+        var a1 = Make(Faction.Enemy, 30, 0, None);
+        var a2 = Make(Faction.Enemy, 30, 0, None);
+        var a3 = Make(Faction.Enemy, 30, 0, None);
+        m.Place(new Cell(0, 0), bearer);
+        m.Place(new Cell(0, 1), a1);
+        m.Place(new Cell(0, 2), a2);
+        m.Place(new Cell(0, 3), a3);
+        m.Place(new Cell(3, 0), Make(Faction.Player, 20, 20, None));
+
+        m.TryAttack(new Cell(3, 0), new Cell(0, 0));
+
+        // 20 pour 4 unités liées : 5 chacune, moins 1 = 4 encaissés par tête (16 sur 20 seulement).
+        Assert.Equal(26, bearer.Hp);
+        Assert.Equal(26, a1.Hp);
+        Assert.Equal(26, a2.Hp);
+        Assert.Equal(26, a3.Hp);
+    }
+
+    /// <summary>
+    /// Conséquence assumée de l'absorption : un coup dont chaque part vaut 1 est ENTIÈREMENT encaissé par le
+    /// lien — personne ne perd de PV. Le trait n'a donc pas de plancher à 1 dégât.
+    /// </summary>
+    [Fact]
+    public void LienDAmitie_AbsorbsASmallHitEntirely()
+    {
+        var m = Board();
+        var bearer = Make(Faction.Enemy, 30, 0, new[] { Trait.LienDAmitie });
+        var ally = Make(Faction.Enemy, 30, 0, None);
+        m.Place(new Cell(0, 0), bearer);
+        m.Place(new Cell(0, 1), ally);
+        m.Place(new Cell(3, 0), Make(Faction.Player, 20, 2, None));
+
+        Assert.Equal(0, m.PreviewDamage(new Cell(3, 0), new Cell(0, 0)));
+
+        m.TryAttack(new Cell(3, 0), new Cell(0, 0));
+
+        Assert.Equal(30, bearer.Hp);   // 2 pour deux : 1 chacun, moins 1 = rien
+        Assert.Equal(30, ally.Hp);
     }
 
     [Fact]
@@ -350,6 +401,82 @@ public class DuoTests : IDisposable
         Assert.Equal(MoveKind.Moved, m.TryMove(new Cell(0, 0), new Cell(0, 2)));
         Assert.Same(artisan, m.UnitAt(new Cell(0, 2)));
         Assert.Same(basile, m.UnitAt(new Cell(0, 0)));
+    }
+
+    /// <summary>
+    /// « La puissance du rock » : le roque met la charge en réserve sur l'ARTISAN, sa prochaine attaque la
+    /// dépense, et la suivante retombe à sa puissance nue. Sans le nœud (<c>RoquePower</c> à 0), rien ne change.
+    /// </summary>
+    [Fact]
+    public void RoquePower_ChargesTheArtisanUntilHisNextAttack()
+    {
+        var m = Board();
+        m.RoqueEnabled = true;
+        m.RoquePower = 5;
+        var artisan = Make(Faction.Player, 30, 10, None, essential: true, moveRange: 3);
+        var basile = Make(Faction.Player, 22, 0, None, essential: true, companion: true);
+        var target = Make(Faction.Enemy, 100, 0, None);
+        m.Place(new Cell(0, 0), artisan);
+        m.Place(new Cell(0, 2), basile);
+        m.Place(new Cell(3, 2), target);
+
+        Assert.Equal(0, artisan.RoquePower);
+        m.TryMove(new Cell(0, 0), new Cell(0, 2));      // roque : l'artisan arrive en (0 2) chargé
+        Assert.Equal(5, artisan.RoquePower);
+
+        m.PassTurn();
+        m.TryAttack(new Cell(0, 2), new Cell(3, 2));
+        Assert.Equal(85, target.Hp);                    // 100 - (10 + 5)
+        Assert.Equal(0, artisan.RoquePower);            // la charge est dépensée
+
+        m.PassTurn();
+        m.TryAttack(new Cell(0, 2), new Cell(3, 2));
+        Assert.Equal(75, target.Hp);                    // 85 - 10 : puissance nue
+    }
+
+    /// <summary>La charge ne se CUMULE pas : roquer deux fois de suite ne donne pas +10.</summary>
+    [Fact]
+    public void RoquePower_DoesNotStackOverSeveralRoques()
+    {
+        var m = Board();
+        m.RoqueEnabled = true;
+        m.RoquePower = 5;
+        var artisan = Make(Faction.Player, 30, 10, None, essential: true, moveRange: 3);
+        var basile = Make(Faction.Player, 22, 0, None, essential: true, companion: true);
+        var target = Make(Faction.Enemy, 100, 0, None);
+        m.Place(new Cell(0, 0), artisan);
+        m.Place(new Cell(0, 2), basile);
+        m.Place(new Cell(3, 0), target);
+
+        m.TryMove(new Cell(0, 0), new Cell(0, 2));
+        m.PassTurn();
+        m.TryMove(new Cell(0, 2), new Cell(0, 0));      // second roque, dans l'autre sens
+        Assert.Equal(5, artisan.RoquePower);
+
+        m.PassTurn();
+        m.TryAttack(new Cell(0, 0), new Cell(3, 0));
+        Assert.Equal(85, target.Hp);                    // 100 - (10 + 5) et non - (10 + 10)
+    }
+
+    /// <summary>
+    /// Le roque charge l'ARTISAN quel que soit celui des deux meneurs qui l'a lancé : c'est le même échange vu
+    /// des deux bouts, et Basile n'en profite jamais (le nœud est le sien à lui).
+    /// </summary>
+    [Fact]
+    public void RoquePower_ChargesTheArtisan_EvenWhenBasileInitiatesTheSwap()
+    {
+        var m = Board();
+        m.RoqueEnabled = true;
+        m.RoquePower = 5;
+        var artisan = Make(Faction.Player, 30, 10, None, essential: true);
+        var basile = Make(Faction.Player, 22, 10, None, essential: true, companion: true, moveRange: 3);
+        m.Place(new Cell(0, 0), artisan);
+        m.Place(new Cell(0, 2), basile);
+
+        m.TryMove(new Cell(0, 2), new Cell(0, 0));      // c'est BASILE qui se déplace sur l'artisan
+
+        Assert.Equal(5, artisan.RoquePower);
+        Assert.Equal(0, basile.RoquePower);
     }
 
     [Fact]
@@ -633,8 +760,13 @@ public class DuoTests : IDisposable
         Assert.Equal(24, basile.Hp);                                 // 10 + 14, pas 10 + 14 + 7
     }
 
+    /// <summary>
+    /// Le pool d'une SACOCHE ne contient que les objets à lancer. Eux, en revanche, sortent AUSSI d'un coffre
+    /// (ils sont dans leur pool de rareté comme n'importe quel objet) : une partie classique n'a pas de
+    /// sacoches et doit quand même pouvoir les trouver. Les vagues ennemies les écartent par enemyAllowed.
+    /// </summary>
     [Fact]
-    public void SatchelItems_StayOutOfChestAndEnemyPools()
+    public void SatchelItems_AreTheirOwnPool_ButAlsoDropFromChests()
     {
         Equipments.Load(new[]
         {
@@ -642,11 +774,157 @@ public class DuoTests : IDisposable
             Thrown("grenade", Trait.Grenade, 8),
         });
 
-        Assert.DoesNotContain(Equipments.OfRarity(EquipmentRarity.Common), e => e.Satchel);
+        Assert.Contains(Equipments.OfRarity(EquipmentRarity.Common), e => e.Id == "grenade");
         Assert.Single(Equipments.Satchel);
         Assert.Equal("grenade", Equipments.RollSatchel(new Random(1))!.Id);
 
         Equipments.ResetToDefaults();
+    }
+
+    /// <summary>
+    /// Configuration livrée : les objets à lancer sont classés RARES (c'est à cette rareté qu'un coffre de
+    /// partie classique les propose) et restent interdits aux vagues ennemies.
+    /// </summary>
+    [Fact]
+    public void ShippedConfig_MakesThrownItemsRare_AndNeverEnemyLoot()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var json = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            dir!.FullName, "src", "ChessArmy.Game", "Assets", "Config", "equipment.json"));
+
+        var thrown = EquipmentCatalog.FromJson(json).Where(e => e.Satchel).ToList();
+        Assert.NotEmpty(thrown);
+        foreach (var item in thrown)
+        {
+            Assert.Equal(EquipmentRarity.Rare, item.Rarity);
+            Assert.False(item.EnemyAllowed);
+        }
+    }
+
+    // ── Boss ARTISAN : réservé au joueur qui a débloqué le duo, et accompagné ────
+
+    /// <summary>Pool de test : un boss ordinaire, et le boss ARTISAN réservé au commandant DUO.</summary>
+    private static IReadOnlyList<BossDef> BossPoolWithArtisan()
+    {
+        var plain = new UnitClass("Brute", "brute", tier: 1, maxHp: 30, damage: 10, moveRange: 1, attackRange: 1);
+        var artisan = new UnitClass("Artisan", "artisan", tier: 1, maxHp: 40, damage: 14, moveRange: 2, attackRange: 1);
+        return new[]
+        {
+            new BossDef("Brute", "brute", Domaine.Dame,
+                new Dictionary<int, UnitClass> { [1] = plain, [2] = plain, [3] = plain }),
+            new BossDef("Artisan", "artisan", Domaine.Dame,
+                new Dictionary<int, UnitClass> { [1] = artisan, [2] = artisan, [3] = artisan },
+                companionId: "basileTest", requiresCommander: "duoTest"),
+        };
+    }
+
+    /// <summary>
+    /// Le boss ARTISAN n'entre dans le tirage que si le commandant DUO est DÉBLOQUÉ. Sinon il est écarté du
+    /// pool, quelle que soit la graine — affronter un duo qu'on ne connaît pas encore n'aurait pas de sens.
+    /// </summary>
+    [Fact]
+    public void ArtisanBoss_IsDrawnOnlyOnceTheDuoCommanderIsUnlocked()
+    {
+        var pool = BossPoolWithArtisan();
+        var locked = new HashSet<string>();
+        var unlocked = new HashSet<string> { "duoTest" };
+
+        // Verrouillé : aucune graine ne peut le sortir.
+        for (var seed = 0; seed < 40; seed++)
+            Assert.DoesNotContain(Bosses.AssignForRun(pool, seed, phaseCount: 3, locked),
+                b => b.Name == "Artisan");
+
+        // Débloqué : il apparaît (au moins une graine le tire).
+        Assert.Contains(Enumerable.Range(0, 40),
+            seed => Bosses.AssignForRun(pool, seed, phaseCount: 3, unlocked).Any(b => b.Name == "Artisan"));
+    }
+
+    /// <summary>
+    /// Basile REMPLACE l'escorte du plus haut tier au lieu de s'y ajouter : l'effectif reste celui des cases
+    /// de spawn dessinées. Il n'est PAS essentiel (l'abattre ne gagne pas le combat) mais est marqué
+    /// compagnon, ce qui le tient hors du butin de recrutement.
+    /// </summary>
+    [Fact]
+    public void ArtisanBoss_BasileReplacesTheStrongestEscort_WithoutChangingTheHeadcount()
+    {
+        UseDuoRegistry();
+        Bosses.Load(BossPoolWithArtisan());
+        // Run d'un commandant ORDINAIRE (le joueur n'est pas le duo) qui a débloqué le duo : le boss est
+        // tirable. On cherche une graine dont la PHASE 1 tombe sur l'artisan, pour rester au combat 1.
+        Run? run = null;
+        for (var seed = 0; seed < 40 && run is null; seed++)
+        {
+            var candidate = new Run(seed, commander: Commandes.ById("commandant"));
+            candidate.SetUnlockedCommanders(new HashSet<string> { "duoTest" });
+            if (candidate.BossOfPhase(1).Name == "Artisan")
+                run = candidate;
+        }
+        Assert.NotNull(run);
+
+        var wave = run!.BuildBossEnemyWave(escortCount: 4);
+
+        Assert.Equal(5, wave.Count);                                   // 1 boss + 4 cases d'escorte : inchangé
+        Assert.True(wave[0].Essential);                                // le boss en tête
+        var basile = wave.Skip(1).Single(u => u.Companion);
+        Assert.False(basile.Essential);                                // l'abattre ne gagne pas le combat
+        Assert.Equal("basile", basile.UnitClass.Asset);
+    }
+
+    /// <summary>
+    /// Les stats de Basile EN BOSS se règlent phase par phase, indépendamment de sa fiche jouable : sinon on
+    /// ne pourrait pas équilibrer la rencontre sans toucher au commandant du joueur. Son NOM et son SPRITE
+    /// restent les siens — c'est bien lui qu'on affronte.
+    /// </summary>
+    [Fact]
+    public void ArtisanBoss_BasileFightsWithTheProfileDeclaredForThePhase_KeepingHisIdentity()
+    {
+        UseDuoRegistry();
+        var artisanClass = new UnitClass("Artisan", "artisan", tier: 1, maxHp: 40, damage: 14, moveRange: 2, attackRange: 1);
+        // Profil de second RÉGLÉ ici : très différent de la fiche jouable de « basileTest » (22 pv / 10 dég).
+        var basileP1 = new UnitClass("porteValeur", "porteValeur", tier: 1, maxHp: 26, damage: 11,
+            moveRange: 2, attackRange: 2);
+        var basileP2 = new UnitClass("porteValeur", "porteValeur", tier: 1, maxHp: 44, damage: 17,
+            moveRange: 2, attackRange: 3, traits: new[] { Trait.TirEnLigne });
+        Bosses.Load(new[]
+        {
+            new BossDef("Artisan", "artisan", Domaine.Dame,
+                new Dictionary<int, UnitClass> { [1] = artisanClass, [2] = artisanClass, [3] = artisanClass },
+                companionId: "basileTest",
+                companionProfiles: new Dictionary<int, UnitClass> { [1] = basileP1, [2] = basileP2 }),
+        });
+
+        var run = new Run(seed: 1, commander: Commandes.ById("commandant"));
+        var basile = run.BuildBossEnemyWave(escortCount: 3).Single(u => u.Companion);
+
+        // Les CHIFFRES viennent du profil de phase 1…
+        Assert.Equal(26, basile.UnitClass.MaxHp);
+        Assert.Equal(11, basile.UnitClass.Damage);
+        Assert.Equal(2, basile.UnitClass.AttackRange);
+        // …mais l'identité reste celle du second jouable (nom + sprite), jamais le porte-valeur du profil.
+        Assert.Equal("basile", basile.UnitClass.Asset);
+        Assert.Equal("Basile", basile.UnitClass.Name);
+    }
+
+    /// <summary>Sans profil déclaré pour le second, il retombe sur sa fiche JOUABLE (repli).</summary>
+    [Fact]
+    public void ArtisanBoss_WithoutACompanionProfile_BasileKeepsHisPlayableSheet()
+    {
+        UseDuoRegistry();
+        var artisanClass = new UnitClass("Artisan", "artisan", tier: 1, maxHp: 40, damage: 14, moveRange: 2, attackRange: 1);
+        Bosses.Load(new[]
+        {
+            new BossDef("Artisan", "artisan", Domaine.Dame,
+                new Dictionary<int, UnitClass> { [1] = artisanClass }, companionId: "basileTest"),
+        });
+
+        var run = new Run(seed: 1, commander: Commandes.ById("commandant"));
+        var basile = run.BuildBossEnemyWave(escortCount: 3).Single(u => u.Companion);
+
+        Assert.Equal(CompanionDef().BaseClass.MaxHp, basile.UnitClass.MaxHp);
+        Assert.Equal(CompanionDef().BaseClass.Damage, basile.UnitClass.Damage);
     }
 
     // ── Configuration livrée ─────────────────────────────────────────────────────
@@ -664,13 +942,17 @@ public class DuoTests : IDisposable
             System.IO.File.ReadAllText(System.IO.Path.Combine(assets, "units.json")));
 
         var duo = commandes.Single(c => c.Id == "Commandant_duo");
+        // VERROUILLÉ au départ : il s'ouvre au compteur de mises à mort d'une partie (100), pas d'emblée.
+        Assert.False(duo.StartsUnlocked);
         Assert.True(duo.NoArmy);
         Assert.Equal(0, duo.ReserveSize);
         Assert.Equal(2, duo.Deployments);           // les deux meneurs, rien d'autre
         Assert.Empty(duo.StartingUnits);
-        // Revenu : AUCUNE condition à remplir sur le terrain, mais 3 points par mission au lieu de 2.
+        // Revenu : 3 points par mission au lieu de 2, PLUS 1 par mise à mort « à deux » (2 max par combat).
         Assert.Equal(0, duo.HealPoints);
         Assert.Equal(3, duo.MissionPoints);
+        Assert.Equal(1, duo.PairKillPoints);
+        Assert.Equal(2, duo.PairKillCap);
         Assert.Equal("Basile", duo.CompanionId);
 
         var basile = commandes.Single(c => c.Id == duo.CompanionId);
@@ -721,24 +1003,300 @@ public class DuoTests : IDisposable
         Assert.True(artisan.HasTrait(Trait.LienDAmitie));
         Assert.True(basile.HasTrait(Trait.LienDAmitie));
 
-        // Coup de 18 sur l'artisan, Basile collé à lui : 9 chacun.
+        // Coup de 18 sur l'artisan, Basile collé à lui : 9 chacun, moins 1 d'absorption = 8.
         var m = new Match(8, 8);
         m.Place(new Cell(0, 0), artisan);
         m.Place(new Cell(0, 1), basile);
         m.Place(new Cell(3, 0), Make(Faction.Player, 30, 18, None));
 
         // L'APERÇU annonce déjà la part de la cible, pas le coup entier (c'est le chiffre qui jaillira)…
-        Assert.Equal(9, m.PreviewDamage(new Cell(3, 0), new Cell(0, 0)));
+        Assert.Equal(8, m.PreviewDamage(new Cell(3, 0), new Cell(0, 0)));
         // …et il dit aussi ce que le camarade lié va prendre : sa jauge doit l'annoncer.
         var shared = new System.Collections.Generic.List<Cell>();
-        Assert.Equal(9, m.PreviewSharedDamage(new Cell(3, 0), new Cell(0, 0), shared));
+        Assert.Equal(8, m.PreviewSharedDamage(new Cell(3, 0), new Cell(0, 0), shared));
         Assert.Equal(new[] { new Cell(0, 1) }, shared);
 
         m.TryAttack(new Cell(3, 0), new Cell(0, 0));
 
-        Assert.Equal(31, artisan.Hp);
-        Assert.Equal(31, basile.Hp);
+        Assert.Equal(32, artisan.Hp);
+        Assert.Equal(32, basile.Hp);
         // …et le camarade a son propre chiffre de dégâts (sinon le partage serait invisible).
-        Assert.Contains(m.LastSplashHits, h => h.Cell == new Cell(0, 1) && h.Damage == 9);
+        Assert.Contains(m.LastSplashHits, h => h.Cell == new Cell(0, 1) && h.Damage == 8);
+    }
+
+    // ── « Continue sans moi » : la run survit à la perte d'un meneur ─────────────
+
+    /// <summary>
+    /// Sans le nœud, la chute d'un meneur perd le combat sur-le-champ. Avec, le combat CONTINUE tant que
+    /// l'autre est debout — et ne se perd que lorsque le second tombe à son tour.
+    /// </summary>
+    [Fact]
+    public void SoloSurvivor_AFallenLeaderNoLongerLosesTheBattle_UntilBothAreDown()
+    {
+        // Sans le nœud : l'artisan tombe, la partie est perdue bien que Basile tienne encore.
+        var strict = Board();
+        var a1 = Make(Faction.Player, 5, 0, None, essential: true);
+        var b1 = Make(Faction.Player, 30, 0, None, essential: true, companion: true);
+        strict.Place(new Cell(0, 0), a1);
+        strict.Place(new Cell(0, 2), b1);
+        strict.Place(new Cell(3, 0), Make(Faction.Enemy, 30, 30, None));
+        strict.PassTurn();                                    // au tour de l'ennemi de frapper
+        strict.TryAttack(new Cell(3, 0), new Cell(0, 0));
+        Assert.True(strict.IsOver);
+        Assert.Equal(Faction.Enemy, strict.Winner);
+
+        // Avec le nœud : même coup, le combat continue — Basile est toujours là.
+        var solo = Board();
+        solo.SoloSurvivorEnabled = true;
+        var a2 = Make(Faction.Player, 5, 0, None, essential: true);
+        var b2 = Make(Faction.Player, 5, 0, None, essential: true, companion: true);
+        solo.Place(new Cell(0, 0), a2);
+        solo.Place(new Cell(0, 2), b2);
+        solo.Place(new Cell(3, 0), Make(Faction.Enemy, 30, 30, None));
+        solo.Place(new Cell(3, 2), Make(Faction.Enemy, 30, 30, None));   // aligné sur Basile (rangée 2)
+        solo.PassTurn();
+        solo.TryAttack(new Cell(3, 0), new Cell(0, 0));
+        Assert.False(a2.IsAlive);
+        Assert.False(solo.IsOver);                            // Basile continue seul
+
+        // …mais la chute du SECOND décide bien la partie.
+        solo.PassTurn();
+        solo.TryAttack(new Cell(3, 2), new Cell(0, 2));
+        Assert.True(solo.IsOver);
+        Assert.Equal(Faction.Enemy, solo.Winner);
+    }
+
+    /// <summary>
+    /// À la clôture du combat, le meneur tombé QUITTE la run et lègue au survivant la moitié de sa puissance
+    /// et de ses PV max. Le legs porte sur les stats EFFECTIVES du mort, bonus d'arbre compris.
+    /// </summary>
+    /// <summary>Arbre de test réduit au seul nœud « Continue sans moi », et run du duo qui l'a acheté.</summary>
+    private static Run SoloSurvivorRun()
+    {
+        UseDuoRegistry();
+        CommandTrees.Load(CommandTreeCatalog.FromJson("""
+        { "trees": [ { "id": "duoTest", "nodes": [
+            { "id": "n_solo", "branch": 0, "level": 1, "effects": [ { "kind": "soloSurvivor" } ] } ] } ] }
+        """));
+        var run = new Run(seed: 1, commander: DuoDef("duoTest"));
+        run.GrantCommandPoints(10);
+        Assert.True(run.Unlock(run.Tree.ById("n_solo")!));
+        Assert.True(run.SoloSurvivor);
+        return run;
+    }
+
+    [Fact]
+    public void SoloSurvivor_TheFallenLeaderLeavesTheRun_AndBequeathsHalfHisStats()
+    {
+        var run = SoloSurvivorRun();
+
+        var artisan = run.Commanders.Single(c => !c.Companion);
+        var basile = run.CompanionSpec!;
+        var expectedPower = artisan.UnitClass.Damage / 2;
+        var expectedHp = artisan.UnitClass.MaxHp / 2;
+
+        run.StartBattle();
+        run.CompleteCombat(new[] { artisan }, System.Array.Empty<UnitSpec>());
+
+        Assert.DoesNotContain(artisan, run.Roster);           // il a quitté la run pour de bon
+        Assert.Contains(basile, run.Roster);
+        Assert.Equal(expectedPower, run.InheritedLeaderPower);
+        Assert.Equal(expectedHp, run.InheritedLeaderHp);
+        // …et le legs arrive bien sur les stats du survivant.
+        var buffs = run.BuffsFor(basile);
+        Assert.Equal(expectedPower, buffs.BonusFor(EquipStat.Damage));
+        Assert.Equal(expectedHp, buffs.BonusFor(EquipStat.Hp));
+    }
+
+    /// <summary>
+    /// Les DEUX meneurs tombés : rien n'est légué et le roster garde ses meneurs. La défaite est déjà
+    /// prononcée ; vider le roster rendrait la run insauvable.
+    /// </summary>
+    [Fact]
+    public void SoloSurvivor_WithBothLeadersDown_BequeathsNothing()
+    {
+        var run = SoloSurvivorRun();
+
+        var leaders = run.Commanders.ToList();
+        run.StartBattle();
+        run.CompleteCombat(leaders, System.Array.Empty<UnitSpec>());
+
+        Assert.Equal(0, run.InheritedLeaderPower);
+        Assert.Equal(0, run.InheritedLeaderHp);
+        Assert.Equal(leaders.Count, run.Commanders.Count);
+    }
+
+    /// <summary>
+    /// Le legs est réclamable DÈS LA CHUTE, sans attendre la clôture du combat : c'est ce que la scène fait,
+    /// et c'est ce qui permet au survivant de finir le combat en cours avec son héritage. Le montant rendu est
+    /// celui à appliquer séance tenante aux pions déjà posés.
+    /// </summary>
+    [Fact]
+    public void SoloSurvivor_TheBequestCanBeClaimedTheMomentALeaderFalls()
+    {
+        var run = SoloSurvivorRun();
+        var artisan = run.Commanders.Single(c => !c.Companion);
+
+        var (power, hp) = run.AbsorbFallenLeaders(new[] { artisan });
+
+        Assert.Equal(artisan.UnitClass.Damage / 2, power);
+        Assert.Equal(artisan.UnitClass.MaxHp / 2, hp);
+        Assert.DoesNotContain(artisan, run.Roster);
+        // IDEMPOTENT : la clôture du combat repassera dessus sans rien léguer une seconde fois.
+        Assert.Equal((0, 0), run.AbsorbFallenLeaders(new[] { artisan }));
+        Assert.Equal(power, run.InheritedLeaderPower);
+    }
+
+    /// <summary>
+    /// Le legs est PERSISTÉ : le tombé ayant quitté le roster, sans ces deux valeurs la reprise rendrait le
+    /// survivant à ses stats d'avant.
+    /// </summary>
+    [Fact]
+    public void SoloSurvivor_TheBequestSurvivesASaveAndReload()
+    {
+        var run = SoloSurvivorRun();
+        run.StartBattle();
+        run.CompleteCombat(new[] { run.Commanders.Single(c => !c.Companion) }, System.Array.Empty<UnitSpec>());
+
+        var reloaded = RunSave.From(run).ToRun();
+
+        Assert.Equal(run.InheritedLeaderPower, reloaded.InheritedLeaderPower);
+        Assert.Equal(run.InheritedLeaderHp, reloaded.InheritedLeaderHp);
+        Assert.Single(reloaded.Commanders);                   // le tombé ne revient pas
+    }
+
+    /// <summary>
+    /// OUTIL DE TEST : la map imposée par l'éditeur de sauvegarde survit à l'aller-retour disque, sinon
+    /// reprendre le slot rendrait la run au tirage normal — le forçage ne tiendrait qu'un seul combat.
+    /// </summary>
+    [Fact]
+    public void ForcedMap_SurvivesASaveAndReload()
+    {
+        UseDuoRegistry();
+        var run = new Run(seed: 1, commander: DuoDef()) { ForcedMapName = "Boss_1_01" };
+
+        Assert.Equal("Boss_1_01", RunSave.From(run).ToRun().ForcedMapName);
+        Assert.Null(new Run(seed: 1, commander: DuoDef()).ForcedMapName);   // partie normale : aucun forçage
+    }
+
+    // ── Mise à mort « à deux » : source de points du commandant DUO ──────────────
+
+    /// <summary>
+    /// Le moteur relève QUI a réellement entamé une unité — c'est là-dessus que se juge la mise à mort « à
+    /// deux ». Un coup à 0 dégât ne compte pas, et un relais (éclat, épines) compte comme un coup direct.
+    /// </summary>
+    [Fact]
+    public void WasDamagedBy_RecordsEveryAttackerThatActuallyHurtTheVictim()
+    {
+        var m = Board();
+        var victim = Make(Faction.Enemy, 30, 0, None);
+        var a1 = Make(Faction.Player, 20, 6, None);
+        var a2 = Make(Faction.Player, 20, 6, None);
+        var bystander = Make(Faction.Player, 20, 6, None);
+        m.Place(new Cell(0, 0), victim);
+        m.Place(new Cell(3, 0), a1);
+        m.Place(new Cell(0, 3), a2);
+
+        m.TryAttack(new Cell(3, 0), new Cell(0, 0));
+        Assert.True(victim.WasDamagedBy(a1));
+        Assert.False(victim.WasDamagedBy(a2));
+
+        m.PassTurn();   // la main revient au joueur : le second assaillant peut frapper à son tour
+        m.TryAttack(new Cell(0, 3), new Cell(0, 0));
+        Assert.True(victim.WasDamagedBy(a1));   // le premier reste inscrit : l'ordre et le temps n'y font rien
+        Assert.True(victim.WasDamagedBy(a2));
+        Assert.False(victim.WasDamagedBy(bystander));
+    }
+
+    /// <summary>
+    /// Le JOURNAL DES MORTS ne se vide pas en cours de combat : c'est ce qui permet à la scène de ne manquer
+    /// aucune mise à mort, y compris celles qu'une riposte ou une action suivante provoque.
+    /// </summary>
+    [Fact]
+    public void DeathLog_KeepsEveryFallenUnitOfTheCombat()
+    {
+        var m = Board();
+        var v1 = Make(Faction.Enemy, 5, 0, None);
+        var v2 = Make(Faction.Enemy, 5, 0, None);
+        m.Place(new Cell(0, 0), v1);
+        m.Place(new Cell(0, 5), v2);
+        m.Place(new Cell(3, 0), Make(Faction.Player, 20, 30, None));
+        m.Place(new Cell(3, 5), Make(Faction.Player, 20, 30, None));
+
+        m.TryAttack(new Cell(3, 0), new Cell(0, 0));
+        m.PassTurn();
+        m.TryAttack(new Cell(3, 5), new Cell(0, 5));
+
+        // Le journal retient AUSSI la case de chaque mort : c'est là que la scène pose son feedback, la case
+        // pouvant déjà être reprise par le tueur.
+        Assert.Equal(new[] { (new Cell(0, 0), v1), (new Cell(0, 5), v2) }, m.DeathLog);
+    }
+
+    /// <summary>
+    /// Le plafond de la source est PAR COMBAT : <see cref="Run.StartBattle"/> le rend. Sans ça le commandant
+    /// DUO n'en toucherait que deux pour toute la partie.
+    /// </summary>
+    [Fact]
+    public void GrantPairKillPoint_CapsPerCombat_AndResetsOnTheNextBattle()
+    {
+        var def = new CommandeDef(CommandeRole.Commander, Domaine.Dame,
+            new UnitClass("A", "a", tier: 1, maxHp: 30, damage: 10, moveRange: 2, attackRange: 1),
+            pairKillPoints: 1, pairKillCap: 2, id: "pairKillTest");
+        var run = new Run(seed: 1, commander: def);
+        var before = run.CommandPoints;
+
+        run.StartBattle();
+        Assert.Equal(1, run.GrantPairKillPoint());
+        Assert.Equal(1, run.GrantPairKillPoint());
+        Assert.Equal(0, run.GrantPairKillPoint());   // plafond du combat atteint
+        Assert.Equal(before + 2, run.CommandPoints);
+        Assert.Equal(2, run.PairKillEventsThisCombat);
+
+        run.StartBattle();                            // combat suivant : le plafond est rendu
+        Assert.Equal(0, run.PairKillEventsThisCombat);
+        Assert.Equal(1, run.GrantPairKillPoint());
+        Assert.Equal(before + 3, run.CommandPoints);
+    }
+
+    /// <summary>Un commandant qui n'a pas cette source ne gagne jamais rien par cette voie.</summary>
+    [Fact]
+    public void GrantPairKillPoint_GivesNothingToACommanderWithoutTheSource()
+    {
+        var def = new CommandeDef(CommandeRole.Commander, Domaine.Dame,
+            new UnitClass("A", "a", tier: 1, maxHp: 30, damage: 10, moveRange: 2, attackRange: 1),
+            id: "noPairKillTest");
+        var run = new Run(seed: 1, commander: def);
+        run.StartBattle();
+
+        Assert.Equal(0, run.GrantPairKillPoint());
+    }
+
+    /// <summary>
+    /// « Pas pressé » (nœud <c>duo_art_mouvement</c>, branche du LIEN) : le pas gagné va aux DEUX meneurs, pas
+    /// au seul artisan. Vérifié sur la config LIVRÉE — oublier l'effet « companionStat » dans le json ne
+    /// casserait rien d'autre, et le manque ne se verrait qu'en jouant.
+    /// </summary>
+    [Fact]
+    public void ShippedConfig_PasPresseNode_GivesOneMoveToBothLeaders()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !System.IO.Directory.Exists(System.IO.Path.Combine(dir.FullName, "src", "ChessArmy.Game")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        var assets = System.IO.Path.Combine(dir!.FullName, "src", "ChessArmy.Game", "Assets", "Config");
+
+        var trees = CommandTreeCatalog.FromJson(
+            System.IO.File.ReadAllText(System.IO.Path.Combine(assets, "commander_trees.json")));
+        var node = trees.Single(t => t.Id == "commandantDuo").Nodes.Single(n => n.Id == "duo_art_mouvement");
+
+        var forCommander = CommandBuffs.From(node.Effects, BuffTarget.Commander, distinctPairs: 0);
+        var forCompanion = CommandBuffs.From(node.Effects, BuffTarget.Companion, distinctPairs: 0);
+
+        // Les unités spawnées marchent une case plus loin, l'une comme l'autre.
+        var cls = new UnitClass("T", "t", tier: 1, maxHp: 40, damage: 0, moveRange: 2, attackRange: 1);
+        var artisan = new UnitSpec(Domaine.Dame, cls, essential: true).Spawn(Faction.Enemy, forCommander);
+        var basile = new UnitSpec(Domaine.Dame, cls, essential: true, companion: true).Spawn(Faction.Enemy, forCompanion);
+        Assert.Equal(3, artisan.MoveRange);
+        Assert.Equal(3, basile.MoveRange);
     }
 }

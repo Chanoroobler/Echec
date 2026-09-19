@@ -95,11 +95,19 @@ public sealed class Equipment
     public bool Demo { get; }
 
     /// <summary>
-    /// OBJET À LANCER du commandant DUO : il ne sort JAMAIS d'un coffre ni d'une vague ennemie (exclu des
-    /// pools, cf. <see cref="Equipments.OfRarity"/>) — il ne se ramasse que sur une SACOCHE du terrain, et se
-    /// brise dès qu'il a servi une attaque. Défaut <c>false</c>.
+    /// OBJET À LANCER : il se brise dès qu'il a servi UNE attaque (cf. <c>Trait.Thrown</c>). C'est le butin
+    /// des SACOCHES du commandant DUO (pool réservé, cf. <see cref="Equipments.Satchel"/>) ; une partie
+    /// classique, elle, n'a pas de sacoches et les trouve en COFFRE comme n'importe quel objet RARE.
+    /// Défaut <c>false</c>.
     /// </summary>
     public bool Satchel { get; }
+
+    /// <summary>
+    /// ÉPHÉMÈRE : l'objet se brise dès que son porteur a attaqué une fois (cf. <c>Match.ConsumeThrownItem</c>).
+    /// Vrai pour tout objet portant un trait de <see cref="Battle.Trait.Thrown"/> — <see cref="Satchel"/> n'est
+    /// que le POOL de tirage des sacoches, le même objet trouvé en coffre est tout aussi éphémère.
+    /// </summary>
+    public bool IsThrown => Effects.Any(e => e.Trait is { } t && Battle.Trait.Thrown.Contains(t));
 
     /// <summary>Bonus TOTAL apporté à <paramref name="stat"/> (somme des effets de stat qui la visent ; 0 sinon).</summary>
     public int BonusFor(EquipStat stat) =>

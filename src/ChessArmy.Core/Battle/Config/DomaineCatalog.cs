@@ -66,6 +66,7 @@ public static class DomaineCatalog
             c.LootPoints ?? 0, c.LootCap ?? int.MaxValue,
             c.MissionPoints ?? Campaign.Run.PointsPerMission,
             c.HealPoints ?? 0, c.HealCap ?? int.MaxValue,
+            c.PairKillPoints ?? 0, c.PairKillCap ?? int.MaxValue,
             c.Companion, c.NoArmy ?? false);
     }
 
@@ -103,7 +104,29 @@ public static class DomaineCatalog
             profiles[phase] = new UnitClass(c.Name, c.Asset, tier: 1, c.Hp, c.Damage, c.MoveRange, c.AttackRange);
         }
 
-        return new BossDef(c.Name, c.Asset, domaine, profiles, c.UnlocksCommander, c.EquipmentPool, equipmentCounts);
+        // Profils du SECOND du boss : mêmes champs et mêmes règles de phase, mais leur nom/asset ne sert à
+        // rien (l'identité vient de la CommandeDef du second) — d'où le nom du boss en porte-valeur.
+        Dictionary<int, UnitClass>? companionProfiles = null;
+        if (c.CompanionPhases is { Count: > 0 })
+        {
+            if (string.IsNullOrWhiteSpace(c.BossCompanion))
+                throw new InvalidOperationException(
+                    $"Le boss '{c.Name}' déclare \"companionPhases\" sans \"bossCompanion\" : personne à qui appliquer ces stats.");
+            companionProfiles = new Dictionary<int, UnitClass>();
+            foreach (var (key, p) in c.CompanionPhases)
+            {
+                if (!int.TryParse(key, out var phase) || phase is < 1 or > 3)
+                    throw new InvalidOperationException(
+                        $"Phase de second de boss invalide pour '{c.Name}' : \"{key}\". Attendu \"1\" à \"3\".");
+                if (!companionProfiles.TryAdd(phase, new UnitClass(c.Name, c.Asset, tier: 1, p.Hp, p.Damage,
+                        p.MoveRange, p.AttackRange, p.PiercesAllies, p.MinAttackRange ?? 1, p.Traits,
+                        ParseAttackDomaine(p.AttackDomaine, c.Name))))
+                    throw new InvalidOperationException($"Phase de second de boss en double pour '{c.Name}' : {phase}.");
+            }
+        }
+
+        return new BossDef(c.Name, c.Asset, domaine, profiles, c.UnlocksCommander, c.EquipmentPool, equipmentCounts,
+            c.BossCompanion, c.RequiresCommander, companionProfiles);
     }
 
     private static DomaineDef ToDef(DomaineConfig dc)

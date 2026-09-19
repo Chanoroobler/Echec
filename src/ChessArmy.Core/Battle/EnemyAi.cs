@@ -26,6 +26,17 @@ public enum AiKind
     /// jamais sur une capture réalisable ce tour-ci.
     /// </summary>
     Offensif,
+
+    /// <summary>
+    /// SENTINELLE : postée, elle ne bouge pas. Elle attaque tout joueur à sa portée, mais ne s'engage pas,
+    /// n'avance pas, ne se repositionne pas — pas même pour se dégager (elle est exclue du repli anti-blocage).
+    /// Sert aux ennemis placés sur un MIRADOR : ils y sont pour la vue, en descendre n'aurait aucun sens.
+    ///
+    /// UNE exception : en DERNIER CARRÉ — quand le camp ennemi n'a plus QUE des sentinelles — elles quittent
+    /// leur poste et se battent comme des <see cref="Normal"/>. Sinon le combat se figerait, personne
+    /// n'avançant plus, et il faudrait attendre la limite de tours pour en sortir.
+    /// </summary>
+    Sentinelle,
 }
 
 /// <summary>Action choisie par l'IA : un déplacement ou une attaque.</summary>
@@ -109,6 +120,12 @@ public static class EnemyAi
         // de fuir et de faire courir le joueur après elle jusqu'à la fin de la partie.
         var suicidal = enemies.Count <= 1;
 
+        // SENTINELLES SEULES : si le camp n'a plus QUE des pions postés, ils quittent leur poste et se battent
+        // comme des normaux. Sans ça le combat se figerait — plus personne n'avancerait, et il faudrait
+        // attendre la limite de tours pour en sortir. Tant qu'un camarade mobile tient encore, chacun reste
+        // à son mirador.
+        var lastStand = enemies.All(e => e.Unit.AiKind == AiKind.Sentinelle);
+
         var capture = new List<AiAction>();             // 0. offensif : se poser sur un paysan (objectif de mission)
         AiAction? bestKill = null;                      // 1. une attaque MORTELLE (jouée telle quelle)
         var killCells = new HashSet<Cell>();            //    cases des pions capables de TUER ce tour (repli de maladresse)
@@ -137,6 +154,12 @@ public static class EnemyAi
             }
             if (unitAttack is { } ua)
                 attackByUnit.Add(ua);
+
+            // SENTINELLE : ses attaques sont relevées ci-dessus, mais elle ne propose AUCUN déplacement — pas
+            // même le repli anti-blocage. Elle tient son poste… sauf en DERNIER CARRÉ (cf. lastStand), où elle
+            // descend et se bat comme un normal : le reste de la boucle la traite alors comme tel.
+            if (unit.AiKind == AiKind.Sentinelle && !lastStand)
+                continue;
 
             // S'ENGAGER = se mettre à portée du joueur. Un normal ET un OFFENSIF le font (l'offensif est
             // AGRESSIF : il attaque vite et prend des risques, cf. le filet levé plus bas). Un garde défensif

@@ -850,8 +850,10 @@ public sealed class CodexView
                 if (eff.Trait is { } t)
                     lines.Add((UnitKeywords.For(t).Label, Palette.Cyan1));
                 else
-                    lines.Add((Loc.T("equip.stat_bonus", eff.Amount, StatLabel(eff.Stat)), Palette.White));
+                    lines.Add((Loc.T("equip.stat_bonus", EquipmentNames.Signed(eff.Amount), StatLabel(eff.Stat)), Palette.White));
             }
+            if (e.IsThrown)
+                lines.Add((UnitKeywords.Ephemeral.Label, Palette.Cyan1));   // objet à lancer : brisé à la première attaque
         }
         else
         {

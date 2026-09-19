@@ -56,6 +56,12 @@ internal sealed class ProfileDto
     public int ChestsOpened { get; set; }
 
     /// <summary>
+    /// Ennemis abattus À VIE (déblocage du commandant DUO à 150). Même raison que
+    /// <see cref="ChestsOpened"/> — l'éditeur ne l'expose pas mais DOIT le porter.
+    /// </summary>
+    public int EnemiesKilled { get; set; }
+
+    /// <summary>
     /// Difficulté la plus haute GAGNÉE par commandant (id → valeur de <c>Difficulty</c>) : marque en vert les
     /// boutons de difficulté du carrousel. Même raison que <see cref="ChestsOpened"/> — l'éditeur ne l'expose
     /// pas mais DOIT le porter, sinon réécrire le profil effacerait ces victoires.

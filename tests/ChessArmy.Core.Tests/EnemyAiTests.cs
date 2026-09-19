@@ -362,4 +362,95 @@ public class EnemyAiTests
         Assert.NotNull(action);
         Assert.False(action!.Value.IsAttack);
     }
+
+    // ── Sentinelle : postée (mirador), elle tire mais ne bouge jamais ────────────
+
+    /// <summary>
+    /// Tant qu'un camarade MOBILE tient encore, la sentinelle ne propose AUCUN déplacement — pas même le
+    /// repli anti-blocage qui fait bouger toutes les autres IA. C'est l'autre pion qui joue.
+    /// </summary>
+    [Fact]
+    public void Sentinelle_DistantPlayer_StaysPut()
+    {
+        var player = new Cell(0, 7);
+        var match = EnemyTurn(player, new Cell(4, 0), out var posted);
+        posted.AiKind = AiKind.Sentinelle;
+        match.Place(new Cell(6, 0), Units.Soldat(Faction.Enemy));   // camarade mobile : le poste tient
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.Equal(new Cell(6, 0), action!.Value.From);
+    }
+
+    /// <summary>
+    /// DERNIER CARRÉ : quand il ne reste QUE des sentinelles, elles quittent leur poste et avancent comme des
+    /// normales. Sans ça le combat se figerait jusqu'à la limite de tours.
+    /// </summary>
+    [Fact]
+    public void Sentinelle_AsLastStand_LeavesItsPostAndAdvances()
+    {
+        var player = new Cell(0, 7);
+        var from = new Cell(4, 0);
+        var match = EnemyTurn(player, from, out var posted);
+        posted.AiKind = AiKind.Sentinelle;
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.False(action!.Value.IsAttack);
+        Assert.True(Chebyshev(action.Value.To, player) < Chebyshev(from, player),
+            "dernier carré : la sentinelle descend et se rapproche du joueur");
+    }
+
+    /// <summary>Le dernier carré se déclenche à la MORT du dernier mobile, pas seulement au premier tour.</summary>
+    [Fact]
+    public void Sentinelle_WhenTheLastMobileAllyFalls_TheyStartMoving()
+    {
+        var player = new Cell(0, 7);
+        var from = new Cell(4, 0);
+        var match = EnemyTurn(player, from, out var posted);
+        posted.AiKind = AiKind.Sentinelle;
+        var mobile = Units.Soldat(Faction.Enemy);
+        match.Place(new Cell(6, 0), mobile);
+
+        Assert.Equal(new Cell(6, 0), EnemyAi.ChooseAction(match, NoGuards, Rng())!.Value.From);
+
+        match.Remove(new Cell(6, 0));   // le mobile tombe : les sentinelles restent seules
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+        Assert.NotNull(action);
+        Assert.Equal(from, action!.Value.From);
+    }
+
+    /// <summary>Elle attaque quand même ce qui vient à sa portée : elle tient un poste, elle ne dort pas.</summary>
+    [Fact]
+    public void Sentinelle_PlayerInRange_Attacks()
+    {
+        var player = new Cell(4, 1);
+        var match = EnemyTurn(player, new Cell(4, 0), out var enemy);
+        enemy.AiKind = AiKind.Sentinelle;
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(player, action.Value.To);
+    }
+
+    /// <summary>Une sentinelle ne bloque pas ses camarades : les autres IA jouent normalement à côté d'elle.</summary>
+    [Fact]
+    public void Sentinelle_DoesNotStopTheRestOfTheArmy()
+    {
+        var player = new Cell(0, 7);
+        var match = EnemyTurn(player, new Cell(4, 0), out var posted);
+        posted.AiKind = AiKind.Sentinelle;
+        var mobile = Units.Soldat(Faction.Enemy);
+        match.Place(new Cell(6, 0), mobile);
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.Equal(new Cell(6, 0), action!.Value.From);   // c'est l'AUTRE pion qui joue
+    }
 }

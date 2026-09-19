@@ -893,3 +893,161 @@ Alternatives :
 `#indiegame #roguelike #pixelart #rpg #tacticalrpg`
 
 **À vérifier** : le nom anglais du démoniste dans `strings.csv`.
+
+---
+## Short : refonte des zones de menace
+
+*Même famille que le short sur le tremblement, ton meilleur résultat. Ici ce sont les cases, pas les pièces.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Red is theirs. Blue is mine.`
+🇫🇷 *Rouge c'est à eux. Bleu c'est à moi.*
+
+Alternative : 🇬🇧 `Now you see who controls what.`
+
+**Titre** : 🇬🇧 Red is theirs, blue is mine
+
+Alternatives :
+- 🇬🇧 Now you can see which squares each side controls / 🇫🇷 Tu vois maintenant quelles cases chaque camp contrôle
+- 🇬🇧 I added my own coverage zones in blue / 🇫🇷 J'ai ajouté mes propres zones de couverture en bleu
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> J'ai retravaillé les zones de menace. En rouge, les cases couvertes par l'ennemi. En bleu, celles couvertes par mes propres pièces. Avant, tu ne voyais que le danger. Maintenant tu vois aussi ton emprise, et le combat devient une question de territoire plutôt que de coups isolés. Les cases où le rouge et le bleu se superposent sont celles qui se disputent.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> I reworked the threat zones. Red marks every square the enemy covers. Blue marks the squares my own pieces cover. Before, you only saw the danger. Now you see your own reach too, and a fight turns into a question of territory rather than isolated moves. The squares where red and blue overlap are the ones being contested.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #tacticalrpg #gameui`
+
+**Note de tournage** : le plan fort, c'est le basculement. Plateau normal, puis la touche, puis le rouge et le bleu qui apparaissent d'un coup. Le faire deux fois.
+
+**Version X / Twitter** (exception, ce bloc uniquement)
+
+🇬🇧
+> Reworked the threat zones.
+>
+> Red = squares the enemy covers. Blue = squares my own pieces cover. One key shows both, and the fight becomes a question of territory.
+>
+> Chess Army, a pixel art roguelike RPG built on chess movement.
+>
+> Wishlist → https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇫🇷 *J'ai retravaillé les zones de menace. Rouge = cases couvertes par l'ennemi. Bleu = cases couvertes par mes pièces. Une touche affiche les deux, et le combat devient une question de territoire.*
+
+Clip uploadé en natif. Environ 250 caractères.
+
+---
+
+## Short : fusion de trois cavaliers lourds en cavalier griffon
+
+*Angle : la branche du cavalier finit par voler. La mobilité comme argument.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `This one ignores the terrain.`
+🇫🇷 *Celui-là ignore le terrain.*
+
+Alternative : 🇬🇧 `The knight branch ends up flying.`
+
+**Titre** : 🇬🇧 The knight branch ends up flying
+
+Alternatives :
+- 🇬🇧 Three heavy knights make a griffon rider / 🇫🇷 Trois cavaliers lourds donnent un cavalier griffon
+- 🇬🇧 This one ignores the terrain / 🇫🇷 Celui-là ignore le terrain
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois cavaliers lourds donnent un cavalier griffon, palier 3. Le cavalier saute déjà en L comme aux échecs, donc les pièces sur son chemin ne l'arrêtent pas. Monté sur un griffon, il ignore en plus le terrain : l'eau et les obstacles qui bloquent tout le monde ne le bloquent plus. C'est la branche la plus mobile du jeu, et celle qui punit le mieux une ligne défensive bien rangée.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three heavy knights make a griffon rider, tier 3. The knight already jumps in an L like it does in chess, so pieces in the way don't stop it. On a griffon it ignores the terrain too: the water and obstacles that block everyone else stop mattering. It's the most mobile branch in the game, and the one that punishes a tidy defensive line hardest.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #chess #tacticalrpg`
+
+**À vérifier** : que le cavalier griffon ait bien le trait Vol, et le nom anglais de la classe dans `strings.csv`.
+
+---
+
+## Short : nouveau commandant, le roi fou
+
+*Annonce de contenu. Note : le jeu de mots "fou" (pièce d'échecs et dément) ne passe pas en anglais. "The Mad King" garde le ton, le lien avec le fou se voit au déplacement.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `New commander: the Mad King.`
+🇫🇷 *Nouveau commandant : le roi fou.*
+
+Alternative : 🇬🇧 `A king that moves like a bishop.`
+
+**Titre** : 🇬🇧 New commander: the Mad King
+
+Alternatives :
+- 🇬🇧 A king that moves like a bishop / 🇫🇷 Un roi qui se déplace comme un fou
+- 🇬🇧 The third commander casts instead of swinging / 🇫🇷 Le troisième commandant lance des sorts au lieu de frapper
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouveau commandant : le roi fou. Il se déplace en diagonale, comme la pièce dont il porte le nom, et il lance des sorts au lieu de frapper au contact. Changer de commandant ne change pas seulement une pièce sur le plateau, ça change l'armée que tu vas construire autour de lui. Le Foudroyeur ouvre sur la branche de la dame, le Bastion sur celle de la tour, le roi fou sur la magie.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New commander: the Mad King. He moves diagonally, like the bishop he's named after in French, and he casts instead of fighting in melee. Swapping commander doesn't just change one piece on the board, it changes the army you end up building around it. The Thunderer opens onto the queen branch, the Bastion onto the rook, the Mad King onto magic.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #chess #tacticalrpg`
+
+**À vérifier** : son domaine exact, s'il a son propre arbre de commandement, comment on le débloque, et les noms anglais des trois commandants dans `strings.csv`.
+
+---
+
+## Short : fusion de trois archers montés en arbalétrier monté
+
+*Angle : une pièce qui cumule deux identités, le saut du cavalier et le tir à distance.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `It jumps like a knight and shoots.`
+🇫🇷 *Il saute comme un cavalier, et il tire.*
+
+Alternative : 🇬🇧 `A knight that shoots.`
+
+**Titre** : 🇬🇧 A knight that shoots is a problem
+
+Alternatives :
+- 🇬🇧 It jumps like a knight and shoots / 🇫🇷 Il saute comme un cavalier et il tire
+- 🇬🇧 Three mounted archers make a mounted crossbowman / 🇫🇷 Trois archers montés donnent un arbalétrier monté
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Trois archers montés donnent un arbalétrier monté, palier 3. Il garde le saut en L du cavalier, donc aucune pièce ne peut lui barrer le chemin, et il attaque à distance, donc il n'a pas besoin de venir au contact. Aux échecs, un cavalier est déjà pénible à contenir. Un cavalier qui tire, on ne le contient pas du tout.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> Three mounted archers make a mounted crossbowman, tier 3. It keeps the knight's L jump, so no piece can block its path, and it attacks at range, so it never has to close in. A knight is already awkward to contain in chess. A knight that shoots doesn't get contained at all.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #chess #tacticalrpg`
+
+**À vérifier** : les noms anglais d'archer monté et d'arbalétrier monté dans `strings.csv`.

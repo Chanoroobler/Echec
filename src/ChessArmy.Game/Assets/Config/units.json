@@ -229,8 +229,9 @@
     // de l'autre perd la run). Il joue SANS ARMEE ("noArmy") : ni reserve, ni recrutement, ni fusion, ni
     // equipement, ni relance, ni mission speciale, et les COFFRES comme les TUILES RECRUE sont retires des
     // maps. Son arbre "commandantDuo" les y remet sous une autre forme : trousses de soin (tuiles recrue) et
-    // sacoches (coffres). Revenu : AUCUNE condition a remplir sur le terrain, mais 3 points par mission
-    // reussie (missionPoints:3) la ou les autres en touchent 2.
+    // sacoches (coffres). Revenu : 3 points par mission reussie (missionPoints:3) la ou les autres en
+    // touchent 2, PLUS 1 point par ennemi abattu que les DEUX meneurs ont frappe (pairKillPoints:1),
+    // plafonne a 2 par combat (pairKillCap:2) : sa source de gain paye la COORDINATION des deux meneurs.
     // "companion" = id de l'entree role "Companion" ci-dessous : elle amene le SECOND meneur.
     // ASSETS A DESSINER : Assets/Units/Commandant_artisan_{front,back,ia_front,ia_back}.png et
     // Assets/Units/Basile_{front,back,ia_front,ia_back}.png (64x64). STATS PROVISOIRES, a equilibrer.
@@ -248,10 +249,14 @@
       "reserveSize": 0,
       "tree": "commandantDuo",
       "missionPoints": 3,
+      "pairKillPoints": 1,
+      "pairKillCap": 2,
       "companion": "Basile",
       "noArmy": true,
       "startingUnits": [],
-      "unlocked": true
+      // Verrouille au depart : il s'ouvre a 150 ennemis abattus TOUTES PARTIES CONFONDUES
+      // (cf. GameplayScene.UnlockDuoIfEnoughKills / SaveService.KillUnlockThreshold).
+      "unlocked": false
     },
     // SECOND meneur du commandant DUO. Role "Companion" : jamais propose au carrousel, il n'entre en jeu que
     // par le champ "companion" du commandant ci-dessus. Basile tire a distance (domaine Tour, lignes) la ou
@@ -471,6 +476,74 @@
           "moveRange": 3,
           "attackRange": 3,
           "equipmentCount": 2
+        }
+      }
+    },
+    // Boss ARTISAN MEURTRIER : le miroir du commandant DUO, retourne contre le joueur.
+    // Deux particularites, uniques a ce boss :
+    //   "requiresCommander" : il n'entre dans le tirage QUE si le joueur a deja debloque le commandant
+    //                         "Commandant_duo" (150 ennemis abattus). Sans ca on affronterait un duo qu'on
+    //                         ne connait pas encore. Il ne DEBLOQUE donc rien lui-meme (pas d'unlocksCommander).
+    //   "bossCompanion"     : BASILE l'accompagne. Il REMPLACE l'escorte du plus haut tier au lieu de s'y
+    //                         ajouter (l'effectif reste celui des cases de spawn) et n'est PAS essentiel :
+    //                         l'abattre ne gagne pas le combat, seul le boss decide. Ses stats se reglent
+    //                         a part dans "companionPhases" (voir plus bas).
+    // Themes de son arbre retournes contre le joueur : riposte puis reaction en chaine.
+    // STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Boss",
+      "name": "Commandant_artisan",
+      "asset": "Commandant_artisan",
+      "domaine": "Dame",
+      "requiresCommander": "Commandant_duo",
+      "bossCompanion": "Basile",
+      "phases": {
+        "1": {
+          "hp": 34,
+          "damage": 12,
+          "moveRange": 2,
+          "attackRange": 1
+        },
+        "2": {
+          "hp": 45,
+          "damage": 15,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Riposte" ]
+        },
+        "3": {
+          "hp": 45,
+          "damage": 17,
+          "moveRange": 2,
+          "attackRange": 1,
+          "traits": [ "Riposte"]
+        }
+      },
+      // Stats de BASILE dans CE combat de boss, phase par phase — independantes de sa fiche jouable, qu'on ne
+      // peut pas equilibrer ici sans toucher au commandant du joueur. Memes champs qu'un profil de boss
+      // (hp, damage, moveRange, attackRange, et en option minAttackRange, piercesAllies, attackDomaine,
+      // traits). Son nom et son sprite restent les siens : seuls les chiffres sont lus ici.
+      // Bloc entier absent => il combattrait avec sa fiche jouable (repli).
+      // STATS PROVISOIRES, a equilibrer.
+      "companionPhases": {
+        "1": {
+          "hp": 26,
+          "damage": 10,
+          "moveRange": 1,
+          "attackRange": 2
+        },
+        "2": {
+          "hp": 34,
+          "damage": 13,
+          "moveRange": 1,
+          "attackRange": 3
+        },
+        "3": {
+          "hp": 44,
+          "damage": 15,
+          "moveRange": 1,
+          "attackRange": 3,
+          "traits": [ "Tir en ligne" ]
         }
       }
     }

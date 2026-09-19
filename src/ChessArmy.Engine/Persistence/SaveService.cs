@@ -210,6 +210,41 @@ public sealed class SaveService
         });
     }
 
+    // ── Méta-progression : ennemis abattus (déblocage du commandant DUO) ────────────
+
+    /// <summary>Nombre d'ennemis à abattre, TOUTES PARTIES CONFONDUES, pour débloquer le commandant DUO.</summary>
+    public const int KillUnlockThreshold = 150;
+
+    // Cache mémoire du compteur (même logique que les coffres).
+    private int? _enemiesKilled;
+
+    /// <summary>Total d'ennemis abattus par le joueur depuis toujours (cf. <see cref="KillUnlockThreshold"/>).</summary>
+    public int EnemiesKilled() => _enemiesKilled ??= TryRead<ProfileDto>(ProfilePath)?.EnemiesKilled ?? 0;
+
+    /// <summary>
+    /// Comptabilise <paramref name="count"/> ennemis abattus (méta-progression). Versé par LOT à la fin de
+    /// chaque combat, pas coup par coup : un seul aller-retour disque là où le compteur de coffres en fait un
+    /// par coffre. Compteur mémoire mis à jour SYNCHRONE ; persistance disque (lecture-modification-écriture
+    /// sous verrou, pour préserver les autres champs) en arrière-plan. Sans effet si <paramref name="count"/>
+    /// est nul ou négatif.
+    /// </summary>
+    public void AddEnemiesKilled(int count)
+    {
+        if (count <= 0)
+            return;
+        var total = EnemiesKilled() + count;
+        _enemiesKilled = total;
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.EnemiesKilled = total;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+    }
+
     // ── Méta-progression : campagnes GAGNÉES (commandant × difficulté) ──────────────
     // On ne retient que la difficulté la PLUS HAUTE gagnée avec chaque commandant : « terminer un niveau
     // élevé termine les niveaux inférieurs » tombe alors tout seul (une simple comparaison), et le profil
@@ -269,12 +304,14 @@ public sealed class SaveService
         _discoveredEquip = new HashSet<string>();
         _unlockedCommanders = new HashSet<string>();
         _chestsOpened = 0;
+        _enemiesKilled = 0;
         _commanderWins = new Dictionary<string, int>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
         dto.DiscoveredEquipment = new List<string>();
         dto.UnlockedCommanders = new List<string>();
         dto.ChestsOpened = 0;
+        dto.EnemiesKilled = 0;
         dto.CommanderWins = new Dictionary<string, int>();
         TryWrite(ProfilePath, dto);
     }

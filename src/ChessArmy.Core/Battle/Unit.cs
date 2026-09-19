@@ -117,6 +117,25 @@ public sealed class Unit
     public void RecordDamage(int amount) => DamageDealt += System.Math.Max(0, amount);
 
     /// <summary>
+    /// Unités qui ont RÉELLEMENT entamé celle-ci pendant le combat courant (0 dégât exclu), sans doublon.
+    /// Amorcée vide au spawn et NON persistée : chaque combat repart d'une unité neuve. Renseignée par
+    /// <see cref="Match"/> partout où des dégâts passent, relais compris (éclats, épines, rebonds).
+    /// Sert aux règles de campagne qui demandent QUI a participé à une mise à mort — le commandant DUO
+    /// gagne un point quand ses DEUX meneurs ont frappé le mort (cf. <c>CommandeDef.PairKillPoints</c>).
+    /// </summary>
+    private readonly List<Unit> _damagedBy = new();
+
+    /// <summary>Comptabilise <paramref name="attacker"/> comme ayant entamé cette unité (sans doublon).</summary>
+    public void RecordDamagedBy(Unit attacker)
+    {
+        if (!_damagedBy.Contains(attacker))
+            _damagedBy.Add(attacker);
+    }
+
+    /// <summary>Vrai si <paramref name="attacker"/> a réellement entamé cette unité pendant ce combat.</summary>
+    public bool WasDamagedBy(Unit attacker) => _damagedBy.Contains(attacker);
+
+    /// <summary>
     /// Puissance offerte par le trait « Rage » : +<see cref="Match.RagePowerBonus"/> dès qu'un PREMIER allié
     /// meurt pendant le combat courant. NON cumulable et une seule fois par combat — les morts suivantes ne
     /// l'augmentent pas. Amorcée à 0 au spawn et NON persistée (chaque combat repart d'une unité neuve, donc le
@@ -128,6 +147,32 @@ public sealed class Unit
     /// <summary>Active la « Rage » (à la mort d'un allié) : FIXE le bonus sans le cumuler (idempotent, borné à
     /// <paramref name="amount"/>). Appelé par le moteur de combat.</summary>
     public void ActivateRage(int amount) => RagePower = System.Math.Max(RagePower, System.Math.Max(0, amount));
+
+    /// <summary>
+    /// « La puissance du rock » (arbre du DUO) : puissance en réserve gagnée au ROQUE et dépensée par la
+    /// PROCHAINE attaque, quelle qu'elle soit. NON cumulable — roquer deux fois de suite ne la double pas
+    /// (cf. <see cref="ChargeRoquePower"/>) — et non persistée : chaque combat repart d'unités neuves.
+    /// 0 = aucune charge en réserve. Ajoutée à la puissance effective par <see cref="Match.EffectivePower"/>.
+    /// </summary>
+    public int RoquePower { get; private set; }
+
+    /// <summary>Met une charge de roque en réserve : la FIXE sans la cumuler (idempotent, borné à
+    /// <paramref name="amount"/>). Appelé par le moteur de combat.</summary>
+    public void ChargeRoquePower(int amount) => RoquePower = System.Math.Max(RoquePower, System.Math.Max(0, amount));
+
+    /// <summary>Dépense la charge de roque (après l'attaque qui en a profité). Sans effet s'il n'y en a pas.</summary>
+    public void SpendRoquePower() => RoquePower = 0;
+
+    /// <summary>
+    /// Puissance LÉGUÉE par un meneur tombé EN PLEIN COMBAT (« Continue sans moi »). Pendant exact de
+    /// <see cref="BonusMaxHp"/> pour la puissance : les <see cref="Buffs"/> sont figés au spawn, donc sans ce
+    /// cumul le survivant se battrait tout le reste du combat sans son héritage. Vit sur l'unité seule — au
+    /// respawn, c'est la run qui le rend via ses buffs, donc aucun double compte.
+    /// </summary>
+    public int InheritedPower { get; private set; }
+
+    /// <summary>Ajoute <paramref name="amount"/> de puissance léguée, SÉANCE TENANTE. Appelé par la scène.</summary>
+    public void GainInheritedPower(int amount) => InheritedPower += System.Math.Max(0, amount);
 
     /// <summary>
     /// Unité « pivot » dont la mort décide la partie : le commandant (joueur) ou le
@@ -147,6 +192,7 @@ public sealed class Unit
     /// fonce sur le joueur. <see cref="AiKind.Defensif"/> : garde une position (mission spéciale),
     /// posé à la pose de la vague selon la case de spawn de la map. Voir <see cref="EnemyAi"/>.
     /// </summary>
+    /// <remarks><see cref="AiKind.Sentinelle"/> : postée (mirador), elle attaque à portée mais ne bouge jamais.</remarks>
     public AiKind AiKind { get; set; } = AiKind.Normal;
 
     public MovementKind MovementKind => Movement.Kind(Domaine);

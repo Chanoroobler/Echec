@@ -1605,6 +1605,29 @@
       "sheet": "neige",
       "col": 0,
       "row": 6
+    },
+    {
+      "_comment": "--- TOURS DE GUET. Pas de 'sheet' : PNG individuel Assets/Tiles/<id>.png, pris en entier (comme grass/water/mountain). rangeBonus = portee d'attaque GAGNEE par l'unite postee dessus, et seulement si elle TIRE deja (portee native >= 2) : une tour rallonge un tir, pas un bras. Le bonus se lit sur la portee NATIVE, il ne s'auto-entretient donc jamais. occupantDx/occupantDy = calage COSMETIQUE du pion poste dessus, en pixels de tuile native (droite/bas positifs, donc dy NEGATIF = plus haut) : le plancher de la tour n'est pas au centre de la case, un pion centre y parait decroche. Tout ce qui est accroche au pion suit (ombre, barre de vie, badges, marques). A AJUSTER A L'OEIL. trait = trait de combat PRETE a l unite postee dessus tant qu elle y reste (cf. Battle.Trait) : le mirador prete Balistique donc on tire par-dessus la montagne. Cles a 2 caracteres prefixees par ^ (comme ` pour la neige et _ pour les eaux).",
+      "id": "TourHerbe",
+      "key": "^a",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "rangeBonus": 1,
+      "occupantDx": 0,
+      "occupantDy": -6,
+      "trait": "Balistique"
+    },
+    {
+      "id": "TourNeige",
+      "key": "^b",
+      "blocksMove": false,
+      "blocksFire": false,
+      "glisse": false,
+      "rangeBonus": 1,
+      "occupantDx": 0,
+      "occupantDy": -6,
+      "trait": "Balistique"
     }
   ]
 }

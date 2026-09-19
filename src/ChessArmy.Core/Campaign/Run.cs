@@ -411,6 +411,32 @@ public sealed class Run
         return CommanderDef.HealPoints;
     }
 
+    /// <summary>
+    /// Mises à mort « à deux » déjà comptabilisées pour les points ce combat. Remis à zéro à chaque
+    /// <see cref="StartBattle"/>. Comparé à <c>CommandeDef.PairKillCap</c>.
+    /// </summary>
+    private int _pairKillEvents;
+
+    /// <summary>Mises à mort « à deux » déjà comptabilisées ce combat (pour l'UI : « 1/2 »).</summary>
+    public int PairKillEventsThisCombat => _pairKillEvents;
+
+    /// <summary>
+    /// Source de points « mise à mort à deux » (commandant DUO) : crédite <c>CommandeDef.PairKillPoints</c>
+    /// pour UN ennemi tombé que les DEUX meneurs avaient frappé, dans la limite de
+    /// <c>CommandeDef.PairKillCap</c> par combat. À appeler AU MOMENT de la mort (gain immédiat, comme le
+    /// feedback). C'est l'appelant qui juge de la participation des deux meneurs — la run ne tient que le
+    /// plafond et la bourse. Renvoie les points réellement crédités : 0 si le plafond est atteint ou si ce
+    /// n'est pas la source du commandant.
+    /// </summary>
+    public int GrantPairKillPoint()
+    {
+        if (CommanderDef.PairKillPoints <= 0 || _pairKillEvents >= CommanderDef.PairKillCap)
+            return 0;
+        _pairKillEvents++;
+        CommandPoints += CommanderDef.PairKillPoints;
+        return CommanderDef.PairKillPoints;
+    }
+
     /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
     public bool Unlock(CommandNode node)
     {
@@ -490,10 +516,89 @@ public sealed class Run
     public bool Roque => Has(CommandEffectKind.Roque);
 
     /// <summary>
+    /// « La puissance du rock » : puissance mise en réserve sur l'ARTISAN à chaque roque et dépensée par sa
+    /// prochaine attaque. 0 = nœud non acheté.
+    /// </summary>
+    public int RoquePower => TotalOf(CommandEffectKind.RoquePower);
+
+    /// <summary>
     /// Puissance gagnée par le COMMANDANT pour chaque tranche de <see cref="CommandEffect.CrossKillStep"/> mises
     /// à mort de son COMPAGNON. 0 = nœud non acheté.
     /// </summary>
     public int CrossKillPower => TotalOf(CommandEffectKind.CrossKillPower);
+
+    /// <summary>
+    /// « Continue sans moi » : la chute d'UN meneur ne perd plus la run — le survivant continue SEUL et hérite
+    /// de la moitié des stats du tombé (cf. <see cref="InheritedLeaderPower"/> / <see cref="InheritedLeaderHp"/>).
+    /// </summary>
+    public bool SoloSurvivor => Has(CommandEffectKind.SoloSurvivor);
+
+    /// <summary>
+    /// Puissance LÉGUÉE au meneur survivant par celui qui est tombé (« Continue sans moi ») : la moitié de la
+    /// puissance effective du mort, arrondie vers le bas. Cumulée sur la run et PERSISTÉE avec elle ; ajoutée
+    /// aux stats des meneurs au spawn (cf. <see cref="BuffsFor"/>). 0 tant que les deux tiennent debout.
+    /// </summary>
+    public int InheritedLeaderPower { get; private set; }
+
+    /// <summary>PV max LÉGUÉS au meneur survivant, même règle que <see cref="InheritedLeaderPower"/>.</summary>
+    public int InheritedLeaderHp { get; private set; }
+
+    /// <summary>
+    /// OUTIL DE TEST : nom d'une map (cf. <c>Map.MapData.Name</c>) à utiliser pour TOUS les combats de la run,
+    /// au lieu du tirage déterministe habituel. Posé à la main par l'éditeur de sauvegarde
+    /// (<c>tools/ChessArmy.SaveEditor</c>) pour aller éprouver une map précise sans relancer des parties
+    /// jusqu'à ce qu'elle sorte. <c>null</c> ou vide — le cas de TOUTE partie normale — : tirage habituel.
+    /// Un nom qui ne correspond à aucune map chargée est ignoré (la run reste jouable).
+    /// </summary>
+    public string? ForcedMapName { get; set; }
+
+    /// <summary>
+    /// « Continue sans moi » : retire de la run les meneurs TOMBÉS et lègue au survivant la moitié de leur
+    /// puissance et de leurs PV max. Sans le nœud, un meneur tombé n'arrive jamais ici — la partie est perdue.
+    ///
+    /// Si les DEUX sont tombés, on ne lègue rien et on ne retire rien : la défaite a déjà été prononcée, et
+    /// vider le roster de ses meneurs rendrait la run insauvable.
+    ///
+    /// L'héritage se calcule sur les stats EFFECTIVES du tombé — classe + bonus d'arbre + ce que la run lui
+    /// avait déjà légué — et non sur sa fiche nue : sinon un arbre poussé au bout ne pèserait rien dans le legs.
+    /// </summary>
+    /// <summary>
+    /// « Continue sans moi » : retire de la run les meneurs de <paramref name="fallen"/> et lègue au survivant
+    /// la moitié de leur puissance et de leurs PV max. Renvoie le TOTAL légué, pour que l'appelant l'applique
+    /// SÉANCE TENANTE aux meneurs déjà posés (cf. <c>Unit.GainMaxHp</c> / <c>Unit.GainInheritedPower</c>) : les
+    /// buffs étant figés au spawn, sans ça le survivant finirait le combat en cours sans son héritage — juste
+    /// au moment où il en a le plus besoin.
+    ///
+    /// (0 0) et AUCUN retrait si le nœud n'est pas acheté, ou s'il ne reste AUCUN meneur en dehors de
+    /// <paramref name="fallen"/> : la défaite est alors déjà prononcée, et vider le roster de ses meneurs
+    /// rendrait la run insauvable. Le test porte sur le LOT, pas sur chaque meneur : traités un à un, le
+    /// premier des deux tombés aurait trouvé le second encore au roster et se serait cru hérité.
+    ///
+    /// L'héritage se calcule sur les stats EFFECTIVES du tombé — classe + bonus d'arbre + ce que la run lui
+    /// avait déjà légué — et non sur sa fiche nue : sinon un arbre poussé au bout ne pèserait rien dans le legs.
+    /// IDEMPOTENT : les gabarits absorbés quittent le roster, un second appel ne rend donc rien.
+    /// </summary>
+    public (int Power, int Hp) AbsorbFallenLeaders(IEnumerable<UnitSpec> fallen)
+    {
+        if (!SoloSurvivor)
+            return (0, 0);
+        var dead = new HashSet<UnitSpec>(fallen);
+        var leaders = _roster.Where(u => u.Essential && dead.Contains(u)).ToList();
+        if (leaders.Count == 0 || !_roster.Any(u => u.Essential && !dead.Contains(u)))
+            return (0, 0);
+
+        int power = 0, hp = 0;
+        foreach (var leader in leaders)
+        {
+            var buffs = BuffsFor(leader);
+            power += Math.Max(0, leader.UnitClass.Damage + buffs.BonusFor(EquipStat.Damage)) / 2;
+            hp += Math.Max(0, leader.UnitClass.MaxHp + buffs.BonusFor(EquipStat.Hp)) / 2;
+            _roster.Remove(leader);
+        }
+        InheritedLeaderPower += power;
+        InheritedLeaderHp += hp;
+        return (power, hp);
+    }
 
     /// <summary>
     /// PV max GAGNÉS sur le terrain par les meneurs de ce DUO (trousses utilisées × <see cref="HealKitMaxHp"/>
@@ -551,8 +656,10 @@ public sealed class Run
     public CommandBuffs BuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount = null) =>
         CommandBuffs.From(BuffEffects, TargetOf(spec), DistinctPairs, spec.Domaine, DomaineUnitCount,
                 deployedCount, EquippedItemCount, spec.Equipments.Count)
-            // DUO : les PV max ramassés sur le terrain (trousses, sacoches) profitent aux DEUX meneurs.
-            .Plus(EquipStat.Hp, spec.Essential ? LeaderBonusHp : 0);
+            // DUO : les PV max ramassés sur le terrain (trousses, sacoches) profitent aux DEUX meneurs, et
+            // « Continue sans moi » lègue au survivant la moitié des stats du meneur tombé.
+            .Plus(EquipStat.Hp, spec.Essential ? LeaderBonusHp + InheritedLeaderHp : 0)
+            .Plus(EquipStat.Damage, spec.Essential ? InheritedLeaderPower : 0);
 
     /// <summary>Cible d'arbre d'un gabarit : le second meneur d'un DUO, le commandant, ou la troupe.</summary>
     private static BuffTarget TargetOf(UnitSpec spec) =>
@@ -728,8 +835,11 @@ public sealed class Run
         _aiFreshT3 = null;
         UltimateReviveUsed = false; // « Renaissance ultime » : une fois par PARTIE, donc rendue à la nouvelle
         LeaderBonusHp = 0;          // DUO : les PV max ramassés sur le terrain repartent de zéro
+        InheritedLeaderPower = 0;   // …et le legs d'un meneur tombé aussi (les deux sont là, neufs)
+        InheritedLeaderHp = 0;
         _lootEvents = 0;
         _healEvents = 0;
+        _pairKillEvents = 0;
         _satchelHpEvents = 0;
         Phase = RunPhase.Placement;
     }
@@ -755,11 +865,17 @@ public sealed class Run
         int commandPoints = 0, IReadOnlyList<string>? unlockedNodes = null, int rerolls = 0,
         string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null,
         IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null,
-        bool ultimateReviveUsed = false, int leaderBonusHp = 0)
+        bool ultimateReviveUsed = false, int leaderBonusHp = 0,
+        int inheritedLeaderPower = 0, int inheritedLeaderHp = 0, string? forcedMapName = null)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
         run.UltimateReviveUsed = ultimateReviveUsed;
         run.LeaderBonusHp = Math.Max(0, leaderBonusHp);   // DUO : PV max ramassés sur le terrain
+        // DUO : legs d'un meneur tombé (« Continue sans moi »). Le tombé, lui, n'est plus dans le roster
+        // sauvegardé — il ne revient donc pas à la reprise.
+        run.InheritedLeaderPower = Math.Max(0, inheritedLeaderPower);
+        run.InheritedLeaderHp = Math.Max(0, inheritedLeaderHp);
+        run.ForcedMapName = forcedMapName;   // outil de test : map imposée par l'éditeur de sauvegarde
         if (stats != null)
             run.Stats = stats;   // récap repris de la sauvegarde (sinon compteur neuf du constructeur)
         // Nouveauté IA figée pour la run (null = à recalculer au 1er combat du tier concerné) : la reprise
@@ -1417,7 +1533,10 @@ public sealed class Run
         // Mission boss : le boss ASSIGNÉ à la phase courante est placé EN TÊTE (la scène le pose en premier).
         // Cf. BossSpecFor / BossOfPhase (tirage déterministe de 3 boss distincts par run).
         if (IsBossCombat)
+        {
             wave.Insert(0, BossSpecFor(PhaseIndex));
+            SubstituteBossCompanion(wave, PhaseIndex);   // boss accompagné : son second prend la place d'une escorte
+        }
 
         return wave;
     }
@@ -1445,7 +1564,54 @@ public sealed class Run
     {
         var wave = BuildScaledWave(escortCount, isSeen, fixedTiers);
         wave.Insert(0, BossSpecFor(PhaseIndex));   // boss assigné à la phase, en tête (la scène le pose sur une case B)
+        SubstituteBossCompanion(wave, PhaseIndex);
         return wave;
+    }
+
+    /// <summary>
+    /// Boss qui vient ACCOMPAGNÉ (cf. <see cref="BossDef.CompanionId"/>) : son second REMPLACE l'escorte du
+    /// plus haut tier au lieu de s'y ajouter. L'effectif de la vague ne bouge donc pas — c'est ce qui compte
+    /// sur une map dessinée, où il y a exactement une case de spawn par ennemi, et ce qui distingue ce
+    /// mécanisme des « escortes garanties » qui gonflaient la vague.
+    ///
+    /// Le second n'est PAS essentiel : l'abattre ne gagne pas le combat (seul le boss décide), il n'est qu'une
+    /// escorte d'élite. Sans escorte à remplacer (map réduite au boss), il ne vient pas : l'ajouter le
+    /// laisserait sans case où se poser.
+    /// </summary>
+    private void SubstituteBossCompanion(List<UnitSpec> wave, int phase)
+    {
+        var boss = BossOfPhase(phase);
+        if (boss.CompanionId is not { } id || Commandes.CompanionById(id) is not { } def)
+            return;
+
+        // wave[0] est le boss : on ne cherche l'escorte la plus forte que parmi les suivantes.
+        var best = -1;
+        for (var i = 1; i < wave.Count; i++)
+            if (best < 0 || wave[i].UnitClass.Tier > wave[best].UnitClass.Tier)
+                best = i;
+        if (best < 0)
+            return;
+
+        // Marqué COMPAGNON : c'est ce drapeau qui le tient hors du butin de recrutement (la scène ne verse au
+        // draft que les ennemis ordinaires). Sans lui, abattre Basile le proposerait au joueur comme une
+        // troupe à recruter. Inerte par ailleurs sur un ennemi : les mécaniques de duo exigent toutes
+        // l'essentialité, et les bonus d'arbre ne s'appliquent qu'au roster du joueur.
+        wave[best] = new UnitSpec(def.Movement, CompanionClassFor(boss, def, phase), essential: false, companion: true);
+    }
+
+    /// <summary>
+    /// Classe du SECOND d'un boss à cette phase : son NOM et son SPRITE viennent toujours de sa
+    /// <see cref="CommandeDef"/> — c'est bien Basile qu'on affronte —, ses CHIFFRES et ses traits du profil
+    /// que le boss déclare pour la phase (cf. <see cref="BossDef.CompanionProfileFor"/>). Sans profil déclaré,
+    /// il combat avec sa fiche JOUABLE, ce qui est le repli et non l'intention : un second de boss s'équilibre
+    /// à part du commandant du joueur.
+    /// </summary>
+    private static UnitClass CompanionClassFor(BossDef boss, CommandeDef def, int phase)
+    {
+        if (boss.CompanionProfileFor(phase) is not { } p)
+            return def.BaseClass;
+        return new UnitClass(def.BaseClass.Name, def.BaseClass.Asset, tier: 1, p.MaxHp, p.Damage,
+            p.MoveRange, p.AttackRange, p.PiercesAllies, p.MinAttackRange, p.Traits, p.AttackDomaine);
     }
 
     /// <summary>
@@ -1576,6 +1742,41 @@ public sealed class Run
     }
 
     /// <summary>
+    /// Gabarit ennemi de <paramref name="tier"/> qui TIRE (portée d'attaque &gt;= <paramref name="minRange"/>),
+    /// tiré dans les mêmes domaines débloqués et les mêmes règles de découverte que la vague ordinaire. Sert
+    /// aux postes qui n'ont de sens que pour un tireur — un ennemi sur un MIRADOR (cf. la scène).
+    ///
+    /// Repli en cascade : les classes découvertes d'abord, sinon N'IMPORTE QUELLE classe à distance de ce
+    /// tier, sinon des autres tiers. Renvoie <c>null</c> seulement si AUCUNE classe à distance n'existe dans
+    /// les domaines débloqués — l'appelant garde alors le pion qu'il avait.
+    /// </summary>
+    public UnitSpec? PickRangedEnemy(int tier, Func<string, bool>? isSeen = null, int minRange = 2)
+    {
+        var rng = CombatRng(7);   // sel propre : ne perturbe pas le tirage de la vague
+        var pool = UnlockedDomaines();
+        var capped = Math.Min(tier, MaxUnitTier);
+
+        // Tiers essayés : celui demandé d'abord, puis les autres (un mirador tenu par un tier voisin vaut
+        // mieux qu'un pion de contact, qui n'y gagnerait rien).
+        foreach (var t in new[] { capped }.Concat(Enumerable.Range(1, MaxUnitTier).Where(x => x != capped)))
+        {
+            var all = new List<(Domaine Domaine, UnitClass Class)>();
+            foreach (var domaine in pool)
+                foreach (var cls in ClassesAtTier(domaine, t))
+                    if (cls.AttackRange >= minRange)
+                        all.Add((domaine, cls));
+            if (all.Count == 0)
+                continue;
+
+            var seen = isSeen is null ? all : all.Where(x => isSeen(x.Class.Asset)).ToList();
+            var from = seen.Count > 0 ? seen : all;
+            var pick = from[rng.Next(from.Count)];
+            return new UnitSpec(pick.Domaine, pick.Class);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Domaines ennemis DÉBLOQUÉS au combat courant (pool où l'on tire les types de la vague). Un type
     /// de plus par combat dans l'ordre d'<see cref="IntroOrder"/>, la première campagne
     /// (<see cref="FirstRun"/>) démarrant un cran plus doux (soldat seul au combat 1). Tout est ouvert
@@ -1615,6 +1816,7 @@ public sealed class Run
             Phase = RunPhase.Battle;
         _lootEvents = 0;   // le plafond de points « sur butin » (Marchand) est PAR COMBAT
         _healEvents = 0;   // idem pour le plafond de points « sur soin » (DUO)
+        _pairKillEvents = 0;   // …et pour celui des mises à mort « à deux » (DUO)
         _satchelHpEvents = 0;   // …et le plafond de PV max « Barda » (DUO)
     }
 
@@ -1630,6 +1832,10 @@ public sealed class Run
     public void CompleteCombat(IEnumerable<UnitSpec> casualties, IReadOnlyList<UnitSpec> defeatedEnemies)
     {
         var dead = new HashSet<UnitSpec>(casualties);
+        // « Continue sans moi » (DUO) : un meneur tombé quitte la run pour de bon et lègue la moitié de ses
+        // stats au survivant. Sans le nœud il n'arrive jamais ici — la run est déjà perdue.
+        if (SoloSurvivor)
+            AbsorbFallenLeaders(dead);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
         CommandPoints += MissionPoints;   // toute mission réussie, boss et spéciale comprises
 
@@ -1714,6 +1920,10 @@ public sealed class Run
     public void CompleteSpecialNoDraft(IEnumerable<UnitSpec> casualties)
     {
         var dead = new HashSet<UnitSpec>(casualties);
+        // Filet, comme dans CompleteCombat : un meneur tombé est normalement absorbé DÈS SA MORT par la scène,
+        // mais cette clôture-ci doit le rattraper si elle est atteinte par un autre chemin.
+        if (SoloSurvivor)
+            AbsorbFallenLeaders(dead);
         _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
         CommandPoints += MissionPoints;
         _draft.Clear();

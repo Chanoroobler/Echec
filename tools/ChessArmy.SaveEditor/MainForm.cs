@@ -42,6 +42,9 @@ internal sealed class MainForm : Form
     private readonly Label _missionKind = new() { AutoSize = true, ForeColor = Color.Khaki };
     private readonly ComboBox _commanderBox = new() { Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _difficultyBox = new() { Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+    // Map IMPOSÉE à tous les combats de la run (cf. Run.ForcedMapName) : sert à aller éprouver une map précise
+    // sans relancer des parties jusqu'à ce qu'elle sorte du tirage. Vide = tirage normal.
+    private readonly ComboBox _mapBox = new() { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown _seedNum = new() { Width = 180, Minimum = int.MinValue, Maximum = int.MaxValue };
     private readonly NumericUpDown _pointsNum = new() { Width = 70, Minimum = 0, Maximum = 999 };
     private readonly NumericUpDown _rerollNum = new() { Width = 70, Minimum = 0, Maximum = 99 };
@@ -144,6 +147,7 @@ internal sealed class MainForm : Form
         Row(box, ref y, "Phase / mission", _phaseBox, _missionBox, _missionKind);
         Row(box, ref y, "Commandant", _commanderBox);
         Row(box, ref y, "Difficulté", _difficultyBox);
+        Row(box, ref y, "Map imposée", _mapBox);
         Row(box, ref y, "Graine", _seedNum);
         Row(box, ref y, "Points de commandement", _pointsNum);
         Row(box, ref y, "Relances", _rerollNum);
@@ -266,6 +270,11 @@ internal sealed class MainForm : Form
         foreach (var level in DifficultySettings.AllLevels)
             _difficultyBox.Items.Add(new Item(level.ToString(), level.ToString()));
 
+        // Map imposée : le premier choix rend la run au tirage normal (clé vide → ForcedMap null).
+        _mapBox.Items.Add(new Item("", "— tirage normal —"));
+        foreach (var map in Catalogs.MapsSorted())
+            _mapBox.Items.Add(new Item(map.Name, map.Label));
+
         foreach (var domaine in Domaines.All)
             _domaineBox.Items.Add(new Item(domaine.Id.ToString(), domaine.Id.ToString()));
 
@@ -288,6 +297,9 @@ internal sealed class MainForm : Form
         _commanderBox.SelectedIndexChanged += (_, _) => OnCommanderChanged();
         _difficultyBox.SelectedIndexChanged += (_, _) => Edit(s =>
             s.Difficulty = Enum.Parse<Difficulty>(Key(_difficultyBox)!));
+        // Clé vide (« tirage normal ») → null, et non chaîne vide : c'est ce que le jeu teste.
+        _mapBox.SelectedIndexChanged += (_, _) => Edit(s =>
+            s.ForcedMap = Key(_mapBox) is { Length: > 0 } name ? name : null);
         _seedNum.ValueChanged += (_, _) => Edit(s => s.Seed = (int)_seedNum.Value);
         _pointsNum.ValueChanged += (_, _) => Edit(s => s.CommandPoints = (int)_pointsNum.Value);
         _rerollNum.ValueChanged += (_, _) => Edit(s => s.Rerolls = (int)_rerollNum.Value);
@@ -451,6 +463,7 @@ internal sealed class MainForm : Form
         _save.CommanderId = ResolvedCommander().Id;
         Select(_commanderBox, _save.CommanderId);
         Select(_difficultyBox, _save.Difficulty.ToString());
+        Select(_mapBox, _save.ForcedMap ?? "");   // map absente de la liste → retombe sur « tirage normal »
         _seedNum.Value = _save.Seed;
         _pointsNum.Value = Clamp(_pointsNum, _save.CommandPoints);
         _rerollNum.Value = Clamp(_rerollNum, _save.Rerolls);

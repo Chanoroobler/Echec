@@ -32,10 +32,13 @@ public sealed class CommandeDef
         int lootPoints = 0, int lootCap = int.MaxValue,
         int missionPoints = Campaign.Run.PointsPerMission,
         int healPoints = 0, int healCap = int.MaxValue,
+        int pairKillPoints = 0, int pairKillCap = int.MaxValue,
         string? companionId = null, bool noArmy = false)
     {
         HealPoints = healPoints;
         HealCap = healCap;
+        PairKillPoints = pairKillPoints;
+        PairKillCap = pairKillCap;
         CompanionId = companionId;
         NoArmy = noArmy;
         LootPoints = lootPoints;
@@ -176,6 +179,18 @@ public sealed class CommandeDef
 
     /// <summary>COMMANDANT : nombre MAX de soins comptabilisés par combat pour <see cref="HealPoints"/>.</summary>
     public int HealCap { get; }
+
+    /// <summary>
+    /// COMMANDANT DUO : points gagnés à chaque mise à mort où les DEUX meneurs (lui et son
+    /// <see cref="CompanionId"/>) ont frappé le mort — peu importe lequel porte le coup fatal, seule compte
+    /// leur participation —, plafonnés à <see cref="PairKillCap"/> mises à mort par combat. C'est une source
+    /// de gain qui PAYE LA COORDINATION : sans le second meneur à portée, rien ne tombe.
+    /// 0 = ce commandant ne gagne pas de points ainsi. Cf. <see cref="Campaign.Run.GrantPairKillPoint"/>.
+    /// </summary>
+    public int PairKillPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de mises à mort « à deux » comptabilisées par combat pour <see cref="PairKillPoints"/>.</summary>
+    public int PairKillCap { get; }
 
     /// <summary>
     /// COMMANDANT DUO : <see cref="Id"/> du SECOND meneur (une <see cref="CommandeDef"/> de rôle

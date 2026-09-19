@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using ChessArmy.Core.Equip;
 using ChessArmy.Engine.Localization;
 
@@ -13,6 +14,12 @@ public static class EquipmentNames
 {
     public static string Localized(Equipment equip) =>
         Loc.TOr("equip." + equip.Id, null!) ?? Loc.TOr("equip." + BaseId(equip.Id), equip.Name);
+
+    /// <summary>
+    /// Montant d'un bonus de stat AVEC son signe (« +10 », « -10 ») : la clé <c>equip.stat_bonus</c> ne porte
+    /// plus le « + », sinon un malus s'afficherait « +-10 ».
+    /// </summary>
+    public static string Signed(int amount) => amount.ToString("+0;-0;0", CultureInfo.InvariantCulture);
 
     /// <summary>Id sans suffixe de rareté : clé de nom partagée par les variantes commune/rare/légendaire.</summary>
     public static string BaseId(string id)

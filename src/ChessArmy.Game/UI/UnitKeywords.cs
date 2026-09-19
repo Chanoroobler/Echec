@@ -71,6 +71,13 @@ public static class UnitKeywords
     /// <summary>Mot-clé synthétisé pour une portée minimale &gt; 1 (archers).</summary>
     public static Keyword DeadZone => FromKey("kw.dead_zone");
 
+    /// <summary>
+    /// Mot-clé synthétisé pour un objet à lancer (<see cref="ChessArmy.Core.Equip.Equipment.IsThrown"/>) :
+    /// il se brise dès la première attaque de son porteur. Porté par l'OBJET, pas par une classe — il n'est
+    /// donc pas dans <see cref="KeyByTrait"/>.
+    /// </summary>
+    public static Keyword Ephemeral => FromKey("kw.ephemere");
+
     /// <summary>Libellé + description d'un trait ; repli sobre si le trait n'est pas répertorié.</summary>
     public static Keyword For(string trait) =>
         KeyByTrait.TryGetValue(trait, out var key)

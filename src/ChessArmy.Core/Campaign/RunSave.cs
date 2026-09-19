@@ -14,7 +14,12 @@ namespace ChessArmy.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v7 = le commandant DUO : le SECOND meneur est marqué dans le roster
+    /// Version du format. v9 = map IMPOSÉE par l'éditeur de sauvegarde (<see cref="ForcedMap"/>), outil de
+    /// test. Une sauvegarde v8 ou antérieure reste LISIBLE : champ absent → null → tirage habituel.
+    /// v8 = « Continue sans moi » (arbre du DUO) : le legs d'un meneur tombé est persisté
+    /// (<see cref="InheritedLeaderPower"/> / <see cref="InheritedLeaderHp"/>), le tombé ayant quitté le roster.
+    /// Une sauvegarde v7 ou antérieure reste LISIBLE : legs absent → 0, les deux meneurs sont encore là.
+    /// v7 = le commandant DUO : le SECOND meneur est marqué dans le roster
     /// (<see cref="UnitSpecSave.Companion"/>) et ses PV max ramassés sur le terrain sont persistés
     /// (<see cref="LeaderBonusHp"/>). Une sauvegarde v6 ou antérieure reste LISIBLE : sans commandant duo,
     /// les deux champs valent leur défaut et rien ne change.
@@ -37,7 +42,7 @@ public sealed class RunSave
     /// En revanche un <see cref="CombatNumber"/> hors [1..<see cref="Run.TotalCombats"/>] est à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 7;
+    public int Version { get; set; } = 9;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -107,6 +112,23 @@ public sealed class RunSave
     /// </summary>
     public int LeaderBonusHp { get; set; }
 
+    /// <summary>
+    /// COMMANDANT DUO : puissance et PV max LÉGUÉS au meneur survivant par celui qui est tombé, nœud
+    /// « Continue sans moi » (cf. <see cref="Run.InheritedLeaderPower"/>). Le tombé ayant quitté le
+    /// <see cref="Roster"/>, ces deux valeurs sont tout ce qu'il reste de lui : sans elles, la reprise
+    /// rendrait le survivant à ses stats d'avant. Absent (vieux save, ou tout autre commandant) → 0.
+    /// </summary>
+    public int InheritedLeaderPower { get; set; }
+
+    /// <summary>PV max légués au meneur survivant (cf. <see cref="InheritedLeaderPower"/>).</summary>
+    public int InheritedLeaderHp { get; set; }
+
+    /// <summary>
+    /// OUTIL DE TEST : map imposée à tous les combats de la run (cf. <see cref="Run.ForcedMapName"/>), posée
+    /// par l'éditeur de sauvegarde. Absent/null — le cas de toute partie normale — : tirage habituel.
+    /// </summary>
+    public string? ForcedMap { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -132,6 +154,9 @@ public sealed class RunSave
             AiFreshTier3 = run.AiFreshTier3?.ToList(),
             UltimateReviveUsed = run.UltimateReviveUsed,
             LeaderBonusHp = run.LeaderBonusHp,
+            InheritedLeaderPower = run.InheritedLeaderPower,
+            InheritedLeaderHp = run.InheritedLeaderHp,
+            ForcedMap = run.ForcedMapName,
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -151,7 +176,8 @@ public sealed class RunSave
             .ToList();
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
             CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats(),
-            AiFreshTier2, AiFreshTier3, UltimateReviveUsed, LeaderBonusHp);
+            AiFreshTier2, AiFreshTier3, UltimateReviveUsed, LeaderBonusHp,
+            InheritedLeaderPower, InheritedLeaderHp, ForcedMap);
     }
 }
 

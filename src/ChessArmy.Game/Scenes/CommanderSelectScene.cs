@@ -739,6 +739,15 @@ public sealed class CommanderSelectScene : Scene
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
                 y += LineH;
             }
+        // Source « mise à mort à deux » (DUO) : +N points par ennemi tombé que les DEUX meneurs avaient
+        // frappé. Le plafond est annoncé ici (contrairement aux sources ci-dessus) : à 2 par combat il pèse
+        // sur la façon de jouer, le taire survendrait la source.
+        if (def.PairKillPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_pairkill", def.PairKillPoints, def.PairKillCap), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
         // DUO : rappeler que ce commandant en a DEUX et que la chute de l'un OU l'autre perd la run.
         if (def.CompanionId != null)
             foreach (var line in _card.Wrap(Loc.T("commander.duo_leaders"), body.Width, 1))

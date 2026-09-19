@@ -1153,6 +1153,67 @@ public class TraitsTests
         Assert.Equal(Faction.Player, board.UnitAt(target)!.Faction);   // a pris la place de la cible
     }
 
+    // ── WouldTakePlace : l'APERÇU doit annoncer exactement ce que TryAttack fera ──
+
+    /// <summary>
+    /// L'aperçu de visée (fantôme de prise de place) et la résolution doivent dire la même chose. Le piège :
+    /// au moment de l'aperçu la victime est ENCORE sur sa case, alors qu'à la résolution elle en a déjà été
+    /// retirée — sans précaution, l'aperçu répondrait toujours « non ».
+    /// </summary>
+    [Fact]
+    public void WouldTakePlace_MatchesWhatTheAttackActuallyDoes()
+    {
+        var from = new Cell(0, 0);
+        var target = new Cell(0, 1);
+
+        // Mêlée ordinaire : il avancera — et l'aperçu le dit AVANT le coup, victime encore debout.
+        var melee = Board();
+        melee.Place(from, Make(Faction.Player, 20, 10, None, attackRange: 1, moveRange: 1));
+        var v1 = Make(Faction.Enemy, 20, 0, None);
+        v1.TakeDamage(v1.Hp - 1);
+        melee.Place(target, v1);
+        Assert.True(melee.WouldTakePlace(from, target));
+        melee.TryAttack(from, target);
+        Assert.Equal(Faction.Player, melee.UnitAt(target)!.Faction);
+
+        // « Statique » : cloué sur place, l'aperçu doit le dire.
+        var statique = Board();
+        statique.Place(from, Make(Faction.Player, 20, 10, new[] { Trait.Statique }, attackRange: 1, moveRange: 1));
+        var v2 = Make(Faction.Enemy, 20, 0, None);
+        v2.TakeDamage(v2.Hp - 1);
+        statique.Place(target, v2);
+        Assert.False(statique.WouldTakePlace(from, target));
+
+        // TIREUR : il frappe à 3 cases mais n'en marche qu'une — il reste où il est.
+        var shooter = Board();
+        var far = new Cell(0, 3);
+        shooter.Place(from, Make(Faction.Player, 20, 10, None, attackRange: 3, moveRange: 1));
+        var v3 = Make(Faction.Enemy, 20, 0, None);
+        v3.TakeDamage(v3.Hp - 1);
+        shooter.Place(far, v3);
+        Assert.False(shooter.WouldTakePlace(from, far));
+        shooter.TryAttack(from, far);
+        Assert.Equal(Faction.Player, shooter.UnitAt(from)!.Faction);   // n'a pas bougé
+        Assert.Null(shooter.UnitAt(far));
+    }
+
+    /// <summary>L'aperçu ne doit RIEN changer au plateau : la victime est remise là où elle était.</summary>
+    [Fact]
+    public void WouldTakePlace_LeavesTheBoardUntouched()
+    {
+        var board = Board();
+        var from = new Cell(0, 0);
+        var target = new Cell(0, 1);
+        board.Place(from, Make(Faction.Player, 20, 10, None, attackRange: 1, moveRange: 1));
+        var victim = Make(Faction.Enemy, 20, 0, None);
+        board.Place(target, victim);
+
+        board.WouldTakePlace(from, target);
+
+        Assert.Same(victim, board.UnitAt(target));
+        Assert.Equal(Faction.Player, board.UnitAt(from)!.Faction);
+    }
+
     // ── Queue de phénix (Renaissance) : renaissance à la mort + consommation de l'équipement ─────────
 
     [Fact]

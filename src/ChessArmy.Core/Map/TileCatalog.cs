@@ -55,7 +55,8 @@ public sealed class TileCatalog
         if (dto.Tiles is null || dto.Tiles.Count == 0)
             throw new FormatException("tiles.json ne contient aucune tuile.");
 
-        var tiles = dto.Tiles.Select(t => new TileDef(t.Id ?? "", t.BlocksMove, t.BlocksFire, t.Glisse));
+        var tiles = dto.Tiles.Select(t => new TileDef(t.Id ?? "", t.BlocksMove, t.BlocksFire, t.Glisse, t.RangeBonus,
+            t.OccupantDx, t.OccupantDy, string.IsNullOrWhiteSpace(t.Trait) ? null : t.Trait));
 
         // Légende globale : caractère 'key' → id (ignore les tuiles sans clé).
         var legend = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -85,5 +86,15 @@ public sealed class TileCatalog
         public bool BlocksMove { get; set; }
         public bool BlocksFire { get; set; }
         public bool Glisse { get; set; }
+
+        /// <summary>Portée d'attaque gagnée par le TIREUR posté dessus (tour de guet) ; absent → 0.</summary>
+        public int RangeBonus { get; set; }
+
+        /// <summary>Décalage cosmétique du pion posté dessus (px de tuile native) ; absent → 0 (centré).</summary>
+        public int OccupantDx { get; set; }
+        public int OccupantDy { get; set; }
+
+        /// <summary>Trait de combat prêté à l'unité postée dessus (cf. Battle.Trait) ; absent → aucun.</summary>
+        public string? Trait { get; set; }
     }
 }

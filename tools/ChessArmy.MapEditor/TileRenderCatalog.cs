@@ -176,7 +176,8 @@ internal sealed class TileRenderCatalog
             if (string.IsNullOrWhiteSpace(t.Id) || string.IsNullOrEmpty(t.Key))
                 continue;
 
-            var image = CropTile(t, dto.Tilesets, sheets);
+            var image = CropTile(t, dto.Tilesets, sheets)
+                        ?? LoadStandaloneTile(Path.GetDirectoryName(tilesJsonPath), t.Id!);
             var info = new TileInfo
             {
                 Id = t.Id!,
@@ -184,7 +185,10 @@ internal sealed class TileRenderCatalog
                 BlocksMove = t.BlocksMove,
                 BlocksFire = t.BlocksFire,
                 Slides = t.Glisse,
-                Sheet = TabFor(t.Sheet),   // onglet de palette : familles « eaux/eaux2/eaux3 » regroupées sous « eaux »
+                // Onglet de palette : familles « eaux/eaux2/eaux3 » regroupées sous « eaux », et les tuiles
+                // sans tileset rangées sous « divers » (sinon elles n'auraient aucun onglet, donc seraient
+                // absentes de la palette).
+                Sheet = TabFor(t.Sheet),
                 Image = image,
             };
             tiles.Add(info);
@@ -211,16 +215,38 @@ internal sealed class TileRenderCatalog
     /// ONGLET de palette d'un tileset : son nom SANS le chiffre final, pour regrouper une famille de feuilles
     /// sous un même onglet (<c>eaux</c>, <c>eaux2</c>, <c>eaux3</c> → <c>eaux</c>). Sans effet sur les noms sans
     /// chiffre final (<c>herb</c>, <c>murs</c>, <c>neige</c>…). Un nom entièrement numérique est laissé tel quel
-    /// (jamais d'onglet vide). N'affecte que l'affichage : le découpage de l'image se fait via le vrai tileset.
+    /// (jamais d'onglet vide). Pas de tileset du tout → <see cref="StandaloneTab"/>.
+    /// N'affecte que l'affichage : le découpage de l'image se fait via le vrai tileset.
     /// </summary>
+    /// <summary>
+    /// Onglet des tuiles SANS tileset (PNG individuel, cf. <see cref="LoadStandaloneTile"/>). La palette ne
+    /// montre que les tuiles de l'onglet actif : sans onglet, ces tuiles n'apparaîtraient NULLE PART et
+    /// seraient indessinables.
+    /// </summary>
+    internal const string StandaloneTab = "divers";
+
     internal static string? TabFor(string? sheet)
     {
         if (string.IsNullOrEmpty(sheet))
-            return sheet;
+            return StandaloneTab;
         var end = sheet.Length;
         while (end > 0 && char.IsDigit(sheet[end - 1]))
             end--;
         return end == 0 ? sheet : sheet[..end];   // nom uniquement numérique : conservé tel quel
+    }
+
+    /// <summary>
+    /// Art d'une tuile SANS tileset : le PNG individuel <c>&lt;dossier de tiles.json&gt;/&lt;id&gt;.png</c>, comme
+    /// le fait le jeu quand une tuile ne déclare pas de <c>sheet</c> (cf. <c>GameplayScene.TileSprite</c>).
+    /// Sans ce repli, ces tuiles n'apparaîtraient qu'en placeholder dans la palette — invisible à dessiner.
+    /// Null si le fichier n'existe pas.
+    /// </summary>
+    private static Bitmap? LoadStandaloneTile(string? tilesDir, string id)
+    {
+        if (string.IsNullOrEmpty(tilesDir))
+            return null;
+        var path = Path.Combine(tilesDir, id + ".png");
+        return File.Exists(path) ? LoadUnlocked(path) : null;
     }
 
     private static Bitmap? CropTile(TileDto t, Dictionary<string, TilesetDto>? tilesets,

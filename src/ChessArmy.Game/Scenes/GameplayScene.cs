@@ -875,6 +875,13 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private MapData? MapForCombat()
     {
+        // OUTIL DE TEST : map imposée par l'éditeur de sauvegarde — elle court-circuite tous les tirages.
+        // Un nom inconnu (map renommée/supprimée depuis) est IGNORÉ : on retombe sur le tirage habituel
+        // plutôt que de rendre la sauvegarde injouable.
+        if (!string.IsNullOrWhiteSpace(_run.ForcedMapName)
+            && _maps.FirstOrDefault(m => m.Name == _run.ForcedMapName) is { } forced)
+            return forced;
+
         if (_run.CurrentMission == CombatType.Speciale)
             return SpecialMapFor(_run.PhaseIndex, _run.MissionInPhase);
 
@@ -1249,6 +1256,8 @@ public sealed class GameplayScene : Scene
         _recruePrev.Clear();
         _leaderHp.Clear();          // DUO : le suivi des soins repart à neuf (les pions sont neufs aussi)
         _trousseKillsSeen = null;   // DUO : les trousses posées sur mise à mort se recomptent par combat
+        _commandPointHold = 0f;     // aucune retenue de clôture reportée du combat précédent
+        _pairKillsSeen = 0;         // DUO : le journal des morts est neuf (nouveau Match), on le relit de zéro
         _recrueReveals.Clear();
         _recrueAdded = false;
         _recrueFlying = false;
@@ -2206,6 +2215,8 @@ public sealed class GameplayScene : Scene
                 cells = cells.OrderByDescending(
                     c => m.DefensiveEnemySpawns.Contains(c) || m.OffensiveEnemySpawns.Contains(c)).ToList();
         }
+        AssignMiradorGuards(wave, cells);
+
         var i = 0;
         foreach (var spec in wave)
         {
@@ -2225,8 +2236,44 @@ public sealed class GameplayScene : Scene
                 else if (AiCapturesPaysans && dm.OffensiveEnemySpawns.Contains(cells[i]))
                     ai = AiKind.Offensif;
             }
+            // MIRADOR : le pion posté y RESTE, quelle que soit l'IA que sa case aurait donnée. Un guetteur
+            // qui descend de sa tour perd tout ce qui l'y met (la vue, la portée, le tir balistique).
+            if (_battlefield[cells[i]].RangeBonus > 0)
+                ai = AiKind.Sentinelle;
             SpawnEnemyOn(spec, cells[i], ai);
             i++;
+        }
+    }
+
+    /// <summary>
+    /// MIRADOR : garantit qu'un TIREUR tient chaque case de spawn ennemi posée sur une tuile qui donne de la
+    /// portée. Un pion de contact n'y gagnerait rien et resterait planté là (cf. <see cref="AiKind.Sentinelle"/>) :
+    /// ce serait une unité gâchée pour l'IA autant qu'un poste vide pour le joueur.
+    ///
+    /// D'abord par ÉCHANGE dans la vague — on déplace un tireur déjà tiré vers la case du mirador, ce qui ne
+    /// change ni l'effectif ni la composition voulue par la map. Faute de tireur disponible, on en SUBSTITUE
+    /// un du même tier (cf. <see cref="Run.PickRangedEnemy"/>), pour que le poste soit tenu quoi qu'il arrive.
+    ///
+    /// <paramref name="cells"/> est l'ordre de service des cases ; on ne regarde que celles réellement
+    /// utilisables, comme la boucle de placement qui suit.
+    /// </summary>
+    private void AssignMiradorGuards(List<UnitSpec> wave, List<Cell> cells)
+    {
+        var usable = cells.Where(c => _match.UnitAt(c) == null && !_battlefield[c].BlocksMovement).ToList();
+        for (var k = 0; k < usable.Count && k < wave.Count; k++)
+        {
+            if (_battlefield[usable[k]].RangeBonus <= 0)
+                continue;
+            if (wave[k].UnitClass.AttackRange >= Match.RangedAttackRange)
+                continue;   // déjà un tireur : rien à faire
+
+            var swap = -1;
+            for (var j = k + 1; j < wave.Count; j++)
+                if (wave[j].UnitClass.AttackRange >= Match.RangedAttackRange) { swap = j; break; }
+            if (swap >= 0)
+                (wave[k], wave[swap]) = (wave[swap], wave[k]);
+            else if (_run.PickRangedEnemy(wave[k].UnitClass.Tier, Context.Saves.IsUnitDiscovered) is { } ranged)
+                wave[k] = ranged;
         }
     }
 
@@ -3591,7 +3638,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private Rectangle EquipBadgeRect(Cell cell, GridLayout layout, int slot = 0, int slots = 1)
     {
-        const int s = 34;                                        // cadre 34 ; l'icône 32 y est centrée
+        const int s = EquipBadgeSize;                            // cadre 34 ; l'icône 32 y est centrée
         var top = layout.CellToScreen(cell.Column, cell.Row);
         var size = layout.TileSize;
         var spriteLift = (int)(size * SpriteLiftFraction);
@@ -3618,7 +3665,28 @@ public sealed class GameplayScene : Scene
                : VictimMoveOffset(cell, layout);
         kb += _pierceRecoil.Offset(cell, size);
         kb.Y += ChuteTrembleY(cell) - UnitLift(cell, size);
+        kb += TileOccupantOffset(cell, layout);   // calage cosmétique imposé par la tuile (tour de guet)
         return kb;
+    }
+
+    /// <summary>
+    /// Décalage COSMÉTIQUE du pion posté sur <paramref name="cell"/>, imposé par sa tuile
+    /// (<see cref="Map.Tile.OccupantOffset"/>) : l'art d'une tour de guet n'a pas son plancher au centre de la
+    /// case, un pion centré y paraît décroché. Exprimé en pixels de tuile NATIVE et mis à l'ÉCHELLE ENTIÈRE du
+    /// zoom, comme tout le reste du pixel-art — jamais de demi-pixel.
+    ///
+    /// À appliquer à TOUT ce qui est accroché au pion — sprite, ombre, barre de vie, badges, marques — sinon
+    /// le pion se décale et ses accessoires restent en arrière.
+    /// </summary>
+    private Point TileOccupantOffset(Cell cell, GridLayout layout)
+    {
+        if (!_battlefield.Contains(cell))
+            return Point.Zero;
+        var (dx, dy) = _battlefield[cell].OccupantOffset;
+        if (dx == 0 && dy == 0)
+            return Point.Zero;
+        var zoom = System.Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
+        return new Point(dx * zoom, dy * zoom);
     }
 
     /// <summary>Slots d'équipement affichés au-dessus d'un pion posé (0 = il ne s'équipe pas : le commandant, sauf arbre du Marchand).</summary>
@@ -4505,6 +4573,8 @@ public sealed class GameplayScene : Scene
             _chuteJustLanded.Clear();
         }
         _pierceRecoil.Update(dt);  // le recul du pion transpercé se résorbe (cf. DrawUnit)
+        if (_commandPointHold > 0)
+            _commandPointHold -= dt;   // retenue de clôture : laisse voir le « +N COMMANDEMENT » qui vient de partir
         if (_damagePopups.HasActive) // chiffres de dégâts : éclatent en feu d'artifice à l'extinction
             _damagePopups.Update(dt, BuildLayout(), _sparks);
         SpawnCommanderPointFeedback();   // « +N » doré quand le commandant gagne un point (coup reçu Lancier / coup à distance Fou)
@@ -4532,6 +4602,8 @@ public sealed class GameplayScene : Scene
             if (!IsProtectMission)
                 CheckRecrueObjects();
             TrackTrousseKills();   // DUO : une mise à mort de l'artisan lance une petite trousse de soin
+            TrackPairKills();      // DUO : un mort frappé par les DEUX meneurs rapporte un point (plafonné par combat)
+            TrackFallenLeaders();  // DUO : « Continue sans moi » — le survivant hérite DÈS la chute de l'autre
             CheckChests();         // ouverture d'un coffre si un allié vient d'entrer dessus
             UpdateChuteTiles();    // arme les tuiles « chute » occupées ; effondre celles qu'un pion vient de quitter
             // Glissade sur glace RÉCOLTÉE (objets franchis au passage, cf. SlidOver) : le moteur garde son chemin
@@ -4840,7 +4912,9 @@ public sealed class GameplayScene : Scene
         // n'anime encore (la file n'est pompée qu'à la frame suivante, en tête d'UpdateBattle). Avec la seule
         // garde `!_fx.Active`, une interception qui abattait le DERNIER ennemi basculait au recrutement sans
         // qu'on l'ait vue frapper. Même raison pour la riposte et les dissolutions différées.
-        if (BattleSettled)
+        // …et qu'aucun « +N COMMANDEMENT » ne vient de jaillir : le point gagné sur le DERNIER coup du combat
+        // serait sinon spawné et enterré dans la même frame (cf. CommandPointHoldDuration).
+        if (BattleSettled && _commandPointHold <= 0)
             CheckBattleEnd();
     }
 
@@ -5502,6 +5576,23 @@ public sealed class GameplayScene : Scene
     /// <summary>Id du commandant Marchand (units.json), débloqué au compteur de coffres.</summary>
     private const string MerchantCommanderId = "Commandant_marchand";
 
+    /// <summary>Id du commandant DUO — l'artisan meurtrier —, débloqué au compteur de mises à mort d'UNE partie.</summary>
+    private const string DuoCommanderId = "Commandant_duo";
+
+    /// <summary>
+    /// Déblocage du commandant DUO : il s'ouvre dès que le joueur a abattu
+    /// <see cref="SaveService.KillUnlockThreshold"/> ennemis au TOTAL (toutes parties confondues, compteur du
+    /// profil alimenté à chaque fin de combat). Contrôlé à la fin de TOUTE partie, gagnée comme perdue — le
+    /// déblocage apparaît alors dans le récap comme ceux des boss. Idempotent.
+    /// </summary>
+    private void UnlockDuoIfEnoughKills()
+    {
+        if (Context.Saves.EnemiesKilled() < SaveService.KillUnlockThreshold)
+            return;
+        if (Context.Saves.UnlockCommander(DuoCommanderId))
+            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + DuoCommanderId, DuoCommanderId));
+    }
+
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
     private List<UnitSpec> PlayerCasualties() =>
         _playerSpec.Where(kv => !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
@@ -5530,6 +5621,9 @@ public sealed class GameplayScene : Scene
         }
         _run.Stats.AddKills(kills);
         _run.Stats.AddUnitsLost(lost);
+        // Méta-progression : le compteur À VIE du profil suit le même delta (déblocage du commandant DUO).
+        // Versé par COMBAT et non par mort, pour une seule écriture profil au lieu d'une par ennemi.
+        Context.Saves.AddEnemiesKilled(kills);
     }
 
     /// <summary>Nœud « relève » (arbre TROUPES) : un pion T1 déjà vu arrive en réserve par unité tier 2+ tombée.
@@ -5581,8 +5675,32 @@ public sealed class GameplayScene : Scene
         var points = _run.GrantLootPoints();
         if (points <= 0)
             return;
-        _damagePopups.SpawnText(cell, Loc.T("fx.command_point", points), Palette.Yellow1);
+        SpawnCommandPointFx(cell, points);
+    }
+
+    /// <summary>
+    /// Temps (s) pendant lequel la CLÔTURE du combat est retenue après un « +N COMMANDEMENT ». Le popup ne vit
+    /// que <c>DamagePopups.LifeDur</c> (0,5 s) : sans cette retenue, un point gagné sur le DERNIER coup du
+    /// combat jaillissait dans la frame même où <see cref="CheckBattleEnd"/> basculait sur l'écran suivant —
+    /// le joueur voyait ses points monter sans jamais voir d'où ils venaient. Cas typique du commandant DUO,
+    /// dont la source EST une mise à mort (cf. <see cref="TrackPairKills"/>).
+    /// </summary>
+    private const float CommandPointHoldDuration = 0.7f;
+
+    /// <summary>Temps restant de la retenue ci-dessus (0 = le combat peut se clore).</summary>
+    private float _commandPointHold;
+
+    /// <summary>
+    /// Feedback d'un point de commandement gagné EN COMBAT : le « +N » doré au-dessus de
+    /// <paramref name="cell"/>, le son, et la retenue de clôture. Passage OBLIGÉ de toutes les sources
+    /// (butin, soin, coup reçu, coup à distance, saut, mise à mort à deux) pour qu'aucune ne puisse être
+    /// avalée par la fin du combat.
+    /// </summary>
+    private void SpawnCommandPointFx(Cell cell, int points, Vector2? offset = null)
+    {
+        _damagePopups.SpawnText(cell, Loc.T("fx.command_point", points), Palette.Yellow1, offset);
         Context.Sounds.Play("command_point");
+        _commandPointHold = CommandPointHoldDuration;
     }
 
     // ═══ COMMANDANT DUO : trousses de soin, sacoches, objets à lancer ══════════════════════════════
@@ -5592,18 +5710,31 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// PV rendus par une PETITE TROUSSE DE SOIN : celles que le nœud « atelier de campagne » envoie sur le
-    /// terrain à chaque mise à mort. Bien moins qu'une vraie trousse — elles sont gratuites et répétables.
+    /// terrain à chaque mise à mort. Moins qu'une vraie trousse — elles sont gratuites et répétables.
     /// </summary>
-    private const int PetiteTrousseHeal = 5;
+    private const int PetiteTrousseHeal = 8;
 
     /// <summary>Durée du saut d'une petite trousse vers sa case (s) : le temps de LIRE d'où elle part.</summary>
     private const float TrousseTossDuration = 0.35f;
 
     /// <summary>
-    /// Les tuiles RECRUE de la map sont des TROUSSES DE SOIN : commandant SANS ARMÉE dont le nœud d'arbre
-    /// est acheté. Sans le nœud, ces tuiles sont simplement retirées de la map (cf. la configuration du combat).
+    /// Les tuiles RECRUE de la MAP sont des TROUSSES DE SOIN : commandant SANS ARMÉE dont le nœud
+    /// « trousse de terrain » est acheté. Sans le nœud, ces tuiles sont simplement retirées de la map
+    /// (cf. <see cref="RefreshLootObjects"/>). Ne dit RIEN des trousses posées par une mise à mort, qui
+    /// viennent d'un autre nœud : pour savoir comment TRAITER une case de <see cref="_recrueCells"/>,
+    /// c'est <see cref="TrousseMode"/> qu'il faut lire.
     /// </summary>
-    private bool TrousseMode => _run is { NoArmy: true, HealKitTiles: true };
+    private bool TrousseTiles => _run is { NoArmy: true, HealKitTiles: true };
+
+    /// <summary>
+    /// Toute case de <see cref="_recrueCells"/> est une TROUSSE DE SOIN (rendu, ramassage, tooltip) et non un
+    /// recrutement. Vrai dès que le commandant est SANS ARMÉE : il n'a pas de recrutement du tout, et ses
+    /// tuiles ne peuvent donc venir que d'une trousse — celles de la map (<see cref="TrousseTiles"/>) comme
+    /// celles posées par une mise à mort (<see cref="Run.HealKitOnKill"/>, cf. <see cref="TrackTrousseKills"/>).
+    /// Tester <see cref="TrousseTiles"/> ici faisait apparaître une RECRUE à chaque mise à mort quand seul le
+    /// nœud « atelier de campagne » était acheté.
+    /// </summary>
+    private bool TrousseMode => _run.NoArmy;
 
     /// <summary>Les COFFRES de la map sont des SACOCHES (même règle que <see cref="TrousseMode"/>).</summary>
     private bool SacocheMode => _run is { NoArmy: true, SatchelChests: true };
@@ -5626,6 +5757,64 @@ public sealed class GameplayScene : Scene
                 unit.GainMaxHp(bonus);
     }
 
+    /// <summary>
+    /// « Continue sans moi » : un meneur vient de TOMBER en plein combat → il quitte la run et lègue au
+    /// survivant la moitié de sa puissance et de ses PV max, appliqués SÉANCE TENANTE. Sans ça le legs
+    /// n'arriverait qu'au spawn suivant (les buffs sont figés à la pose) et le survivant finirait seul le
+    /// combat en cours sans rien — juste au moment où il en a le plus besoin.
+    ///
+    /// La run garde le total (<see cref="Run.InheritedLeaderPower"/> / <see cref="Run.InheritedLeaderHp"/>) :
+    /// au respawn, c'est elle qui le rend, et les bonus posés ici vivent sur des unités neuves à chaque
+    /// combat — aucun double compte. <see cref="Run.AbsorbFallenLeader"/> est idempotent (le gabarit quitte le
+    /// roster), donc rappeler cette méthode chaque frame ne lègue rien deux fois.
+    /// </summary>
+    private void TrackFallenLeaders()
+    {
+        if (!_run.SoloSurvivor)
+            return;
+
+        // Les meneurs tombés sont absorbés EN LOT : traités un à un, avec les DEUX à terre, le premier
+        // trouverait le second encore au roster et se croirait hérité (cf. Run.AbsorbFallenLeaders).
+        var fallen = _playerSpec.Where(kv => kv.Value.Essential && !kv.Key.IsAlive).Select(kv => kv.Value).ToList();
+        if (fallen.Count == 0)
+            return;
+
+        var (power, hp) = _run.AbsorbFallenLeaders(fallen);
+        if (power <= 0 && hp <= 0)
+            return;   // rien à léguer (nœud absent, ou plus aucun survivant : la défaite est déjà prononcée)
+
+        GrantLeadersMaxHp(hp);
+        GrantLeadersPower(power);
+        // Le legs s'annonce sur le SURVIVANT, pas sur le mort : c'est lui qui change de stats.
+        var heir = _playerSpec.FirstOrDefault(kv => kv.Value.Essential && kv.Key.IsAlive).Key;
+        if (heir is not null && _match.CellOf(heir) is { } cell)
+        {
+            if (hp > 0)
+                _damagePopups.SpawnText(cell, Loc.T("fx.max_hp", hp), Palette.Yellow1, new Vector2(0f, -0.5f));
+            if (power > 0)
+                _damagePopups.SpawnText(cell, Loc.T("fx.power", power), Palette.Yellow1, new Vector2(0f, -0.9f));
+        }
+        Context.Sounds.Play("reward");
+    }
+
+    /// <summary>
+    /// Vrai si <paramref name="spec"/> est le meneur SURVIVANT d'un duo dont l'autre est tombé : la run porte
+    /// alors un legs (<see cref="Run.InheritedLeaderPower"/>). Condition lue sur la RUN et non sur l'unité,
+    /// pour que l'aura survive aux combats suivants — la puissance léguée y repasse par les buffs du spawn.
+    /// </summary>
+    private bool IsHeir(UnitSpec spec) =>
+        spec.Essential && (_run.InheritedLeaderPower > 0 || _run.InheritedLeaderHp > 0);
+
+    /// <summary>Applique SÉANCE TENANTE aux meneurs POSÉS et VIVANTS la puissance que la run vient de léguer.</summary>
+    private void GrantLeadersPower(int bonus)
+    {
+        if (bonus <= 0)
+            return;
+        foreach (var (unit, spec) in _playerSpec)
+            if (spec.Essential && unit.IsAlive)
+                unit.GainInheritedPower(bonus);
+    }
+
     /// <summary>PV des meneurs à la frame précédente : toute REMONTÉE rapporte un point de commandement.</summary>
     private readonly Dictionary<Unit, int> _leaderHp = new();
 
@@ -5635,6 +5824,13 @@ public sealed class GameplayScene : Scene
     /// première frame pour ne compter que les kills de CE combat (sinon tout son passé pleuvrait d'un coup).
     /// </summary>
     private int? _trousseKillsSeen;
+
+    /// <summary>
+    /// Nombre d'entrées de <see cref="Match.DeathLog"/> déjà examinées pour la mise à mort « à deux » (DUO).
+    /// Le journal ne se vide jamais en cours de combat : garder l'index suffit à ne traiter chaque mort
+    /// qu'une fois, sans dépendre du moment où la scène regarde.
+    /// </summary>
+    private int _pairKillsSeen;
 
     /// <summary>
     /// Cases de <see cref="_recrueCells"/> qui portent une PETITE trousse (posée par une mise à mort) et non
@@ -5667,6 +5863,8 @@ public sealed class GameplayScene : Scene
         _match.ExtraTurnDomaine = _run.ExtraTurnDomaine;     // nœud « charge » : un kill de ce domaine rend la main
         _match.CrossKillPower = _run.CrossKillPower;         // DUO : puissance gagnée sur les kills de l'AUTRE meneur
         _match.RoqueEnabled = _run.Roque;                    // DUO : les deux meneurs échangent leurs places
+        _match.RoquePower = _run.RoquePower;                 // DUO : « La puissance du rock » — le roque charge l'artisan
+        _match.SoloSurvivorEnabled = _run.SoloSurvivor;      // DUO : « Continue sans moi » — un meneur tombé ne perd plus la run
     }
 
     /// <summary>
@@ -5693,7 +5891,7 @@ public sealed class GameplayScene : Scene
         foreach (var o in map.Objects)
             switch (o.Kind)
             {
-                case MapObjectKind.Recruit when TrousseMode || !_run.NoArmy: _recrueCells.Add(o.Cell); break;
+                case MapObjectKind.Recruit when TrousseTiles || !_run.NoArmy: _recrueCells.Add(o.Cell); break;
                 case MapObjectKind.ChestCommon when SacocheMode || !_run.NoArmy: _chestCells.Add(o.Cell); break;
             }
     }
@@ -5777,6 +5975,11 @@ public sealed class GameplayScene : Scene
     /// d'aller marcher dessus — nœud acheté, pion capable d'y puiser (cf. <see cref="CanTakeFromSatchel"/>)
     /// et sacoche dans sa LIGNE DE TIR. Une sacoche OCCUPÉE est écartée : l'ennemi posté dessus en fait une
     /// cible d'attaque ordinaire (le tir le frappe, et rien n'est ramassé).
+    ///
+    /// Une sacoche à portée de DÉPLACEMENT en fait partie : le tir passe AVANT le déplacement dans les trois
+    /// chemins d'interaction (clic, manette, glisser), et Basile ramasse sans bouger. C'est voulu — l'aimant
+    /// sert justement à garder sa position. Filtrer ces sacoches pour forcer à marcher dessus a été essayé et
+    /// REJETÉ : aller les chercher à pied n'est pas l'intention du nœud.
     /// </summary>
     private void RefreshSatchelTargets(Cell from)
     {
@@ -5830,8 +6033,52 @@ public sealed class GameplayScene : Scene
             if (points <= 0)
                 continue;
             if (_match.CellOf(unit) is { } cell)
-                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", points), Palette.Yellow1);
-            Context.Sounds.Play("command_point");
+                SpawnCommandPointFx(cell, points);
+        }
+    }
+
+    /// <summary>
+    /// MISE À MORT « À DEUX » (commandant DUO) : un ennemi qui tombe après avoir été frappé par l'artisan ET
+    /// par Basile rapporte <c>CommandeDef.PairKillPoints</c>, dans la limite de <c>PairKillCap</c> par combat.
+    /// Peu importe lequel porte le coup fatal, ni dans quel ordre : seule compte leur participation, relevée
+    /// par le moteur à chaque passage de dégâts (cf. <see cref="Battle.Unit.WasDamagedBy"/>).
+    ///
+    /// Lue dans le JOURNAL DES MORTS du match plutôt qu'en surveillant le plateau : une unité morte en est
+    /// retirée, il n'y a donc rien à comparer d'une frame à l'autre. L'index <see cref="_pairKillsSeen"/>
+    /// garantit un seul examen par mort, quel que soit le chemin qui l'a tuée (coup direct, riposte, éclat,
+    /// interception, maillon de chaîne).
+    ///
+    /// Appelée quand le combat est POSÉ (comme <see cref="TrackTrousseKills"/>) : le moteur tue instantanément
+    /// alors que le coup se joue en différé, et le « +1 » doit jaillir APRÈS l'animation, pas pendant.
+    /// </summary>
+    private void TrackPairKills()
+    {
+        if (_run.CommanderDef.PairKillPoints <= 0)
+            return;
+        var log = _match.DeathLog;
+        if (_pairKillsSeen >= log.Count)
+            return;
+
+        var artisan = _playerSpec.FirstOrDefault(kv => kv.Value.Essential && !kv.Value.Companion).Key;
+        var basile = Basile;
+
+        for (; _pairKillsSeen < log.Count; _pairKillsSeen++)
+        {
+            var (where, dead) = log[_pairKillsSeen];
+            // Un meneur tombé au combat garde ses coups déjà portés : ils comptent encore. Seul un meneur
+            // ABSENT du plateau (jamais posé) rend la mise à mort « à deux » impossible.
+            if (dead.Faction != Faction.Enemy || artisan is null || basile is null)
+                continue;
+            if (!dead.WasDamagedBy(artisan) || !dead.WasDamagedBy(basile))
+                continue;
+            var points = _run.GrantPairKillPoint();
+            if (points <= 0)
+                continue;   // plafond du combat atteint : les suivantes ne rapportent plus rien
+            // Le « +N » jaillit sur la case du MORT, pas sur un meneur : c'est là que le joueur regarde, et
+            // le tueur peut être Basile à l'autre bout du plateau — le gain passait alors inaperçu. Décalé
+            // vers le haut pour ne pas se poser sur le chiffre de dégâts du coup fatal (même case quand le
+            // tueur avance dessus).
+            SpawnCommandPointFx(where, points, new Vector2(0f, -0.6f));
         }
     }
 
@@ -6041,8 +6288,7 @@ public sealed class GameplayScene : Scene
             while (_commanderPtHitsShown < earned)
             {
                 _commanderPtHitsShown++;
-                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.OnHitPoints), Palette.Yellow1);
-                Context.Sounds.Play("command_point");
+                SpawnCommandPointFx(cell, def.OnHitPoints);
             }
         }
 
@@ -6053,8 +6299,7 @@ public sealed class GameplayScene : Scene
             while (_commanderPtRangedShown < earned)
             {
                 _commanderPtRangedShown++;
-                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.RangedHitPoints), Palette.Yellow1);
-                Context.Sounds.Play("command_point");
+                SpawnCommandPointFx(cell, def.RangedHitPoints);
             }
         }
 
@@ -6065,8 +6310,7 @@ public sealed class GameplayScene : Scene
             while (_commanderPtJumpsShown < earned)
             {
                 _commanderPtJumpsShown++;
-                _damagePopups.SpawnText(cell, Loc.T("fx.command_point", def.JumpPoints), Palette.Yellow1);
-                Context.Sounds.Play("command_point");
+                SpawnCommandPointFx(cell, def.JumpPoints);
             }
         }
     }
@@ -6137,6 +6381,7 @@ public sealed class GameplayScene : Scene
         if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)
         {
             UnlockMerchantIfEnoughChests();   // déblocage « 30 coffres ouverts » : contrôlé à toute fin de partie
+            UnlockDuoIfEnoughKills();         // déblocage « 150 ennemis abattus au total » : idem
             Context.Saves.DeleteSlot(_saveSlot);
         }
     }
@@ -7654,12 +7899,14 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Si <paramref name="victim"/> est un ennemi NON essentiel qui vient de mourir, enregistre son
-    /// gabarit dans l'ordre des morts (le boss est exclu : le recrutement ne le proposera jamais).
+    /// Si <paramref name="victim"/> est un ennemi ORDINAIRE qui vient de mourir, enregistre son gabarit dans
+    /// l'ordre des morts. Sont exclus le boss (essentiel) et le SECOND d'un boss accompagné — Basile aux côtés
+    /// de l'artisan (cf. <see cref="Campaign.Run.BuildBossEnemyWave"/>) : il n'est pas essentiel, mais le
+    /// recrutement ne doit pas pour autant proposer un meneur nommé comme une troupe.
     /// </summary>
     private void RecordIfEnemyKilled(Unit? victim)
     {
-        if (victim is { IsAlive: false, Faction: Faction.Enemy, IsEssential: false }
+        if (victim is { IsAlive: false, Faction: Faction.Enemy, IsEssential: false, IsCompanion: false }
             && _enemySpec.TryGetValue(victim, out var spec))
             _enemyKillOrder.Add(spec);
     }
@@ -8006,6 +8253,8 @@ public sealed class GameplayScene : Scene
                 DrawSatchelBadges(sb, board);            // DUO : objet à lancer porté par un meneur
                 DrawBossSkulls(sb, board);          // crâne du boss : même icône que la frise des phases
                 DrawAllyThreatIcons(sb, board);          // « ! » au-dessus des alliés à portée d'un ennemi
+                DrawPairKillMarks(sb, board);            // DUO : qui des deux commandants a déjà frappé cet ennemi
+                DrawTakePlaceGhost(sb, board);           // visée létale : où l'attaquant se tiendra — DEVANT les icônes
                 DrawCarriedUnit(sb, board);
                 DrawGamepadBattleCursor(sb, board);      // curseur (coins) AU-DESSUS, toujours visible
                 sb.End();
@@ -8160,8 +8409,11 @@ public sealed class GameplayScene : Scene
             DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb);
+            DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             DrawAllyThreatIcons(sb, nb);
+            DrawPairKillMarks(sb, nb);       // DUO : qui des deux commandants a déjà frappé cet ennemi
+            DrawTakePlaceGhost(sb, nb);      // visée létale : où l'attaquant se tiendra — DEVANT les icônes
             DrawCarriedUnitNative(sb, nb);   // liseré de case cible (le pion soulevé = couche curseur)
             DrawGamepadBattleCursor(sb, nb); // curseur de case manette : sur le plateau, sinon invisible en dézoom
             sb.End();
@@ -9388,8 +9640,9 @@ public sealed class GameplayScene : Scene
         var animLift = UnitLift(cell, size);
         var spriteLift = (int)(size * SpriteLiftFraction);
         var top = layout.CellToScreen(cell.Column, cell.Row);
-        var cx = (int)top.X + size / 2;                          // centré sur la case
-        var headTop = (int)top.Y - spriteLift - animLift;       // sommet du sprite du pion
+        var tile = TileOccupantOffset(cell, layout);            // l'icône suit le calage de tuile du pion
+        var cx = (int)top.X + size / 2 + tile.X;                // centré sur le pion
+        var headTop = (int)top.Y - spriteLift - animLift + tile.Y;   // sommet du sprite du pion
         var bottom = headTop - (int)(size * ThreatIconGap);     // bas de l'icône : au-dessus de la tête
 
         if (ThreatIcon() is { } icon)
@@ -9413,6 +9666,145 @@ public sealed class GameplayScene : Scene
         }
         Badge(stem);
         Badge(dot);
+    }
+
+    // ── DUO : « qui a frappé qui » ────────────────────────────────────────────────
+    // La mise à mort « à deux » (cf. TrackPairKills) rapporte un point quand l'artisan ET Basile ont entamé
+    // le même ennemi. Sans repère à l'écran la règle est INJOUABLE : il faudrait se souvenir de tous les
+    // coups portés depuis le début du combat. On pose donc la tête des meneurs qui ont déjà touché, au-dessus
+    // de leur victime — deux icônes côte à côte = le prochain coup fatal paiera.
+
+    /// <summary>Écart entre deux marques de frappe (px natifs, mis à l'échelle du zoom comme les icônes).</summary>
+    private const int HitMarkGap = 2;
+
+    // Descente des marques sous le SOCLE, en fraction de case : 0 = leur sommet pile au bas du sprite,
+    // POSITIF = plus bas, NÉGATIF = remontées sur le socle. La TAILLE, elle, suit la résolution du PNG à
+    // échelle ENTIÈRE (comme les pions et l'icône de menace).
+    private const float HitMarkDrop = -0.06f;
+
+    /// <summary>
+    /// Teinte des marques quand le plafond de points du combat est ATTEINT : grisées et à demi transparentes.
+    /// L'information reste lisible (qui a frappé qui) mais elle ne promet plus rien — sans ça le joueur
+    /// continuerait de manœuvrer pour un point qui ne tombera plus avant le combat suivant.
+    /// </summary>
+    private static readonly Color SpentHitMarkTint = Palette.Grey * 0.55f;
+
+    /// <summary>Vrai si le plafond de mises à mort « à deux » du combat est atteint (plus rien à gagner).</summary>
+    private bool PairKillCapReached => _run.PairKillEventsThisCombat >= _run.CommanderDef.PairKillCap;
+
+    /// <summary>
+    /// Marques « frappé par » au-dessus de chaque ENNEMI entamé par un meneur du DUO : l'icône de l'artisan,
+    /// celle de Basile, ou les deux. Ne s'affiche que pour un commandant qui gagne des points à la mise à mort
+    /// « à deux » — ailleurs l'info n'a rien à expliquer.
+    ///
+    /// La participation est celle du MOTEUR (<see cref="Battle.Unit.WasDamagedBy"/>), la même que celle qui
+    /// crédite le point : les marques ne peuvent donc pas mentir sur ce qui va se passer.
+    /// </summary>
+    private void DrawPairKillMarks(SpriteBatch sb, GridLayout layout)
+    {
+        if (_run.CommanderDef.PairKillPoints <= 0)
+            return;
+        var artisan = _playerSpec.FirstOrDefault(kv => kv.Value.Essential && !kv.Value.Companion).Key;
+        var basile = Basile;
+        if (artisan is null || basile is null)
+            return;
+
+        foreach (var (cell, unit) in _match.Units())
+        {
+            if (unit.Faction != Faction.Enemy)
+                continue;
+            var byArtisan = unit.WasDamagedBy(artisan);
+            var byBasile = unit.WasDamagedBy(basile);
+            if (!byArtisan && !byBasile)
+                continue;
+            if (_fx.Active && _fx.Attacker == cell)   // attaquant animé : sa passe FX le dessine ailleurs
+                continue;
+            DrawHitMarks(sb, layout, cell, byArtisan, byBasile, PairKillCapReached);
+        }
+    }
+
+    /// <summary>
+    /// Pose les marques de frappe SOUS LE SOCLE du pion de <paramref name="cell"/>, centrées et côte à côte
+    /// (décalage réglable par <see cref="HitMarkDrop"/>). Le dessus de la tête est déjà pris par le badge
+    /// d'équipement et l'icône de menace ; en bas les marques ne s'empilent avec rien. Elles sont COLLÉES au
+    /// pion (<see cref="UnitBadgeOffset"/>) : elles suivent son soulèvement, son recul, son repli et ses
+    /// dérapages.
+    /// </summary>
+    /// <param name="spent">Plafond du combat atteint : les marques passent en gris (cf. <see cref="SpentHitMarkTint"/>).</param>
+    private void DrawHitMarks(SpriteBatch sb, GridLayout layout, Cell cell,
+        bool byArtisan, bool byBasile, bool spent)
+    {
+        var size = layout.TileSize;
+        var zoom = System.Math.Max(1, size / GridLayout.DefaultTileSize);   // échelle ENTIÈRE : pixel-art net
+        var spriteLift = (int)(size * SpriteLiftFraction);
+        var move = UnitBadgeOffset(cell, layout);
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        var cx = (int)top.X + size / 2 + move.X;
+        // Sous le SOCLE : le sprite est remonté de spriteLift, son bas tombe donc à (1 - SpriteLiftFraction)
+        // de la case. Le badge d'équipement et l'icône de menace occupent déjà le dessus de la tête ; en bas
+        // les marques restent collées au pion qu'elles décrivent, sans rien empiler.
+        var markTop = (int)top.Y - spriteLift + size + (int)(size * HitMarkDrop) + move.Y;
+
+        // Au plus DEUX marques : on les traite à la main plutôt qu'en liste — cette méthode tourne pour
+        // chaque ennemi marqué à CHAQUE frame, et le reste du rendu évite lui aussi d'allouer par frame.
+        var gap = HitMarkGap * zoom;
+        var artisanIcon = byArtisan ? ArtisanMarkIcon() : null;
+        var basileIcon = byBasile ? BasileMarkIcon() : null;
+        // Repli d'une demi-case si un PNG manque encore : la largeur reste celle qu'aurait l'icône.
+        int wArtisan = byArtisan ? (artisanIcon?.Width ?? 32) * zoom : 0;
+        int wBasile = byBasile ? (basileIcon?.Width ?? 32) * zoom : 0;
+        var totalW = wArtisan + wBasile + (byArtisan && byBasile ? gap : 0);
+        var x = cx - totalW / 2;
+
+        var tint = spent ? SpentHitMarkTint : Color.White;
+        if (byArtisan)
+        {
+            DrawHitMark(sb, artisanIcon, x, markTop, wArtisan, zoom, tint, spent ? SpentHitMarkTint : Palette.Cyan1);
+            x += wArtisan + gap;
+        }
+        if (byBasile)
+            DrawHitMark(sb, basileIcon, x, markTop, wBasile, zoom, tint, spent ? SpentHitMarkTint : Palette.Yellow2);
+    }
+
+    /// <summary>
+    /// UNE marque de frappe, posée par son coin HAUT-GAUCHE (elles descendent sous le socle). Échelle ENTIÈRE
+    /// (le PNG est dessiné à sa taille × zoom, jamais fractionné) pour rester net en pixel-art. Repli en
+    /// pastille cernée de <paramref name="fallback"/> tant que le PNG n'est pas là.
+    /// </summary>
+    /// <param name="tint">Teinte du PNG : blanche à plein, grisée quand le plafond du combat est atteint.</param>
+    private void DrawHitMark(SpriteBatch sb, Texture2D? icon, int x, int top, int w, int zoom,
+        Color tint, Color fallback)
+    {
+        if (icon is not null)
+        {
+            sb.Draw(icon, new Rectangle(x, top, w, icon.Height * zoom), tint);
+            return;
+        }
+        var r = new Rectangle(x + w / 4, top + w / 4, w / 2, w / 2);
+        DrawRect(sb, new Rectangle(r.X - zoom, r.Y - zoom, r.Width + 2 * zoom, r.Height + 2 * zoom), Palette.Black1);
+        DrawRect(sb, r, fallback);
+    }
+
+    /// <summary>Côté du cadre d'un badge d'équipement (cf. <see cref="EquipBadgeRect"/>) : les marques s'empilent dessus.</summary>
+    private const int EquipBadgeSize = 34;
+
+    private Texture2D? _artisanMark, _basileMark;
+    private bool _hitMarksLoaded;
+
+    /// <summary>PNG de la marque « frappé par l'artisan » (<c>Assets/UI/icone_artisan.png</c>), null s'il manque.</summary>
+    private Texture2D? ArtisanMarkIcon() { LoadHitMarks(); return _artisanMark; }
+
+    /// <summary>PNG de la marque « frappé par Basile » (<c>Assets/UI/icone_basile.png</c>), null s'il manque.</summary>
+    private Texture2D? BasileMarkIcon() { LoadHitMarks(); return _basileMark; }
+
+    /// <summary>Charge les deux PNG de marque UNE seule fois (repli dessiné si l'un manque).</summary>
+    private void LoadHitMarks()
+    {
+        if (_hitMarksLoaded)
+            return;
+        _artisanMark = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/icone_artisan.png"));
+        _basileMark = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/UI/icone_basile.png"));
+        _hitMarksLoaded = true;
     }
 
     private Texture2D? _threatIcon;
@@ -9543,6 +9935,7 @@ public sealed class GameplayScene : Scene
         kb += _pierceRecoil.Offset(cell, size);
         kb += ChainLungeOffset(cell, layout);   // « Réaction en chaîne » : il bondit sur chaque victime
         kb.Y += ChuteTrembleY(cell);   // le pion vibre avec la tuile « chute » qu'il occupe
+        kb += TileOccupantOffset(cell, layout);   // calage cosmétique imposé par la tuile (tour de guet)
         zx += kb.X;
         zy += kb.Y;
 
@@ -9556,8 +9949,16 @@ public sealed class GameplayScene : Scene
 
         var sprite = UnitSprite(unit);
         // « Rage » ACTIVE (le pion a gagné de la puissance à la mort d'alliés) : halo rouge pulsant DERRIÈRE le pion.
-        if (sprite != null && unit.RagePower > 0 && unit.HasTrait(Trait.Rage))
+        // DUO — « La puissance du rock » : même halo rouge tant que la charge du ROQUE n'a pas été dépensée.
+        // Les deux disent la même chose (« ce pion frappe plus fort en ce moment ») et ne coexistent pas :
+        // l'artisan n'a pas « Rage ».
+        if (sprite != null && (unit.RoquePower > 0 || (unit.RagePower > 0 && unit.HasTrait(Trait.Rage))))
             DrawRageAura(sb, sprite, zx, zy - spriteLift - animLift, size, introA);
+        // DUO — « Continue sans moi » : le meneur SURVIVANT porte une aura rouge. Plus LENTE et plus dense que
+        // celle de la Rage : celle-ci est un coup de sang, celle-là un état qui dure toute la run. Le halo de
+        // Rage reste prioritaire s'il est actif — ils se superposeraient sinon en un rouge illisible.
+        else if (sprite != null && _playerSpec.TryGetValue(unit, out var heirSpec) && IsHeir(heirSpec))
+            DrawUnitGlow(sb, sprite, zx, zy - spriteLift - animLift, size, introA, Palette.Purple5, 2.2f, 1.25f);
         // « Aura de célérité » : halo JAUNE pulsant sur les unités qui BÉNÉFICIENT du +1 Déplacement (un allié
         // porteur au contact direct). Même style que la Rage, en jaune et plus posé.
         if (sprite != null && _match.BenefitsFromAura(cell, Trait.AuraDeCelerite))
@@ -9606,6 +10007,74 @@ public sealed class GameplayScene : Scene
 
         // La barre de vie est dessinée dans une passe SÉPARÉE (DrawUnitHpBars), APRÈS les buissons,
         // pour qu'elle reste toujours visible (même quand le feuillage passe devant le pion).
+    }
+
+    // ── Aperçu « tu prendras sa place » ───────────────────────────────────────────
+    // Un coup létal fait AVANCER l'attaquant sur la case de sa victime — sauf s'il est « Statique » ou s'il
+    // tire de plus loin qu'il ne marche. La règle est invisible tant qu'on ne la connaît pas, et elle décide
+    // souvent du tour : on la montre pendant la VISÉE en posant le pion de l'attaquant, en transparence, là
+    // où il se tiendra.
+
+    // Le fantôme DESCEND sur la case, en boucle : posé immobile en transparence, il se noyait dans le sprite
+    // de l'ennemi qu'il recouvre (les deux pions se lisaient comme un seul, brouillé). C'est le MOUVEMENT qui
+    // le détache — et il dit en plus ce qu'il veut dire : « je viens me poser là ».
+
+    /// <summary>Hauteur de départ du fantôme AU-DESSUS de la case, en fraction de case.</summary>
+    private const float GhostDropFraction = 0.6f;
+
+    /// <summary>Durée d'une descente complète (s), fondu de sortie compris.</summary>
+    private const float GhostLoopDuration = 1.1f;
+
+    /// <summary>Opacité du fantôme une fois lancé (il part et finit à 0 : la boucle ne saute pas).</summary>
+    private const float GhostAlpha = 0.7f;
+
+    /// <summary>Part de la boucle passée à DESCENDRE : le reste, il est posé et s'efface.</summary>
+    private const float GhostDescentPart = 0.8f;
+
+    /// <summary>
+    /// Fantôme de PRISE DE PLACE : pendant la visée, si le coup TUE sa cible et que l'attaquant avancerait
+    /// (cf. <see cref="Match.WouldTakePlace"/>), son sprite DESCEND en boucle sur la case visée, en
+    /// transparence — il apparaît au-dessus, se pose, s'efface, et recommence.
+    ///
+    /// Dessiné PAR-DESSUS tout ce qui vit sur le plateau — l'ennemi, sa barre de vie, son badge d'objet, le
+    /// « ! » de menace, les marques de frappe. Il traverse la case en descendant : passer dessous le faisait
+    /// disparaître derrière les icônes au moment précis où on le regarde.
+    ///
+    /// OPTIMISTE : une « Queue de phénix » sur la victime annulerait l'avancée, mais le dire reviendrait à
+    /// révéler l'équipement adverse — on laisse la résurrection démentir l'aperçu.
+    /// </summary>
+    private void DrawTakePlaceGhost(SpriteBatch sb, GridLayout layout)
+    {
+        if (AimedAttack() is not var (from, target))
+            return;
+        if (_match.UnitAt(from) is not { } attacker || _match.UnitAt(target) is not { } victim)
+            return;
+        if (_match.PreviewDamage(from, target) < victim.Hp)   // coup non létal : personne ne bouge
+            return;
+        if (!_match.WouldTakePlace(from, target))
+            return;
+        if (UnitSprite(attacker) is not { } sprite)           // placeholder sans PNG : rien à fantômer
+            return;
+
+        var size = layout.TileSize;
+        var top = layout.CellToScreen(target.Column, target.Row);
+        var (introY, introA) = BoardIntroAnim(target, layout);
+
+        // Boucle : t va de 0 (en haut, invisible) à 1 (posé, effacé). La descente est freinée en fin de course
+        // (ease-out cubique) pour qu'il se POSE au lieu de traverser ; ensuite il tient la case et s'efface.
+        var t = _time % GhostLoopDuration / GhostLoopDuration;
+        var fall = MathF.Min(1f, t / GhostDescentPart);
+        var eased = 1f - MathF.Pow(1f - fall, 3f);
+        var dy = (int)(size * GhostDropFraction * (1f - eased));
+        // Fondu d'ENTRÉE sur le premier quart puis de SORTIE sur le dernier sixième : à 0 aux deux bouts, la
+        // boucle ne saute jamais.
+        var alpha = GhostAlpha * MathF.Min(1f, t / 0.25f) * MathF.Min(1f, (1f - t) / 0.16f);
+
+        // Le fantôme montre où l'attaquant SE TIENDRA : il prend donc le calage de tuile de la case visée.
+        var tile = TileOccupantOffset(target, layout);
+        var rect = new Rectangle((int)top.X + tile.X,
+            (int)top.Y - (int)(size * SpriteLiftFraction) + introY - dy + tile.Y, size, size);
+        sb.Draw(sprite, rect, Color.White * (alpha * introA));
     }
 
     /// <summary>Les 8 directions du halo (anneau autour de la silhouette).</summary>
@@ -9675,20 +10144,16 @@ public sealed class GameplayScene : Scene
         // Qui vise ? Le pion PORTÉ à la souris, ou — à la MANETTE — le pion SÉLECTIONNÉ, le curseur de case
         // tenant lieu de pointeur. Sans ça la visée manette n'avait aucun aperçu de dégâts, d'autant que les
         // cartes-tooltips sont masquées pendant la sélection.
-        var aimSource = _combatDragFrom ?? (Context.Input.UsingGamepad ? _selected : null);
-        if (aimSource is { } dragFrom)
+        var aimSource = AimSource;
+        if (AimedAttack() is var (attackFrom, attackTarget))
         {
-            var over = Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
-            if (over is { } target && _attackTargets.Contains(target))
-            {
-                aimed = target;
-                aimedPreview = _match.PreviewDamage(dragFrom, target);
-            }
-            else if (over is { } htarget && _healTargets.Contains(htarget))   // survolé sur un allié soignable
-            {
-                healAimed = htarget;
-                healPreview = _match.PreviewHeal(dragFrom);
-            }
+            aimed = attackTarget;
+            aimedPreview = _match.PreviewDamage(attackFrom, attackTarget);
+        }
+        else if (aimSource is { } dragFrom && AimedCell is { } htarget && _healTargets.Contains(htarget))
+        {
+            healAimed = htarget;                          // visée posée sur un allié soignable
+            healPreview = _match.PreviewHeal(dragFrom);
         }
 
         BuildAllyThreatPreviews();
@@ -9719,10 +10184,34 @@ public sealed class GameplayScene : Scene
                    : VictimMoveOffset(cell, layout);
             kb += _pierceRecoil.Offset(cell, size);   // la barre suit le recul du pion transpercé
             kb.Y += ChuteTrembleY(cell);              // et le tremblement de la tuile « chute »
+            kb += TileOccupantOffset(cell, layout);   // …et le calage cosmétique de la tuile (tour de guet)
             DrawUnitHpBar(sb, (int)top.X + kb.X, (int)top.Y + introY + kb.Y - animLift, size, unit.Hp, unit.MaxHp,
                 isAimed ? aimedPreview : threat, isHealAimed ? healPreview : 0);
         }
     }
+
+    // ── VISÉE de combat : qui vise, quoi ─────────────────────────────────────────
+    // Une seule définition, partagée par l'aperçu de dégâts (DrawUnitHpBars), l'aperçu de partage
+    // (« Lien d'amitié ») et le fantôme de prise de place : ces trois-là doivent parler de la MÊME attaque,
+    // sinon la barre annonce un coup que le fantôme dément.
+
+    /// <summary>
+    /// Pion qui VISE en ce moment : celui qu'on porte à la souris, ou — à la MANETTE, qui n'a pas de
+    /// pointeur — le pion sélectionné, le curseur de case tenant lieu de pointeur. Null si on ne vise pas.
+    /// </summary>
+    private Cell? AimSource => _combatDragFrom ?? (Context.Input.UsingGamepad ? _selected : null);
+
+    /// <summary>Case VISÉE : le curseur de case à la manette, le pointeur sinon.</summary>
+    private Cell? AimedCell => Context.Input.UsingGamepad ? _cursor : CellUnderMouse();
+
+    /// <summary>
+    /// Attaque visée en ce moment (pion qui vise + case d'ennemi ciblable sous la visée), ou null si on ne
+    /// vise pas une cible d'attaque légale.
+    /// </summary>
+    private (Cell From, Cell Target)? AimedAttack() =>
+        AimSource is { } from && AimedCell is { } target && _attackTargets.Contains(target)
+            ? (from, target)
+            : null;
 
     /// <summary>
     /// Recense, pour chaque ALLIÉ menacé, les dégâts de la PLUS GROSSE attaque qu'un ennemi à portée lui
@@ -9874,7 +10363,9 @@ public sealed class GameplayScene : Scene
 
             var top = layout.CellToScreen(cell.Column, cell.Row);
             var (introY, introA) = BoardIntroAnim(cell, layout);
-            DrawPieceCastShadow(sb, sprite, (int)top.X, (int)top.Y - spriteLift + introY, size, UnitLift(cell, size), introA);
+            var tile = TileOccupantOffset(cell, layout);   // l'ombre part du pion : elle suit son calage de tuile
+            DrawPieceCastShadow(sb, sprite, (int)top.X + tile.X, (int)top.Y - spriteLift + introY + tile.Y,
+                size, UnitLift(cell, size), introA);
         }
 
         // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »). En DÉZOOM,
@@ -11275,11 +11766,15 @@ public sealed class GameplayScene : Scene
         // La « Rage » n'entre pas dans le compte : elle se gagne à la mort d'un allié, donc toujours 0 ici.
         var contextualDmg = 0;
         var contextualMove = 0;
+        var contextualRange = 0;
         IReadOnlyList<string>? granted = null;
         if (subject is { } bonusCell && _match.UnitAt(bonusCell) is { } placed)
         {
             contextualDmg = _match.ContextualPowerBonus(bonusCell);
             contextualMove = _match.MoveRangeBonus(bonusCell);
+            // Tuile « tour de guet » : c'est au PLACEMENT qu'on choisit d'y monter son tireur, la carte doit
+            // donc montrer la portée gagnée là aussi — c'est même là qu'elle sert le plus.
+            contextualRange = _match.AttackRangeBonus(bonusCell);
             granted = GrantedTraitsFor(placed, bonusCell);   // traits prêtés par une aura alliée au contact
         }
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
@@ -11288,14 +11783,14 @@ public sealed class GameplayScene : Scene
         {
             // Condensée : traits en noms inline, donc aucun popup de mots-clés à différer.
             _deferredCards.Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c, domaine, hp, maxHp,
-                equip, buffs, kills, granted, contextualDmg, 0, contextualMove,
+                equip, buffs, kills, granted, contextualDmg, 0, contextualMove, contextualRange,
                 nameOverride: CommanderCardName(essential, companion, faction)));
             return;
         }
         _deferredCards.Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp,
             equip: equip, buffs: buffs, treeNodes: treeNodes, kills: kills,
             granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove,
-            nameOverride: CommanderCardName(essential, companion, faction)));
+            contextualRangeBonus: contextualRange, nameOverride: CommanderCardName(essential, companion, faction)));
         _deferredKeywordPopups.Add((c, rect, equip, buffs, granted, faction));
     }
 
@@ -12038,7 +12533,7 @@ public sealed class GameplayScene : Scene
         _ => "equip.rarity.common",
     });
 
-    /// <summary>Texte d'un effet de STAT : « +N &lt;stat&gt; ».</summary>
+    /// <summary>Texte d'un effet de STAT : « +N &lt;stat&gt; » (ou « -N &lt;stat&gt; » pour un malus).</summary>
     private static string StatEffectText(EquipEffect effect)
     {
         var label = effect.Stat switch
@@ -12049,7 +12544,7 @@ public sealed class GameplayScene : Scene
             EquipStat.AttackRange => Loc.T("stat.range"),
             _ => "",
         };
-        return Loc.T("equip.stat_bonus", effect.Amount, label);
+        return Loc.T("equip.stat_bonus", UI.EquipmentNames.Signed(effect.Amount), label);
     }
 
     /// <summary>
@@ -12082,13 +12577,17 @@ public sealed class GameplayScene : Scene
     private List<(string Text, Color Color)> EquipEffectLines(Equipment equip, int innerWidth)
     {
         var lines = new List<(string, Color)>();
+        var title = EquipName(equip).ToUpperInvariant();   // titre du cadre : ne pas le répéter en nom de trait
         foreach (var e in equip.Effects)
         {
             if (e.Trait is { } t)
             {
                 var kw = UnitKeywords.For(t);
                 var (desc, _, reinforced) = KeywordDisplay(kw);
-                lines.Add((kw.Label, reinforced ? ReinforcedTraitColor : Palette.Cyan1));   // nom du trait (rouge si renforcé)
+                // Objet dont le trait porte le MÊME nom que lui (« Flèche de Cupidon », « Grenade »…) :
+                // le libellé ferait doublon avec le titre juste au-dessus, on passe direct à la description.
+                if (!string.Equals(kw.Label, title, StringComparison.OrdinalIgnoreCase))
+                    lines.Add((kw.Label, reinforced ? ReinforcedTraitColor : Palette.Cyan1));   // nom du trait (rouge si renforcé)
                 foreach (var line in WrapText(SentenceCase(desc), innerWidth, 1))
                     lines.Add((line, Palette.White));               // description : valeur effective substituée (jamais « {0} »)
             }
@@ -12097,6 +12596,15 @@ public sealed class GameplayScene : Scene
                 foreach (var line in WrapText(SentenceCase(StatEffectText(e)), innerWidth, 1))
                     lines.Add((line, Palette.White));               // bonus de stat en casse de phrase
             }
+        }
+        // ÉPHÉMÈRE : les objets à lancer se brisent à la première attaque. Présenté comme un mot-clé (nom bleu
+        // + description) plutôt qu'en suffixe « usage unique » collé à chaque description de trait.
+        if (equip.IsThrown)
+        {
+            var kw = UnitKeywords.Ephemeral;
+            lines.Add((kw.Label, Palette.Cyan1));
+            foreach (var line in WrapText(SentenceCase(kw.Description), innerWidth, 1))
+                lines.Add((line, Palette.White));
         }
         return lines;
     }
@@ -12610,8 +13118,10 @@ public sealed class GameplayScene : Scene
                 : (Loc.T("env.chest.name"), Loc.T("env.chest.desc"));
         if (_recrueCells.Contains(cell) && !_recrueConsumed.Contains(cell))
             return TrousseMode && _petiteTrousseCells.Contains(cell)
-                ? (Loc.T("env.petite_trousse.name"), Loc.T("env.petite_trousse.desc"))
-                : TrousseMode ? (Loc.T("env.trousse.name"), Loc.T("env.trousse.desc"))
+                // Les PV rendus viennent de la CONSTANTE, pas du texte : un changement d'équilibrage ne doit
+                // pas laisser l'infobulle promettre l'ancien chiffre dans huit langues.
+                ? (Loc.T("env.petite_trousse.name"), Loc.T("env.petite_trousse.desc", PetiteTrousseHeal))
+                : TrousseMode ? (Loc.T("env.trousse.name"), Loc.T("env.trousse.desc", TrousseHeal))
                 : IsProtectMission
                 ? (Loc.T("env.paysan.name"), Loc.T("env.paysan.desc"))
                 : (Loc.T("env.recrue.name"), Loc.T("env.recrue.desc"));
@@ -12626,6 +13136,12 @@ public sealed class GameplayScene : Scene
         // plus basse (un objet posé dessus — coffre/recrue — reste plus pertinent à décrire).
         if (_battlefield.Contains(cell) && _battlefield[cell].Slippery)
             return (Loc.T("env.glace.name"), Loc.T("env.glace.desc"));
+        // Tour de guet : la portée gagnée ne se devine pas en regardant la case. Le chiffre vient de la TUILE
+        // (rangeBonus de tiles.json), pas du texte, pour qu'un réglage d'équilibrage n'ait qu'un endroit à
+        // toucher. Le SEUIL (portée native >= Match.RangedAttackRange) n'est pas annoncé : « unités à
+        // distance » le dit assez, et le détail alourdissait l'infobulle pour rien.
+        if (_battlefield.Contains(cell) && _battlefield[cell].RangeBonus is > 0 and var bonus)
+            return (Loc.T("env.tour.name"), Loc.T("env.tour.desc", bonus));
         return null;
     }
 
@@ -12805,9 +13321,18 @@ public sealed class GameplayScene : Scene
         // sinon la carte sous-estime la puissance réelle (bonus invisible malgré le halo rouge).
         if (unit.HasTrait(Trait.Rage))
             contextualDmg += unit.RagePower;
+        // DUO — « La puissance du rock » : charge en réserve depuis un ROQUE, dépensée par la prochaine
+        // attaque. Même raison que la Rage : le halo rouge est là, le chiffre doit suivre.
+        contextualDmg += unit.RoquePower;
+        // DUO — « Continue sans moi » : puissance léguée par le meneur tombé EN PLEIN COMBAT. Les buffs étant
+        // figés au spawn, elle vit sur l'unité (cf. TrackFallenLeaders) et n'entre donc pas dans c.Damage.
+        contextualDmg += unit.InheritedPower;
         // « Aura de célérité » d'un allié adjacent : +1 Déplacement contextuel (comme la puissance ci-dessus), sinon
         // la carte montrerait une portée inférieure à celle réellement atteignable (cf. Match.LegalMoves).
         var contextualMove = cell is { } mc ? _match.MoveRangeBonus(mc) : 0;
+        // Tuile « tour de guet » sous le pion : +N portée pour un tireur. Même raison que ci-dessus — la carte
+        // annoncerait une portée INFÉRIEURE à celle que le moteur joue (cf. Match.EffectiveAttackRange).
+        var contextualRange = cell is { } rc ? _match.AttackRangeBonus(rc) : 0;
         // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
@@ -12819,13 +13344,13 @@ public sealed class GameplayScene : Scene
             // Version condensée (combat) : traits en NOMS inline, donc AUCUN popup de mots-clés à différer.
             (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCondensedCardLayout(Context.SpriteBatch, rect, c,
                 domaine, hp, maxHp, equip, buffs, kills, granted, contextualDmg, hpPreviewDamage, contextualMove,
-                nameOverride: title));
+                contextualRange, nameOverride: title));
             return;
         }
         (hover ? _deferredHoverCards : _deferredCards).Add(() => DrawCardLayout(Context.SpriteBatch, rect, c, faction, domaine, hp, maxHp, equip: equip,
             hpPreviewDamage: hpPreviewDamage, buffs: buffs, treeNodes: treeNodes, kills: kills,
             granted: granted, contextualDmgBonus: contextualDmg, contextualMoveBonus: contextualMove,
-            nameOverride: title));
+            contextualRangeBonus: contextualRange, nameOverride: title));
         if (showKeywords)
             (hover ? _deferredHoverKeywordPopups : _deferredKeywordPopups).Add((c, rect, equip, buffs, granted, faction));
     }
@@ -12866,6 +13391,11 @@ public sealed class GameplayScene : Scene
         foreach (var (aura, shown) in GrantedAuras)
             if (!unit.HasTrait(shown) && _match.BenefitsFromAura(c, aura))
                 (granted ??= new List<string>()).Add(shown);
+        // …et le trait prêté par la TUILE sous ses pieds (mirador → « Balistique »). Même raison que les
+        // auras : il agit en combat, la carte doit le dire.
+        if (_match.TileTraitAt(c) is { } fromTile && !unit.HasTrait(fromTile)
+            && !(granted?.Contains(fromTile) ?? false))
+            (granted ??= new List<string>()).Add(fromTile);
         return granted;
     }
 
@@ -12881,7 +13411,7 @@ public sealed class GameplayScene : Scene
         Domaine domaine, int hp, int maxHp, bool revealed = true, IReadOnlyList<Equipment>? equip = null, int hpPreviewDamage = 0,
         CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
         IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0,
-        string? nameOverride = null)
+        int contextualRangeBonus = 0, string? nameOverride = null)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -12899,6 +13429,7 @@ public sealed class GameplayScene : Scene
         var moveBonus = equip.BonusFor(EquipStat.MoveRange) + b.BonusFor(EquipStat.MoveRange);
         moveBonus += contextualMoveBonus;   // bonus de déplacement contextuel : « Aura de célérité » d'un allié adjacent
         var rangeBonus = equip.BonusFor(EquipStat.AttackRange) + b.BonusFor(EquipStat.AttackRange);
+        rangeBonus += contextualRangeBonus;   // bonus de portée contextuel : tuile « tour de guet » sous le pion
         const string unknown = "???";   // masque nom / PV / stats / traits d'une unité non découverte (méta)
 
         Context.Style.DrawPanel(sb, rect);
@@ -13012,7 +13543,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawCondensedCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Domaine domaine, int hp, int maxHp,
         IReadOnlyList<Equipment>? equip, CommandBuffs? buffs, int kills, IReadOnlyList<string>? granted, int contextualDmgBonus,
-        int hpPreviewDamage, int contextualMoveBonus = 0, string? nameOverride = null)
+        int hpPreviewDamage, int contextualMoveBonus = 0, int contextualRangeBonus = 0, string? nameOverride = null)
     {
         // Mêmes bonus effectifs que la carte détaillée (cf. DrawCardLayout), mais on n'affiche QUE la valeur.
         var b = buffs ?? CommandBuffs.None;
@@ -13021,7 +13552,7 @@ public sealed class GameplayScene : Scene
             dmgBonus += kills;
         dmgBonus += contextualDmgBonus;
         var moveBonus = equip.BonusFor(EquipStat.MoveRange) + b.BonusFor(EquipStat.MoveRange) + contextualMoveBonus;
-        var rangeBonus = equip.BonusFor(EquipStat.AttackRange) + b.BonusFor(EquipStat.AttackRange);
+        var rangeBonus = equip.BonusFor(EquipStat.AttackRange) + b.BonusFor(EquipStat.AttackRange) + contextualRangeBonus;
 
         Context.Style.DrawPanel(sb, rect);
 
@@ -13607,8 +14138,13 @@ public sealed class GameplayScene : Scene
         Faction faction = Faction.Player)
     {
         var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?)>();
+        // Les traits VENUS D'UN OBJET sont déjà décrits en tête de pile par le cadre de cet objet
+        // (cf. DrawKeywordPopupStack) : leur redonner un popup affichait deux fois la même description.
+        var fromEquip = new HashSet<string>(equip.TraitsOf().Select(t => UnitKeywords.For(t).Label));
         foreach (var kw in KeywordsFor(c, equip, buffs, granted))
         {
+            if (fromEquip.Contains(kw.Label))
+                continue;
             // Le renforcement d'arbre ne s'affiche que pour les unités du JOUEUR (l'ennemi n'en profite pas).
             var (desc, highlight, reinforced) = KeywordDisplay(kw, faction == Faction.Player);
             var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);

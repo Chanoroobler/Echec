@@ -45,13 +45,15 @@ public static class Equipments
     public static Equipment? ById(string id) => _byId.TryGetValue(id, out var e) ? e : null;
 
     /// <summary>Équipements d'une rareté donnée : pool de tirage d'un coffre (ou d'une vague ennemie). En mode
-    /// démo (<see cref="DemoOnly"/>), les équipements réservés au jeu complet en sont exclus.</summary>
+    /// démo (<see cref="DemoOnly"/>), les équipements réservés au jeu complet en sont exclus. Les OBJETS À
+    /// LANCER en font partie comme les autres (ils sont classés RARES) : une partie classique les trouve en
+    /// coffre, faute de sacoches. Ils restent hors des vagues ennemies par leur <see cref="Equipment.EnemyAllowed"/>.</summary>
     public static IReadOnlyList<Equipment> OfRarity(EquipmentRarity rarity) =>
-        _all.Where(e => e.Rarity == rarity && !e.Satchel && (!DemoOnly || e.Demo)).ToList();
+        _all.Where(e => e.Rarity == rarity && (!DemoOnly || e.Demo)).ToList();
 
     /// <summary>
     /// OBJETS À LANCER du commandant DUO (cf. <see cref="Equipment.Satchel"/>) : le pool d'une SACOCHE du
-    /// terrain. Hors de tout autre tirage — ni coffre, ni vague ennemie.
+    /// terrain — eux seuls, quelle que soit leur rareté.
     /// </summary>
     public static IReadOnlyList<Equipment> Satchel => _all.Where(e => e.Satchel).ToList();
 

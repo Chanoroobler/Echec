@@ -17,4 +17,14 @@ public readonly record struct Tile(TileDef Def)
 
     /// <summary>Vrai si la tuile est glissante (glace) : une unité qui s'y arrête glisse d'une case.</summary>
     public bool Slippery => Def.Slides;
+
+    /// <summary>Portée d'attaque gagnée par le TIREUR posté dessus (tour de guet) ; 0 = tuile ordinaire.</summary>
+    public int RangeBonus => Def.RangeBonus;
+
+    /// <summary>Décalage COSMÉTIQUE du pion posté dessus, en pixels de tuile native (droite / bas positifs).
+    /// (0 0) = pion centré, le cas de toute tuile ordinaire.</summary>
+    public (int Dx, int Dy) OccupantOffset => (Def.OccupantDx, Def.OccupantDy);
+
+    /// <summary>Trait de combat prêté à l'unité postée dessus, ou null (le cas de toute tuile ordinaire).</summary>
+    public string? GrantedTrait => Def.Trait;
 }

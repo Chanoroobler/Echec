@@ -49,6 +49,15 @@ public static class Bosses
         if (pool.Count == 0)
             pool = Defaults();
 
+        // Boss RÉSERVÉ (cf. BossDef.RequiresCommander) : il n'entre dans le tirage que si le commandant qu'il
+        // exige est déjà débloqué. Écarté AVANT la permutation, pour que le tirage des autres reste
+        // exactement celui d'une run sans ce boss. Si le filtre vidait le pool, on le garde entier plutôt
+        // que de laisser une run sans boss.
+        var eligible = pool.Where(b => b.RequiresCommander is not { } need
+                                       || (unlockedCommanders?.Contains(need) ?? false)).ToList();
+        if (eligible.Count > 0)
+            pool = eligible;
+
         // Permutation déterministe du pool (sel propre au boss, distinct du terrain/vague — cf. Run.CombatRng).
         var rng = new Random(unchecked(seed * 92821 + 5));
         var order = pool.ToList();

@@ -37,6 +37,13 @@ public sealed class ProfileDto
     public int ChestsOpened { get; set; }
 
     /// <summary>
+    /// Méta-progression : nombre TOTAL d'ennemis abattus par le joueur, toutes parties confondues. Sert à
+    /// débloquer le commandant DUO (cf. <c>SaveService.KillUnlockThreshold</c>), contrôlé à la fin de chaque
+    /// partie. Absent d'un vieux profil → 0.
+    /// </summary>
+    public int EnemiesKilled { get; set; }
+
+    /// <summary>
     /// Méta-progression : pour chaque commandant (<c>CommandeDef.Id</c>), la difficulté la PLUS HAUTE avec
     /// laquelle la campagne a été GAGNÉE — valeur de l'énumération <c>Difficulty</c> (0 = Facile). Comme on
     /// ne garde que le maximum, terminer un niveau élevé vaut d'office pour tous les niveaux en dessous.

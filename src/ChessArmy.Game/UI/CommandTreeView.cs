@@ -328,6 +328,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.HealPoints > 0)   // DUO : un meneur qui reprend des PV
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.HealPoints, run.CommanderDef.HealCap));
+        else if (run.CommanderDef.PairKillPoints > 0)   // DUO : un mort frappé par les DEUX meneurs
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.PairKillPoints, run.CommanderDef.PairKillCap));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>

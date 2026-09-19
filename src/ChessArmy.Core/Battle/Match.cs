@@ -145,6 +145,46 @@ public sealed class Match
     private bool BlocksLineOfFire(Cell cell) =>
         _terrain != null && _terrain[cell].BlocksLineOfFire;
 
+    /// <summary>
+    /// Portée d'attaque minimale à partir de laquelle une unité compte comme TIREUSE : c'est le seuil que la
+    /// tuile « tour de guet » exige pour accorder son bonus. Un pion de contact ne gagne rien à monter.
+    /// </summary>
+    public const int RangedAttackRange = 2;
+
+    /// <summary>
+    /// Trait de combat PRÊTÉ par la tuile de <paramref name="cell"/> à qui s'y tient
+    /// (cf. <see cref="Map.TileDef.Trait"/>), ou null. PUBLIQUE : l'UI l'affiche sur la carte du pion, pour ne
+    /// pas laisser un trait agir en combat sans que rien ne le dise.
+    /// </summary>
+    public string? TileTraitAt(Cell cell) => _terrain?[cell].GrantedTrait;
+
+    /// <summary>
+    /// Vrai si <paramref name="unit"/>, postée en <paramref name="from"/>, a <paramref name="trait"/> — par
+    /// elle-même (classe, équipement, arbre) OU prêté par la tuile sous ses pieds. À employer partout où un
+    /// trait dépend de l'endroit d'où le pion agit ; <see cref="Unit.HasTrait"/> seul ignore le terrain.
+    /// </summary>
+    private bool HasTraitOn(Unit unit, Cell from, string trait) =>
+        unit.HasTrait(trait) || TileTraitAt(from) == trait;
+
+    /// <summary>
+    /// Portée d'attaque GAGNÉE par l'unité postée en <paramref name="cell"/> grâce à sa tuile (tour de guet,
+    /// cf. <see cref="Map.TileDef.RangeBonus"/>). 0 si la case n'en donne pas, si elle est vide, ou si son
+    /// occupant frappe au contact (portée native &lt; <see cref="RangedAttackRange"/>) : une tour rallonge un
+    /// tir, pas un bras. Le bonus se lit sur la portée NATIVE, donc il ne s'auto-entretient jamais.
+    /// PUBLIQUE : l'UI l'affiche sur la carte du pion, pour ne pas annoncer une portée inférieure à la vraie.
+    /// </summary>
+    public int AttackRangeBonus(Cell cell) =>
+        _terrain != null && UnitAt(cell) is { } u && u.AttackRange >= RangedAttackRange
+            ? _terrain[cell].RangeBonus
+            : 0;
+
+    /// <summary>
+    /// Portée d'attaque EFFECTIVE de <paramref name="unit"/> postée en <paramref name="from"/> : sa portée
+    /// plus celle que lui donne sa tuile. Passage OBLIGÉ de tous les balayages de tir (cibles, menace, rayons
+    /// de soutien) — les faire diverger annoncerait au joueur une portée que le moteur ne jouerait pas.
+    /// </summary>
+    private int EffectiveAttackRange(Unit unit, Cell from) => unit.AttackRange + AttackRangeBonus(from);
+
     /// <summary>Vrai si <paramref name="unit"/> (un JOUEUR) ne peut pas s'arrêter sur <paramref name="cell"/>
     /// — case paysan de la mission « protéger ». Les ennemis n'y sont jamais bloqués.</summary>
     private bool BlocksPlayerLanding(Cell cell, Unit unit) =>
@@ -349,13 +389,15 @@ public sealed class Match
         }
 
         var piercesAllies = unit.HasTrait(Trait.TraverseAllie);   // via HasTrait : classe (PiercesAllies) OU équipement
-        var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
+        // …ou prêté par sa tuile (mirador) : le tir indirect dépend de l'endroit d'où l'on tire.
+        var balistique = HasTraitOn(unit, from, Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
+        var reach = EffectiveAttackRange(unit, from);   // portée + bonus de tuile (tour de guet)
         foreach (var dir in vectors)
         {
             // Zone morte (portée min) UNIQUEMENT en ligne droite : en diagonale on peut tirer dès la
             // distance 1 (le contact « corps à corps » n'est interdit qu'en face/côté).
             var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.MinAttackRange;
-            for (var step = 1; step <= unit.AttackRange; step++)
+            for (var step = 1; step <= reach; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
@@ -434,11 +476,12 @@ public sealed class Match
         }
 
         var piercesAllies = unit.HasTrait(Trait.TraverseAllie);   // via HasTrait : classe (PiercesAllies) OU équipement
-        var balistique = unit.HasTrait(Trait.Balistique);   // tir indirect : la montagne ne coupe plus la ligne
+        var balistique = HasTraitOn(unit, from, Trait.Balistique);   // tir indirect (trait ou tuile) : la montagne ne coupe plus la ligne
+        var reach = EffectiveAttackRange(unit, from);   // portée + bonus de tuile (tour de guet)
         foreach (var dir in vectors)
         {
             var minStep = dir.Column != 0 && dir.Row != 0 ? 1 : unit.MinAttackRange;
-            for (var step = 1; step <= unit.AttackRange; step++)
+            for (var step = 1; step <= reach; step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
@@ -477,6 +520,11 @@ public sealed class Match
         {
             _units[to.Column, to.Row] = unit;
             _units[from.Column, from.Row] = partner;
+            // « La puissance du rock » : l'ARTISAN (le meneur non compagnon) repart chargé, quel que soit celui
+            // des deux qui a lancé l'échange — c'est le même mouvement vu des deux bouts, distinguer le
+            // « moteur » du roque passerait pour un bug. Non cumulable (cf. Unit.ChargeRoquePower).
+            if (RoquePower > 0)
+                (unit.IsCompanion ? partner : unit).ChargeRoquePower(RoquePower);
             EndTurn();
             return MoveKind.Moved;
         }
@@ -561,7 +609,7 @@ public sealed class Match
         {
             unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
-            OnUnitDied(victim);                          // « Rage » : les alliés survivants du mort gagnent de la puissance
+            OnUnitDied(victim, target);                  // « Rage » : les alliés survivants du mort gagnent de la puissance
             // « Statique » : ne prend JAMAIS la place de sa cible — l'attaquant reste sur sa case (la case de
             // la victime reste libre). Sinon, comportement normal : il avance sur la case si l'accès le permet.
             if (!unit.HasTrait(Trait.Statique) && CanTakePlace(from, target))
@@ -590,6 +638,9 @@ public sealed class Match
             {
                 var attackerHpBefore = attacker.Hp;
                 ApplyDamage(attacker, EffectiveDamage(victim, vc, attacker, from), victim);
+                // « La puissance du rock » : une riposte EST un coup porté — elle profite de la charge et la
+                // dépense. Sans ça elle en profiterait à chaque contre sans jamais l'épuiser.
+                victim.SpendRoquePower();
                 _lastRiposte = (vc, from, attackerHpBefore - attacker.Hp, !attacker.IsAlive);   // report feedback
                 RemoveDeadAt(from, victim);   // la riposte tue l'attaquant : kill crédité à la victime
             }
@@ -606,6 +657,11 @@ public sealed class Match
         // un kill) — jamais si un contre l'a abattu (CellOf renvoie null). Déclenché par sa seule attaque.
         if (unit.HasTrait(Trait.Impact) && CellOf(unit) is { } here)
             ApplyImpact(unit, here);
+
+        // « La puissance du rock » : la charge mise en réserve par le ROQUE a servi ce coup — et tout ce qu'il
+        // a entraîné (transpercement, tir en ligne, foudre, impact, chaîne), qui font partie de la MÊME
+        // attaque. Dépensée ici, avant les deux sorties de la méthode.
+        unit.SpendRoquePower();
 
         // Nœud « charge » de l'arbre : une unité du JOUEUR du domaine visé qui TUE PAR SON ATTAQUE (les morts
         // indirectes — impact, foudre, riposte, épines — ne comptent pas) rend la main au joueur au lieu de
@@ -928,6 +984,8 @@ public sealed class Match
         power += LienPuissancePowerBonus(cell);   // « Lien de puissance » : +2 par allié dans la portée de déplacement
         power += PositionStrategiquePowerBonus(cell);   // DUO : +5 tant qu'un allié est à portée
         power += CrossKillPowerBonus(unit);             // DUO : +1 par tranche de 3 kills du COMPAGNON
+        power += unit.RoquePower;                       // DUO : charge mise en réserve par un ROQUE (une attaque)
+        power += unit.InheritedPower;                   // DUO : puissance léguée par un meneur tombé EN COMBAT
         return System.Math.Max(0, power);
     }
 
@@ -988,6 +1046,10 @@ public sealed class Match
         unit.TakeDamage(amount);
         unit.RecordHit();               // coup RÉELLEMENT encaissé (0 exclu) — points d'un commandant
         attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
+        // Qui a entamé cette unité : lu à sa mort par les règles de campagne (mise à mort « à deux » du DUO).
+        // Posé ICI, le seul passage obligé des dégâts : éclats, épines et rebonds comptent comme un coup direct.
+        if (attacker != null)
+            unit.RecordDamagedBy(attacker);
         if (attacker != null && unit.HasTrait(Trait.Epines))
             ApplyEpines(unit, attacker, amount);
         if (unit.IsAlive && unit.HasTrait(Trait.Esquive))
@@ -1363,6 +1425,20 @@ public sealed class Match
     public bool RoqueEnabled { get; set; }
 
     /// <summary>
+    /// COMMANDANT DUO : « La puissance du rock » achetée — puissance mise en réserve sur l'ARTISAN à chaque
+    /// ROQUE, dépensée par sa prochaine attaque (cf. <see cref="Unit.RoquePower"/>). 0 = nœud non acheté.
+    /// Réglée par la scène depuis la run au lancement du combat.
+    /// </summary>
+    public int RoquePower { get; set; }
+
+    /// <summary>
+    /// COMMANDANT DUO : « Continue sans moi » acheté — la chute d'UN meneur ne perd plus la partie tant que
+    /// l'AUTRE est debout (cf. <see cref="UpdateWinner"/>). Le survivant termine le combat seul ; c'est la
+    /// campagne qui décide ensuite du sort du tombé. Réglé par la scène depuis la run au lancement du combat.
+    /// </summary>
+    public bool SoloSurvivorEnabled { get; set; }
+
+    /// <summary>
     /// L'AUTRE meneur du duo (même camp, essentiel, pas le même rôle compagnon/commandant), ou null. Cherché
     /// dans <see cref="_essential"/> : la liste garde aussi les meneurs TOMBÉS, ce qui est voulu — la puissance
     /// gagnée sur les mises à mort de l'autre reste acquise quand il n'est plus là.
@@ -1420,7 +1496,7 @@ public sealed class Match
         }
 
         foreach (var dir in attackVectors)
-            for (var step = 1; step <= unit.AttackRange; step++)
+            for (var step = 1; step <= EffectiveAttackRange(unit, from); step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
@@ -1485,8 +1561,8 @@ public sealed class Match
         // tampon partagé. Les cases sont figées avant application (un replié ne doit pas encaisser deux fois).
         var partners = new List<Unit>();
         var reach = new List<Cell>();
-        var share = FriendshipShare(victim, here, amount, reach);
-        if (share <= 0)
+        var split = SplitFriendship(victim, here, amount, reach);
+        if (split.Partners == 0)
             return amount;
         foreach (var c in reach)
             if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
@@ -1498,7 +1574,7 @@ public sealed class Match
             if (CellOf(partner) is not { } pc)
                 continue;
             var before = partner.Hp;
-            ApplyDamage(partner, share, attacker);
+            ApplyDamage(partner, split.AllyShare, attacker);
             // Chiffre de dégâts sur le camarade : sans lui le partage est INVISIBLE (on ne verrait que le
             // total sur la victime, sans comprendre pourquoi les PV de l'autre descendent aussi).
             if (before - partner.Hp is > 0 and var dealt)
@@ -1506,46 +1582,63 @@ public sealed class Match
             RemoveDeadAt(pc, attacker);
         }
         _sharing = false;
-        return amount - share * partners.Count;   // la victime garde sa part ET le reste de la division
+        return split.VictimShare;   // sa part, le reste de la division, moins l'absorption du lien
     }
 
     /// <summary>
-    /// Part que « Lien d'amitié » ferait porter à CHACUN des alliés de <paramref name="victim"/> pour un coup
-    /// de <paramref name="amount"/>, et remplit <paramref name="reach"/> de leurs cases (la victime comprise).
-    /// 0 = pas de partage (trait absent, personne à portée, coup trop petit à diviser, ou partage déjà en cours).
+    /// PV retranchés à la part de CHAQUE unité touchée par « Lien d'amitié », victime comprise, une fois la
+    /// division faite. Le lien ne se contente donc pas de répartir le coup : il l'ÉMOUSSE, et d'autant plus
+    /// qu'il y a de camarades autour (chacun absorbe autant). Un coup assez petit peut être annulé.
+    /// </summary>
+    private const int FriendshipAbsorb = 1;
+
+    /// <summary>Répartition d'un coup par « Lien d'amitié » (cf. <see cref="SplitFriendship"/>).</summary>
+    /// <param name="AllyShare">Ce que prend CHACUN des <paramref name="Partners"/> camarades.</param>
+    /// <param name="VictimShare">Ce qu'il reste à la victime : sa part, le reste de la division, moins l'absorption.</param>
+    /// <param name="Partners">Nombre de camarades qui encaissent ; 0 = pas de partage du tout.</param>
+    private readonly record struct FriendshipSplit(int AllyShare, int VictimShare, int Partners);
+
+    /// <summary>
+    /// Répartition d'un coup de <paramref name="amount"/> par « Lien d'amitié » entre <paramref name="victim"/>
+    /// et ses alliés à portée, dont <paramref name="reach"/> reçoit les cases (la victime comprise).
+    /// <see cref="FriendshipSplit.Partners"/> à 0 = pas de partage (trait absent, personne à portée, coup trop
+    /// petit à diviser, ou partage déjà en cours) et la victime encaisse tout.
+    ///
+    /// Division à parts égales — le reste revient à la victime —, puis CHAQUE unité touchée retranche
+    /// <see cref="FriendshipAbsorb"/> de sa part (jamais sous zéro).
+    ///
     /// PARTAGÉE entre l'application réelle et l'APERÇU (<see cref="PreviewDamage"/>), pour que le chiffre
     /// annoncé au joueur soit exactement celui qu'il va voir descendre.
     /// </summary>
-    private int FriendshipShare(Unit victim, Cell here, int amount, List<Cell> reach)
+    private FriendshipSplit SplitFriendship(Unit victim, Cell here, int amount, List<Cell> reach)
     {
         reach.Clear();
         if (_sharing || amount <= 1 || !victim.HasTrait(Trait.LienDAmitie))
-            return 0;
+            return new FriendshipSplit(0, amount, 0);
 
         AppendAlliesInReach(here, victim, reach);
         var partners = 0;
         foreach (var c in reach)
             if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
                 partners++;
-        return partners == 0 ? 0 : amount / (partners + 1);
+        if (partners == 0)
+            return new FriendshipSplit(0, amount, 0);
+
+        var each = amount / (partners + 1);
+        var rest = amount % (partners + 1);   // indivisible : il reste sur le dos de la victime
+        return new FriendshipSplit(
+            System.Math.Max(0, each - FriendshipAbsorb),
+            System.Math.Max(0, each + rest - FriendshipAbsorb),
+            partners);
     }
 
     /// <summary>
     /// Ce qu'il RESTERAIT à encaisser à <paramref name="victim"/> sur un coup de <paramref name="amount"/>
-    /// une fois « Lien d'amitié » appliqué (sa part plus le reste de la division). Égal à
+    /// une fois « Lien d'amitié » appliqué (sa part plus le reste de la division, moins l'absorption). Égal à
     /// <paramref name="amount"/> sans partage.
     /// </summary>
-    private int AfterFriendshipShare(Unit victim, Cell here, int amount)
-    {
-        var share = FriendshipShare(victim, here, amount, _previewReach);
-        if (share <= 0)
-            return amount;
-        var partners = 0;
-        foreach (var c in _previewReach)
-            if (UnitAt(c) is { } ally && !ReferenceEquals(ally, victim))
-                partners++;
-        return amount - share * partners;
-    }
+    private int AfterFriendshipShare(Unit victim, Cell here, int amount) =>
+        SplitFriendship(victim, here, amount, _previewReach).VictimShare;
 
     /// <summary>Tampon de l'APERÇU de partage : jamais mêlé à <see cref="_reachBuffer"/> (lu pendant un coup).</summary>
     private readonly List<Cell> _previewReach = new();
@@ -1562,7 +1655,8 @@ public sealed class Match
         if (UnitAt(from) is not { } attacker || UnitAt(target) is not { } victim)
             return 0;
 
-        var share = FriendshipShare(victim, target, EffectiveDamage(attacker, from, victim, target), _previewReach);
+        // Une part retombée à 0 par l'absorption ne s'annonce pas : le camarade ne prendra rien.
+        var share = SplitFriendship(victim, target, EffectiveDamage(attacker, from, victim, target), _previewReach).AllyShare;
         if (share <= 0)
             return 0;
         foreach (var c in _previewReach)
@@ -1942,8 +2036,19 @@ public sealed class Match
         if (killer != null && dead.Faction != killer.Faction)
             killer.RecordKill();
         _units[cell.Column, cell.Row] = null;
-        OnUnitDied(dead);   // « Rage » : les alliés survivants du mort gagnent de la puissance
+        OnUnitDied(dead, cell);   // « Rage » : les alliés survivants du mort gagnent de la puissance
     }
+
+    /// <summary>
+    /// Toutes les unités TOMBÉES depuis le début du combat, dans l'ordre. JAMAIS vidée en cours de combat —
+    /// contrairement aux tampons d'effets (cf. <see cref="ResetActionFx"/>), qui repartent à chaque action :
+    /// la scène lit ce journal à son rythme, en gardant l'index de ce qu'elle a déjà traité. Une riposte, une
+    /// interception ou un maillon de « Réaction en chaîne » ne peut donc pas lui faire manquer une mort.
+    /// Alimentée par <see cref="OnUnitDied"/>, le passage obligé de TOUS les chemins de mort.
+    /// </summary>
+    public IReadOnlyList<(Cell Cell, Unit Unit)> DeathLog => _deathLog;
+
+    private readonly List<(Cell Cell, Unit Unit)> _deathLog = new();
 
     /// <summary>
     /// Signale la mort de <paramref name="dead"/> (déjà retiré de la grille) : chaque ALLIÉ SURVIVANT porteur de
@@ -1951,8 +2056,11 @@ public sealed class Match
     /// porteur déjà enragé n'y gagne rien de plus aux morts suivantes (une seule fois par combat). Buff transitoire,
     /// non persisté — un nouveau combat repart d'unités neuves. Appelé à chaque chemin de mort.
     /// </summary>
-    private void OnUnitDied(Unit dead)
+    /// <param name="where">Case où l'unité est tombée : elle vient d'être libérée et peut déjà être reprise
+    /// par son tueur, mais c'est LÀ que la scène doit poser le feedback de la mort.</param>
+    private void OnUnitDied(Unit dead, Cell where)
     {
+        _deathLog.Add((where, dead));   // journal des morts du combat (cf. DeathLog) : ce hook est le seul passage obligé
         foreach (var (_, u) in Units())
             if (u.Faction == dead.Faction && u.HasTrait(Trait.Rage))
                 u.ActivateRage(RagePowerBonus);
@@ -2029,7 +2137,7 @@ public sealed class Match
         }
 
         foreach (var dir in vectors)
-            for (var step = 1; step <= unit.AttackRange; step++)
+            for (var step = 1; step <= EffectiveAttackRange(unit, from); step++)
             {
                 var to = new Cell(from.Column + dir.Column * step, from.Row + dir.Row * step);
                 if (!InBounds(to))
@@ -2132,6 +2240,27 @@ public sealed class Match
     }
 
     /// <summary>
+    /// Vrai si l'attaquant de <paramref name="from"/> AVANCERAIT sur la case de <paramref name="target"/>, à
+    /// supposer que sa victime y tombe. C'est la règle de <see cref="TryAttack"/> : « Statique » cloue son
+    /// porteur sur place, et un tireur dont la portée d'ATTAQUE dépasse sa portée de DÉPLACEMENT reste où il
+    /// est. Ne dit RIEN de la létalité du coup — l'appelant la juge à part (cf. <see cref="PreviewDamage"/>).
+    /// Sert à l'aperçu de visée.
+    /// </summary>
+    public bool WouldTakePlace(Cell from, Cell target)
+    {
+        if (UnitAt(from) is not { } mover || mover.HasTrait(Trait.Statique))
+            return false;
+        // À la résolution, la victime est RETIRÉE de la grille AVANT ce test : sa case est alors LIBRE. On
+        // reproduit cet état le temps du calcul, sinon LegalMoves écarterait la case (occupée) et l'aperçu
+        // répondrait toujours non. Retrait et remise immédiats, sans rien entre les deux.
+        var victim = _units[target.Column, target.Row];
+        _units[target.Column, target.Row] = null;
+        var can = CanTakePlace(from, target);
+        _units[target.Column, target.Row] = victim;
+        return can;
+    }
+
+    /// <summary>
     /// Vrai si <paramref name="unit"/>, postée en <paramref name="from"/>, POURRAIT frapper
     /// <paramref name="target"/> : mêmes règles que <see cref="AttackTargets(Cell)"/> — motif d'attaque,
     /// portée, zone morte, ligne de tir, traverse-allié — mais SANS la condition « c'est son tour ».
@@ -2209,13 +2338,21 @@ public sealed class Match
 
         // Une unité essentielle morte décide la partie, même si son camp a d'autres unités :
         // commandant tombé = défaite ; boss tué = victoire (combat de boss).
-        bool playerLeaderDown = false, enemyLeaderDown = false;
+        bool playerLeaderDown = false, enemyLeaderDown = false, playerLeaderStanding = false;
         foreach (var unit in _essential)
         {
-            if (unit.IsAlive) continue;
+            if (unit.IsAlive)
+            {
+                if (unit.Faction == Faction.Player) playerLeaderStanding = true;
+                continue;
+            }
             if (unit.Faction == Faction.Player) playerLeaderDown = true;
             else enemyLeaderDown = true;
         }
+        // DUO — « Continue sans moi » : la chute d'UN meneur ne décide plus rien tant que l'AUTRE est debout.
+        // Le camp joueur ne perd que s'il ne reste plus AUCUN meneur — ou plus aucune unité (test ci-dessous).
+        if (SoloSurvivorEnabled && playerLeaderStanding)
+            playerLeaderDown = false;
 
         // Camp joueur anéanti (ou commandant tombé) = défaite : toujours décisif, même à objectif.
         if (!hasPlayer || playerLeaderDown) Winner = Faction.Enemy;

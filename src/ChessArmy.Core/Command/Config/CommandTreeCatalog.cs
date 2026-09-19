@@ -95,6 +95,8 @@ public static class CommandTreeCatalog
             "healkitmaxhp" => CommandEffect.Flag(CommandEffectKind.HealKitMaxHp, amount),
             "satchelmaxhp" => CommandEffect.Flag(CommandEffectKind.SatchelMaxHp, amount),
             "roque" => CommandEffect.Flag(CommandEffectKind.Roque),
+            "roquepower" => CommandEffect.Flag(CommandEffectKind.RoquePower, amount),
+            "solosurvivor" => CommandEffect.Flag(CommandEffectKind.SoloSurvivor),
             "crosskillpower" => CommandEffect.Flag(CommandEffectKind.CrossKillPower, amount),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };

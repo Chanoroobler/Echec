@@ -104,6 +104,12 @@ public sealed class CommandeConfig
     /// <summary>COMMANDANT : plafond de soins comptabilisés par combat pour <c>healPoints</c>. Absent → illimité.</summary>
     public int? HealCap { get; set; }
 
+    /// <summary>COMMANDANT DUO : points gagnés à chaque mise à mort où ses DEUX meneurs ont frappé le mort. Absent → 0.</summary>
+    public int? PairKillPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de mises à mort « à deux » comptabilisées par combat pour <c>pairKillPoints</c>. Absent → illimité.</summary>
+    public int? PairKillCap { get; set; }
+
     /// <summary>
     /// COMMANDANT DUO : id du SECOND meneur, une entrée de rôle <c>Companion</c> du même fichier. Il entre en
     /// jeu avec le commandant et sa mort perd la run, comme la sienne. Absent → commandant solo.
@@ -144,6 +150,27 @@ public sealed class CommandeConfig
     /// Commander). Absent → ce boss ne débloque personne (ex. la Brute). Ignoré pour un Commander.
     /// </summary>
     public string? UnlocksCommander { get; set; }
+
+    /// <summary>
+    /// BOSS : id d'une entrée de rôle <c>Companion</c> qui l'ACCOMPAGNE. Elle remplace l'escorte du plus haut
+    /// tier (l'effectif ne bouge pas) et n'est pas essentielle. Absent → boss seul.
+    /// Le champ <see cref="Companion"/> sert au même rôle pour un COMMANDANT (son second meneur).
+    /// </summary>
+    public string? BossCompanion { get; set; }
+
+    /// <summary>
+    /// BOSS : stats + traits du SECOND (<see cref="BossCompanion"/>) par phase (« 1 ».. « 3 »), mêmes champs
+    /// qu'un profil de boss. Se règle indépendamment du second JOUABLE, qu'on ne peut pas équilibrer pour une
+    /// rencontre de boss sans toucher au commandant du joueur. Absent → il combat avec sa fiche jouable.
+    /// Le nom et le sprite viennent toujours du second lui-même : seuls les chiffres sont lus ici.
+    /// </summary>
+    public Dictionary<string, BossPhaseConfig>? CompanionPhases { get; set; }
+
+    /// <summary>
+    /// BOSS : id du COMMANDANT que le joueur doit avoir DÉBLOQUÉ pour que ce boss entre dans le tirage.
+    /// Absent → toujours tirable.
+    /// </summary>
+    public string? RequiresCommander { get; set; }
 }
 
 /// <summary>

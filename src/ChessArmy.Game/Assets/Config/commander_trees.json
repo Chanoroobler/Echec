@@ -239,19 +239,24 @@
     //   { "kind": "healKitMaxHp",  "amount": 1 }  ← +1 PV max DEFINITIF par trousse utilisee (les deux meneurs)
     //   { "kind": "satchelMaxHp",  "amount": 1 }  ← +1 PV max DEFINITIF par objet pris dans une sacoche
     //   { "kind": "roque" }           ← les deux meneurs echangent leurs places en se marchant dessus
+    //   { "kind": "roquePower", "amount": 5 } ← chaque roque met +5 puissance en reserve sur l'ARTISAN
+    //                                           (depensee par sa prochaine attaque ; ne se cumule pas)
     //   { "kind": "crossKillPower", "amount": 1 } ← +1 puissance a l'ARTISAN par tranche de 3 kills de BASILE
+    //   { "kind": "soloSurvivor" }    ← la chute d'UN meneur ne perd plus la run : le survivant continue
+    //                                   SEUL et herite de la moitie de la puissance et des PV max du tombe
     // SANS le nœud "duo_trousse_terrain" (resp. "duo_sacoche_terrain"), les tuiles recrue (resp. les coffres)
     // sont simplement RETIREES des maps : c'est le premier achat qui ouvre l'economie de ce commandant.
     // ICÔNES À DESSINER : Assets/CommandTree/<id>.png (32×32) pour tous les nœuds sans "asset".
     {
       "id": "commandantDuo",
       "nodes": [
-        // ── Branche 0 : L'ARTISAN MEURTRIER et les TROUSSES DE SOIN ──────────────────────────────
-        { "id": "duo_trousse_kill",     "branch": 0, "level": 1, "effects": [ { "kind": "healKitOnKill" } ] },
-        { "id": "duo_roque",            "branch": 0, "level": 1, "effects": [ { "kind": "roque" } ] },        
-        { "id": "duo_art_riposte", "asset": "lan_cmd_riposte", "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },        
+        // ── Branche 0 : L'ARTISAN MEURTRIER et les TROUSSES DE SOIN ──────────────────────────────        
+        { "id": "duo_roque",            "branch": 0, "level": 1, "effects": [ { "kind": "roque" } ] },                        
+        { "id": "duo_trousse_kill",     "branch": 0, "level": 2, "effects": [ { "kind": "healKitOnKill" } ] },
+        // Suite naturelle de "duo_roque" juste au-dessus : sans lui il n'y a jamais de roque et l'effet dort.
+        { "id": "duo_roque_puissance",  "branch": 0, "level": 2, "effects": [ { "kind": "roquePower", "amount": 5 } ] },
         { "id": "duo_kills_partages",   "branch": 0, "level": 3, "effects": [ { "kind": "crossKillPower", "amount": 1 } ] },
-        { "id": "duo_art_mouvement", "asset": "cmd_mouvement", "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "moveRange", "amount": 1 } ] },
+        { "id": "duo_art_riposte", "asset": "lan_cmd_riposte", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Riposte" } ] },        
         { "id": "duo_art_chaine",       "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Réaction en chaîne" } ] },
 
         // ── Branche 1 : ce qui LIE les deux meneurs ──────────────────────────────────────────────
@@ -260,6 +265,12 @@
             { "kind": "commanderTrait", "trait": "Lien d'amitié" },
             { "kind": "companionTrait", "trait": "Lien d'amitié" } ] },
         { "id": "duo_trousse_pv",       "branch": 1, "level": 2, "effects": [ { "kind": "healKitMaxHp", "amount": 2 } ] },
+        // Branche du LIEN : le pas gagne se prend a DEUX (comme "duo_lien_amitie" plus haut).
+        { "id": "duo_art_mouvement", "asset": "cmd_mouvement", "branch": 1, "level": 3, "effects": [
+            { "kind": "commanderStat", "stat": "moveRange", "amount": 1 },
+            { "kind": "companionStat", "stat": "moveRange", "amount": 1 } ] },
+        // Bout de la branche du LIEN : le duo survit a la perte de l'un des deux.
+        { "id": "duo_continue_sans_moi", "branch": 1, "level": 4, "effects": [ { "kind": "soloSurvivor" } ] },
 
         // ── Branche 2 : BASILE et les SACOCHES ───────────────────────────────────────────────────
         { "id": "duo_sacoche_terrain",  "branch": 2, "level": 1, "effects": [ { "kind": "satchelChests" } ] },        

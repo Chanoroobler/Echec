@@ -119,6 +119,19 @@ public enum CommandEffectKind
     Roque,
 
     /// <summary>
+    /// « La puissance du rock » : chaque ROQUE met +<see cref="CommandEffect.Amount"/> de puissance en réserve
+    /// sur l'ARTISAN, dépensée par sa prochaine attaque. NON cumulable (cf. <see cref="Battle.Unit.RoquePower"/>).
+    /// Sans le nœud « Roque » de la même branche, il n'y a jamais de roque : l'effet dort.
+    /// </summary>
+    RoquePower,
+
+    /// <summary>
+    /// « Continue sans moi » : la chute d'UN meneur ne perd plus la run. Le survivant poursuit SEUL et hérite
+    /// de la MOITIÉ de la puissance et des PV max du tombé (cf. <see cref="Campaign.Run.SoloSurvivor"/>).
+    /// </summary>
+    SoloSurvivor,
+
+    /// <summary>
     /// Le COMMANDANT gagne <see cref="CommandEffect.Amount"/> de puissance par TRANCHE DE
     /// <see cref="CrossKillStep"/> mises à mort de son COMPAGNON (compteur à vie, cf. <see cref="Battle.Unit.Kills"/>).
     /// Sens unique : le compagnon ne gagne rien des kills du commandant.

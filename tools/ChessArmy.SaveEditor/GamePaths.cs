@@ -20,6 +20,9 @@ internal static class GamePaths
     public static string EquipmentJson => Path.Combine(ConfigDir, "equipment.json");
     public static string CommandTreesJson => Path.Combine(ConfigDir, "commander_trees.json");
 
+    /// <summary>Maps dessinées du jeu (une par fichier) : alimente le choix de map IMPOSÉE d'une run.</summary>
+    public static string MapsDir => Path.Combine(RepoRoot, "src", "ChessArmy.Game", "Assets", "Maps");
+
     /// <summary>Nombre de slots du jeu (cf. <c>SaveService.SlotCount</c>).</summary>
     public const int SlotCount = 3;
 
