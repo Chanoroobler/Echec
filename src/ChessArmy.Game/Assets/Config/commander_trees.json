@@ -280,6 +280,68 @@
         { "id": "duo_bas_portee", "asset": "lan_cmd_portee", "branch": 2, "level": 3, "effects": [ { "kind": "companionStat", "stat": "attackRange", "amount": 1 } ] },
         { "id": "duo_bas_ligne",        "branch": 2, "level": 4, "effects": [ { "kind": "companionTrait", "trait": "Tir en ligne" } ] }
       ]
+    },
+
+    // ── Arbre du commandant BRUTE (tree "commandantBrute") ─────────────────────────────────────────────
+    // Theme : la PERTE comme ressource. Sa source de points est deja « sur perte » (cf. units.json), et ses
+    // trois branches en tirent parti differemment.
+    //   • Branche 0 — le SACRIFICE : elle grossit et frappe plus fort a chaque pion tombe (allyDeathMaxHp /
+    //     allyDeathPower, qui lisent le compteur Run.AllyDeaths), peut frapper les siens pour se soigner
+    //     (« Sacrifice »), pousser un allie devant un coup (« Bouclier humain ») et finir par les LANCER sur
+    //     l'ennemi (« Chair a canon »).
+    //   • Branche 1 — le PAYSAN : un pion UNIQUE et exclusif (cf. la section « exclusives » d'units.json),
+    //     recrute par le noeud de niveau 1, qui monte tout seul par son trait « Survivant » et evolue par deux
+    //     noeuds a CHOIX. Ces noeuds ne declarent aucune option : elles viennent de l'arbre de classes du pion
+    //     au moment de l'achat (paysan -> archer|epeiste, puis -> duelliste|rempart de la branche retenue).
+    //     « Revolte » lui donne le commandement : la Brute reste sur le plateau en pion ORDINAIRE (mortelle,
+    //     mais elle garde tous les bonus de la branche 0) et toute la pietaille tier 1 est relevee.
+    //   • Branche 2 — la LOGISTIQUE : poser plus de pions, en garder plus, en recruter davantage.
+    //     Au bout, la RELEVE : chaque unite de tier 2 ou 3 tombee fait arriver 2 unites de tier 1 aleatoires (deja decouvertes).
+    // ICONES : aucun noeud ne declare d'"asset" — chacun attend son propre PNG 32x32
+    // Assets/CommandTree/<id du noeud>.png. Tant qu'il manque, le jeu affiche le placeholder colore par
+    // branche : on VOIT ce qui reste a dessiner, au lieu d'emprunter l'icone d'un autre arbre qui mentirait
+    // sur l'effet du noeud.
+    {
+      "id": "commandantBrute",
+      "nodes": [
+        // ── Branche 0 : le SACRIFICE ────────────────────────────────────────────────────────────
+        { "id": "brute_pv_pertes", "branch": 0, "level": 1, "effects": [ { "kind": "allyDeathMaxHp", "amount": 2 } ] },
+        { "id": "brute_rage", "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Rage" } ] },
+        { "id": "brute_sacrifice", "branch": 0, "level": 2, "effects": [ { "kind": "commanderTrait", "trait": "Sacrifice" } ] },
+        { "id": "brute_puissance_pertes", "branch": 0, "level": 3, "effects": [ { "kind": "allyDeathPower", "amount": 1 } ] },
+        { "id": "brute_bouclier", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Bouclier humain" } ] },
+        { "id": "brute_chair_a_canon", "branch": 0, "level": 4, "effects": [ { "kind": "commanderTrait", "trait": "Chair à canon" } ] },
+
+        // ── Branche 1 : le PAYSAN ───────────────────────────────────────────────────────────────
+        { "id": "brute_paysan", "branch": 1, "level": 1, "effects": [ { "kind": "recruitExclusive", "asset": "paysan" } ] },
+        { "id": "brute_vengeance", "branch": 1, "level": 2, "effects": [ { "kind": "unitTrait", "trait": "Vengeance" } ] },
+        // Noeud a CHOIX : archerie (+1 portee) ou epeiste (+1 deplacement). Les deux options sont les
+        // evolutions de la classe courante du Paysan — rien a declarer ici.
+        { "id": "brute_armement", "branch": 1, "level": 2, "effects": [ { "kind": "evolveExclusive" } ] },
+        { "id": "brute_formation", "branch": 1, "level": 3, "effects": [ { "kind": "exclusiveTrait", "trait": "Formation" } ] },
+        // Second noeud a CHOIX : duelliste ou rempart, sur la branche d'armement deja retenue.
+        { "id": "brute_protection", "branch": 1, "level": 3, "effects": [ { "kind": "evolveExclusive" } ] },
+        // Le +1 déplacement va à tout le tier 1 SAUF le Cavalier (déjà rapide) : les effets ne savent que
+        // CIBLER un domaine, pas en exclure un, d'où un effet par domaine restant. La description n'annonce
+        // que « {3} déplacement » : l'exception est volontairement tue.
+        { "id": "brute_revolte", "branch": 1, "level": 4, "effects": [
+            { "kind": "revolte", "asset": "paysan" },
+            { "kind": "unitStat", "stat": "hp", "amount": 12, "tier": 1 },
+            { "kind": "unitStat", "stat": "damage", "amount": 8, "tier": 1 },
+            { "kind": "unitStat", "stat": "moveRange", "amount": 1, "tier": 1, "domaine": "Dame" },
+            { "kind": "unitStat", "stat": "moveRange", "amount": 1, "tier": 1, "domaine": "Tour" },
+            { "kind": "unitStat", "stat": "moveRange", "amount": 1, "tier": 1, "domaine": "Fou" } ] },
+
+        // ── Branche 2 : la LOGISTIQUE ───────────────────────────────────────────────────────────
+        { "id": "brute_deploiement_1",  "asset": "logi_deploiement_1", "branch": 2, "level": 1, "effects": [ { "kind": "deploySlots", "amount": 1 } ] },
+        { "id": "brute_reserve", "asset": "lan_logi_reserve_1", "branch": 2, "level": 2, "effects": [ { "kind": "reserveSlots", "amount": 2 } ] },
+        { "id": "brute_fusion_soldat", "branch": 2, "level": 2, "effects": [ { "kind": "fusionRecruit", "amount": 1, "domaine": "Dame" } ] },
+        { "id": "brute_deploiement_2",  "asset": "logi_deploiement_1", "branch": 2, "level": 3, "effects": [ { "kind": "deploySlots", "amount": 2 } ] },
+        { "id": "brute_masse", "branch": 2, "level": 3, "effects": [ { "kind": "reserveThresholdRecruit", "amount": 3, "domaine": "Dame" } ] },
+        // Fin de la LOGISTIQUE : la relève du commandant de base, en DOUBLE — une élite perdue se remplace par du
+        // nombre (2 tier 1 déjà découverts au hasard), ce qui nourrit aussi la source de points « sur perte ».
+        { "id": "brute_releve", "branch": 2, "level": 4, "effects": [ { "kind": "eliteDeathRecruit", "amount": 2 } ] }
+      ]
     }
   ]
 }

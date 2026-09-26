@@ -7,6 +7,13 @@ public sealed class UnitsConfig
 {
     public List<DomaineConfig> Domaines { get; set; } = new();
 
+    /// <summary>
+    /// Classes EXCLUSIVES (cf. <see cref="ExclusiveClasses"/>) : mêmes arbres que les domaines, mais hors de
+    /// tout tirage et de toute fusion — elles n'existent que par l'arbre de commandement qui les amène (le
+    /// PAYSAN du commandant Brute). Le champ <c>domaine</c> y donne le motif de déplacement emprunté.
+    /// </summary>
+    public List<DomaineConfig> Exclusives { get; set; } = new();
+
     /// <summary>Unités COMMANDE (commandant, boss) : rôle + domaine de mouvement + stats.</summary>
     public List<CommandeConfig> Commandes { get; set; } = new();
 }
@@ -109,6 +116,12 @@ public sealed class CommandeConfig
 
     /// <summary>COMMANDANT : plafond de mises à mort « à deux » comptabilisées par combat pour <c>pairKillPoints</c>. Absent → illimité.</summary>
     public int? PairKillCap { get; set; }
+
+    /// <summary>COMMANDANT : points gagnés chaque fois qu'une unité ALLIÉE tombe en combat (BRUTE). Absent → 0.</summary>
+    public int? AllyDeathPoints { get; set; }
+
+    /// <summary>COMMANDANT : plafond de pertes comptabilisées par combat pour <c>allyDeathPoints</c>. Absent → illimité.</summary>
+    public int? AllyDeathCap { get; set; }
 
     /// <summary>
     /// COMMANDANT DUO : id du SECOND meneur, une entrée de rôle <c>Companion</c> du même fichier. Il entre en

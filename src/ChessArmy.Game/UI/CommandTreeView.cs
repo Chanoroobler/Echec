@@ -152,10 +152,36 @@ public sealed class CommandTreeView
 
     private void TryUnlock(Run run, CommandNode node)
     {
+        // Nœud à CHOIX (évolution de la paysanne) : cette vue n'achète rien. Elle se referme et DEMANDE à la
+        // scène d'ouvrir la popup de FUSION sur ce nœud (cf. TakeRequestedChoice) — le choix d'une forme est
+        // le même geste qu'une fusion, il a donc la même modale et la même animation. Les refus ordinaires
+        // (points, prérequis) restent traités par Run.CanUnlock : la demande ne part que sur un achat possible.
+        if (node.Effects.Any(e => e.NeedsChoice) && run.CanUnlock(node) && run.EvolutionChoices(node).Count > 0)
+        {
+            _requestedChoice = node;
+            IsOpen = false;                 // sans le son de fermeture : la popup qui suit fait le sien
+            _ctx.Sounds.Play("menu_open");
+            return;
+        }
+
         if (run.Unlock(node))
             _ctx.Sounds.Play("recruit");
         else
             _ctx.Sounds.Play("menu_close");   // achat refusé (points / prérequis) : retour sonore sec
+    }
+
+    /// <summary>Nœud à choix cliqué, en attente d'être présenté par la scène, ou <c>null</c>.</summary>
+    private CommandNode? _requestedChoice;
+
+    /// <summary>
+    /// Rend (une seule fois) le nœud à CHOIX que le joueur vient de cliquer : la vue s'est refermée, c'est à
+    /// la scène de présenter les options dans sa popup de fusion. <c>null</c> si aucun choix n'est demandé.
+    /// </summary>
+    public CommandNode? TakeRequestedChoice()
+    {
+        var node = _requestedChoice;
+        _requestedChoice = null;
+        return node;
     }
 
     // ── Navigation manette ───────────────────────────────────────────────────────────────────────
@@ -331,6 +357,9 @@ public sealed class CommandTreeView
         else if (run.CommanderDef.PairKillPoints > 0)   // DUO : un mort frappé par les DEUX meneurs
             DrawIncomeLine(sb, panel, 78,
                 Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.PairKillPoints, run.CommanderDef.PairKillCap));
+        else if (run.CommanderDef.AllyDeathPoints > 0)   // BRUTE : chaque pion tombé (aucun plafond)
+            DrawIncomeLine(sb, panel, 78,
+                Loc.T($"tree.{run.Tree.Id}.income", run.CommanderDef.AllyDeathPoints));
     }
 
     /// <summary>Ligne de gain : en MINUSCULES (preserveCase), pour la détacher des libellés capitalisés de l'UI.</summary>
@@ -379,7 +408,9 @@ public sealed class CommandTreeView
 
     private NodeState StateOf(Run run, CommandNode node)
     {
-        if (run.IsUnlocked(node.Id))
+        // Un nœud RACHETABLE (la recrue du pion exclusif, quand celui-ci est tombé) se présente comme un nœud
+        // neuf : il faut voir qu'on peut le reprendre, et à quel prix.
+        if (run.IsUnlocked(node.Id) && !run.CanRebuy(node))
             return NodeState.Owned;
         if (!run.Tree.PrerequisiteMet(node, run.UnlockedNodes))
             return NodeState.Locked;

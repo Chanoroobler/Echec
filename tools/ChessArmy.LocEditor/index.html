@@ -291,9 +291,10 @@ function flag(cell, val, which, isDup){
   cell.classList.remove("err","warn","dup","empty");
   const msg = cell.querySelector(".flag");
   msg.textContent = "";
-  const comma = val.includes(",");
+  // Virgule : interdite dans une CLÉ seulement. Dans une valeur elle est permise (écrite entre guillemets).
+  const comma = (which==="key") && val.includes(",");
   const dash  = (which!=="key") && val.includes(EM_DASH);
-  if(comma){ cell.classList.add("err"); msg.textContent="virgule interdite"; }
+  if(comma){ cell.classList.add("err"); msg.textContent="virgule interdite dans une clé"; }
   else if(dash){ cell.classList.add("warn"); msg.textContent="tiret cadratin interdit"; }
   else if(which==="key" && val.length===0){ cell.classList.add("err"); msg.textContent="clé vide"; }
   else if(which==="key" && isDup){ cell.classList.add("dup"); msg.textContent="clé en double"; }
@@ -325,7 +326,7 @@ async function save(){
   if(res.ok){ setDirty(false); toast("Enregistré ✓"); }
   else{
     const err = await res.json().catch(()=>({}));
-    if(err.error==="comma") toast("Virgule interdite dans : "+(err.keys||[]).slice(0,5).join(", "), true);
+    if(err.error==="comma") toast("Virgule interdite dans la clé : "+(err.keys||[]).slice(0,5).join(", "), true);
     else toast("Échec de l'enregistrement", true);
   }
 }

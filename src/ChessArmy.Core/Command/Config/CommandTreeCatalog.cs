@@ -64,7 +64,7 @@ public static class CommandTreeCatalog
         return e.Kind?.ToLowerInvariant() switch
         {
             "commanderstat" => CommandEffect.CommanderStat(Stat(e, nodeId), amount, Scale(e, nodeId), DomaineOf(e, nodeId)),
-            "unitstat" => CommandEffect.UnitStat(Stat(e, nodeId), amount, Scale(e, nodeId), DomaineOf(e, nodeId)),
+            "unitstat" => CommandEffect.UnitStat(Stat(e, nodeId), amount, Scale(e, nodeId), DomaineOf(e, nodeId), e.Tier),
             "commandertrait" => CommandEffect.CommanderTrait(TraitOf(e, nodeId)),
             "unittrait" => CommandEffect.UnitTrait(TraitOf(e, nodeId), DomaineOf(e, nodeId)),
             "reserveslots" => CommandEffect.ReserveSlots(amount),
@@ -98,9 +98,38 @@ public static class CommandTreeCatalog
             "roquepower" => CommandEffect.Flag(CommandEffectKind.RoquePower, amount),
             "solosurvivor" => CommandEffect.Flag(CommandEffectKind.SoloSurvivor),
             "crosskillpower" => CommandEffect.Flag(CommandEffectKind.CrossKillPower, amount),
+            // ── Commandant BRUTE ───────────────────────────────────────────────────────────────────
+            "allydeathmaxhp" => CommandEffect.Flag(CommandEffectKind.AllyDeathMaxHp, amount),
+            "allydeathpower" => CommandEffect.Flag(CommandEffectKind.AllyDeathPower, amount),
+            "recruitexclusive" => CommandEffect.RecruitExclusive(ExclusiveAsset(e.Asset, nodeId)),
+            "evolveexclusive" => CommandEffect.EvolveExclusive(ChoicesOf(e, nodeId)),
+            "reservethresholdrecruit" => CommandEffect.ReserveThresholdRecruit(amount,
+                DomaineOf(e, nodeId) ?? throw new InvalidOperationException(
+                    $"Le nœud '{nodeId}' recrute sur seuil de réserve sans « domaine » : on ne sait pas quoi recruter.")),
+            "revolte" => CommandEffect.Revolte(ExclusiveAsset(e.Asset, nodeId)),
+            "exclusivetrait" => CommandEffect.ExclusiveTrait(TraitOf(e, nodeId)),
             _ => throw new InvalidOperationException($"Type d'effet inconnu pour le nœud '{nodeId}' : '{e.Kind}'."),
         };
     }
+
+    /// <summary>
+    /// Asset d'une classe EXCLUSIVE, validé contre le registre (cf. <see cref="Battle.ExclusiveClasses"/>) :
+    /// une faute de frappe dans commander_trees.json doit se voir au chargement, pas en jeu.
+    /// </summary>
+    private static string ExclusiveAsset(string? asset, string nodeId) =>
+        !string.IsNullOrWhiteSpace(asset) && Battle.ExclusiveClasses.Find(asset) != null
+            ? asset!
+            : throw new InvalidOperationException($"Classe exclusive inconnue pour le nœud '{nodeId}' : '{asset}'.");
+
+    /// <summary>
+    /// Options FIGÉES d'un nœud à choix. Le cas normal est de ne rien déclarer : les options sont alors les
+    /// évolutions de la classe que le pion porte au moment de l'achat. Déclarées, elles doivent être connues
+    /// du registre des classes exclusives.
+    /// </summary>
+    private static IReadOnlyList<string> ChoicesOf(EffectEntry e, string nodeId) =>
+        e.Choices is not { Count: > 0 }
+            ? System.Array.Empty<string>()
+            : e.Choices.Select(c => ExclusiveAsset(c, nodeId)).ToList();
 
     /// <summary>Parse un domaine ciblé optionnel (« domaine »). Null si absent ; lève si invalide.</summary>
     private static Battle.Domaine? DomaineOf(EffectEntry e, string nodeId) =>

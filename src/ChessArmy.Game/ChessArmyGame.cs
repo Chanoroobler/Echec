@@ -146,6 +146,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         {
             var json = System.IO.File.ReadAllText(path);
             Domaines.Load(DomaineCatalog.FromJson(json));
+            ExclusiveClasses.Load(DomaineCatalog.ExclusivesFromJson(json));
             Commandes.Load(DomaineCatalog.CommandesFromJson(json));
             Bosses.Load(DomaineCatalog.BossesFromJson(json));
         }

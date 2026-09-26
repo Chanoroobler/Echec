@@ -54,6 +54,15 @@ public sealed class MeleeStrikeFx
     private const float MoveHopFraction = 0.16f;  // petit saut du pion pendant un déplacement rejoué
 
     private double _elapsed;
+
+    // OUVERTURE optionnelle (cf. Begin) : un temps AVANT que l'attaquant ne s'élance, pendant lequel la scène
+    // joue ce qui doit se voir avant le coup — l'allié qui saute devant son commandant (« Bouclier humain »).
+    // Toute l'animation est décalée d'autant : les mesures de temps passent par T, qui reste à 0 pendant l'ouverture.
+    private double _leadIn;
+
+    /// <summary>Temps écoulé APRÈS l'ouverture (0 tant qu'elle dure) : horloge de toute l'animation.</summary>
+    private double T => Math.Max(0, _elapsed - _leadIn);
+
     private double _total;
     private double _approachDur;   // durée de la phase d'approche (dépend du style)
     private AttackStyle _style;
@@ -91,7 +100,7 @@ public sealed class MeleeStrikeFx
 
     public void Begin(Cell from, Cell to, Cell attackerCell, Texture2D? attackerSprite,
         Texture2D? victimSprite, bool killed, bool advanced, AttackStyle style = AttackStyle.Lunge,
-        bool victimDoomed = false)
+        bool victimDoomed = false, double leadIn = 0)
     {
         From = from;
         To = to;
@@ -112,6 +121,7 @@ public sealed class MeleeStrikeFx
             _                 => LungeDur,
         };
         _elapsed = 0;
+        _leadIn = Math.Max(0, leadIn);
         _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
         _seedCounter++;
         Active = true;
@@ -147,6 +157,7 @@ public sealed class MeleeStrikeFx
         _approachDur = MoveDur;   // l'« impact » (= atterrissage) ne se déclenche qu'à la fin du glissement
         _total = MoveDur;
         _elapsed = 0;
+        _leadIn = 0;
         _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
         _seedCounter++;
         Active = true;
@@ -171,6 +182,7 @@ public sealed class MeleeStrikeFx
         _approachDur = 0;        // impact immédiat : la dissolution démarre à la première frame
         _total = DissolveDur;
         _elapsed = 0;
+        _leadIn = 0;
         _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
         _seedCounter++;
         Active = true;
@@ -181,12 +193,28 @@ public sealed class MeleeStrikeFx
         if (!Active)
             return;
         _elapsed += dt;
-        if (_elapsed >= _total)
+        if (_elapsed >= _leadIn + _total)
             Active = false;
     }
 
     /// <summary>Vrai à l'instant exact du contact (fin de l'approche) — pour déclencher l'impact.</summary>
-    public bool HasImpacted => _elapsed >= _approachDur;
+    public bool HasImpacted => _elapsed >= _leadIn && T >= _approachDur;
+
+    /// <summary>Vrai pendant l'OUVERTURE : l'attaquant ne s'est pas encore élancé.</summary>
+    public bool InLeadIn => _elapsed < _leadIn;
+
+    /// <summary>Avancement [0,1] de l'ouverture (1 d'emblée s'il n'y en a pas).</summary>
+    public float LeadInProgress => _leadIn <= 0 ? 1f : Clamp01(_elapsed / _leadIn);
+
+    /// <summary>Avancement [0,1] de tout ce qui suit l'impact, jusqu'à la fin de l'animation (0 avant).</summary>
+    public float AfterImpactProgress
+    {
+        get
+        {
+            var span = _total - _approachDur;
+            return span <= 0 ? 1f : Clamp01((T - _approachDur) / span);
+        }
+    }
 
     /// <summary>
     /// Intensité du recul (knockback) de la victime [0,1] : max au contact, revient à 0. La scène en
@@ -196,7 +224,7 @@ public sealed class MeleeStrikeFx
     {
         get
         {
-            var t = _elapsed - _approachDur;
+            var t = T - _approachDur;
             if (t < 0 || t > KnockbackDur)
                 return 0f;
             return 1f - EaseInOut((float)(t / KnockbackDur));
@@ -213,14 +241,14 @@ public sealed class MeleeStrikeFx
     {
         get
         {
-            var t = _elapsed - _approachDur;
+            var t = T - _approachDur;
             return t <= 0 ? 0f : EaseOut((float)Math.Clamp(t / SlideDur, 0, 1));
         }
     }
 
     /// <summary>Avancement de la dissolution de la victime [0,1] (0 avant l'impact).</summary>
     public float DissolveProgress =>
-        Killed ? (float)Math.Clamp((_elapsed - _approachDur) / DissolveDur, 0, 1) : 0f;
+        Killed ? (float)Math.Clamp((T - _approachDur) / DissolveDur, 0, 1) : 0f;
 
     /// <summary>Intensité du flash « touché » du survivant [0,1] (deux pulsations qui s'éteignent).</summary>
     public float FlashIntensity
@@ -229,7 +257,7 @@ public sealed class MeleeStrikeFx
         {
             if (Killed)
                 return 0f;
-            var k = (_elapsed - _approachDur) / BlinkDur;
+            var k = (T - _approachDur) / BlinkDur;
             if (k < 0 || k > 1)
                 return 0f;
             var pulse = 0.5f + 0.5f * (float)Math.Cos(k * Math.PI * 4);
@@ -245,7 +273,7 @@ public sealed class MeleeStrikeFx
     public Vector2 AttackerTopLeft(Vector2 fromTop, Vector2 toTop, float tile)
     {
         if (MoveOnly)   // déplacement rejoué : glissement plein de From à To (ni fente ni recul)
-            return Vector2.Lerp(fromTop, toTop, EaseInOut(Clamp01(_elapsed / _total)));
+            return Vector2.Lerp(fromTop, toTop, EaseInOut(Clamp01(T / _total)));
 
         if (_style is AttackStyle.Cast or AttackStyle.Shoot)
         {
@@ -253,7 +281,7 @@ public sealed class MeleeStrikeFx
             var d = toTop - fromTop;
             if (d.LengthSquared() > 0.0001f)
                 d.Normalize();
-            var back = _elapsed < _approachDur ? Arc((float)(_elapsed / _approachDur)) * tile * 0.10f : 0f;
+            var back = T < _approachDur ? Arc((float)(T / _approachDur)) * tile * 0.10f : 0f;
             return fromTop - d * back;
         }
 
@@ -265,19 +293,19 @@ public sealed class MeleeStrikeFx
             dir.Normalize();
         var peak = fromTop + dir * (tile * LungeFraction);
 
-        if (_elapsed < _approachDur)
-            return Vector2.Lerp(fromTop, peak, EaseOut((float)(_elapsed / _approachDur)));
+        if (T < _approachDur)
+            return Vector2.Lerp(fromTop, peak, EaseOut((float)(T / _approachDur)));
 
         if (Killed && Advanced)
         {
             var advStart = _approachDur + DissolveDur;
-            if (_elapsed < advStart)
+            if (T < advStart)
                 return peak;                                    // maintien pendant la dissolution
-            var k = Clamp01((_elapsed - advStart) / AdvanceDur);
+            var k = Clamp01((T - advStart) / AdvanceDur);
             return Vector2.Lerp(peak, toTop, EaseInOut(k));     // prend la place libérée
         }
 
-        var r = Clamp01((_elapsed - _approachDur) / RecoilDur);
+        var r = Clamp01((T - _approachDur) / RecoilDur);
         return Vector2.Lerp(peak, fromTop, EaseOut(r));         // recul sur sa case
     }
 
@@ -293,19 +321,19 @@ public sealed class MeleeStrikeFx
             dir.Normalize();
         var contact = toTop - dir * (tile * LeapContactGap);   // s'arrête au contact de la pièce
 
-        if (_elapsed < _approachDur)
-            return Vector2.Lerp(fromTop, contact, EaseOut((float)(_elapsed / _approachDur)));
+        if (T < _approachDur)
+            return Vector2.Lerp(fromTop, contact, EaseOut((float)(T / _approachDur)));
 
         if (Killed && Advanced)
         {
             var advStart = _approachDur + DissolveDur;
-            if (_elapsed < advStart)
+            if (T < advStart)
                 return contact;                                 // maintien au contact pendant la dissolution
-            var k = Clamp01((_elapsed - advStart) / AdvanceDur);
+            var k = Clamp01((T - advStart) / AdvanceDur);
             return Vector2.Lerp(contact, toTop, EaseInOut(k));  // atterrit sur la case libérée
         }
 
-        var r = Clamp01((_elapsed - _approachDur) / RecoilDur);
+        var r = Clamp01((T - _approachDur) / RecoilDur);
         return Vector2.Lerp(contact, fromTop, EaseInOut(r));    // ressaute en arrière
     }
 
@@ -317,24 +345,24 @@ public sealed class MeleeStrikeFx
     public float AttackerJumpLift(float tile)
     {
         if (MoveOnly)   // déplacement rejoué : petit arc de saut, retombe à plat sur la case d'arrivée
-            return Arc(Clamp01(_elapsed / _total)) * tile * MoveHopFraction;
+            return Arc(Clamp01(T / _total)) * tile * MoveHopFraction;
 
         if (_style != AttackStyle.Leap)
             return 0f;
 
-        if (_elapsed < _approachDur)
-            return Arc((float)(_elapsed / _approachDur)) * tile * LeapJumpFraction;   // bond d'approche
+        if (T < _approachDur)
+            return Arc((float)(T / _approachDur)) * tile * LeapJumpFraction;   // bond d'approche
 
         if (Killed && Advanced)
         {
             var advStart = _approachDur + DissolveDur;
-            if (_elapsed < advStart)
+            if (T < advStart)
                 return 0f;                                       // posé au contact pendant la dissolution
-            var k = Clamp01((_elapsed - advStart) / AdvanceDur);
+            var k = Clamp01((T - advStart) / AdvanceDur);
             return Arc(k) * tile * LeapHopFraction;              // petit saut sur la case
         }
 
-        var r = Clamp01((_elapsed - _approachDur) / RecoilDur);
+        var r = Clamp01((T - _approachDur) / RecoilDur);
         return Arc(r) * tile * LeapJumpFraction;                 // ressaut en arrière
     }
 
@@ -349,16 +377,16 @@ public sealed class MeleeStrikeFx
     /// lancer qui accélère), ou −1 si aucun projectile n'est en vol (autre style, ou déjà arrivé à
     /// l'impact). À l'arrivée (fin de l'approche) l'impact prend le relais (dissolution / flash / dégâts).
     /// </summary>
-    public float ProjectileFlight => (_style is AttackStyle.Cast or AttackStyle.Shoot) && _elapsed < _approachDur
-        ? EaseIn((float)(_elapsed / _approachDur))
-        : -1f;
+    public float ProjectileFlight => (_style is AttackStyle.Cast or AttackStyle.Shoot) && !InLeadIn && T < _approachDur
+        ? EaseIn((float)(T / _approachDur))
+        : -1f;   // pendant l'ouverture, rien n'est encore lancé
 
     private static float EaseIn(float t) => t * t;
 
     /// <summary>Décalage de secousse d'écran (px entiers), s'éteignant après l'impact.</summary>
     public Point ShakeOffset(float magnitude)
     {
-        var t = _elapsed - _approachDur;
+        var t = T - _approachDur;
         if (t < 0 || t > ShakeDur)
             return Point.Zero;
         var decay = (float)(1 - t / ShakeDur);

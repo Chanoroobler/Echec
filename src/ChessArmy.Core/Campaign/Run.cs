@@ -197,8 +197,22 @@ public sealed class Run
     /// <summary>Inventaire du joueur (commandant inclus).</summary>
     public IReadOnlyList<UnitSpec> Roster => _roster;
 
-    /// <summary>Nombre de pions dans la réserve (roster HORS commandant), comparé à <see cref="ReserveLimit"/>.</summary>
-    public int ReserveCount => _roster.Count(u => !u.Essential);
+    /// <summary>
+    /// Vrai si ce gabarit est un pion de TROUPE : ni essentiel, ni le corps du commandant. La seconde
+    /// condition ne sert qu'après « Révolte » (arbre de la BRUTE), où le commandant déchu reste sur le
+    /// plateau sans pour autant devenir de la piétaille : il ne mange pas de place en réserve et ne compte
+    /// ni dans les paires de classes, ni dans les effectifs par domaine.
+    /// </summary>
+    private static bool IsTroop(UnitSpec spec) => !spec.Essential && !spec.CommanderBody;
+
+    /// <summary>
+    /// Nombre de pions COMPTÉS dans la réserve (roster hors meneurs), comparé à <see cref="ReserveLimit"/>.
+    /// Le pion EXCLUSIF en est exclu : la paysanne de la BRUTE vient d'un nœud d'arbre payé, pas d'un
+    /// recrutement, et elle ne doit ni prendre la place d'une recrue ni se perdre parce que la réserve est
+    /// pleine. Elle reste en revanche une unité de l'armée comme les autres pour les bonus
+    /// (cf. <see cref="IsTroop"/>, <see cref="DistinctPairs"/>).
+    /// </summary>
+    public int ReserveCount => _roster.Count(u => IsTroop(u) && !ExclusiveClasses.IsExclusive(u.UnitClass));
 
     /// <summary>Vrai si la réserve est pleine (<see cref="ReserveLimit"/> pions non-commandant).</summary>
     public bool IsReserveFull => ReserveCount >= ReserveLimit;
@@ -273,9 +287,21 @@ public sealed class Run
             .Where(n => _unlocked.Contains(n.Id) && n.Effects.Any(e => Affects(e, target, domaine)))
             .ToList();
 
-    /// <summary>Nœuds actifs sur ce gabarit précis (troupe, commandant ou second meneur).</summary>
-    public IReadOnlyList<CommandNode> ActiveNodesFor(UnitSpec spec) =>
-        ActiveNodesFor(TargetOf(spec), spec.Domaine);
+    /// <summary>
+    /// Nœuds actifs sur ce gabarit précis (troupe, commandant ou second meneur). Le pion EXCLUSIF y gagne en
+    /// plus les nœuds qui ne visent que lui (cf. <see cref="CommandEffectKind.ExclusiveTrait"/>).
+    /// </summary>
+    public IReadOnlyList<CommandNode> ActiveNodesFor(UnitSpec spec)
+    {
+        var nodes = ActiveNodesFor(TargetOf(spec), spec.Domaine);
+        if (!ExclusiveClasses.IsExclusive(spec.UnitClass))
+            return nodes;
+
+        var all = nodes.ToList();
+        all.AddRange(Tree.Nodes.Where(n => _unlocked.Contains(n.Id) && !all.Contains(n)
+            && n.Effects.Any(e => e.Kind == CommandEffectKind.ExclusiveTrait)));
+        return all;
+    }
 
     /// <summary>Vrai si <paramref name="effect"/> agit RÉELLEMENT sur la cible décrite (cf. <see cref="ActiveNodesFor"/>).</summary>
     private static bool Affects(CommandEffect effect, BuffTarget target, Domaine? domaine)
@@ -296,7 +322,7 @@ public sealed class Run
     /// Compte la réserve ET les pions déployés — le roster est le même objet dans les deux cas.
     /// </summary>
     public int DistinctPairs =>
-        _roster.Where(u => !u.Essential).Select(u => u.UnitClass).Distinct().Count() / 2;
+        _roster.Where(IsTroop).Select(u => u.UnitClass).Distinct().Count() / 2;
 
     /// <summary>
     /// Nombre d'unités du <paramref name="domaine"/> dans le roster HORS commandant (réserve ET pions
@@ -304,7 +330,7 @@ public sealed class Run
     /// (<see cref="CommandScale.PerDomaineUnit"/>), figé au roster de la phase de placement.
     /// </summary>
     public int DomaineUnitCount(Domaine domaine) =>
-        _roster.Count(u => !u.Essential && u.Domaine == domaine);
+        _roster.Count(u => IsTroop(u) && u.Domaine == domaine);
 
     /// <summary>
     /// Vrai si <paramref name="node"/> est achetable MAINTENANT : en placement, pas déjà pris, prérequis
@@ -312,10 +338,21 @@ public sealed class Run
     /// </summary>
     public bool CanUnlock(CommandNode node) =>
         Phase == RunPhase.Placement
-        && !IsUnlocked(node.Id)
+        && (!IsUnlocked(node.Id) || CanRebuy(node))
         && Tree.ById(node.Id) != null
         && Tree.PrerequisiteMet(node, _unlocked)
         && CommandPoints >= node.Cost;
+
+    /// <summary>
+    /// Vrai si ce nœud DÉJÀ ACHETÉ peut être repris au même prix : le seul cas est la recrue du pion
+    /// EXCLUSIF quand celui-ci est tombé. La Paysanne meurt comme n'importe quel pion, mais la branche ne
+    /// meurt pas avec elle — on peut se repayer une paysanne, qui revient AVEC les évolutions déjà achetées
+    /// (cf. <see cref="RecruitExclusive"/>) et un compteur de « Survivant » tout neuf.
+    /// </summary>
+    public bool CanRebuy(CommandNode node) =>
+        IsUnlocked(node.Id)
+        && node.Effects.Any(e => e.Kind == CommandEffectKind.RecruitExclusive)
+        && ExclusiveSpec == null;
 
     /// <summary>
     /// Offre des points de commandement HORS mission : sert au tutoriel, qui prête au joueur de quoi
@@ -437,15 +474,175 @@ public sealed class Run
         return CommanderDef.PairKillPoints;
     }
 
-    /// <summary>Achète <paramref name="node"/> (dépense ses points). Faux — et rien ne change — si <see cref="CanUnlock"/> est faux.</summary>
-    public bool Unlock(CommandNode node)
+    /// <summary>
+    /// Unités alliées TOMBÉES depuis le début de la run (le commandant exclu : sa chute finit la partie).
+    /// Compteur à vie, persisté : c'est lui qui porte les deux bonus de branche de la BRUTE — les PV max
+    /// (<see cref="CommandEffectKind.AllyDeathMaxHp"/>) et la puissance
+    /// (<see cref="CommandEffectKind.AllyDeathPower"/>, par tranche de <see cref="CommandEffect.AllyDeathStep"/>).
+    /// </summary>
+    public int AllyDeaths { get; private set; }
+
+    /// <summary>
+    /// Une unité alliée vient de tomber en combat : incrémente <see cref="AllyDeaths"/> et crédite la source
+    /// de points « sur perte » du commandant (<c>CommandeDef.AllyDeathPoints</c>, plafonnée à
+    /// <c>CommandeDef.AllyDeathCap</c> pertes par combat). À appeler AU MOMENT de la mort — le gain est
+    /// immédiat, comme le feedback. La BRUTE ne fait aucune différence entre une perte causée par l'ennemi
+    /// et un pion qu'elle a elle-même sacrifié : les deux paient.
+    /// Renvoie les points réellement crédités (0 si ce n'est pas la source de ce commandant).
+    /// </summary>
+    public int RegisterAllyDeath()
+    {
+        AllyDeaths++;
+        if (CommanderDef.AllyDeathPoints <= 0 || _allyDeathEvents >= CommanderDef.AllyDeathCap)
+            return 0;
+        _allyDeathEvents++;
+        CommandPoints += CommanderDef.AllyDeathPoints;
+        return CommanderDef.AllyDeathPoints;
+    }
+
+    /// <summary>Pertes déjà comptabilisées pour les points ce combat (remises à zéro à chaque combat).</summary>
+    private int _allyDeathEvents;
+
+    /// <summary>Pertes déjà comptabilisées ce combat (pour l'UI : « 2/2 »).</summary>
+    public int AllyDeathEventsThisCombat => _allyDeathEvents;
+
+    /// <summary>
+    /// Choix retenus sur les nœuds d'arbre à OPTIONS : id du nœud → asset choisi. Aujourd'hui les deux
+    /// évolutions du Paysan (cf. <see cref="CommandEffectKind.EvolveExclusive"/>). Persisté pour que l'UI
+    /// puisse rappeler ce qui a été pris, même après un rechargement.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> NodeChoices => _nodeChoices;
+
+    private readonly Dictionary<string, string> _nodeChoices = new();
+
+    /// <summary>Asset choisi à l'achat de ce nœud, ou <c>null</c> (nœud sans choix, ou pas encore acheté).</summary>
+    public string? ChoiceOf(string nodeId) => _nodeChoices.GetValueOrDefault(nodeId);
+
+    /// <summary>
+    /// Achète <paramref name="node"/> (dépense ses points) et applique ses effets IMMÉDIATS — recrue,
+    /// évolution du pion exclusif, « Révolte ». Faux — et rien ne change — si <see cref="CanUnlock"/> est
+    /// faux, ou si le nœud exige un choix (<see cref="CommandEffect.NeedsChoice"/>) que
+    /// <paramref name="choice"/> ne fournit pas.
+    /// </summary>
+    public bool Unlock(CommandNode node, string? choice = null)
     {
         if (!CanUnlock(node))
             return false;
+        if (node.Effects.Any(e => e.NeedsChoice)
+            && (choice == null || EvolutionChoices(node).All(c => c.Asset != choice)))
+            return false;
+
         CommandPoints -= node.Cost;
         _unlocked.Add(node.Id);
+        if (choice != null)
+            _nodeChoices[node.Id] = choice;
+        ApplyImmediateEffects(node, choice);
         return true;
     }
+
+    /// <summary>
+    /// Effets d'un nœud qui agissent UNE FOIS, à l'achat, sur le roster lui-même (les autres se lisent en
+    /// permanence dans <see cref="ActiveEffects"/>) : la recrue du pion exclusif, son évolution au choix, et
+    /// la passation de commandement de « Révolte ».
+    /// </summary>
+    private void ApplyImmediateEffects(CommandNode node, string? choice)
+    {
+        foreach (var effect in node.Effects)
+            switch (effect.Kind)
+            {
+                case CommandEffectKind.RecruitExclusive:
+                    RecruitExclusive(effect.Asset);
+                    break;
+                case CommandEffectKind.EvolveExclusive:
+                    ExclusiveSpec?.EvolveTo(ExclusiveClasses.Find(choice));
+                    break;
+                case CommandEffectKind.Revolte:
+                    Revolte(effect.Asset);
+                    break;
+            }
+    }
+
+    /// <summary>
+    /// Pion EXCLUSIF de la run (le Paysan de la BRUTE), ou <c>null</c> s'il n'a pas encore été recruté — ou
+    /// s'il est TOMBÉ : il meurt comme n'importe quel pion, et les nœuds d'arbre achetés sur lui n'ont alors
+    /// plus de prise. Un seul exemplaire par run : le nœud de recrue ne le redonne pas.
+    /// </summary>
+    public UnitSpec? ExclusiveSpec => _roster.FirstOrDefault(u => ExclusiveClasses.IsExclusive(u.UnitClass));
+
+    /// <summary>
+    /// Classes proposées au CHOIX par un nœud d'évolution : les <see cref="CommandEffect.Choices"/> figées
+    /// s'il en déclare, sinon — le cas normal — les ÉVOLUTIONS de la classe que le pion exclusif porte
+    /// AUJOURD'HUI. C'est ce qui enchaîne les deux nœuds : « armement » ouvre sur archer/épéiste, puis
+    /// « protection » n'ouvre plus que sur les feuilles de la branche retenue. Vide si le nœud n'est pas un
+    /// nœud à choix, ou si le pion n'est pas (ou plus) là. L'UI y lit les deux options à afficher.
+    /// </summary>
+    public IReadOnlyList<UnitClass> EvolutionChoices(CommandNode node)
+    {
+        var effect = node.Effects.FirstOrDefault(e => e.NeedsChoice);
+        if (effect == null || ExclusiveSpec is not { } spec)
+            return Array.Empty<UnitClass>();
+
+        return effect.Choices.Count > 0
+            ? effect.Choices.Select(ExclusiveClasses.Find).Where(c => c != null).Select(c => c!).ToList()
+            : spec.UnitClass.Evolutions;
+    }
+
+    /// <summary>
+    /// Ajoute le pion exclusif, s'il n'est pas déjà là. Il ARRIVE HORS PLAFOND de réserve : le nœud d'arbre a
+    /// été payé, il ne doit pas se perdre parce que la réserve est pleine.
+    ///
+    /// Sur un RACHAT (la précédente est tombée, cf. <see cref="CanRebuy"/>), la nouvelle arrive DÉJÀ ÉVOLUÉE :
+    /// les nœuds d'évolution achetés gardent leur effet, seul le compteur de « Survivant » repart de zéro —
+    /// c'est le pion qui se perd, pas les points dépensés au-dessus.
+    /// </summary>
+    private void RecruitExclusive(string? asset)
+    {
+        if (asset == null || ExclusiveSpec != null || ExclusiveClasses.Find(asset) is not { } cls)
+            return;
+        _roster.Add(new UnitSpec(ExclusiveClasses.DomaineOf(asset) ?? Domaine.Dame, EvolvedForm(cls)));
+    }
+
+    /// <summary>
+    /// Forme que porte le pion exclusif une fois appliqués les choix d'évolution DÉJÀ achetés : la plus
+    /// avancée d'entre elles (le tier le plus élevé du même arbre), ou <paramref name="baseClass"/> si aucun
+    /// nœud d'évolution n'a encore été pris. Les choix s'enchaînant (armement puis protection), le tier
+    /// suffit à désigner l'aboutissement sans rejouer l'ordre des achats.
+    /// </summary>
+    private UnitClass EvolvedForm(UnitClass baseClass)
+    {
+        var domaine = ExclusiveClasses.DomaineOf(baseClass.Asset);
+        var best = baseClass;
+        foreach (var (nodeId, choice) in _nodeChoices)
+        {
+            if (!_unlocked.Contains(nodeId) || ExclusiveClasses.Find(choice) is not { } cls)
+                continue;
+            if (ExclusiveClasses.DomaineOf(choice) == domaine && cls.Tier > best.Tier)
+                best = cls;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// « RÉVOLTE » : le pion exclusif prend le commandement. Il devient l'unité ESSENTIELLE (sa mort perd la
+    /// run) avec ses propres stats, et le commandant redevient un pion ORDINAIRE — mortel comme les autres,
+    /// mais qui GARDE les bonus de sa branche (cf. <see cref="UnitSpec.CommanderBody"/>). Sans effet si le
+    /// pion exclusif n'est pas (ou plus) là.
+    /// </summary>
+    private void Revolte(string? asset)
+    {
+        // Le pion doit être là (recruté par le nœud de niveau 1 de la même branche) et appartenir au même
+        // arbre exclusif que l'asset déclaré sur le nœud : sans lui, personne ne prend le commandement.
+        if (ExclusiveSpec is not { } paysan || ExclusiveClasses.DomaineOf(asset) == null
+            || ExclusiveClasses.DomaineOf(paysan.UnitClass.Asset) != ExclusiveClasses.DomaineOf(asset))
+            return;
+
+        foreach (var spec in _roster.Where(u => u.Essential && !u.Companion))
+            spec.SetRole(essential: false, commanderBody: spec.CommanderBody);
+        paysan.SetRole(essential: true, commanderBody: false);
+    }
+
+    /// <summary>Vrai si « Révolte » a eu lieu : un pion exclusif est devenu le meneur de la run.</summary>
+    public bool RevolteDone => ExclusiveSpec is { Essential: true };
 
     /// <summary>Total d'un effet de méta sur les nœuds achetés (slots de réserve/déploiement, recrues de fusion).</summary>
     private int TotalOf(CommandEffectKind kind) =>
@@ -654,17 +851,63 @@ public sealed class Run
     /// seule la scène le sait, absent → ces bonus valent 0.
     /// </summary>
     public CommandBuffs BuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount = null) =>
+        WithExclusiveTraits(spec, BaseBuffsFor(spec, deployedCount));
+
+    /// <summary>
+    /// Ajoute au passage les traits réservés au pion EXCLUSIF (nœuds <c>exclusiveTrait</c>) : ils ne visent ni
+    /// la troupe ni un meneur, mais ce pion-là et lui seul.
+    /// </summary>
+    private CommandBuffs WithExclusiveTraits(UnitSpec spec, CommandBuffs buffs)
+    {
+        if (!ExclusiveClasses.IsExclusive(spec.UnitClass))
+            return buffs;
+        foreach (var e in ActiveEffects.Where(x => x.Kind == CommandEffectKind.ExclusiveTrait))
+            if (e.Trait is { } trait)
+                buffs = buffs.PlusTrait(trait);
+        return buffs;
+    }
+
+    private CommandBuffs BaseBuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount) =>
         CommandBuffs.From(BuffEffects, TargetOf(spec), DistinctPairs, spec.Domaine, DomaineUnitCount,
-                deployedCount, EquippedItemCount, spec.Equipments.Count)
+                deployedCount, EquippedItemCount, spec.Equipments.Count, spec.UnitClass.Tier)
             // DUO : les PV max ramassés sur le terrain (trousses, sacoches) profitent aux DEUX meneurs, et
             // « Continue sans moi » lègue au survivant la moitié des stats du meneur tombé.
             .Plus(EquipStat.Hp, spec.Essential ? LeaderBonusHp + InheritedLeaderHp : 0)
-            .Plus(EquipStat.Damage, spec.Essential ? InheritedLeaderPower : 0);
+            .Plus(EquipStat.Damage, spec.Essential ? InheritedLeaderPower : 0)
+            // BRUTE : ce que les PERTES de la run ont fait gagner au corps du commandant — il grossit et
+            // s'endurcit à chaque pion tombé, y compris ceux qu'il a lui-même sacrifiés.
+            .Plus(EquipStat.Hp, spec.CommanderBody ? AllyDeathMaxHp * AllyDeaths : 0)
+            .Plus(EquipStat.Damage,
+                spec.CommanderBody ? AllyDeathPower * (AllyDeaths / CommandEffect.AllyDeathStep) : 0)
+            // « Survivant » : ce que le pion a gagné mission après mission, tant qu'il tient debout.
+            .Plus(EquipStat.Damage, SurvivantPower(spec))
+            .Plus(EquipStat.Hp, SurvivantPower(spec) * SurvivantHpPerStack);
 
-    /// <summary>Cible d'arbre d'un gabarit : le second meneur d'un DUO, le commandant, ou la troupe.</summary>
+    /// <summary>PV max gagnés par palier du trait « Survivant » (la puissance, elle, monte de 1 par palier).</summary>
+    public const int SurvivantHpPerStack = 2;
+
+    /// <summary>
+    /// Paliers de « Survivant » RÉELLEMENT actifs sur ce gabarit : 0 s'il ne porte pas le trait (un pion qui
+    /// l'aurait perdu ne doit pas garder ses bonus).
+    /// </summary>
+    private static int SurvivantPower(UnitSpec spec) =>
+        spec.UnitClass.Traits.Contains(Trait.Survivant) ? spec.SurvivantStacks : 0;
+
+    /// <summary>PV max gagnés par le corps du commandant à CHAQUE perte (nœud « chair à canon » de la Brute).</summary>
+    public int AllyDeathMaxHp => TotalOf(CommandEffectKind.AllyDeathMaxHp);
+
+    /// <summary>Puissance gagnée par le corps du commandant à chaque tranche de pertes (cf. <see cref="CommandEffect.AllyDeathStep"/>).</summary>
+    public int AllyDeathPower => TotalOf(CommandEffectKind.AllyDeathPower);
+
+    /// <summary>
+    /// Cible d'arbre d'un gabarit : le second meneur d'un DUO, le CORPS du commandant, ou la troupe. C'est
+    /// bien <see cref="UnitSpec.CommanderBody"/> et non « essentiel » qui décide : après « Révolte », le
+    /// commandant déchu garde ses bonus et le Paysan promu reste de la troupe (avec le bonus de tier 1 que
+    /// le nœud lui accorde).
+    /// </summary>
     private static BuffTarget TargetOf(UnitSpec spec) =>
         spec.Companion ? BuffTarget.Companion
-        : spec.Essential ? BuffTarget.Commander
+        : spec.CommanderBody ? BuffTarget.Commander
         : BuffTarget.Units;
 
     /// <summary>
@@ -841,6 +1084,9 @@ public sealed class Run
         _healEvents = 0;
         _pairKillEvents = 0;
         _satchelHpEvents = 0;
+        _allyDeathEvents = 0;
+        AllyDeaths = 0;             // BRUTE : les pertes de la campagne précédente ne la suivent pas
+        _nodeChoices.Clear();       // …ni les choix faits sur ses nœuds à options
         Phase = RunPhase.Placement;
     }
 
@@ -866,7 +1112,8 @@ public sealed class Run
         string? commanderId = null, Difficulty difficulty = Difficulty.Normal, RunStats? stats = null,
         IReadOnlyList<string>? aiFreshTier2 = null, IReadOnlyList<string>? aiFreshTier3 = null,
         bool ultimateReviveUsed = false, int leaderBonusHp = 0,
-        int inheritedLeaderPower = 0, int inheritedLeaderHp = 0, string? forcedMapName = null)
+        int inheritedLeaderPower = 0, int inheritedLeaderHp = 0, string? forcedMapName = null,
+        int allyDeaths = 0, IReadOnlyDictionary<string, string>? nodeChoices = null)
     {
         var run = new Run(seed, firstRun, difficulty: difficulty);
         run.UltimateReviveUsed = ultimateReviveUsed;
@@ -894,6 +1141,13 @@ public sealed class Run
             if (run.Tree.ById(id) != null)
                 run._unlocked.Add(id);
         run.CommandPoints = Math.Max(0, commandPoints);
+        // BRUTE : pertes cumulées (ses bonus en dépendent) et choix faits sur les nœuds à options. Le pion
+        // exclusif, lui, est déjà dans le roster restauré, évolutions comprises.
+        run.AllyDeaths = Math.Max(0, allyDeaths);
+        run._nodeChoices.Clear();
+        foreach (var (nodeId, choice) in nodeChoices ?? new Dictionary<string, string>())
+            if (run.Tree.ById(nodeId) != null)
+                run._nodeChoices[nodeId] = choice;
         run._rerolls = Math.Max(0, rerolls);
         run.CombatNumber = combatNumber;
         run.LegendaryPity = System.Math.Max(0, legendaryPity);
@@ -914,7 +1168,9 @@ public sealed class Run
         if (Commandes.ById(commanderId) is { } byId)
             return byId;
 
-        var asset = roster.FirstOrDefault(u => u.Essential)?.UnitClass.Asset;
+        // C'est le CORPS du commandant qui porte son asset : après « Révolte », l'unité essentielle est un
+        // Paysan, et lui chercher une CommandeDef ne donnerait rien.
+        var asset = roster.FirstOrDefault(u => u.CommanderBody)?.UnitClass.Asset;
         return Commandes.All.FirstOrDefault(c => c.Role == CommandeRole.Commander && c.BaseClass.Asset == asset)
                ?? Commandes.Commander;
     }
@@ -1285,7 +1541,10 @@ public sealed class Run
     public UnitSpec? RerollUnit(UnitSpec spec, Random rng, Func<string, bool> isSeen,
         List<Equipment>? loot = null)
     {
-        if (_rerolls <= 0 || spec.Essential || !_roster.Contains(spec))
+        // Le pion EXCLUSIF ne se relance pas non plus : il n'appartient à aucun pool de tirage, donc rien ne
+        // pourrait le remplacer — et on ne perd pas un personnage d'arbre sur un coup de dé.
+        if (_rerolls <= 0 || spec.Essential || ExclusiveClasses.IsExclusive(spec.UnitClass)
+            || !_roster.Contains(spec))
             return null;
 
         var pool = SeenClassesAtTier(spec.UnitClass.Tier, isSeen)
@@ -1337,8 +1596,13 @@ public sealed class Run
     /// Nombre de slots d'équipement de <paramref name="spec"/> : pour un pion, 1 + les nœuds « slot d'unité » ;
     /// pour le COMMANDANT, 0 tant qu'un nœud ne lui en donne pas (cf. <see cref="CommanderEquipSlots"/>) — le
     /// commandant ne s'équipe donc jamais par défaut.
+    ///
+    /// « Commandant » s'entend ici du CORPS du commandant (<see cref="UnitSpec.CommanderBody"/>) et du second
+    /// meneur d'un DUO, pas de « qui est essentiel » : après « Révolte », la paysanne promue garde ses slots de
+    /// pion (elle s'équipe toujours), et la Brute déchue n'en gagne pas.
     /// </summary>
-    public int SlotsFor(UnitSpec spec) => spec.Essential ? CommanderEquipSlots : UnitEquipSlots;
+    public int SlotsFor(UnitSpec spec) =>
+        spec.CommanderBody || spec.Companion ? CommanderEquipSlots : UnitEquipSlots;
 
     /// <summary>Slots d'équipement d'un PION : 1 de base, + les nœuds d'arbre « deuxième équipement ».</summary>
     public int UnitEquipSlots => 1 + TotalOf(CommandEffectKind.UnitEquipSlots);
@@ -1818,6 +2082,7 @@ public sealed class Run
         _healEvents = 0;   // idem pour le plafond de points « sur soin » (DUO)
         _pairKillEvents = 0;   // …et pour celui des mises à mort « à deux » (DUO)
         _satchelHpEvents = 0;   // …et le plafond de PV max « Barda » (DUO)
+        _allyDeathEvents = 0;   // …et celui des points « sur perte » (BRUTE)
     }
 
     /// <summary>Repasse en phase de placement SANS avancer le combat (fin du tutoriel → combat 1).</summary>
@@ -1836,7 +2101,7 @@ public sealed class Run
         // stats au survivant. Sans le nœud il n'arrive jamais ici — la run est déjà perdue.
         if (SoloSurvivor)
             AbsorbFallenLeaders(dead);
-        _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+        RemoveCasualties(dead);
         CommandPoints += MissionPoints;   // toute mission réussie, boss et spéciale comprises
 
         if (IsBossCombat && PhaseIndex >= EndAtPhase)   // boss de la phase de FIN → victoire (cf. EndAtPhase) ; les boss avant enchaînent
@@ -1852,6 +2117,35 @@ public sealed class Run
         else
             _draft.Clear();
         Phase = RunPhase.Recruitment;
+    }
+
+    /// <summary>
+    /// Retire du roster les pions tombés : PERMADEATH pour tout le monde, le pion EXCLUSIF compris. Le Paysan
+    /// de la BRUTE meurt comme les autres — ses évolutions d'arbre partent avec lui, et les nœuds achetés sur
+    /// lui deviennent lettre morte pour le reste de la run. Seul un pion ESSENTIEL échappe à ce retrait : sa
+    /// chute n'est pas une perte à éponger mais la fin de la partie (c'est le cas du Paysan promu par
+    /// « Révolte », dont la mort décide la mission).
+    /// </summary>
+    private void RemoveCasualties(HashSet<UnitSpec> dead) =>
+        _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+
+    /// <summary>
+    /// Crédite un palier de « Survivant » à chaque pion porteur du trait parmi <paramref name="survivors"/>
+    /// (les pions DÉPLOYÉS encore debout à la fin du combat) : +1 puissance et
+    /// +<see cref="SurvivantHpPerStack"/> PV max de plus au prochain spawn, cumulés sur toute la run. À
+    /// appeler après la clôture d'un combat gagné, comme <see cref="GrantEliteDeathReplacements"/>.
+    /// Renvoie le nombre de pions qui ont progressé (retour visuel éventuel).
+    /// </summary>
+    public int GrantSurvivantStacks(IEnumerable<UnitSpec> survivors)
+    {
+        var count = 0;
+        foreach (var spec in survivors)
+            if (spec.UnitClass.Traits.Contains(Trait.Survivant) && _roster.Contains(spec))
+            {
+                spec.SurvivantStacks++;
+                count++;
+            }
+        return count;
     }
 
     /// <summary>
@@ -1892,7 +2186,29 @@ public sealed class Run
         _draft.Clear();
         CombatNumber++;
         GrantPhaseRerollIfNewPhase();
+        GrantReserveThresholdRecruits();
         Phase = RunPhase.Placement;
+    }
+
+    /// <summary>
+    /// Nœud « la masse appelle la masse » (BRUTE) : au lancement d'une mission, si la réserve compte
+    /// STRICTEMENT PLUS de pions que le seuil du nœud, un pion de la classe de base du domaine visé arrive.
+    /// Réserve au plafond → la recrue est PERDUE (le nœud ne force jamais la place). Appelé sur les deux
+    /// chemins qui ouvrent une mission (<see cref="Recruit"/> et <see cref="SkipRecruitment"/>), donc une
+    /// fois par mission. Renvoie les recrues ajoutées.
+    /// </summary>
+    private IReadOnlyList<UnitSpec> GrantReserveThresholdRecruits()
+    {
+        var added = new List<UnitSpec>();
+        foreach (var e in ActiveEffects.Where(x => x.Kind == CommandEffectKind.ReserveThresholdRecruit))
+        {
+            if (ReserveCount <= e.Amount || IsReserveFull || e.Domaine is not { } domaine)
+                continue;
+            var recruit = new UnitSpec(domaine, Domaines.Of(domaine).BaseClass);
+            _roster.Add(recruit);
+            added.Add(recruit);
+        }
+        return added;
     }
 
     /// <summary>
@@ -1908,6 +2224,7 @@ public sealed class Run
         _draft.Clear();
         CombatNumber++;
         GrantPhaseRerollIfNewPhase();
+        GrantReserveThresholdRecruits();
         Phase = RunPhase.Placement;
     }
 
@@ -1924,7 +2241,7 @@ public sealed class Run
         // mais cette clôture-ci doit le rattraper si elle est atteinte par un autre chemin.
         if (SoloSurvivor)
             AbsorbFallenLeaders(dead);
-        _roster.RemoveAll(u => !u.Essential && dead.Contains(u));
+        RemoveCasualties(dead);
         CommandPoints += MissionPoints;
         _draft.Clear();
         Phase = RunPhase.Recruitment;
@@ -1997,6 +2314,7 @@ public sealed class Run
     public bool CanFuse(UnitSpec spec) =>
         Phase == RunPhase.Placement
         && !spec.Essential
+        && !ExclusiveClasses.IsExclusive(spec.UnitClass)   // le Paysan évolue par l'ARBRE, jamais par fusion
         && !spec.UnitClass.IsLeaf
         && spec.UnitClass.Tier < MaxUnitTier   // mode démo : coupe la fusion qui dépasserait le plafond (T2→T3)
         && CountFusable(spec) >= FusionSizeFor(spec);

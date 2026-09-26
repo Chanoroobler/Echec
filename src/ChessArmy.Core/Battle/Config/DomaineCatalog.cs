@@ -22,6 +22,13 @@ public static class DomaineCatalog
     public static IReadOnlyList<DomaineDef> FromJson(string json) =>
         Deserialize(json).Domaines.Select(ToDef).ToList();
 
+    /// <summary>
+    /// Construit les arbres de classes EXCLUSIVES (section « exclusives ») : même format qu'un domaine, mais
+    /// ces classes restent hors des tirages et des fusions (cf. <see cref="ExclusiveClasses"/>).
+    /// </summary>
+    public static IReadOnlyList<DomaineDef> ExclusivesFromJson(string json) =>
+        Deserialize(json).Exclusives.Select(ToDef).ToList();
+
     /// <summary>Construit les COMMANDANTS (role = Commander) et leurs COMPAGNONS (role = Companion, second
     /// meneur d'un commandant DUO) depuis le même JSON. Les boss ont leur propre chargeur
     /// (<see cref="BossesFromJson"/>) car leur format diffère (profils par phase).</summary>
@@ -67,7 +74,8 @@ public static class DomaineCatalog
             c.MissionPoints ?? Campaign.Run.PointsPerMission,
             c.HealPoints ?? 0, c.HealCap ?? int.MaxValue,
             c.PairKillPoints ?? 0, c.PairKillCap ?? int.MaxValue,
-            c.Companion, c.NoArmy ?? false);
+            c.Companion, c.NoArmy ?? false,
+            c.AllyDeathPoints ?? 0, c.AllyDeathCap ?? int.MaxValue);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

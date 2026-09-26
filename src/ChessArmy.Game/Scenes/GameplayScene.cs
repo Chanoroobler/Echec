@@ -55,7 +55,9 @@ public sealed class GameplayScene : Scene
     private const int InvIconSize = 64;
     private const int InvCols = 3;
     private const int InvGapX = 8;
-    private const int InvCellH = InvIconSize + 14; // portrait + libellé dessous
+    // Portrait + libellé dessous, sur DEUX lignes au besoin (cf. DrawPortraitName) : un nom long comme
+    // « PAYSANNE ARCHÈRE » ou « ARBALÉTRIER MONTÉ » ne tient pas en 72 px à la plus petite échelle de police.
+    private const int InvCellH = InvIconSize + 2 + 2 * PortraitNameLine + 4;
     private const int InvGapY = 6;
     private const int InvRowPitch = InvCellH + InvGapY;   // pas vertical d'une rangée à l'autre
     private const int InvHintReserve = 52;                // place gardée sous la grille pour les lignes d'aide
@@ -354,6 +356,20 @@ public sealed class GameplayScene : Scene
     // (comme l'orage). Sur un déplacement l'effet est instantané (cf. TryMoveWithFx), pas de report.
     private List<(Cell Cell, int Damage)>? _pendingImpactHits;  // ennemis frappés par l'« Impact » à l'attaque
     private List<(Cell Cell, int Damage)>? _pendingThorns;      // assaillants piqués par les « Épines » de leur cible
+    private List<(Cell Cell, int Damage)>? _pendingShield;      // alliés qui ont encaissé à la place du « Bouclier humain »
+
+    /// <summary>
+    /// « Bouclier humain » mis en scène pour l'attaque en cours : l'allié part de <see cref="From"/>, saute devant
+    /// le protégé (<see cref="Guarded"/>, du côté de l'assaillant en <see cref="AttackerCell"/>) pendant
+    /// l'ouverture de l'animation, encaisse le coup, puis regagne sa case de repos (<see cref="Rest"/> : la même,
+    /// sauf repli d'« Esquive ») — ou se dissout sur place s'il y est resté (<see cref="Killed"/>).
+    /// </summary>
+    private sealed record ShieldJump(Cell From, Cell Rest, Cell Guarded, Cell AttackerCell, Texture2D? Sprite, bool Killed);
+
+    private ShieldJump? _shieldJump;
+
+    /// <summary>Durée du saut de l'allié devant son commandant, AVANT que l'attaquant ne s'élance.</summary>
+    private const double ShieldJumpDuration = 0.32;
     private List<Cell>? _pendingImpactZone;                     // zone AoE de l'« Impact » à l'attaque (tremblement des tuiles), reportée à l'impact
     private Cell? _pendingGrenade;                              // « Grenade » : case visée, souffle reporté à l'impact
     private (Cell Center, float T)? _grenadeBlast;              // souffle EN COURS (avancement [0,1]) : anneau + flash
@@ -484,7 +500,21 @@ public sealed class GameplayScene : Scene
     private readonly List<UnitSpec> _fusionGroup = new();
     private Cell? _fusionCell;
     private int _fusionFocus;
-    private bool FusionOpen => _fusionGroup.Count > 0 && _fusionGroup.Count == FusionGroupTarget;
+    private bool FusionOpen =>
+        (_fusionGroup.Count > 0 && _fusionGroup.Count == FusionGroupTarget) || _treeEvolveNode != null;
+
+    /// <summary>
+    /// Nœud d'arbre à CHOIX en attente (évolution de la paysanne de la BRUTE), ou null. Tant qu'il est posé,
+    /// la popup de FUSION s'ouvre avec les options du nœud au lieu de celles d'une pile : c'est le même geste
+    /// — on désigne une forme parmi deux — donc la même modale, les mêmes cartes, les mêmes commandes et la
+    /// même animation d'évolution. Seules changent la source des options et ce que valide le choix
+    /// (<see cref="Run.Unlock(CommandNode, string?)"/> au lieu de <see cref="Run.Fuse(IReadOnlyList{UnitSpec}, UnitClass)"/>).
+    /// </summary>
+    private CommandNode? _treeEvolveNode;
+
+    /// <summary>Évolutions proposées par la popup : celles du nœud d'arbre en attente, sinon celles de la pile.</summary>
+    private IReadOnlyList<UnitClass> FusionOptions =>
+        _treeEvolveNode is { } node ? _run.EvolutionChoices(node) : _fusionGroup[0].UnitClass.Evolutions;
 
     /// <summary>Nombre de pions requis pour fusionner la classe de <paramref name="spec"/> (domaine + tier, cf. Amalgame).</summary>
     private int FusionSizeOf(UnitSpec spec) => _run.FusionSizeFor(spec);
@@ -517,6 +547,23 @@ public sealed class GameplayScene : Scene
     private Rectangle _evoSource;
     private UnitClass? _evoBase;
     private UnitClass? _evoResult;
+
+    // Sprite FIGÉ du pion « avant », quand la classe ne change pas mais son apparence si : « Révolte » fait de
+    // la paysanne la meneuse sans toucher à sa classe, seul son sprite passe à la version _chef. Null = le
+    // sprite de _evoBase, comme pour toute évolution.
+    private Texture2D? _evoBaseSprite;
+
+    // Pendant du précédent pour le pion « après » : le sprite de meneuse, que le rendu habituel tient caché
+    // jusqu'à la fin de la révélation (cf. _revolteRevealPending). Null = le sprite de _evoResult.
+    private Texture2D? _evoResultSprite;
+
+    // « Révolte » déjà mise en scène dans cette partie (vrai d'emblée sur une reprise où elle était acquise) :
+    // la grande révélation ne se joue qu'UNE fois, au moment où la paysanne prend le commandement.
+    private bool _revolteAnnounced;
+
+    // Nœud à choix demandé pendant que la révélation de « Révolte » se jouait : présenté à la fin de celle-ci.
+    private CommandNode? _pendingTreeChoice;
+
     private bool _evoSparked;             // gerbe au flash (une seule fois)
     private bool EvoPlaying => _evoPhase != EvoPhase.None;
 
@@ -1160,6 +1207,7 @@ public sealed class GameplayScene : Scene
             _run = new Run(firstRun: firstRun, commander: null, difficulty: _chosenDifficulty);
         }
         _initialRun = null;                // ne sert qu'au tout premier chargement de la scène
+        _revolteAnnounced = _run.RevolteDone;   // reprise après « Révolte » : la révélation a déjà eu lieu
         // Priorité de tirage du boss de dernière phase : le jeu privilégie un boss qui débloquerait un
         // commandant encore verrouillé (cf. Bosses.AssignForRun). À poser AVANT tout combat de boss.
         _run.SetUnlockedCommanders(Context.Saves.UnlockedCommanders());
@@ -1258,6 +1306,7 @@ public sealed class GameplayScene : Scene
         _trousseKillsSeen = null;   // DUO : les trousses posées sur mise à mort se recomptent par combat
         _commandPointHold = 0f;     // aucune retenue de clôture reportée du combat précédent
         _pairKillsSeen = 0;         // DUO : le journal des morts est neuf (nouveau Match), on le relit de zéro
+        _allyDeathsSeen = 0;        // BRUTE : idem pour le suivi des pertes
         _recrueReveals.Clear();
         _recrueAdded = false;
         _recrueFlying = false;
@@ -1316,6 +1365,8 @@ public sealed class GameplayScene : Scene
         _pendingGrenade = null;
         _grenadeBlast = null;
         _pendingThorns = null;
+        _pendingShield = null;
+        _shieldJump = null;
         _pendingReculeSlam = null;
         _victimMove = null;
         _slideGlide.Clear();
@@ -1495,6 +1546,8 @@ public sealed class GameplayScene : Scene
         _pendingGrenade = null;
         _grenadeBlast = null;
         _pendingThorns = null;
+        _pendingShield = null;
+        _shieldJump = null;
         _pendingReculeSlam = null;
         _victimMove = null;
         _slideGlide.Clear();
@@ -2158,6 +2211,42 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Resynchronise la RÉSERVE avec le roster après une modification venue de l'arbre de commandement.
+    /// C'est la seule chose qui puisse changer la composition de l'armée EN PLEIN PLACEMENT : la réserve est
+    /// figée au début de la phase (cf. <c>SetupPlacement</c>), donc sans cette passe un pion offert par un
+    /// nœud n'apparaîtrait nulle part avant la mission suivante. Deux cas, tous deux de la BRUTE :
+    /// <list type="bullet">
+    /// <item>le nœud « la paysanne » AJOUTE un pion au roster : il rejoint la réserve ;</item>
+    /// <item>« Révolte » change de meneur : la paysanne promue quitte la réserve pour le plateau (un meneur
+    /// entre toujours par le plateau) et le commandant déchu, devenu pion ordinaire, y reste simplement.</item>
+    /// </list>
+    /// Sans effet quand rien n'a bougé, donc sûre à appeler à chaque fermeture de l'arbre.
+    /// </summary>
+    private void SyncReserveWithRoster()
+    {
+        if (_run == null)
+            return;
+
+        // Un meneur qui n'est pas encore sur le plateau y entre, sur la première case de déploiement libre.
+        // Plateau saturé (cas tordu) : il reste en réserve plutôt que de disparaître, et le joueur le posera.
+        foreach (var leader in _run.Roster.Where(u => u.Essential).ToList())
+        {
+            if (_playerSpec.ContainsValue(leader))
+                continue;
+            var spot = PlayerDeployCells().FirstOrDefault(c => _match.UnitAt(c) == null, new Cell(-1, -1));
+            if (spot.Column >= 0)
+                PlacePlayer(leader, spot);
+        }
+
+        // La réserve = les pions du roster qui ne sont pas posés sur le plateau.
+        _pending.RemoveAll(s => !_run.Roster.Contains(s) || _playerSpec.ContainsValue(s));
+        foreach (var spec in _run.Roster)
+            if (!_pending.Contains(spec) && !_playerSpec.ContainsValue(spec))
+                _pending.Add(spec);
+        SortReserve(_pending);
+    }
+
+    /// <summary>
     /// Ré-instancie LE pion posé du gabarit <paramref name="spec"/> (même case), pour resynchroniser son
     /// <c>Unit.Equipment</c> après un changement en phase Équipement → la carte tooltip se met à jour en direct.
     /// </summary>
@@ -2529,9 +2618,30 @@ public sealed class GameplayScene : Scene
                 canClose: _tutorial == null);   // en tuto, on ne sort qu'après avoir acheté un nœud
             if (!CommandTreeOpen)
             {
+                SyncReserveWithRoster();         // BRUTE : un nœud peut AVOIR AJOUTÉ un pion (la paysanne) ou changé de meneur
                 RespawnPlayerUnitsFromSpecs();   // nœuds achetés : les pions posés reprennent les bons bonus
                 ApplyTreeTuningToMatch();        // …et le moteur ses réglages (Roque, renforcements de traits, charge)
                 RefreshLootObjects();            // DUO : « trousse de soin » / « sacoche » garnissent la map EN COURS
+
+                // « RÉVOLTE » : la paysanne vient de prendre le commandement (elle est déjà sur le plateau,
+                // cf. SyncReserveWithRoster) → grande révélation, de sa forme ordinaire à celle de meneuse.
+                var revolteNow = !_revolteAnnounced && _run.RevolteDone;
+                if (revolteNow)
+                    StartRevolteReveal();
+
+                // Nœud à CHOIX cliqué : l'arbre s'est refermé pour laisser place à la popup de FUSION, qui
+                // présente les deux formes. Annuler rouvre l'arbre ; valider achète et joue l'évolution.
+                // Si la révélation de « Révolte » vient de démarrer, le choix attend qu'elle soit finie.
+                if (_commandTree.TakeRequestedChoice() is { } choiceNode)
+                {
+                    if (revolteNow)
+                        _pendingTreeChoice = choiceNode;
+                    else
+                    {
+                        _treeEvolveNode = choiceNode;
+                        _fusionFocus = 0;
+                    }
+                }
             }
             return;
         }
@@ -3203,6 +3313,8 @@ public sealed class GameplayScene : Scene
             var acts = new List<Cell>(_attackTargets);
             acts.AddRange(_healTargets);
             acts.AddRange(_satchelTargets);
+            acts.AddRange(_throwTargets);   // BRUTE : cibles du jet (2e temps de « Chair à canon »)
+            acts.AddRange(_throwAllies);    // …et alliés empoignables (1er temps)
             acts.AddRange(_legalMoves);
             if (acts.Count > 0) return acts;
         }
@@ -4358,13 +4470,89 @@ public sealed class GameplayScene : Scene
     /// <summary>Annule la pile/popup : pièces rendues à leur origine (cf. <see cref="DisbandFusionToOrigin"/>).</summary>
     private void CancelFusion()
     {
+        if (_treeEvolveNode != null)
+        {
+            // Nœud d'arbre : rien n'a été dépensé. On rend la main à l'arbre, d'où le joueur venait.
+            _treeEvolveNode = null;
+            Context.Sounds.Play("menu_close");
+            _commandTree.Open();
+            return;
+        }
         DisbandFusionToOrigin();
         Context.Sounds.Play("menu_close");
+    }
+
+    /// <summary>
+    /// Valide la forme choisie sur un nœud d'arbre à CHOIX : l'achat se fait à ce moment-là (c'est le choix
+    /// qui déclenche la dépense), la paysanne évolue en place, et l'animation d'évolution se joue depuis
+    /// l'endroit où elle se trouve — son portrait de réserve ou sa case sur le plateau. Contrairement à une
+    /// fusion, il n'y a rien à DÉCOUVRIR : le joueur a vu les deux formes en clair et a choisi. Pas de grande
+    /// révélation donc, seulement la transformation COURTE sur place, et aucune trace dans la découverte.
+    /// </summary>
+    private void ConfirmTreeEvolve(int optionIndex)
+    {
+        var node = _treeEvolveNode!;
+        var options = _run.EvolutionChoices(node);
+        _treeEvolveNode = null;
+        if (_run.ExclusiveSpec is not { } paysanne || optionIndex < 0 || optionIndex >= options.Count)
+            return;
+
+        var baseClass = paysanne.UnitClass;
+        var choice = options[optionIndex];
+        var source = SourceRectOf(paysanne);   // relevé AVANT l'évolution : c'est là que la pièce se trouve
+        if (!_run.Unlock(node, choice.Asset))
+        {
+            Context.Sounds.Play("menu_close");   // achat refusé entre-temps (points, prérequis) : retour à l'arbre
+            _commandTree.Open();
+            return;
+        }
+
+        StartEvolutionAnimation(baseClass, choice, longVersion: false, source);
+    }
+
+    /// <summary>
+    /// Gabarit FICTIF de <paramref name="spec"/> sous la forme <paramref name="form"/> : même vécu (paliers de
+    /// « Survivant », mises à mort), même équipement, même rôle — seule la classe change. Sert uniquement à
+    /// l'aperçu d'un choix d'évolution : calculer les bonus sur la forme VISÉE plutôt que sur l'actuelle tient
+    /// compte de tout ce qui dépend de la classe (traits, tier). Jamais ajouté au roster.
+    /// </summary>
+    private static UnitSpec PreviewAs(UnitSpec spec, UnitClass form)
+    {
+        var preview = new UnitSpec(spec.Domaine, form)
+        {
+            Kills = spec.Kills,
+            SurvivantStacks = spec.SurvivantStacks,
+        };
+        preview.SetRole(spec.Essential, spec.CommanderBody);
+        foreach (var item in spec.Equipments)
+            preview.AddEquipment(item);
+        return preview;
+    }
+
+    /// <summary>
+    /// Emplacement à l'écran d'un pion du joueur : sa case s'il est posé, sinon son portrait de réserve.
+    /// Point de départ (et de retour) de l'animation d'évolution.
+    /// </summary>
+    private Rectangle SourceRectOf(UnitSpec spec)
+    {
+        var posed = _playerSpec.FirstOrDefault(kv => kv.Value == spec).Key;
+        if (posed != null && _match.CellOf(posed) is { } cell)
+        {
+            var lay = BuildLayout();
+            var top = lay.CellToScreen(cell.Column, cell.Row);
+            return new Rectangle((int)top.X, (int)top.Y, lay.TileSize, lay.TileSize);
+        }
+        return PanelCardRect(System.Math.Max(0, _pending.IndexOf(spec)));
     }
 
     /// <summary>Valide l'évolution choisie : Run.Fuse mute le roster, l'unité évoluée prend la place de la pile.</summary>
     private void ConfirmFusion(int optionIndex)
     {
+        if (_treeEvolveNode != null)
+        {
+            ConfirmTreeEvolve(optionIndex);
+            return;
+        }
         var baseClass = _fusionGroup[0].UnitClass;
         var options = baseClass.Evolutions;
         if (optionIndex < 0 || optionIndex >= options.Count)
@@ -4408,9 +4596,32 @@ public sealed class GameplayScene : Scene
         _fusionCell = null;
     }
 
+    /// <summary>
+    /// « RÉVOLTE » mise en scène : la GRANDE révélation d'une fusion, de la paysanne ordinaire à la paysanne
+    /// MENEUSE. Sa classe ne change pas — seul son sprite passe à la version <c>_chef</c> — d'où le sprite
+    /// « avant » figé ici, avant que le rendu ne bascule sur la meneuse. Jouée une fois par partie, depuis
+    /// sa case (elle vient d'être posée sur le plateau en prenant le commandement).
+    /// </summary>
+    private void StartRevolteReveal()
+    {
+        _revolteAnnounced = true;
+        if (_run.ExclusiveSpec is not { } leader)
+            return;
+        var cls = leader.UnitClass;
+        StartEvolutionAnimation(cls, cls, longVersion: true, SourceRectOf(leader));
+        _evoBaseSprite = OrdinarySprite(cls);
+        _evoResultSprite = ChiefSpriteFor(cls, "front") ?? _evoBaseSprite;
+        _revolteRevealPending = true;   // la meneuse reste cachée partout ailleurs jusqu'à la fin de la révélation
+    }
+
+    /// <summary>Sprite ORDINAIRE (face) d'une classe, sans la version de meneuse que « Révolte » lui donne.</summary>
+    private Texture2D? OrdinarySprite(UnitClass cls) => SpriteFor($"{cls.Asset}_front") ?? SpriteFor(cls.Asset);
+
     /// <summary>Lance l'animation d'évolution (base → évolution), longue/dramatique ou courte.</summary>
     private void StartEvolutionAnimation(UnitClass baseClass, UnitClass evolution, bool longVersion, Rectangle source)
     {
+        _evoBaseSprite = null;   // cas général : la base et l'évolution se dessinent avec leur propre sprite
+        _evoResultSprite = null;
         _evoBase = baseClass;
         _evoResult = evolution;
         _evoLong = longVersion;
@@ -4475,6 +4686,19 @@ public sealed class GameplayScene : Scene
         _evoPhase = EvoPhase.None;
         _evoBase = null;
         _evoResult = null;
+        _evoBaseSprite = null;
+        _evoResultSprite = null;
+        // Fin de la révélation de « Révolte » : la meneuse peut maintenant se montrer sur le plateau et en réserve.
+        _revolteRevealPending = false;
+
+        // Un nœud à choix cliqué dans la même visite de l'arbre que « Révolte » attendait la fin de sa
+        // révélation : on le présente maintenant.
+        if (_pendingTreeChoice is { } pending)
+        {
+            _pendingTreeChoice = null;
+            _treeEvolveNode = pending;
+            _fusionFocus = 0;
+        }
         // La fusion a changé la composition du roster : les bonus « par paire de classes distinctes » de
         // l'arbre bougent, donc les pions déjà posés doivent reprendre leurs stats (le combat, lui, les
         // recalcule de toute façon au lancement).
@@ -4485,7 +4709,12 @@ public sealed class GameplayScene : Scene
     /// <summary>Choix d'évolution (souris/clavier/manette) ; B/Échap/clic droit ou bouton Annuler ferment.</summary>
     private void UpdateFusionPopup()
     {
-        var count = _fusionGroup[0].UnitClass.Evolutions.Count;
+        var count = FusionOptions.Count;
+        if (count == 0)
+        {
+            CancelFusion();   // nœud d'arbre dont le pion a disparu entre-temps : rien à proposer
+            return;
+        }
         _fusionFocus = System.Math.Clamp(_fusionFocus, 0, count - 1);
 
         // Annulation : B (manette) ou clic droit. (Échap est géré en amont dans Update.)
@@ -4603,6 +4832,7 @@ public sealed class GameplayScene : Scene
                 CheckRecrueObjects();
             TrackTrousseKills();   // DUO : une mise à mort de l'artisan lance une petite trousse de soin
             TrackPairKills();      // DUO : un mort frappé par les DEUX meneurs rapporte un point (plafonné par combat)
+            TrackAllyDeaths();     // BRUTE : chaque pion tombé rapporte un point et grossit son commandant
             TrackFallenLeaders();  // DUO : « Continue sans moi » — le survivant hérite DÈS la chute de l'autre
             CheckChests();         // ouverture d'un coffre si un allié vient d'entrer dessus
             UpdateChuteTiles();    // arme les tuiles « chute » occupées ; effondre celles qu'un pion vient de quitter
@@ -4773,6 +5003,7 @@ public sealed class GameplayScene : Scene
         {
             _pendingSlamDissolve = null;
             _victimMove = null;                     // pas de glissement pour un plaquage (la cible est restée sur place)
+            _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
             _fx.BeginDissolve(sd.Cell, sd.Sprite);
             _impactHandled = true;                   // dissolution pure : aucun chiffre/impact à traiter
             return;
@@ -4784,6 +5015,7 @@ public sealed class GameplayScene : Scene
         {
             _pendingPierceDissolve = null;
             _victimMove = null;
+            _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
             _fx.BeginDissolve(pd.Cell, pd.Sprite);
             _impactHandled = true;
             return;
@@ -5513,6 +5745,7 @@ public sealed class GameplayScene : Scene
                 var rewards = RollProtectedPaysanRecruits();
                 _run.CompleteSpecialNoDraft(casualties);   // retire les pertes, va à l'écran post-combat
                 GrantEliteReplacements(casualties);        // nœud « relève » : un T1 par unité tier 2+ tombée
+                GrantSurvivantStacks(casualties);          // BRUTE : un palier de « Survivant » aux rescapés
                 GrantCommanderHitPoints();                 // source « sur coup reçu » (commandant Lancier)
                 _protectReward = rewards.Count > 0 ? rewards : null;   // 0 sauvé → rien à montrer (auto-skip)
                 _rewardKeep.Clear();
@@ -5524,6 +5757,7 @@ public sealed class GameplayScene : Scene
             {
                 _run.CompleteCombat(casualties, _enemyKillOrder);   // « libérer » : draft normal
                 GrantEliteReplacements(casualties);
+                GrantSurvivantStacks(casualties);
                 GrantCommanderHitPoints();
             }
             FinishBattleEnd();
@@ -5541,6 +5775,7 @@ public sealed class GameplayScene : Scene
             UnlockBossCommanderIfFinal();   // battre le boss de dernière phase débloque son commandant lié
             _run.CompleteCombat(casualties, _enemyKillOrder);
             GrantEliteReplacements(casualties);
+            GrantSurvivantStacks(casualties);
             GrantCommanderHitPoints();
         }
         FinishBattleEnd();
@@ -5549,7 +5784,7 @@ public sealed class GameplayScene : Scene
     /// <summary>
     /// Battre le boss de la DERNIÈRE phase (cf. <see cref="Run.IsFinalBoss"/>) débloque le commandant que ce
     /// boss porte (<see cref="BossDef.UnlocksCommander"/>), mémorisé dans le profil (méta-progression).
-    /// Sans effet si la mission n'est pas ce boss ou si le boss ne débloque personne (ex. la Brute). Idempotent.
+    /// Sans effet si la mission n'est pas ce boss ou si le boss ne débloque personne. Idempotent.
     /// </summary>
     private void UnlockBossCommanderIfFinal()
     {
@@ -5630,6 +5865,17 @@ public sealed class GameplayScene : Scene
     /// Appelé APRÈS la complétion (les pertes retirées ont libéré la place). Voir <see cref="Run.GrantEliteDeathReplacements"/>.</summary>
     private void GrantEliteReplacements(IReadOnlyList<UnitSpec> casualties) =>
         _run.GrantEliteDeathReplacements(casualties, new System.Random(), Context.Saves.IsUnitDiscovered);
+
+    /// <summary>
+    /// Trait « Survivant » (le Paysan de la BRUTE) : un palier de plus pour chaque porteur DÉPLOYÉ qui a tenu
+    /// jusqu'au bout du combat. Une mission passée en réserve ne compte pas — c'est le terrain qui endurcit.
+    /// Appelé à la clôture d'un combat gagné, comme <see cref="GrantEliteReplacements"/>.
+    /// </summary>
+    private void GrantSurvivantStacks(IReadOnlyList<UnitSpec> casualties)
+    {
+        var survivors = _playerSpec.Values.Where(s => !casualties.Contains(s)).Distinct().ToList();
+        _run.GrantSurvivantStacks(survivors);
+    }
 
     /// <summary>
     /// Source de points « sur coup reçu » (commandant Lancier) : crédite la <see cref="Run"/> selon le nombre
@@ -6083,6 +6329,70 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
+    /// Nombre d'entrées de <see cref="Match.DeathLog"/> déjà examinées pour les pertes alliées (BRUTE).
+    /// </summary>
+    private int _allyDeathsSeen;
+
+    /// <summary>
+    /// PERTES ALLIÉES (commandant BRUTE) : chaque pion du joueur qui tombe incrémente le compteur de la run
+    /// (qui porte ses PV max et sa puissance, cf. <see cref="Run.AllyDeaths"/>) et rapporte
+    /// <c>CommandeDef.AllyDeathPoints</c>. Peu importe la cause : ennemi, piège, ou la Brute elle-même qui
+    /// sacrifie un des siens. Les MENEURS ne comptent pas — leur chute finit la partie.
+    ///
+    /// Même lecture du JOURNAL DES MORTS que <see cref="TrackPairKills"/>, avec son propre index : une mort
+    /// n'est examinée qu'une fois, quel que soit le chemin qui l'a tuée. Appelée combat POSÉ, pour que le
+    /// « +1 » jaillisse après l'animation du coup et non pendant.
+    /// </summary>
+    private void TrackAllyDeaths()
+    {
+        var log = _match.DeathLog;
+        if (_allyDeathsSeen >= log.Count)
+            return;
+
+        for (; _allyDeathsSeen < log.Count; _allyDeathsSeen++)
+        {
+            var (where, dead) = log[_allyDeathsSeen];
+            if (dead.Faction != Faction.Player || dead.IsEssential)
+                continue;
+            var points = _run.RegisterAllyDeath();
+            if (points > 0)
+                SpawnCommandPointFx(where, points, new Vector2(0f, -0.6f));
+            GrowCommanderBodyOnLoss();
+        }
+    }
+
+    /// <summary>
+    /// « Chair et sang » et « Sur leurs corps » (BRUTE) appliqués SÉANCE TENANTE : la perte qui vient d'être
+    /// comptée grossit tout de suite le corps du commandant posé — +PV max à chaque perte, +puissance à chaque
+    /// tranche de <see cref="CommandEffect.AllyDeathStep"/>. Sans ça le gain ne serait que comptable : les
+    /// buffs d'arbre sont figés à la pose, il n'arriverait qu'au combat SUIVANT.
+    ///
+    /// La run garde le total (<see cref="Run.AllyDeaths"/>) : au respawn, c'est elle qui le rend via les buffs,
+    /// et les bonus posés ici vivent sur une unité neuve à chaque combat — aucun double compte. À appeler
+    /// juste APRÈS <see cref="Run.RegisterAllyDeath"/>, une fois par perte.
+    /// </summary>
+    private void GrowCommanderBodyOnLoss()
+    {
+        if (_playerSpec.FirstOrDefault(kv => kv.Value.CommanderBody).Key is not { IsAlive: true } body
+            || _match.CellOf(body) is not { } cell)
+            return;
+
+        var hp = _run.AllyDeathMaxHp;
+        if (hp > 0)
+        {
+            body.GainMaxHp(hp);
+            _damagePopups.SpawnText(cell, Loc.T("fx.max_hp", hp), Palette.Yellow1, new Vector2(0f, -0.5f));
+        }
+
+        var power = _run.AllyDeathPower;
+        if (power > 0 && _run.AllyDeaths % CommandEffect.AllyDeathStep == 0)   // une tranche vient d'être bouclée
+        {
+            body.GainInheritedPower(power);
+            _damagePopups.SpawnText(cell, Loc.T("fx.power", power), Palette.Yellow1, new Vector2(0f, -0.9f));
+        }
+    }
+
+    /// <summary>
     /// Nœud « atelier de campagne » : chaque MISE À MORT du commandant (l'artisan meurtrier) envoie une PETITE
     /// TROUSSE DE SOIN sur une case libre — la plus proche de lui. Suit son compteur de kills du combat : une
     /// trousse par mise à mort nouvelle. Sans effet si le nœud n'est pas acheté ou si le plateau est plein.
@@ -6425,16 +6735,27 @@ public sealed class GameplayScene : Scene
             if (Context.Input.WasConfirmPressed) { CombatActAt(_cursor); return; }
             if (Context.Input.WasCancelPressed && _selected is not null)
             {
-                ClearSelection();
+                // « Chair à canon » : B repose d'abord l'allié empoigné, sans lâcher le porteur.
+                if (_throwAlly is not null && _selected is { } carrying)
+                    RefreshThrowAllies(carrying);
+                else
+                    ClearSelection();
                 Context.Sounds.Play("unit_deselect");
                 return;
             }
         }
 
-        // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place).
+        // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place). « Chair à canon » :
+        // un allié DÉJÀ empoigné est d'abord reposé — on revient au choix du projectile sans tout perdre.
         if (Context.Input.WasRightClicked && (_selected is not null || _combatDragFrom is not null))
         {
             _combatDragFrom = null;
+            if (_throwAlly is not null && _selected is { } thrower)
+            {
+                RefreshThrowAllies(thrower);
+                Context.Sounds.Play("unit_deselect");
+                return;
+            }
             ClearSelection();
             Context.Sounds.Play("unit_deselect");
             return;
@@ -6470,6 +6791,17 @@ public sealed class GameplayScene : Scene
             EndPlayerAction();
             return;
         }
+        if (_selected is { } selT && _throwTargets.Contains(cell))   // « Chair à canon » : le jet part
+        {
+            ResolveThrow(selT, cell);
+            EndPlayerAction();
+            return;
+        }
+        if (_selected is { } selA && _throwAllies.Contains(cell))    // « Chair à canon » : on empoigne
+        {
+            CarryForThrow(selA, cell);
+            return;
+        }
         if (_selected is { } sel2 && _legalMoves.Contains(cell))
         {
             TryMoveWithFx(sel2, cell);
@@ -6489,6 +6821,7 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _attackReach);
             _match.HealTargets(cell, _healTargets);
             RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
+            RefreshThrowAllies(cell);                   // BRUTE : alliés empoignables (« Chair à canon »)
             FilterTutorialActions();
 
             // Manette : le curseur se pose d'emblée sur l'ennemi attaquable le PLUS PROCHE — attaquer ne
@@ -6522,6 +6855,7 @@ public sealed class GameplayScene : Scene
 
         _healTargets.Clear();     // le tuto n'a pas de soigneur : aucun soin proposé pendant les leçons
         _satchelTargets.Clear();  // ni sacoche : le tuto ne joue pas le commandant DUO
+        ClearThrow();             // ni lancer : le tuto ne joue pas la BRUTE
 
         switch (t.Step)
         {
@@ -6610,6 +6944,19 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        if (_selected is not null && _throwTargets.Contains(cell))   // « Chair à canon » : le jet part
+        {
+            ResolveThrow(_selected.Value, cell);
+            EndPlayerAction();
+            return;
+        }
+
+        if (_selected is not null && _throwAllies.Contains(cell))    // « Chair à canon » : on empoigne l'allié
+        {
+            CarryForThrow(_selected.Value, cell);
+            return;
+        }
+
         if (_selected is not null && _legalMoves.Contains(cell))
         {
             var from = _selected.Value;
@@ -6631,6 +6978,7 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
             _match.HealTargets(cell, _healTargets);     // trait « Soin » : alliés blessés ciblables
             RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
+            RefreshThrowAllies(cell);                   // BRUTE : alliés empoignables (« Chair à canon »)
             FilterTutorialActions();
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
@@ -6671,6 +7019,16 @@ public sealed class GameplayScene : Scene
         {
             ResolveSatchelPull(from, cell);
             EndPlayerAction();
+        }
+        else if (_throwTargets.Contains(cell))      // glissé sur un ennemi à portée : le jet part
+        {
+            ResolveThrow(from, cell);
+            EndPlayerAction();
+        }
+        else if (_throwAllies.Contains(cell))       // glissé sur un allié au contact : on l'empoigne
+        {
+            CarryForThrow(from, cell);
+            TriggerLanding(from);
         }
         else if (_legalMoves.Contains(cell))
         {
@@ -7472,7 +7830,81 @@ public sealed class GameplayScene : Scene
         _attackReach.Clear();
         _healTargets.Clear();
         _satchelTargets.Clear();
+        ClearThrow();
         _combatDragFrom = null;
+    }
+
+    // ── « CHAIR À CANON » (arbre de la BRUTE) : le lancer en deux temps ───────────────────────────
+    // 1. Le porteur sélectionné met en évidence les alliés AU CONTACT (_throwAllies) — comme le trait
+    //    « Soin » met en évidence les alliés blessés, cliquer l'un d'eux l'EMPOIGNE au lieu de le
+    //    sélectionner. 2. Les ennemis à portée deviennent alors les cibles du jet (_throwTargets).
+    // Annuler (clic droit / B) repose le pion sans consommer le tour.
+
+    /// <summary>Alliés empoignables par le porteur sélectionné (vide hors « Chair à canon »).</summary>
+    private readonly List<Cell> _throwAllies = new();
+
+    /// <summary>Allié actuellement EMPOIGNÉ (2e temps du lancer), ou null.</summary>
+    private Cell? _throwAlly;
+
+    /// <summary>Ennemis visables par le jet une fois l'allié empoigné.</summary>
+    private readonly List<Cell> _throwTargets = new();
+
+    private void ClearThrow()
+    {
+        _throwAllies.Clear();
+        _throwTargets.Clear();
+        _throwAlly = null;
+    }
+
+    /// <summary>Recalcule les alliés empoignables depuis <paramref name="from"/> (1er temps du lancer).</summary>
+    private void RefreshThrowAllies(Cell from)
+    {
+        ClearThrow();
+        if (_match.UnitAt(from) is not { Faction: Faction.Player } thrower
+            || !thrower.HasTrait(Trait.ChairACanon))
+            return;
+        // Pas de cible à portée : inutile de proposer d'empoigner qui que ce soit.
+        if (_match.ThrowTargets(from).Count == 0)
+            return;
+        _throwAllies.AddRange(_match.ThrowableAllies(from));
+    }
+
+    /// <summary>Empoigne l'allié de <paramref name="ally"/> : on passe aux cibles du jet.</summary>
+    private void CarryForThrow(Cell from, Cell ally)
+    {
+        _throwAlly = ally;
+        _throwAllies.Clear();
+        _throwTargets.Clear();
+        _throwTargets.AddRange(_match.ThrowTargets(from));
+        Context.Sounds.Play("unit_select");
+    }
+
+    /// <summary>
+    /// Résout le jet : la cible encaisse la puissance du porteur et le projectile atterrit au plus près
+    /// d'elle. Le tour du porteur est consommé par le moteur.
+    /// </summary>
+    private void ResolveThrow(Cell from, Cell target)
+    {
+        if (_throwAlly is not { } ally)
+            return;
+        var kind = _match.TryThrow(from, ally, target);
+        if (kind == MoveKind.Invalid)
+        {
+            ClearThrow();
+            return;
+        }
+
+        if (_match.LastThrow is { } thrown)
+        {
+            // Le projectile regarde sa cible en arrivant ; le porteur regarde son jet.
+            if (_match.UnitAt(thrown.To) is { } flying)
+                FaceToward(flying, thrown.To, thrown.Target);
+            if (_match.UnitAt(from) is { } thrower)
+                FaceToward(thrower, from, thrown.Target);
+            TriggerLanding(thrown.To);
+        }
+        Context.Sounds.Play("unit_attack");
+        ClearThrow();
     }
 
     /// <summary>Lance le rebond de « pose » sur la case où un pion vient d'atterrir.</summary>
@@ -7605,9 +8037,32 @@ public sealed class GameplayScene : Scene
                     stormBefore.Add((cell, u, u.Hp));     // candidat : on saura après l'attaque s'il a été foudroyé
         }
 
+        // « Bouclier humain » : on fige AVANT le coup la case + le sprite de l'allié qui va s'interposer (il peut
+        // y rester et quitter le plateau) → la passe FX le fait sauter devant la cible, encaisser, puis revenir.
+        Cell? shieldFrom = null;
+        Texture2D? shieldSprite = null;
+        if (victim != null && victim.HasTrait(Trait.BouclierHumain)
+            && _match.ShieldTargetFor(victim) is { } shieldCell && _match.UnitAt(shieldCell) is { } shield)
+        {
+            shieldFrom = shieldCell;
+            shieldSprite = UnitSprite(shield);
+        }
+
         var kind = _match.TryAttack(from, target);
         if (kind == MoveKind.Invalid)
             return kind;
+
+        // Le coup a bien été détourné : le commandant n'encaisse rien (ni flash, ni recul, ni chiffre sur lui) —
+        // c'est l'allié, posé devant lui au moment de l'impact, qui prend le chiffre à cet endroit-là.
+        _shieldJump = null;
+        if (shieldFrom is { } sf && _match.LastShieldHits.Count > 0)
+        {
+            var hit = _match.LastShieldHits[0];
+            _shieldJump = new ShieldJump(sf, hit.Cell, target, from, shieldSprite, hit.Killed);
+            _pendingDamage = hit.Damage;
+            _pendingGiantBonus = 0;
+            victimSprite = null;
+        }
 
         // « Glace » : sur un kill, l'attaquant qui a avancé sur la case de la victime a pu déraper (tuile glissante).
         // Pas de glissement SÉPARÉ ici : il est ABSORBÉ par l'anim d'avance (l'attaquant fente jusqu'à sa case de
@@ -7641,6 +8096,11 @@ public sealed class GameplayScene : Scene
         // (copie : la liste du moteur est réécrite à l'action suivante).
         _pendingThorns = _match.LastThorns.Count > 0
             ? _match.LastThorns.Select(t => (t.Cell, t.Damage)).ToList()
+            : null;
+        // « Bouclier humain » : l'allié poussé devant le porteur a pris le coup — chiffre reporté à l'impact
+        // comme les épines (copie : la liste du moteur est réécrite à l'action suivante).
+        _pendingShield = _match.LastShieldHits.Count > 0 && _shieldJump == null   // mis en scène : chiffre déjà sur l'impact
+            ? _match.LastShieldHits.Select(s => (s.Cell, s.Damage)).ToList()
             : null;
         // « Esquive » : la cible a encaissé le coup PUIS s'est repliée (le moteur l'a déjà déplacée).
         var dodge = DodgeFrom(target);
@@ -7716,8 +8176,9 @@ public sealed class GameplayScene : Scene
         var style = attacker != null ? AttackStyleFor(attacker, from, target) : AttackStyle.Lunge;
         Context.Sounds.Play(SoundForStyle(style));   // incantation (mage) / charge (cavalier) / tir (archer) / coup d'arme
         // victimDoomed : la cible va mourir du plaquage « Recule » (déjà retirée) → dessinée solide/statique, sans flash.
+        // Bouclier humain : une OUVERTURE avant l'élan de l'attaquant, le temps qu'on voie l'allié sauter devant.
         _fx.Begin(from, target, attackerCell, attackerSprite, victimSprite, killed, advanced, style,
-            victimDoomed: _pendingSlamDissolve != null);
+            victimDoomed: _pendingSlamDissolve != null, leadIn: _shieldJump != null ? ShieldJumpDuration : 0);
         _impactHandled = false;     // le chiffre de dégâts sera lancé au contact (cf. UpdateBattle)
 
         // Nœud « charge » de l'arbre : ce kill n'a PAS passé le tour — on l'annonce sur la case de l'attaquant
@@ -7767,6 +8228,7 @@ public sealed class GameplayScene : Scene
         _pendingDodge = false;
         _pendingPhenix = false;
         _pendingGiantBonus = 0;   // le « +N » du bonus n'est pas rejoué sur la riposte (report principal déjà consommé)
+        _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
         _fx.Begin(rip.From, rip.To, rip.From, riposterSprite, rip.AttackerSprite, rip.Killed, advanced: false, rip.Style);
         _impactHandled = false;
     }
@@ -7803,9 +8265,11 @@ public sealed class GameplayScene : Scene
         _pendingImpactZone = null;
         _pendingGrenade = null;
         _pendingThorns = null;
+        _pendingShield = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
         _victimMove = null;
+        _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
         _fx.Begin(itc.From, itc.To, itc.From, interceptorSprite, itc.MoverSprite, itc.Killed, advanced: false, style);
         _impactHandled = false;
     }
@@ -7825,6 +8289,7 @@ public sealed class GameplayScene : Scene
         _pendingImpactZone = null;
         _pendingGrenade = null;
         _pendingThorns = null;
+        _pendingShield = null;
         _pendingReculeSlam = null;
         _pendingPierce = null;
         _pendingRiposte = null;
@@ -7841,6 +8306,7 @@ public sealed class GameplayScene : Scene
             // le joueur verrait son pion frapper pendant SON tour sans comprendre d'où sort le coup.
             if (snap.Keyword is { } keyword)
                 _damagePopups.SpawnText(snap.From, Loc.T(keyword), Palette.Cyan2);
+            _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
             _fx.Begin(snap.From, snap.To, snap.AttackerCell, snap.AttackerSprite, snap.VictimSprite,
                 snap.Killed, snap.Advanced, snap.Style);
         }
@@ -7851,6 +8317,7 @@ public sealed class GameplayScene : Scene
             _pendingPhenix = false;
             _pendingDodge = false;
             _victimMove = null;
+            _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
             _fx.BeginMove(snap.From, snap.To, snap.AttackerSprite);   // son « unit_move » joué à l'atterrissage
         }
         _impactHandled = false;
@@ -8910,7 +9377,9 @@ public sealed class GameplayScene : Scene
         if (_selected is { } sel)
         {
             DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets, _satchelTargets);
+            DrawThrowZones(sb, layout);   // BRUTE : alliés empoignables puis cibles du jet
             foreach (var c in _attackTargets) _trembleTargets.Add(c);
+            foreach (var c in _throwTargets) _trembleTargets.Add(c);
             return;
         }
 
@@ -8981,6 +9450,29 @@ public sealed class GameplayScene : Scene
         if (satchels != null)
             foreach (var cell in satchels)
                 DrawZoneBorder(sb, layout, cell, Palette.Yellow1, 1);
+    }
+
+    /// <summary>
+    /// « Chair à canon » : les alliés EMPOIGNABLES (1er temps, couleur du butin) puis, une fois l'un d'eux
+    /// empoigné, les cibles du JET (2e temps, rouge appuyé) plus un liseré sur le projectile pour qu'on voie
+    /// qui part. Rien à dessiner hors du trait.
+    /// </summary>
+    private void DrawThrowZones(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var cell in _throwAllies)
+        {
+            DrawZone(sb, layout, cell, Palette.Yellow1 * 0.45f);
+            DrawZoneBorder(sb, layout, cell, Palette.Yellow1, 1);
+        }
+
+        if (_throwAlly is { } carried)
+            DrawZoneBorder(sb, layout, carried, Palette.Yellow2, 3);
+
+        foreach (var cell in _throwTargets)
+        {
+            DrawZone(sb, layout, cell, Palette.Purple5 * 0.5f);
+            DrawZoneBorder(sb, layout, cell, Palette.Purple5 * 0.9f, 1);
+        }
     }
 
     /// <summary>Vue d'ensemble des zones ENNEMIES (« zones de danger ») : Espace maintenu, ou RT à la manette.</summary>
@@ -9619,7 +10111,7 @@ public sealed class GameplayScene : Scene
                 continue;
             if (_combatDragFrom == cell)                    // pion en cours de glisser : pas d'icône
                 continue;
-            if (_fx.Active && _fx.Attacker == cell)         // attaquant animé : géré par la passe FX
+            if (IsHiddenForFx(cell))         // attaquant animé : géré par la passe FX
                 continue;
             DrawThreatIcon(sb, layout, cell);
         }
@@ -9717,7 +10209,7 @@ public sealed class GameplayScene : Scene
             var byBasile = unit.WasDamagedBy(basile);
             if (!byArtisan && !byBasile)
                 continue;
-            if (_fx.Active && _fx.Attacker == cell)   // attaquant animé : sa passe FX le dessine ailleurs
+            if (IsHiddenForFx(cell))   // attaquant animé : sa passe FX le dessine ailleurs
                 continue;
             DrawHitMarks(sb, layout, cell, byArtisan, byBasile, PairKillCapReached);
         }
@@ -9908,7 +10400,7 @@ public sealed class GameplayScene : Scene
             return;
 
         // Attaquant en cours d'animation : dessiné (fente / avance) par la passe FX, pas ici.
-        if (_fx.Active && _fx.Attacker == cell)
+        if (IsHiddenForFx(cell))
             return;
 
         var top = layout.CellToScreen(cell.Column, cell.Row);
@@ -10167,7 +10659,7 @@ public sealed class GameplayScene : Scene
         {
             if (_combatDragFrom == cell)            // pion porté : pas de barre sur sa case
                 continue;
-            if (_fx.Active && _fx.Attacker == cell) // attaquant animé : géré par la passe FX
+            if (IsHiddenForFx(cell)) // attaquant animé : géré par la passe FX
                 continue;
             var isAimed = aimed == cell;
             var isHealAimed = healAimed == cell;
@@ -10356,7 +10848,7 @@ public sealed class GameplayScene : Scene
         {
             if (_combatDragFrom == cell)            // pion porté : ombre dessinée sous le curseur
                 continue;
-            if (_fx.Active && _fx.Attacker == cell) // attaquant animé : ombre dessinée par la passe FX
+            if (IsHiddenForFx(cell)) // attaquant animé : ombre dessinée par la passe FX
                 continue;
             if (UnitSprite(unit) is not { } sprite) // placeholder sans sprite : pas de silhouette
                 continue;
@@ -10586,6 +11078,10 @@ public sealed class GameplayScene : Scene
             else
                 _combatFx.DrawFlash(sb, hitSprite, victimRect, _fx.FlashIntensity, Palette.White, fxPixel);
         }
+
+        // 3a. « Bouclier humain » : l'allié saute devant son commandant, encaisse, puis revient (ou se dissout).
+        if (_shieldJump is { } shieldJump)
+            DrawShieldJump(sb, layout, shieldJump, size, spriteLift, fxPixel);
 
         // 3b. Transpercement MORTEL : le pion DERRIÈRE la cible, tué et retiré du plateau, dessiné SOLIDE (avec son
         //     recul directionnel) le temps de l'anim d'attaque — il se dissoudra juste après (cf. UpdateBattle),
@@ -10911,8 +11407,84 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    /// <summary>Part de case entre le protégé et le point où l'allié se campe, du côté de l'assaillant.</summary>
+    private const float ShieldFrontOffset = 0.45f;
+
+    /// <summary>Hauteur du bond de l'allié qui s'interpose (fraction de case).</summary>
+    private const float ShieldHopFraction = 0.45f;
+
+    /// <summary>
+    /// « BOUCLIER HUMAIN » en trois temps, sur l'horloge de l'animation d'attaque :
+    /// <list type="number">
+    /// <item>OUVERTURE (l'assaillant attend) : l'allié BONDIT de sa case jusque devant le protégé, du côté de
+    /// l'assaillant — c'est ce saut qu'on doit voir avant le coup ;</item>
+    /// <item>IMPACT : il encaisse là, avec le flash « touché » (le chiffre jaillit à cet endroit) ;</item>
+    /// <item>APRÈS : il regagne sa case d'un petit bond — ou, s'il y est resté, se dissout sur place.</item>
+    /// </list>
+    /// Pendant ce temps son pion est masqué sur sa case (cf. <see cref="IsHiddenForFx"/>).
+    /// </summary>
+    private void DrawShieldJump(SpriteBatch sb, GridLayout layout, ShieldJump jump, int size, int spriteLift, float fxPixel)
+    {
+        if (!_fx.Active || jump.Sprite is not { } sprite)
+            return;
+
+        Vector2 Top(Cell c) => layout.CellToScreen(c.Column, c.Row) - new Vector2(0, spriteLift);
+        var guarded = Top(jump.Guarded);
+        var toward = Top(jump.AttackerCell) - guarded;
+        if (toward.LengthSquared() > 0f)
+            toward.Normalize();
+        var front = guarded + toward * (size * ShieldFrontOffset);
+
+        Vector2 ground;
+        float lift;
+        if (_fx.InLeadIn)
+        {
+            var p = _fx.LeadInProgress;   // 1. le saut devant le protégé
+            ground = Vector2.Lerp(Top(jump.From), front, Smooth01(p));
+            lift = MathF.Sin(p * MathF.PI) * size * ShieldHopFraction;
+        }
+        else if (jump.Killed)
+        {
+            // 3'. Resté sur le coup : il se dissout là où il s'est interposé.
+            var rect = new Rectangle((int)front.X, (int)front.Y, size, size);
+            if (!_fx.HasImpacted)
+            {
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                sb.Draw(sprite, rect, Color.White);
+                sb.End();
+            }
+            else
+                _combatFx.DrawDissolve(sb, sprite, rect, _fx.AfterImpactProgress, Palette.Purple5, _fx.Seed);
+            return;
+        }
+        else
+        {
+            // 2. campé devant jusqu'à la moitié de l'après-coup, puis 3. retour d'un petit bond.
+            var back = Math.Clamp((_fx.AfterImpactProgress - 0.5f) / 0.5f, 0f, 1f);
+            ground = Vector2.Lerp(front, Top(jump.Rest), Smooth01(back));
+            lift = MathF.Sin(back * MathF.PI) * size * ShieldHopFraction * 0.6f;
+        }
+
+        var body = new Rectangle((int)ground.X, (int)(ground.Y - lift), size, size);
+        DrawPieceCastShadow(sb, sprite, (int)ground.X, (int)ground.Y, size, (int)lift);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(sprite, body, Color.White);
+        sb.End();
+        if (_fx.HasImpacted)
+            _combatFx.DrawFlash(sb, sprite, body, _fx.FlashIntensity, Palette.White, fxPixel);
+    }
+
     /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
-    private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To;
+    private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To && _shieldJump is null;
+    // (Bouclier humain : le protégé n'encaisse rien, il ne recule donc pas — c'est l'allié devant lui qui réagit.)
+
+    /// <summary>
+    /// Vrai si le pion de <paramref name="cell"/> est dessiné AILLEURS par la passe FX le temps de l'animation,
+    /// et doit donc être masqué sur sa case : l'attaquant en pleine fente, et l'allié qui saute devant son
+    /// commandant (« Bouclier humain »).
+    /// </summary>
+    private bool IsHiddenForFx(Cell cell) =>
+        _fx.Active && (_fx.Attacker == cell || (_shieldJump is { } sj && sj.Rest == cell));
 
     /// <summary>
     /// Décalage (px entiers) du GLISSEMENT de la victime qui a changé de case (« Recule » ou repli d'« Esquive »)
@@ -11038,6 +11610,15 @@ public sealed class GameplayScene : Scene
             foreach (var (cell, dmg) in _pendingThorns)
                 SpawnThornsPopup(cell, dmg);
             _pendingThorns = null;
+        }
+
+        // « Bouclier humain » (BRUTE) : le coup n'a jamais atteint le porteur — c'est l'allié poussé devant
+        // lui qui l'encaisse. Le chiffre jaillit donc sur SA case, pas sur celle du protégé (qui ne perd rien).
+        if (_pendingShield != null)
+        {
+            foreach (var (cell, dmg) in _pendingShield)
+                _damagePopups.Spawn(cell, dmg);
+            _pendingShield = null;
         }
 
         // Recule (trait) : dégât BONUS de plaquage sur la cible collée à l'obstacle. Elle RESTE sur sa case (=
@@ -11383,9 +11964,14 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void DrawFusionPopup(SpriteBatch sb, Viewport viewport)
     {
-        var options = _fusionGroup[0].UnitClass.Evolutions;
+        var options = FusionOptions;
         var count = options.Count;
-        var domaine = _fusionGroup[0].Domaine;
+        if (count == 0)
+            return;
+        // Nœud d'arbre à CHOIX : la même popup, titrée du nom du nœud (ARMEMENT, PROTECTION) au lieu de FUSION.
+        var treeNode = _treeEvolveNode;
+        var domaine = treeNode != null ? _run.ExclusiveSpec?.Domaine ?? Domaine.Dame : _fusionGroup[0].Domaine;
+        var title = treeNode != null ? Loc.T(treeNode.NameKey) : Loc.T("fusion.title");
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawDim(sb, viewport);   // voile du canvas ; les bandes du letterbox sont assombries via FullScreenDim
@@ -11394,13 +11980,13 @@ public sealed class GameplayScene : Scene
         var cancel = FusionCancelRect();
 
         // Cadre du TITRE (FUSION + sous-titre), centré au-dessus du bouton Annuler et des cartes.
-        var titleW = Context.Font.Measure(Loc.T("fusion.title"), 3);
+        var titleW = Context.Font.Measure(title, 3);
         var subW = Context.Font.Measure(Loc.T("fusion.subtitle"), 1);
         var boxW = System.Math.Max(titleW, subW) + 56;
         const int boxH = 64;
         var boxY = cancel.Y - 14 - boxH;
         Context.Style.DrawPanel(sb, new Rectangle((vpW - boxW) / 2, boxY, boxW, boxH));
-        Context.Font.DrawCentered(sb, Loc.T("fusion.title"), new Rectangle(0, boxY + 12, vpW, 24), 3, Palette.Yellow2);
+        Context.Font.DrawCentered(sb, title, new Rectangle(0, boxY + 12, vpW, 24), 3, Palette.Yellow2);
         Context.Font.DrawCentered(sb, Loc.T("fusion.subtitle"), new Rectangle(0, boxY + 42, vpW, 12), 1, Palette.Blue1);
 
         // Bouton Annuler ENTRE le cadre titre et les cartes, avec retour d'enfoncement (poussoir).
@@ -11416,8 +12002,22 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < count; i++)
         {
             var rect = FusionCardRect(i, count);
-            var revealed = Context.Saves.IsUnitDiscovered(options[i].Asset);
-            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
+            // Nœud d'arbre : c'est un CHOIX, pas une découverte — le joueur doit voir les deux formes pour
+            // trancher. Elles sont donc toujours en clair, traits compris (la silhouette ne vaut que pour la fusion).
+            var revealed = treeNode != null || Context.Saves.IsUnitDiscovered(options[i].Asset);
+            if (treeNode != null && _run.ExclusiveSpec is { } paysanne)
+            {
+                // La carte annonce la paysanne TELLE QU'ELLE SERAIT sous cette forme : stats de la forme, mais
+                // avec ses paliers de « Survivant », son équipement et les bonus d'arbre qui la visent — les
+                // chiffres qu'elle aura vraiment en jeu, pas ceux d'une recrue neuve.
+                var preview = PreviewAs(paysanne, options[i]);
+                var buffs = BuffsFor(preview);
+                var maxHp = options[i].MaxHp + preview.Equipments.BonusFor(EquipStat.Hp) + buffs.BonusFor(EquipStat.Hp);
+                DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, maxHp, maxHp, revealed,
+                    preview.Equipments, buffs: buffs, treeNodes: _run.ActiveNodesFor(preview), kills: preview.Kills);
+            }
+            else
+                DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
             kwRow.Add(revealed ? options[i] : null);
         }
         // Détail des traits : sous les cartes si tout y tient (le cas en 1440p), sinon au survol seulement —
@@ -11553,7 +12153,7 @@ public sealed class GameplayScene : Scene
 
         if (p < EvoZoomIn)
         {
-            DrawEvoSprite(sb, _evoBase, rect, Color.Black, 1f);                 // ombre du pion de base
+            DrawEvoBaseSprite(sb, rect, Color.Black, 1f);                       // ombre du pion de base
         }
         else if (p < EvoFlickerEnd)
         {
@@ -11562,7 +12162,10 @@ public sealed class GameplayScene : Scene
             // qui reste plat puis explose d'un coup.
             var phase = (p - EvoZoomIn) / (EvoFlickerEnd - EvoZoomIn);
             var toggle = (int)(phase * 6f + phase * phase * 18f);
-            DrawEvoSprite(sb, toggle % 2 == 1 ? _evoResult : _evoBase, rect, Color.Black, 1f);
+            if (toggle % 2 == 1)
+                DrawEvoSprite(sb, _evoResult, rect, Color.Black, 1f);
+            else
+                DrawEvoBaseSprite(sb, rect, Color.Black, 1f);
         }
         else
         {
@@ -11663,12 +12266,25 @@ public sealed class GameplayScene : Scene
         new((int)MathHelper.Lerp(a.X, b.X, t), (int)MathHelper.Lerp(a.Y, b.Y, t),
             (int)MathHelper.Lerp(a.Width, b.Width, t), (int)MathHelper.Lerp(a.Height, b.Height, t));
 
+    /// <summary>Le pion « avant » de l'évolution : son sprite figé s'il y en a un (« Révolte »), sinon celui de sa classe.</summary>
+    private void DrawEvoBaseSprite(SpriteBatch sb, Rectangle rect, Color tint, float alpha)
+    {
+        if (_evoBaseSprite is { } frozen && alpha > 0.001f)
+            sb.Draw(frozen, rect, tint * alpha);
+        else
+            DrawEvoSprite(sb, _evoBase, rect, tint, alpha);
+    }
+
     /// <summary>Sprite d'une classe étiré dans <paramref name="rect"/>, teinte + alpha (overlay d'évolution).</summary>
     private void DrawEvoSprite(SpriteBatch sb, UnitClass? cls, Rectangle rect, Color tint, float alpha)
     {
         if (cls is null || alpha <= 0.001f)
             return;
-        var sprite = SpriteFor(cls, Faction.Player, front: true);
+        // Le pion « après » peut avoir un sprite figé (la meneuse de « Révolte », cachée partout ailleurs).
+        // Le pion « avant » passe, lui, par DrawEvoBaseSprite : ici base et résultat peuvent être la MÊME classe.
+        var sprite = _evoResultSprite != null && ReferenceEquals(cls, _evoResult)
+            ? _evoResultSprite
+            : SpriteFor(cls, Faction.Player, front: true);
         if (sprite != null)
             sb.Draw(sprite, rect, tint * alpha);
         else
@@ -11812,8 +12428,61 @@ public sealed class GameplayScene : Scene
     {
         // Portrait 64×64 à taille native (jamais redimensionné), de FACE (présentation), nom dessous.
         DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true, alpha);
-        Context.Font.DrawCentered(sb, UnitName(spec.UnitClass).ToUpperInvariant(),
-            new Rectangle(icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, 10), 1, Palette.White * alpha);
+        DrawPortraitName(sb, UnitName(spec.UnitClass).ToUpperInvariant(),
+            icon.X - InvGapX / 2, icon.Bottom + 2, icon.Width + InvGapX, Palette.White * alpha);
+    }
+
+    /// <summary>Pas vertical entre les deux lignes d'un nom sous portrait (police 7 px + interligne).</summary>
+    private const int PortraitNameLine = 9;
+
+    /// <summary>
+    /// Nom centré SOUS un portrait, dans une case de <paramref name="width"/> px. S'il ne tient pas sur une
+    /// ligne, il passe sur deux, coupé entre deux mots (« PAYSANNE / ARCHÈRE »). Réduire la police n'est pas
+    /// une option : elle est déjà à sa plus petite échelle entière, et le rendu reste pixel-perfect.
+    /// Au-delà de deux lignes (nom de trois longs mots, cas qui n'existe pas aujourd'hui), le reste est
+    /// regroupé sur la seconde.
+    /// </summary>
+    private void DrawPortraitName(SpriteBatch sb, string name, int x, int top, int width, Color color)
+    {
+        var lines = WrapPortraitName(name, width);
+        for (var i = 0; i < lines.Count; i++)
+            Context.Font.DrawCentered(sb, lines[i],
+                new Rectangle(x, top + i * PortraitNameLine, width, 10), 1, color);
+    }
+
+    /// <summary>Découpe <paramref name="name"/> en au plus deux lignes tenant dans <paramref name="width"/> px.</summary>
+    private List<string> WrapPortraitName(string name, int width)
+    {
+        if (Context.Font.Measure(name, 1) <= width)
+            return new List<string> { name };
+
+        var words = name.Split(' ');
+        if (words.Length < 2)
+            return new List<string> { name };   // un seul mot trop long : rien à couper proprement
+
+        // Coupure la plus ÉQUILIBRÉE qui fait tenir la 1re ligne : on garde les deux lignes proches en
+        // largeur plutôt que de bourrer la première (« ARBALÉTRIER / MONTÉ » et non l'inverse).
+        var best = 1;
+        var bestGap = int.MaxValue;
+        for (var cut = 1; cut < words.Length; cut++)
+        {
+            var first = string.Join(' ', words, 0, cut);
+            var second = string.Join(' ', words, cut, words.Length - cut);
+            var w1 = Context.Font.Measure(first, 1);
+            if (w1 > width)
+                break;
+            var gap = System.Math.Abs(w1 - Context.Font.Measure(second, 1));
+            if (gap < bestGap)
+            {
+                best = cut;
+                bestGap = gap;
+            }
+        }
+        return new List<string>
+        {
+            string.Join(' ', words, 0, best),
+            string.Join(' ', words, best, words.Length - best),
+        };
     }
 
     // ── Coffres + sous-phase Équipement (rendu) ───────────────────────────────────
@@ -12297,7 +12966,7 @@ public sealed class GameplayScene : Scene
         {
             if (unit.Faction != Faction.Enemy || !unit.IsEssential || !unit.IsAlive)
                 continue;
-            if (_fx.Active && _fx.Attacker == cell)   // attaquant animé : sa passe FX le dessine ailleurs
+            if (IsHiddenForFx(cell))   // attaquant animé : sa passe FX le dessine ailleurs
                 continue;
 
             var top = layout.CellToScreen(cell.Column, cell.Row);
@@ -15951,10 +16620,41 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private Texture2D? SpriteFor(UnitClass cls, Faction faction, bool front = false)
     {
-        var variant = faction == Faction.Player
-            ? $"{cls.Asset}_{(front ? "front" : "back")}"
-            : $"{cls.Asset}_ia_{(front ? "front" : "back")}";
+        var side = front ? "front" : "back";
+
+        // « RÉVOLTE » : la paysanne qui a pris le commandement se dessine autrement — on cherche d'abord un
+        // sprite de meneuse pour SA forme exacte (paysan_archer_chef_front), puis celui de tout l'arbre
+        // (paysan_chef_front), et à défaut on retombe sur son sprite ordinaire. Un seul fichier par
+        // orientation suffit donc pour couvrir les sept formes.
+        if (faction == Faction.Player && IsPromotedExclusive(cls) && ChiefSpriteFor(cls, side) is { } chief)
+            return chief;
+
+        var variant = faction == Faction.Player ? $"{cls.Asset}_{side}" : $"{cls.Asset}_ia_{side}";
         return SpriteFor(variant) ?? SpriteFor(cls.Asset);
+    }
+
+    /// <summary>
+    /// Vrai si cette classe est celle du pion EXCLUSIF devenu meneur (nœud « Révolte » acheté). Le pion étant
+    /// unique dans la run, la classe suffit à le reconnaître : nul besoin de porter l'information jusqu'à
+    /// chaque point de dessin (plateau, carte d'unité, panneau de réserve).
+    /// </summary>
+    private bool IsPromotedExclusive(UnitClass cls) =>
+        _run is { } run && run.RevolteDone && !_revolteRevealPending && ExclusiveClasses.IsExclusive(cls);
+
+    // Vrai de l'achat de « Révolte » jusqu'à la fin de sa révélation : la meneuse ne doit se montrer QUE dans
+    // l'animation. D'ici là, plateau, réserve et cartes gardent la paysanne ordinaire — sinon le changement
+    // se voit derrière le voile avant d'être révélé, et la révélation ne révèle plus rien.
+    private bool _revolteRevealPending;
+
+    /// <summary>
+    /// Sprite de MENEUSE de la classe exclusive <paramref name="cls"/> : celui de sa forme exacte
+    /// (<c>paysan_archer_chef_front</c>), sinon celui de tout l'arbre (<c>paysan_chef_front</c>), sinon null.
+    /// </summary>
+    private Texture2D? ChiefSpriteFor(UnitClass cls, string side)
+    {
+        if (SpriteFor($"{cls.Asset}_chef_{side}") is { } own)
+            return own;
+        return ExclusiveClasses.RootAssetOf(cls.Asset) is { } root ? SpriteFor($"{root}_chef_{side}") : null;
     }
 
     /// <summary>

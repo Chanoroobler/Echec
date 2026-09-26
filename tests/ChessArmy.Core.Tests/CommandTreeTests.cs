@@ -715,8 +715,8 @@ public class CommandTreeTests
             var trimmed = line.TrimStart();
             if (trimmed.Length == 0 || trimmed[0] == '#')
                 continue;
-            var parts = line.Split(',');   // les valeurs de strings.csv ne contiennent jamais de virgule
-            if (parts.Length > 1)
+            var parts = Text.Csv.SplitLine(line);   // une valeur entre guillemets peut contenir des virgules
+            if (parts.Count > 1)
                 french[parts[0].Trim()] = parts[1];
         }
 

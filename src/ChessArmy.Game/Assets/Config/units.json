@@ -102,6 +102,44 @@
     }
   ],
 
+  // Classes EXCLUSIVES : meme format qu'un domaine (base -> 2 branches -> 2 feuilles), mais HORS de tout
+  // tirage et de toute fusion. Elles n'existent que par l'arbre de commandement qui les amene : aujourd'hui
+  // le seul cas est le PAYSAN du commandant BRUTE, recrute par le noeud "brute_paysan" et fait evoluer par
+  // les noeuds a choix "brute_armement" / "brute_protection" (cf. commander_trees.json). Le champ "domaine"
+  // donne le motif de deplacement emprunte, comme pour un meneur.
+  // Le Paysan est VOLONTAIREMENT miserable : toute sa valeur vient du trait "Survivant" (+1 puissance et
+  // +2 pv max par mission jouee, cumules sur la run) et de ses evolutions d'arbre, qui n'ajoutent chacune
+  // qu'une portee, un pas, ou un trait defensif.
+  // ASSETS : Assets/Units/<asset>_{front,back}.png (64x64) pour chacune des 7 classes. Les variantes
+  // "_ia_" sont INUTILES ici (ce pion n'apparait jamais dans un camp ennemi). Les 4 FEUILLES (tier 3) ont EN
+  // PLUS une version MENEUSE, affichee des que le noeud "Revolte" est achete :
+  // <asset>_chef_{front,back}.png. Les formes intermediaires n'en ont pas : promues sans etre arrivees au
+  // bout de leur arbre, elles gardent leur sprite ordinaire (repli du rendu).
+  "exclusives": [
+    {
+      "domaine": "Dame",
+      "baseClass": {
+        "name": "Paysanne", "asset": "paysan", "hp": 8, "damage": 4, "moveRange": 1, "attackRange": 1, "traits": ["Survivant"],
+        "evolutions": [
+          {
+            "name": "Paysanne archère", "asset": "paysan_archer", "hp": 8, "damage": 4, "moveRange": 1, "attackRange": 2, "traits": ["Survivant"],
+            "evolutions": [
+              { "name": "Paysanne archère duelliste", "asset": "paysan_archer_duelliste", "hp": 8, "damage": 4, "moveRange": 2, "attackRange": 2, "traits": ["Survivant", "Duelliste"] },
+              { "name": "Paysanne archère rempart",   "asset": "paysan_archer_rempart",   "hp": 18, "damage": 4, "moveRange": 1, "attackRange": 2, "traits": ["Survivant", "Rempart"] }
+            ]
+          },
+          {
+            "name": "Paysanne épéiste", "asset": "paysan_epeiste", "hp": 8, "damage": 4, "moveRange": 2, "attackRange": 1, "traits": ["Survivant"],
+            "evolutions": [
+              { "name": "Paysanne épéiste duelliste", "asset": "paysan_epeiste_duelliste", "hp": 8, "damage": 4, "moveRange": 3, "attackRange": 1, "traits": ["Survivant", "Duelliste"] },
+              { "name": "Paysanne épéiste rempart",   "asset": "paysan_epeiste_rempart",   "hp": 18, "damage": 4, "moveRange": 2, "attackRange": 1, "traits": ["Survivant", "Rempart"] }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+
   // Unités COMMANDE (meneurs). COMMANDE est un ROLE, pas un domaine : chaque meneur emprunte le motif
   // de déplacement d'un des domaines (champ "domaine"). role = "Commander" (joueur) ou "Boss" (ennemi).
   // Un boss peut aussi porter de l'EQUIPEMENT : "equipmentPool" (ids d'equipment.json, ecrits a la main) au
@@ -258,6 +296,33 @@
       // (cf. GameplayScene.UnlockDuoIfEnoughKills / SaveService.KillUnlockThreshold).
       "unlocked": false
     },
+    // Commandant BRUTE. Un tank de contact (domaine Dame) qui traite ses pions comme de la monnaie : sa source
+    // de points PROPRE est "sur perte" (allyDeathPoints) = +1 point CHAQUE FOIS qu'une unite alliee tombe, SANS
+    // plafond (allyDeathCap absent) et sans faire de difference entre un pion tue par l'ennemi et un pion
+    // qu'elle a elle-meme sacrifie. Elle garde les 2 points par mission comme tout le monde.
+    // Son arbre "commandantBrute" tourne autour de trois idees : le SACRIFICE (elle frappe les siens pour se
+    // soigner, les lance sur l'ennemi, se cache derriere eux et grossit a chaque perte), le PAYSAN (un pion
+    // unique et exclusif qui monte par le trait "Survivant" et evolue par noeuds a choix, jusqu'a prendre le
+    // commandement avec "Revolte"), et la LOGISTIQUE (deploiement, reserve, recrues de masse).
+    // VERROUILLE : se debloque en battant en derniere phase le boss "Commandant_brute" (unlocksCommander).
+    // STATS PROVISOIRES, a equilibrer.
+    {
+      "role": "Commander",
+      "id": "Commandant_brute",
+      "domaine": "Dame",
+      "name": "Brute",
+      "asset": "Commandant_brute",
+      "hp": 25,
+      "damage": 12,
+      "moveRange": 2,
+      "attackRange": 1,
+      "deployments": 5,
+      "reserveSize": 10,
+      "tree": "commandantBrute",
+      "allyDeathPoints": 1,
+      "startingUnits": [ "Dame", "Dame" ],
+      "unlocked": false
+    },
     // SECOND meneur du commandant DUO. Role "Companion" : jamais propose au carrousel, il n'entre en jeu que
     // par le champ "companion" du commandant ci-dessus. Basile tire a distance (domaine Tour, lignes) la ou
     // l'artisan frappe au contact ; c'est LUI qui ramasse les objets des sacoches.
@@ -272,11 +337,13 @@
       "moveRange": 1,
       "attackRange": 2
     },
+    // Boss BRUTE : battu en derniere phase il DEBLOQUE le commandant "Commandant_brute" (unlocksCommander).
     {
       "role": "Boss",
       "name": "Commandant_brute",
       "asset": "Commandant_brute",
       "domaine": "Dame",
+      "unlocksCommander": "Commandant_brute",
       "phases": {
         "1": { 
           "hp": 30,
@@ -505,15 +572,15 @@
           "attackRange": 1
         },
         "2": {
-          "hp": 45,
-          "damage": 15,
+          "hp": 40,
+          "damage": 16,
           "moveRange": 2,
           "attackRange": 1,
           "traits": [ "Riposte" ]
         },
         "3": {
           "hp": 45,
-          "damage": 17,
+          "damage": 20,
           "moveRange": 2,
           "attackRange": 1,
           "traits": [ "Riposte"]
@@ -528,19 +595,19 @@
       "companionPhases": {
         "1": {
           "hp": 26,
-          "damage": 10,
+          "damage": 12,
           "moveRange": 1,
           "attackRange": 2
         },
         "2": {
-          "hp": 34,
-          "damage": 13,
+          "hp": 28,
+          "damage": 15,
           "moveRange": 1,
           "attackRange": 3
         },
         "3": {
-          "hp": 44,
-          "damage": 15,
+          "hp": 30,
+          "damage": 18,
           "moveRange": 1,
           "attackRange": 3,
           "traits": [ "Tir en ligne" ]

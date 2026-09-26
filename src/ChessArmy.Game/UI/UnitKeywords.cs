@@ -63,6 +63,12 @@ public static class UnitKeywords
         ["Javelot meurtrier"] = "kw.javelot",
         ["Flèche de Cupidon"] = "kw.fleche_cupidon",
         ["Seringue"] = "kw.seringue",
+        // ── Commandant BRUTE (arbre) ─────────────────────────────────────────────────────────────
+        ["Bouclier humain"] = "kw.bouclier_humain",
+        ["Sacrifice"] = "kw.sacrifice",
+        ["Chair à canon"] = "kw.chair_canon",
+        ["Vengeance"] = "kw.vengeance",
+        ["Survivant"] = "kw.survivant",
     };
 
     /// <summary>Mot-clé synthétisé pour <see cref="ChessArmy.Core.Battle.UnitClass.PiercesAllies"/>.</summary>

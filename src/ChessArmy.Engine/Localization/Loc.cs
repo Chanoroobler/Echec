@@ -40,8 +40,8 @@ public static class Loc
     /// <summary>
     /// Remplit la table depuis le contenu CSV. Format : 1re ligne = en-tête (ignorée), puis
     /// <c>cle,fr,en</c> par ligne. Les lignes vides ou commençant par <c>#</c> sont ignorées.
-    /// La police pixel n'a pas de virgule, donc les valeurs n'en contiennent pas ; on découpe
-    /// néanmoins sur les DEUX premières virgules seulement, laissant la dernière colonne libre.
+    /// Une valeur qui contient une VIRGULE s'écrit entre guillemets (<c>"À la mort, 2 soldats"</c>),
+    /// comme dans un tableur ; le découpage est celui de <see cref="ChessArmy.Core.Text.Csv"/>.
     /// </summary>
     public static void LoadCsv(string content)
     {
@@ -54,14 +54,14 @@ public static class Loc
                 continue;
             if (first) { first = false; continue; }   // en-tête
 
-            var parts = line.Split(',');
+            var parts = ChessArmy.Core.Text.Csv.SplitLine(line);
             var key = parts[0].Trim();
             if (key.Length == 0)
                 continue;
 
-            var values = new string[parts.Length - 1];
-            for (var i = 1; i < parts.Length; i++)
-                values[i - 1] = Unquote(parts[i]);
+            var values = new string[parts.Count - 1];
+            for (var i = 1; i < parts.Count; i++)
+                values[i - 1] = parts[i].Trim();
             Rows[key] = values;
         }
     }
@@ -98,13 +98,5 @@ public static class Loc
                 return cols[0];
         }
         return fallback;
-    }
-
-    private static string Unquote(string s)
-    {
-        s = s.Trim();
-        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"')
-            s = s[1..^1];
-        return s;
     }
 }

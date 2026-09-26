@@ -53,6 +53,13 @@ public static class Trait
     public const string ReactionEnChaine = "Réaction en chaîne"; // si l'attaque TUE sa cible, bondit sur une unité au contact du CORPS et la frappe (et ainsi de suite tant qu'il tue)
     public const string TirEnLigne = "Tir en ligne";         // l'attaque touche TOUTES les cibles alignées avec l'attaquant dans sa portée d'attaque
 
+    // ── Commandant BRUTE (arbre « commandantBrute ») ──────────────────────────────────────────────
+    public const string BouclierHumain = "Bouclier humain"; // attaqué, le porteur REDIRIGE le coup entier sur l'allié le plus proche dans sa portée d'attaque (jamais relayé : le bouclier ne se protège pas derrière un autre)
+    public const string Sacrifice = "Sacrifice";            // le porteur peut ATTAQUER ses propres alliés et se soigne de SacrificeHeal en le faisant (plafonné à ses PV max)
+    public const string ChairACanon = "Chair à canon";      // action : lance un allié au contact sur un ennemi à ChairACanonRange cases (dégâts = puissance du porteur) ; consomme le tour du porteur
+    public const string Vengeance = "Vengeance";            // à la mort d'un allié : +VengeancePowerBonus de puissance pour le PROCHAIN TOUR du porteur seulement (non cumulable)
+    public const string Survivant = "Survivant";            // CAMPAGNE (pas de combat) : +1 puissance et +2 PV max par mission jouée, cumulés sur la run (cf. Campaign.UnitSpec.SurvivantStacks)
+
     // ── OBJETS À LANCER (sacoche du commandant DUO) : consommés par la PREMIÈRE attaque du porteur ──
     public const string Grenade = "Grenade";                 // l'attaque éclabousse les 8 cases autour de la cible (moitié des dégâts)
     public const string BalleRebondissante = "Balle rebondissante"; // le coup rebondit d'ennemi en ennemi (2 cases max), jamais deux fois sur le même
@@ -69,6 +76,7 @@ public static class Trait
         Statique, Seisme, Impact, Recule, Renaissance, TueurDeGeants, Rage,
         LienDePuissance, RepositionnementStrategique, LoupSolitaire, Epines, RenaissanceUltime,
         LienDAmitie, PositionStrategique, ReactionEnChaine, TirEnLigne,
+        BouclierHumain, Sacrifice, ChairACanon, Vengeance, Survivant,
         Grenade, BalleRebondissante, JavelotMeurtrier, FlecheDeCupidon, Seringue,
     };
 

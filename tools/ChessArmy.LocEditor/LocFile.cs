@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using ChessArmy.Core.Text;
 
 namespace ChessArmy.LocEditor;
 
@@ -73,12 +74,14 @@ internal sealed class LocFile
                 file.Rows.Add(new LocRow { Kind = RowKind.Comment, Raw = line });
             else
             {
-                // Découpage sur les virgules comme le jeu (Loc.LoadCsv) : les valeurs n'en contiennent pas.
-                // On garde les valeurs VERBATIM (pas de trim) pour un round-trip octet à octet.
-                var parts = line.Split(',');
+                // Même découpage que le jeu (Core.Text.Csv) : une valeur entre guillemets garde ses virgules.
+                // Les valeurs restent VERBATIM (pas de trim), et la ligne brute est gardée : tant qu'une entrée
+                // n'est pas modifiée, elle est réécrite exactement comme elle était (round-trip octet à octet).
+                var parts = Csv.SplitLine(line);
                 file.Rows.Add(new LocRow
                 {
                     Kind = RowKind.Entry,
+                    Raw = line,
                     Key = parts[0].Trim(),
                     Values = parts.Skip(1).ToList(),
                 });
@@ -93,10 +96,26 @@ internal sealed class LocFile
         for (var i = 0; i < Rows.Count; i++)
         {
             var r = Rows[i];
-            sb.Append(r.IsEntry ? r.Key + "," + string.Join(",", r.Values) : r.Raw);
+            sb.Append(r.IsEntry ? EntryLine(r) : r.Raw);
             if (i < Rows.Count - 1 || _trailingNewline)
                 sb.Append(_newline);
         }
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    }
+
+    /// <summary>
+    /// Ligne d'une entrée : sa ligne d'ORIGINE si elle dit toujours la même chose (fichier intact au
+    /// caractère près), sinon la ligne recomposée — chaque valeur passée entre guillemets seulement si elle
+    /// contient une virgule ou un guillemet.
+    /// </summary>
+    private static string EntryLine(LocRow r)
+    {
+        if (r.Raw.Length > 0)
+        {
+            var original = Csv.SplitLine(r.Raw);
+            if (original[0].Trim() == r.Key && original.Skip(1).SequenceEqual(r.Values))
+                return r.Raw;
+        }
+        return Csv.JoinLine(new[] { r.Key }.Concat(r.Values));
     }
 }

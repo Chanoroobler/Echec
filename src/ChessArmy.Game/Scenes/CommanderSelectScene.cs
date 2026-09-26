@@ -748,6 +748,14 @@ public sealed class CommanderSelectScene : Scene
                 Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
                 y += LineH;
             }
+        // Source « sur perte » (BRUTE) : +N points chaque fois qu'une unité alliée tombe. Aucun plafond n'est
+        // annoncé parce qu'il n'y en a pas : c'est tout l'esprit du personnage.
+        if (def.AllyDeathPoints > 0)
+            foreach (var line in _card.Wrap(Loc.T("commander.points_allydeath", def.AllyDeathPoints), body.Width, 1))
+            {
+                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
+                y += LineH;
+            }
         // DUO : rappeler que ce commandant en a DEUX et que la chute de l'un OU l'autre perd la run.
         if (def.CompanionId != null)
             foreach (var line in _card.Wrap(Loc.T("commander.duo_leaders"), body.Width, 1))

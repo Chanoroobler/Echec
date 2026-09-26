@@ -66,4 +66,22 @@ public sealed class EffectEntry
     /// recrutée. Avec l'échelle <c>perDomaineUnit</c> : le domaine dont on compte les unités.
     /// </summary>
     public string? Domaine { get; set; }
+
+    /// <summary>
+    /// TIER ciblé, optionnel : sur un effet d'unité, restreint le bonus aux pions de ce tier (« Révolte » ne
+    /// relève que le tier 1). Absent → tous les tiers.
+    /// </summary>
+    public int? Tier { get; set; }
+
+    /// <summary>
+    /// Asset d'une classe EXCLUSIVE (cf. <c>Battle.ExclusiveClasses</c>) pour <c>recruitExclusive</c> et
+    /// <c>revolte</c> : le pion que le nœud amène ou promeut.
+    /// </summary>
+    public string? Asset { get; set; }
+
+    /// <summary>
+    /// Options d'un nœud à CHOIX (<c>evolveExclusive</c>) : les assets entre lesquels le joueur tranche à
+    /// l'achat. Au moins deux.
+    /// </summary>
+    public List<string>? Choices { get; set; }
 }

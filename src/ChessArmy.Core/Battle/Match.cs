@@ -376,13 +376,17 @@ public sealed class Match
     private void AppendAttackTargets(Cell from, Unit unit, Domaine attackDomaine, List<Cell> result)
     {
         var vectors = Movement.Vectors(attackDomaine);
+        // « Sacrifice » (BRUTE) : le porteur peut aussi VISER SES PROPRES ALLIÉS. Réservé au camp du joueur —
+        // une IA ne doit jamais se mettre à frapper les siens, même si elle héritait du trait.
+        var sacrifice = unit.Faction == Faction.Player && unit.HasTrait(Trait.Sacrifice);
 
         if (Movement.Kind(attackDomaine) == MovementKind.Jump)
         {
             foreach (var offset in vectors)
             {
                 var to = new Cell(from.Column + offset.Column, from.Row + offset.Row);
-                if (UnitAt(to) is { } target && target.Faction != unit.Faction && !result.Contains(to))
+                if (UnitAt(to) is { } target && (target.Faction != unit.Faction || sacrifice)
+                    && !result.Contains(to))
                     result.Add(to);
             }
             return;
@@ -419,6 +423,14 @@ public sealed class Match
                 {
                     // Premier ennemi en vue : cible SI au-delà de la zone morte de cette direction.
                     // Dans tous les cas son corps borne la ligne (pas de tir au travers).
+                    if (step >= minStep && !result.Contains(to))
+                        result.Add(to);
+                    break;
+                }
+
+                // « Sacrifice » : l'allié rencontré est une cible comme une autre (et son corps borne la ligne).
+                if (sacrifice)
+                {
                     if (step >= minStep && !result.Contains(to))
                         result.Add(to);
                     break;
@@ -552,7 +564,12 @@ public sealed class Match
         ResetActionFx();
         var victim = _units[target.Column, target.Row]!;
         var victimHpBefore = victim.Hp;
+        // « Sacrifice » (BRUTE) : frapper un des SIENS. Le coup part normalement, mais le porteur y gagne des
+        // PV — dans la limite de son maximum : il se nourrit de ses pions, il ne devient pas un colosse.
+        var sacrificed = victim.Faction == unit.Faction;
         ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
+        if (sacrificed)
+            unit.Heal(SacrificeHeal);
 
         // « Épines » de la cible : l'assaillant a pu tomber sur le renvoi (il est alors DÉJÀ retiré du plateau).
         // La suite de son attaque (drain, transpercement, foudre, impact) est alors sans objet : un mort ne
@@ -607,7 +624,8 @@ public sealed class Match
         }
         else if (!victim.IsAlive)
         {
-            unit.RecordKill();                           // mise à mort créditée à l'attaquant (compteur à vie)
+            if (!sacrificed)
+                unit.RecordKill();                       // mise à mort créditée à l'attaquant (compteur à vie)
             _units[target.Column, target.Row] = null;   // case libérée AVANT de tester l'accès
             OnUnitDied(victim, target);                  // « Rage » : les alliés survivants du mort gagnent de la puissance
             // « Statique » : ne prend JAMAIS la place de sa cible — l'attaquant reste sur sa case (la case de
@@ -632,7 +650,8 @@ public sealed class Match
             // (elle a pu être repoussée), à condition de POUVOIR réellement frapper son assaillant — mêmes
             // règles que son attaque (motif, portée, zone morte, ligne de tir, traverse-allié). Repoussée hors
             // de portée, en diagonale d'une « Tour » ou derrière un obstacle → aucune riposte.
-            if (victim.IsAlive && victim.HasTrait(Trait.Riposte)
+            // Un allié sacrifié ne riposte jamais : il encaisse sans comprendre.
+            if (victim.IsAlive && !sacrificed && victim.HasTrait(Trait.Riposte)
                 && UnitAt(from) is { } attacker && ReferenceEquals(attacker, unit)
                 && CellOf(victim) is { } vc && CanStrike(vc, victim, from))
             {
@@ -679,6 +698,122 @@ public sealed class Match
         return kind;
     }
 
+    // ─── « CHAIR À CANON » (arbre de la BRUTE) ────────────────────────────────────────────────────
+    // Le porteur empoigne un allié AU CONTACT et le jette sur un ennemi à ChairACanonRange cases : la cible
+    // encaisse la puissance du lanceur (défenses comprises, comme toute attaque) et le projectile — indemne —
+    // atterrit sur la case libre la plus proche d'elle. Le lancer EST l'action du tour du lanceur.
+
+    /// <summary>
+    /// Alliés que le porteur de « Chair à canon » posté sur <paramref name="from"/> peut empoigner : ceux au
+    /// CONTACT (les 8 cases voisines). Vide s'il n'a pas le trait ou si ce n'est pas son tour.
+    /// </summary>
+    public List<Cell> ThrowableAllies(Cell from)
+    {
+        var result = new List<Cell>();
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !unit.HasTrait(Trait.ChairACanon))
+            return result;
+
+        foreach (var (cell, other) in Units())
+            if (!ReferenceEquals(other, unit) && other.Faction == unit.Faction && other.IsAlive
+                && ChebyshevDistance(from, cell) == 1)
+                result.Add(cell);
+        return result;
+    }
+
+    /// <summary>
+    /// Cibles d'un lancer depuis <paramref name="from"/> : les ennemis à <see cref="ChairACanonRange"/> cases
+    /// ou moins. C'est un JET, pas un tir : ni motif de domaine ni ligne de vue — seule la distance compte.
+    /// Vide s'il n'y a personne à empoigner (le lancer n'aurait pas de projectile).
+    /// </summary>
+    public List<Cell> ThrowTargets(Cell from)
+    {
+        var result = new List<Cell>();
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !unit.HasTrait(Trait.ChairACanon) || ThrowableAllies(from).Count == 0)
+            return result;
+
+        foreach (var (cell, other) in Units())
+            if (other.Faction != unit.Faction && other.IsAlive && ChebyshevDistance(from, cell) <= ChairACanonRange)
+                result.Add(cell);
+        return result;
+    }
+
+    /// <summary>
+    /// Case où retombe le projectile : la case LIBRE et praticable la plus proche de <paramref name="target"/>,
+    /// en anneaux croissants autour d'elle, puis par ordre de grille à distance égale (déterminisme). La case
+    /// de la cible elle-même est exclue tant qu'elle est occupée ; elle devient éligible si le coup l'a tuée.
+    /// <c>null</c> si tout est bouché — le lancer est alors refusé.
+    /// </summary>
+    public Cell? ThrowLanding(Cell target, Unit thrown)
+    {
+        Cell? best = null;
+        var bestDistance = int.MaxValue;
+        for (var column = 0; column < Width; column++)
+        for (var row = 0; row < Height; row++)
+        {
+            var cell = new Cell(column, row);
+            // Case vide, praticable (ni mur ni eau — sauf pour qui vole) et non interdite au camp du projectile.
+            if (UnitAt(cell) != null || BlocksPlayerLanding(cell, thrown)
+                || (BlocksMovement(cell) && !thrown.HasTrait(Trait.Vol)))
+                continue;
+            var distance = ChebyshevDistance(target, cell);
+            if (distance >= bestDistance)
+                continue;
+            best = cell;
+            bestDistance = distance;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Lance l'allié de <paramref name="allyCell"/> sur l'ennemi de <paramref name="target"/> :
+    /// <see cref="MoveKind.Killed"/> si la cible tombe, <see cref="MoveKind.Attacked"/> si elle tient,
+    /// <see cref="MoveKind.Invalid"/> si le lancer est illégal (pas le trait, allié hors contact, cible hors
+    /// portée, ou nulle part où faire retomber le projectile). Le lancer consomme le tour du lanceur.
+    /// </summary>
+    public MoveKind TryThrow(Cell from, Cell allyCell, Cell target)
+    {
+        var unit = ActiveUnitAt(from);
+        if (unit == null || !ThrowableAllies(from).Contains(allyCell) || !ThrowTargets(from).Contains(target))
+            return MoveKind.Invalid;
+        if (UnitAt(allyCell) is not { } ally || UnitAt(target) is not { } victim)
+            return MoveKind.Invalid;
+
+        ResetActionFx();
+        _lastThrow = null;
+
+        // Le projectile quitte sa case AVANT le coup : il ne doit ni border une ligne ni encaisser quoi que
+        // ce soit, et sa case libérée peut servir de point de chute.
+        _units[allyCell.Column, allyCell.Row] = null;
+
+        ApplyDamage(victim, EffectiveDamage(unit, from, victim, target), unit);
+        var killed = !victim.IsAlive && !TryReviveWithEquipment(victim);
+        if (killed)
+        {
+            unit.RecordKill();
+            _units[target.Column, target.Row] = null;
+            OnUnitDied(victim, target);
+        }
+
+        // Point de chute : au plus près de la cible. Tout bouché (cas de figure très rare) → le projectile
+        // revient d'où il vient plutôt que de disparaître.
+        var landing = ThrowLanding(target, ally) ?? allyCell;
+        _units[landing.Column, landing.Row] = ally;
+        _lastThrow = (allyCell, landing, target, killed);
+
+        EndTurn();
+        return killed ? MoveKind.Killed : MoveKind.Attacked;
+    }
+
+    /// <summary>
+    /// Dernier lancer de « Chair à canon » : case de départ du projectile, case d'arrivée, cible visée, et si
+    /// elle est tombée. <c>null</c> hors lancer. La scène y lit de quoi animer la trajectoire.
+    /// </summary>
+    public (Cell From, Cell To, Cell Target, bool Killed)? LastThrow => _lastThrow;
+
+    private (Cell From, Cell To, Cell Target, bool Killed)? _lastThrow;
+
     /// <summary>Vrai si cette mise à mort ouvre un tour bonus (cf. <see cref="ExtraTurnDomaine"/>).</summary>
     private bool GrantsExtraTurn(Unit attacker, MoveKind kind) =>
         kind == MoveKind.Killed
@@ -688,6 +823,12 @@ public sealed class Match
         && CellOf(attacker) != null;
 
     // ─── TRAITS : dégâts effectifs, formes d'attaque, réactions ───────────────────────────────────
+
+    /// <summary>PV rendus au porteur de « Sacrifice » chaque fois qu'il frappe un des siens (plafonnés à ses PV max).</summary>
+    public const int SacrificeHeal = 12;
+
+    /// <summary>Portée du lancer de « Chair à canon », en cases (distance de Chebyshev depuis le lanceur).</summary>
+    public const int ChairACanonRange = 3;
 
     private const int BushReduction = 4;         // -4 dégâts quand la cible est sur un buisson (couvert)
     /// <summary>Réduction de dégâts de BASE du trait « Rempart » (avant bonus d'arbre « Rempart renforcé »).</summary>
@@ -977,6 +1118,8 @@ public sealed class Match
             power += unit.Kills;      // « Berserk » : +1 puissance par ennemi tué, cumulé sur la run (cf. Unit.Kills)
         if (unit.HasTrait(Trait.Rage))
             power += unit.RagePower;  // « Rage » : +7 dès la première mort d'un allié ce combat (non cumulable, cf. Unit.RagePower)
+        if (unit.HasTrait(Trait.Vengeance))
+            power += unit.VengeancePower;   // « Vengeance » : +7 à la mort d'un allié, pour UN tour seulement
         if (IsLoneWolf(unit, cell))
             power += LoupSolitairePower;   // « Loup solitaire » : isolé, il frappe plus fort
         power += AuraPowerBonus(cell);
@@ -1038,6 +1181,9 @@ public sealed class Match
     {
         if (amount <= 0)
             return;
+        // « Bouclier humain » (BRUTE) : un allié à portée prend le coup ENTIER à la place du porteur.
+        if (TryShield(unit, amount, attacker))
+            return;
         // « Lien d'amitié » (DUO) : une partie du coup part sur les alliés liés à portée ; la victime
         // n'encaisse que ce qu'il en reste.
         amount = ShareFriendshipDamage(unit, amount, attacker);
@@ -1085,6 +1231,76 @@ public sealed class Match
         var restCell = CellOf(attacker) ?? attackerCell;
         _thorns.Add((restCell, back, !attacker.IsAlive));
         RemoveDeadAt(restCell, victim);
+    }
+
+    /// <summary>
+    /// Transferts de coup par « Bouclier humain » de l'action courante : case de l'allié qui a encaissé,
+    /// dégâts pris, et s'il est tombé. Vidés à chaque action (cf. <see cref="ResetActionFx"/>) — la scène y
+    /// lit de quoi animer le sacrifice.
+    /// </summary>
+    public IReadOnlyList<(Cell Cell, int Damage, bool Killed)> LastShieldHits => _shieldHits;
+
+    private readonly List<(Cell Cell, int Damage, bool Killed)> _shieldHits = new();
+
+    /// <summary>Garde anti-relais : un coup déjà détourné ne se détourne pas une seconde fois.</summary>
+    private bool _shielding;
+
+    /// <summary>
+    /// « BOUCLIER HUMAIN » (BRUTE) : le porteur attaqué pousse un ALLIÉ devant lui — l'allié le plus proche
+    /// dans sa PORTÉE D'ATTAQUE encaisse le coup ENTIER à sa place, avec tout ce que cela entraîne (épines,
+    /// esquive, mort). Le porteur, lui, ne perd pas un PV : ce n'est pas un partage mais un remplacement.
+    /// JAMAIS relayé — l'allié poussé ne peut pas à son tour se cacher derrière un autre.
+    /// Renvoie vrai si le coup a bien été détourné (l'appelant n'a alors plus rien à appliquer).
+    /// </summary>
+    private bool TryShield(Unit unit, int amount, Unit? attacker)
+    {
+        if (_shielding || !unit.HasTrait(Trait.BouclierHumain))
+            return false;
+        if (ShieldTargetFor(unit) is not { } shieldCell || UnitAt(shieldCell) is not { } ally)
+            return false;
+
+        _shielding = true;
+        try
+        {
+            ApplyDamage(ally, amount, attacker);
+        }
+        finally
+        {
+            _shielding = false;
+        }
+
+        // L'allié a pu se replier (« Esquive ») : on relit sa case avant de constater sa chute.
+        var restCell = CellOf(ally) ?? shieldCell;
+        _shieldHits.Add((restCell, amount, !ally.IsAlive));
+        RemoveDeadAt(restCell, attacker);   // tombé pour le porteur : la mise à mort revient à l'assaillant
+        return true;
+    }
+
+    /// <summary>
+    /// Case de l'allié qui prendrait le coup à la place de <paramref name="unit"/> (« Bouclier humain ») :
+    /// le plus proche dans sa portée d'attaque, départagé par l'ordre de la grille pour rester déterministe.
+    /// <c>null</c> s'il n'y a personne — le porteur encaisse alors lui-même. PUBLIC : l'UI s'en sert pour
+    /// montrer qui va trinquer.
+    /// </summary>
+    public Cell? ShieldTargetFor(Unit unit)
+    {
+        if (CellOf(unit) is not { } here)
+            return null;
+
+        var reach = EffectiveAttackRange(unit, here);
+        Cell? best = null;
+        var bestDistance = int.MaxValue;
+        foreach (var (cell, other) in Units())
+        {
+            if (ReferenceEquals(other, unit) || other.Faction != unit.Faction || !other.IsAlive)
+                continue;
+            var distance = ChebyshevDistance(here, cell);
+            if (distance > reach || distance >= bestDistance)
+                continue;
+            best = cell;
+            bestDistance = distance;
+        }
+        return best;
     }
 
     /// <summary>
@@ -1348,6 +1564,7 @@ public sealed class Match
         _lastCharm = null;
         _brokenItem = null;
         _grenadeBlast = null;
+        _shieldHits.Clear();
         LastGrantedExtraTurn = false;
     }
 
@@ -2062,8 +2279,49 @@ public sealed class Match
     {
         _deathLog.Add((where, dead));   // journal des morts du combat (cf. DeathLog) : ce hook est le seul passage obligé
         foreach (var (_, u) in Units())
-            if (u.Faction == dead.Faction && u.HasTrait(Trait.Rage))
+        {
+            if (u.Faction != dead.Faction)
+                continue;
+            if (u.HasTrait(Trait.Rage))
                 u.ActivateRage(RagePowerBonus);
+            if (u.HasTrait(Trait.Vengeance))
+                u.ActivateVengeance(VengeancePowerBonus);   // colère d'UN tour (cf. EndTurn)
+        }
+
+        // La colère durant « un tour », celle qui naît PENDANT le tour de son propre camp (un pion sacrifié
+        // par la Brute, par exemple) ne doit pas être balayée par la fin de ce tour-là : elle vaut pour le
+        // PROCHAIN. Cf. EndTurn.
+        if (CurrentTurn == dead.Faction)
+            _vengeanceFresh[(int)dead.Faction] = true;
+    }
+
+    /// <summary>
+    /// Par camp : la « Vengeance » vient d'être activée pendant le tour de ce camp, elle survit donc à la fin
+    /// du tour courant (cf. <see cref="OnUnitDied"/>).
+    /// </summary>
+    private readonly bool[] _vengeanceFresh = new bool[2];
+
+    /// <summary>Bonus de puissance du trait « Vengeance » : accordé à la mort d'un allié, pour UN tour.</summary>
+    public const int VengeancePowerBonus = 7;
+
+    /// <summary>
+    /// Fin du tour de <paramref name="faction"/> : ses unités oublient le coup qu'elles avaient reçu
+    /// (cf. <see cref="Unit.HitSinceOwnTurn"/>). Un coup encaissé PENDANT ce tour (riposte, épines, interception
+    /// sur l'attaque qu'elles portaient) est oublié du même coup : ce n'est pas une attaque à laquelle répondre.
+    /// </summary>
+    private void ClearRecentHitsFor(Faction faction)
+    {
+        foreach (var (_, u) in Units())
+            if (u.Faction == faction)
+                u.ClearRecentHit();
+    }
+
+    /// <summary>Retombée de la colère : toutes les unités du camp perdent leur bonus de « Vengeance ».</summary>
+    private void ClearVengeanceFor(Faction faction)
+    {
+        foreach (var (_, u) in Units())
+            if (u.Faction == faction)
+                u.ClearVengeance();
     }
 
     /// <summary>
@@ -2198,6 +2456,7 @@ public sealed class Match
     {
         if (IsOver)
             return;
+        ClearRecentHitsFor(CurrentTurn);   // passer, c'est aussi avoir joué son tour
         CurrentTurn = CurrentTurn.Opponent();
         if (CurrentTurn == Faction.Player)
             _extraTurnUsed = false;
@@ -2322,6 +2581,16 @@ public sealed class Match
         UpdateWinner();
         if (IsOver)
             return;
+
+        // « Vengeance » : la colère dure UN tour. Le camp qui vient de jouer la perd — sauf si elle vient de
+        // naître pendant ce tour-ci (cf. OnUnitDied), auquel cas elle est gardée pour le tour suivant.
+        var played = (int)CurrentTurn;
+        if (_vengeanceFresh[played])
+            _vengeanceFresh[played] = false;
+        else
+            ClearVengeanceFor(CurrentTurn);
+
+        ClearRecentHitsFor(CurrentTurn);   // le camp qui vient de jouer a eu sa chance de répondre
         CurrentTurn = CurrentTurn.Opponent();
         if (CurrentTurn == Faction.Player)
             _extraTurnUsed = false;   // la main revient au joueur : son tour bonus est de nouveau disponible

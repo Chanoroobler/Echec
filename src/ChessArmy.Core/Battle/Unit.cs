@@ -83,7 +83,21 @@ public sealed class Unit
     public int TimesHit { get; private set; }
 
     /// <summary>Comptabilise un coup REÇU (dégâts réellement encaissés). Appelé par le moteur de combat.</summary>
-    public void RecordHit() => TimesHit++;
+    public void RecordHit()
+    {
+        TimesHit++;
+        HitSinceOwnTurn = true;
+    }
+
+    /// <summary>
+    /// Vrai si l'unité a ENCAISSÉ un coup depuis la fin du dernier tour de SON camp : elle vient d'être
+    /// attaquée et c'est à elle de répondre. Effacé par <see cref="Match"/> à la fin de chaque tour de son camp.
+    /// Sert à l'IA du BOSS, qui réagit seule à une attaque (cf. <c>EnemyAi.BossReaction</c>).
+    /// </summary>
+    public bool HitSinceOwnTurn { get; private set; }
+
+    /// <summary>Oublie le coup récent (son camp vient de jouer). Appelé par le moteur de combat.</summary>
+    public void ClearRecentHit() => HitSinceOwnTurn = false;
 
     /// <summary>
     /// Nombre de coups DIRECTS que cette unité a portés à DISTANCE (touche réelle sur un ennemi à portée
@@ -147,6 +161,21 @@ public sealed class Unit
     /// <summary>Active la « Rage » (à la mort d'un allié) : FIXE le bonus sans le cumuler (idempotent, borné à
     /// <paramref name="amount"/>). Appelé par le moteur de combat.</summary>
     public void ActivateRage(int amount) => RagePower = System.Math.Max(RagePower, System.Math.Max(0, amount));
+
+    /// <summary>
+    /// Puissance offerte par le trait « Vengeance » (arbre de la BRUTE) : +<see cref="Match.VengeancePowerBonus"/>
+    /// à la mort d'un allié, mais pour LE PROCHAIN TOUR DE SON CAMP seulement — la colère retombe. NON
+    /// cumulable (deux morts dans le même tour ne la doublent pas) et non persistée d'un combat à l'autre.
+    /// Ajoutée à la puissance effective par <see cref="Match.EffectivePower"/> tant que l'unité porte le trait.
+    /// </summary>
+    public int VengeancePower { get; private set; }
+
+    /// <summary>Active la « Vengeance » : FIXE le bonus sans le cumuler (idempotent). Appelé par le moteur.</summary>
+    public void ActivateVengeance(int amount) =>
+        VengeancePower = System.Math.Max(VengeancePower, System.Math.Max(0, amount));
+
+    /// <summary>Retombée de la colère : appelé à l'ouverture du tour suivant de son camp.</summary>
+    public void ClearVengeance() => VengeancePower = 0;
 
     /// <summary>
     /// « La puissance du rock » (arbre du DUO) : puissance en réserve gagnée au ROQUE et dépensée par la

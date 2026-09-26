@@ -453,4 +453,186 @@ public class EnemyAiTests
         Assert.NotNull(action);
         Assert.Equal(new Cell(6, 0), action!.Value.From);   // c'est l'AUTRE pion qui joue
     }
+
+    // ── BOSS EN RETRAIT derrière son escorte ─────────────────────────────────────────────────────
+
+    private static Unit Boss() => new(Domaine.Dame, Faction.Enemy, Domaines.Dame.BaseClass) { IsEssential = true };
+
+    /// <summary>Escorte fragile (1 PV) : un seul coup du joueur l'abat, pour vider l'escorte en test.</summary>
+    private static Unit FragileEscort() =>
+        new(Domaine.Dame, Faction.Enemy, new UnitClass("E", "e", tier: 1, maxHp: 1, damage: 1, moveRange: 1, attackRange: 1));
+
+    [Fact]
+    public void Boss_WithItsEscort_NeverAdvances()
+    {
+        // Personne à portée : tout le monde « avance ». Le boss, lui, laisse son escorte y aller — quel que
+        // soit le tirage aléatoire parmi les pions candidats.
+        for (var seed = 0; seed < 40; seed++)
+        {
+            var match = new Match(8, 8);
+            match.Place(new Cell(0, 7), Units.Soldat(Faction.Player));
+            match.Place(new Cell(4, 0), Boss());
+            match.Place(new Cell(1, 0), Units.Soldat(Faction.Enemy));
+            match.Place(new Cell(6, 0), Units.Soldat(Faction.Enemy));
+            match.PassTurn();
+
+            var action = EnemyAi.ChooseAction(match, NoGuards, new Random(seed));
+
+            Assert.NotNull(action);
+            Assert.NotEqual(new Cell(4, 0), action!.Value.From);
+        }
+    }
+
+    [Fact]
+    public void Boss_InRetreat_StillStrikesWhatComesInRange()
+    {
+        var match = new Match(8, 8);
+        match.Place(new Cell(4, 1), Units.Soldat(Faction.Player));   // au contact du boss
+        match.Place(new Cell(4, 0), Boss());
+        match.Place(new Cell(0, 7), Units.Soldat(Faction.Enemy));    // escorte loin de tout
+        match.PassTurn();
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.True(action!.Value.IsAttack);
+        Assert.Equal(new Cell(4, 0), action.Value.From);   // en retrait n'est pas désarmé
+    }
+
+    [Fact]
+    public void Boss_OnceMostOfItsEscortHasFallen_JoinsTheFight()
+    {
+        var bossMoved = false;
+        for (var seed = 0; seed < 40 && !bossMoved; seed++)
+        {
+            var match = new Match(8, 8);
+            match.Place(new Cell(0, 6), Units.Soldat(Faction.Player));
+            match.Place(new Cell(7, 6), Units.Soldat(Faction.Player));
+            match.Place(new Cell(4, 0), Boss());
+            match.Place(new Cell(0, 5), FragileEscort());
+            match.Place(new Cell(7, 5), FragileEscort());
+            match.Place(new Cell(2, 0), Units.Soldat(Faction.Enemy));
+
+            // Le joueur abat deux escortes sur trois : il n'en reste qu'une, sous la moitié.
+            match.TryAttack(new Cell(0, 6), new Cell(0, 5));
+            match.PassTurn();
+            match.TryAttack(new Cell(7, 6), new Cell(7, 5));
+            Assert.Equal(Faction.Enemy, match.CurrentTurn);
+
+            var action = EnemyAi.ChooseAction(match, NoGuards, new Random(seed));
+            bossMoved = action is { From: var from } && from == new Cell(4, 0);
+        }
+
+        Assert.True(bossMoved, "le boss doit se mettre en marche quand son escorte a cédé");
+    }
+
+    [Fact]
+    public void Boss_OnceHit_LeavesItsRetreat_EvenWithItsWholeEscort()
+    {
+        var bossMoved = false;
+        for (var seed = 0; seed < 40 && !bossMoved; seed++)
+        {
+            var match = new Match(8, 8);
+            var sniper = new Unit(Domaine.Tour, Faction.Player, Domaines.Tour.BaseClass);   // tire à distance
+            match.Place(new Cell(4, 2), sniper);
+            var boss = new Unit(Domaine.Dame, Faction.Enemy,
+                new UnitClass("B", "b", tier: 1, maxHp: 60, damage: 5, moveRange: 1, attackRange: 1)) { IsEssential = true };
+            match.Place(new Cell(4, 0), boss);
+            match.Place(new Cell(0, 0), Units.Soldat(Faction.Enemy));
+            match.Place(new Cell(7, 0), Units.Soldat(Faction.Enemy));
+
+            match.TryAttack(new Cell(4, 2), new Cell(4, 0));   // le tireur le touche hors de sa portée
+            Assert.True(boss.TimesHit > 0);
+            Assert.Equal(Faction.Enemy, match.CurrentTurn);
+
+            var action = EnemyAi.ChooseAction(match, NoGuards, new Random(seed));
+            bossMoved = action is { From: var from } && from == new Cell(4, 0);
+        }
+
+        Assert.True(bossMoved, "touché, le boss doit sortir de sa réserve malgré son escorte intacte");
+    }
+
+    // ── RÉACTION du boss attaqué : lui seul joue ──────────────────────────────────────────────────
+
+    private static Unit ToughBoss(int attackRange = 1) =>
+        new(Domaine.Dame, Faction.Enemy,
+            new UnitClass("B", "b", tier: 1, maxHp: 60, damage: 5, moveRange: 1, attackRange: attackRange))
+        { IsEssential = true };
+
+    [Fact]
+    public void HitBoss_StrikesBack_EvenIfAnEscortCouldKill()
+    {
+        var match = new Match(8, 8);
+        match.Place(new Cell(4, 1), Units.Soldat(Faction.Player));    // frappe le boss au contact
+        var boss = ToughBoss();
+        match.Place(new Cell(4, 0), boss);
+        var weak = new Unit(Domaine.Dame, Faction.Player,
+            new UnitClass("W", "w", tier: 1, maxHp: 1, damage: 1, moveRange: 1, attackRange: 1));
+        match.Place(new Cell(0, 6), weak);
+        match.Place(new Cell(0, 7), Units.Soldat(Faction.Enemy));    // escorte qui pourrait l'achever
+
+        match.TryAttack(new Cell(4, 1), new Cell(4, 0));
+        Assert.True(boss.HitSinceOwnTurn);
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.Equal(new Cell(4, 0), action!.Value.From);   // c'est le boss qui joue, pas l'escorte
+        Assert.True(action.Value.IsAttack);
+        Assert.Equal(new Cell(4, 1), action.Value.To);
+    }
+
+    [Fact]
+    public void HitBoss_WithNobodyToStrike_HidesOnTheSafestCell_AndNobodyElsePlays()
+    {
+        for (var seed = 0; seed < 20; seed++)
+        {
+            var match = new Match(8, 8);
+            // Le Lancier tire à 2 cases en ligne : le boss (portée 1) ne peut pas lui répondre.
+            match.Place(new Cell(4, 3), new Unit(Domaine.Tour, Faction.Player, Domaines.Tour.BaseClass));
+            match.Place(new Cell(4, 1), ToughBoss());
+            match.Place(new Cell(0, 7), Units.Soldat(Faction.Enemy));
+            match.Place(new Cell(0, 6), Units.Soldat(Faction.Player));   // l'escorte pourrait frapper celui-ci
+
+            match.TryAttack(new Cell(4, 3), new Cell(4, 1));
+            var action = EnemyAi.ChooseAction(match, NoGuards, new Random(seed));
+
+            Assert.NotNull(action);
+            Assert.Equal(new Cell(4, 1), action!.Value.From);   // seul le boss bouge
+            Assert.False(action.Value.IsAttack);
+            var threat = match.Units().Where(u => u.Unit.Faction == Faction.Player)
+                .Count(u => match.ThreatenedCells(u.Cell).Contains(action.Value.To));
+            Assert.Equal(0, threat);   // il s'est mis à l'abri
+        }
+    }
+
+    [Fact]
+    public void HitBoss_ReactsOnlyOnce_ThenTheArmyPlaysAgain()
+    {
+        var match = new Match(8, 8);
+        match.Place(new Cell(4, 1), Units.Soldat(Faction.Player));
+        var boss = ToughBoss();
+        match.Place(new Cell(4, 0), boss);
+        match.Place(new Cell(0, 7), Units.Soldat(Faction.Enemy));
+
+        match.TryAttack(new Cell(4, 1), new Cell(4, 0));
+        var reaction = EnemyAi.ChooseAction(match, NoGuards, Rng())!.Value;
+        match.TryAttack(reaction.From, reaction.To);   // la riposte du boss clôt le tour ennemi
+
+        Assert.False(boss.HitSinceOwnTurn);   // le coup a reçu sa réponse : il est oublié
+    }
+
+    [Fact]
+    public void Boss_WithoutAnyEscort_FightsNormally()
+    {
+        var match = new Match(8, 8);
+        match.Place(new Cell(0, 7), Units.Soldat(Faction.Player));
+        match.Place(new Cell(4, 0), Boss());
+        match.PassTurn();
+
+        var action = EnemyAi.ChooseAction(match, NoGuards, Rng());
+
+        Assert.NotNull(action);
+        Assert.Equal(new Cell(4, 0), action!.Value.From);
+    }
 }

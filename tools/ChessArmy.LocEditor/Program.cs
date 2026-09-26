@@ -86,9 +86,10 @@ internal static class Program
             var body = reader.ReadToEnd();
             var rows = JsonSerializer.Deserialize<List<RowDto>>(body, Json) ?? new List<RowDto>();
 
-            // Garde-fou : une virgule dans une valeur casserait le format → on refuse d'écrire (protège le fichier).
+            // Garde-fou : une virgule dans une CLÉ n'a aucun sens (les clés ne sont jamais entre guillemets) → on
+            // refuse d'écrire. Dans une VALEUR elle est permise : le fichier l'écrit alors entre guillemets.
             var offenders = rows
-                .Where(r => r.Kind == "entry" && (HasComma(r.Key) || (r.Values ?? new()).Any(HasComma)))
+                .Where(r => r.Kind == "entry" && HasComma(r.Key))
                 .Select(r => r.Key)
                 .ToList();
             if (offenders.Count > 0)

@@ -137,6 +137,55 @@ public enum CommandEffectKind
     /// Sens unique : le compagnon ne gagne rien des kills du commandant.
     /// </summary>
     CrossKillPower,
+
+    // ── Commandant BRUTE ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// +<see cref="CommandEffect.Amount"/> PV max au COMMANDANT par unité alliée tombée depuis le début de la
+    /// run (cf. <see cref="Campaign.Run.AllyDeaths"/>). Définitif : le compteur ne redescend jamais.
+    /// </summary>
+    AllyDeathMaxHp,
+
+    /// <summary>
+    /// +<see cref="CommandEffect.Amount"/> de puissance au COMMANDANT par TRANCHE DE
+    /// <see cref="AllyDeathStep"/> unités alliées tombées sur la run (cf. <see cref="Campaign.Run.AllyDeaths"/>).
+    /// </summary>
+    AllyDeathPower,
+
+    /// <summary>
+    /// Recrute LA classe EXCLUSIVE nommée par <see cref="CommandEffect.Asset"/> (cf.
+    /// <see cref="Battle.ExclusiveClasses"/>) : le Paysan de la Brute. Un seul exemplaire — le nœud ne
+    /// redonne rien si le pion est déjà dans le roster.
+    /// </summary>
+    RecruitExclusive,
+
+    /// <summary>
+    /// Fait ÉVOLUER le pion exclusif : à l'achat, le joueur CHOISIT entre les assets de
+    /// <see cref="CommandEffect.Choices"/> (deux évolutions, deux sprites), et le pion se transforme EN PLACE
+    /// en gardant équipements, mises à mort et paliers de « Survivant ». C'est le seul type d'effet qui exige
+    /// un choix au moment de l'achat (cf. <see cref="Campaign.Run.Unlock"/>).
+    /// </summary>
+    EvolveExclusive,
+
+    /// <summary>
+    /// Au lancement d'une mission, si la RÉSERVE compte STRICTEMENT PLUS de <see cref="CommandEffect.Amount"/>
+    /// pions, recrute la classe de base du <see cref="CommandEffect.Domaine"/> visé. Rien si la réserve est
+    /// déjà au plafond : la recrue est perdue.
+    /// </summary>
+    ReserveThresholdRecruit,
+
+    /// <summary>
+    /// « Révolte » : à l'achat, le pion EXCLUSIF (<see cref="CommandEffect.Asset"/>) prend le commandement —
+    /// il devient l'unité essentielle avec ses propres stats, tandis que le commandant redevient un pion
+    /// ORDINAIRE (mortel, mais qui garde tous les bonus de sa branche, cf.
+    /// <see cref="Campaign.UnitSpec.CommanderBody"/>).
+    /// </summary>
+    Revolte,
+
+    /// <summary>
+    /// Octroi d'un TRAIT de combat au seul pion EXCLUSIF (le Paysan), sans toucher au reste de l'armée.
+    /// </summary>
+    ExclusiveTrait,
 }
 
 /// <summary>
@@ -196,7 +245,7 @@ public enum CommandScale
 public sealed class CommandEffect
 {
     private CommandEffect(CommandEffectKind kind, EquipStat stat, int amount, string? trait, CommandScale scale,
-        Domaine? domaine)
+        Domaine? domaine, int? tier = null, string? asset = null, IReadOnlyList<string>? choices = null)
     {
         Kind = kind;
         Stat = stat;
@@ -204,6 +253,9 @@ public sealed class CommandEffect
         Trait = trait;
         Scale = scale;
         Domaine = domaine;
+        Tier = tier;
+        Asset = asset;
+        Choices = choices ?? System.Array.Empty<string>();
     }
 
     public CommandEffectKind Kind { get; }
@@ -229,8 +281,35 @@ public sealed class CommandEffect
     /// </summary>
     public Domaine? Domaine { get; }
 
+    /// <summary>
+    /// TIER ciblé, optionnel (null = tous). Sur un effet d'UNITÉ, restreint le bonus aux pions de ce tier :
+    /// c'est ce qui permet à « Révolte » de ne relever que la piétaille (tier 1).
+    /// </summary>
+    public int? Tier { get; }
+
+    /// <summary>
+    /// ASSET d'une classe EXCLUSIVE visée (cf. <see cref="Battle.ExclusiveClasses"/>) : le pion recruté par
+    /// <see cref="CommandEffectKind.RecruitExclusive"/>, ou promu par <see cref="CommandEffectKind.Revolte"/>.
+    /// </summary>
+    public string? Asset { get; }
+
+    /// <summary>
+    /// OPTIONS FIGÉES d'un nœud à choix (<see cref="CommandEffectKind.EvolveExclusive"/>). Le cas normal est
+    /// de laisser cette liste VIDE : les options sont alors les évolutions de la classe que le pion exclusif
+    /// porte AU MOMENT DE L'ACHAT (cf. <see cref="Campaign.Run.EvolutionChoices"/>), ce qui enchaîne
+    /// naturellement les deux nœuds — « armement » ouvre sur archer/épéiste, puis « protection » sur les
+    /// feuilles de la branche retenue. À ne renseigner que pour forcer une liste hors de cet arbre.
+    /// </summary>
+    public IReadOnlyList<string> Choices { get; }
+
     /// <summary>Nombre de mises à mort du COMPAGNON par palier de <see cref="CommandEffectKind.CrossKillPower"/>.</summary>
     public const int CrossKillStep = 3;
+
+    /// <summary>Nombre de pertes alliées par palier de <see cref="CommandEffectKind.AllyDeathPower"/>.</summary>
+    public const int AllyDeathStep = 3;
+
+    /// <summary>Vrai si l'achat de ce nœud exige un CHOIX du joueur (cf. <see cref="Choices"/>).</summary>
+    public bool NeedsChoice => Kind == CommandEffectKind.EvolveExclusive;
 
     /// <summary>Vrai si l'effet vise le COMMANDANT (stat ou trait). Un DUO : le commandant SEUL, pas son compagnon.</summary>
     public bool TargetsCommander => Kind is CommandEffectKind.CommanderStat or CommandEffectKind.CommanderTrait;
@@ -266,8 +345,8 @@ public sealed class CommandEffect
         new(CommandEffectKind.CommanderTrait, default, 0, trait, CommandScale.Flat, null);
 
     public static CommandEffect UnitStat(EquipStat stat, int amount, CommandScale scale = CommandScale.Flat,
-        Domaine? domaine = null) =>
-        new(CommandEffectKind.UnitStat, stat, amount, null, scale, domaine);
+        Domaine? domaine = null, int? tier = null) =>
+        new(CommandEffectKind.UnitStat, stat, amount, null, scale, domaine, tier);
 
     public static CommandEffect UnitTrait(string trait, Domaine? domaine = null) =>
         new(CommandEffectKind.UnitTrait, default, 0, trait, CommandScale.Flat, domaine);
@@ -332,4 +411,24 @@ public sealed class CommandEffect
     /// <summary>Effet de DUO sans valeur (sa seule présence compte) : trousses, sacoches, roque…</summary>
     public static CommandEffect Flag(CommandEffectKind kind, int amount = 1) =>
         new(kind, default, amount, null, CommandScale.Flat, null);
+
+    /// <summary>Recrue d'une classe EXCLUSIVE (le Paysan), en un seul exemplaire.</summary>
+    public static CommandEffect RecruitExclusive(string asset) =>
+        new(CommandEffectKind.RecruitExclusive, default, 1, null, CommandScale.Flat, null, null, asset);
+
+    /// <summary>Évolution du pion exclusif, au CHOIX entre deux assets (cf. <see cref="NeedsChoice"/>).</summary>
+    public static CommandEffect EvolveExclusive(IReadOnlyList<string> choices) =>
+        new(CommandEffectKind.EvolveExclusive, default, 1, null, CommandScale.Flat, null, null, null, choices);
+
+    /// <summary>Recrue conditionnée par la taille de la réserve (seuil = <paramref name="threshold"/>).</summary>
+    public static CommandEffect ReserveThresholdRecruit(int threshold, Domaine domaine) =>
+        new(CommandEffectKind.ReserveThresholdRecruit, default, threshold, null, CommandScale.Flat, domaine);
+
+    /// <summary>« Révolte » : le pion exclusif nommé prend le commandement.</summary>
+    public static CommandEffect Revolte(string asset) =>
+        new(CommandEffectKind.Revolte, default, 1, null, CommandScale.Flat, null, null, asset);
+
+    /// <summary>Trait de combat octroyé au seul pion EXCLUSIF.</summary>
+    public static CommandEffect ExclusiveTrait(string trait) =>
+        new(CommandEffectKind.ExclusiveTrait, default, 0, trait, CommandScale.Flat, null);
 }

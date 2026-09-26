@@ -72,6 +72,19 @@ public sealed class CommandBuffs
     }
 
     /// <summary>
+    /// Copie de ces bonus avec un TRAIT de plus (rendue telle quelle s'il y est déjà). Sert aux traits qui ne
+    /// visent ni la troupe ni un meneur mais UN pion précis — le Paysan de la BRUTE (cf.
+    /// <see cref="CommandEffectKind.ExclusiveTrait"/>).
+    /// </summary>
+    public CommandBuffs PlusTrait(string trait)
+    {
+        if (Traits.Contains(trait))
+            return this;
+        var traits = new List<string>(Traits) { trait };
+        return new CommandBuffs(_stats, traits);
+    }
+
+    /// <summary>
     /// Agrège les effets qui visent la cible voulue (<paramref name="target"/> : les troupes, le commandant,
     /// ou le second meneur d'un DUO — les trois jeux d'effets sont disjoints).
     /// Les effets de méta (slots, fusion) sont ignorés ici (lus directement par la <see cref="Campaign.Run"/>).
@@ -88,9 +101,14 @@ public sealed class CommandBuffs
     /// Nombre d'équipements que porte la CIBLE elle-même : échelle <see cref="CommandScale.PerOwnEquippedItem"/>.
     /// 0 par défaut → ces bonus valent 0 (cas de tous les pions et des commandants sans emplacement).
     /// </param>
+    /// <param name="targetTier">
+    /// Tier du pion visé, pour les effets d'unité restreints à un tier (cf. <see cref="CommandEffect.Tier"/> :
+    /// « Révolte » ne relève que le tier 1). 0 = inconnu → ces effets sont écartés.
+    /// </param>
     public static CommandBuffs From(IEnumerable<CommandEffect> effects, BuffTarget target, int distinctPairs,
         Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null,
-        Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0)
+        Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0,
+        int targetTier = 0)
     {
         var stats = new Dictionary<EquipStat, int>();
         var traits = new List<string>();
@@ -109,6 +127,10 @@ public sealed class CommandBuffs
             // Effets d'UNITÉ restreints à un domaine : ignorés pour une unité d'un autre domaine. Les MENEURS,
             // eux, ne sont jamais filtrés (leur domaine sert seulement à l'échelle par domaine).
             if (target == BuffTarget.Units && e.Domaine is { } fd && targetDomaine != fd)
+                continue;
+
+            // Idem pour un effet restreint à un TIER : la piétaille relevée par « Révolte » n'est que le tier 1.
+            if (target == BuffTarget.Units && e.Tier is { } ft && targetTier != ft)
                 continue;
 
             if (e.Kind is CommandEffectKind.CommanderTrait or CommandEffectKind.UnitTrait

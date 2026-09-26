@@ -21,14 +21,22 @@ public sealed class UnitSpec
         Domaine = domaine;
         UnitClass = unitClass;
         Essential = essential;
+        CommanderBody = essential && !companion;
         Companion = companion;
     }
 
     private readonly List<Equipment> _equipment = new();
 
     public Domaine Domaine { get; }
-    public UnitClass UnitClass { get; }
-    public bool Essential { get; }
+
+    /// <summary>
+    /// Classe du pion. Mutable par une ÉVOLUTION D'ARBRE (cf. <see cref="EvolveTo"/>), à la différence d'une
+    /// fusion qui, elle, fabrique un gabarit neuf.
+    /// </summary>
+    public UnitClass UnitClass { get; private set; }
+
+    /// <summary>Sa mort DÉCIDE la partie (commandant, second meneur, ou pion promu par « Révolte »).</summary>
+    public bool Essential { get; private set; }
 
     /// <summary>
     /// SECOND meneur d'un commandant DUO (cf. <see cref="Battle.CommandeDef.CompanionId"/>) : essentiel comme
@@ -36,6 +44,42 @@ public sealed class UnitSpec
     /// <c>companionStat</c> / <c>companionTrait</c>). Toujours <c>false</c> pour un commandant solo.
     /// </summary>
     public bool Companion { get; }
+
+    /// <summary>
+    /// CORPS DU COMMANDANT : le pion que visent les effets d'arbre <c>commanderStat</c> / <c>commanderTrait</c>.
+    /// Confondu avec <see cref="Essential"/> dans le cas général, il s'en sépare avec « Révolte » (arbre de la
+    /// BRUTE) : le Paysan promu devient essentiel (sa mort perd la run) tandis que la Brute, redevenue un pion
+    /// ordinaire et mortelle comme les autres, GARDE tous les bonus de sa branche.
+    /// </summary>
+    public bool CommanderBody { get; private set; }
+
+    /// <summary>
+    /// Nombre de missions comptabilisées par le trait « Survivant » (+1 puissance et +2 PV max chacune,
+    /// appliqués au spawn par <see cref="Run.BuffsFor"/>). Persisté ; remis à zéro quand le pion tombe.
+    /// </summary>
+    public int SurvivantStacks { get; set; }
+
+    /// <summary>
+    /// Fait ÉVOLUER le pion en place (nœud d'arbre à choix) : il garde son identité, donc ses équipements
+    /// collés, ses mises à mort et ses paliers de « Survivant » — au contraire d'une fusion, qui sort un pion
+    /// neuf. Sans effet si la classe visée est nulle.
+    /// </summary>
+    public void EvolveTo(UnitClass? unitClass)
+    {
+        if (unitClass != null)
+            UnitClass = unitClass;
+    }
+
+    /// <summary>
+    /// Change le rôle du pion dans la run : <paramref name="essential"/> = sa mort décide la partie,
+    /// <paramref name="commanderBody"/> = il porte les bonus « commandant » de l'arbre. Réservé à « Révolte »
+    /// (cf. <see cref="Run.Revolte"/>) et à la reconstruction d'une sauvegarde.
+    /// </summary>
+    public void SetRole(bool essential, bool commanderBody)
+    {
+        Essential = essential;
+        CommanderBody = commanderBody;
+    }
 
     /// <summary>
     /// Équipements portés, dans l'ordre où ils ont été posés. Le NOMBRE DE SLOTS n'est pas porté ici mais par

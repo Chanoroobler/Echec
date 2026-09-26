@@ -14,7 +14,11 @@ namespace ChessArmy.Core.Campaign;
 public sealed class RunSave
 {
     /// <summary>
-    /// Version du format. v9 = map IMPOSÉE par l'éditeur de sauvegarde (<see cref="ForcedMap"/>), outil de
+    /// Version du format. v10 = commandant BRUTE : pertes cumulées de la run (<see cref="AllyDeaths"/>, qui
+    /// alimente ses PV max et sa puissance) et CHOIX faits sur les nœuds d'arbre à options
+    /// (<see cref="NodeChoices"/>, les évolutions du Paysan). Une sauvegarde v9 ou antérieure reste LISIBLE :
+    /// compteur absent → 0, choix absents → aucun nœud à options acheté.
+    /// v9 = map IMPOSÉE par l'éditeur de sauvegarde (<see cref="ForcedMap"/>), outil de
     /// test. Une sauvegarde v8 ou antérieure reste LISIBLE : champ absent → null → tirage habituel.
     /// v8 = « Continue sans moi » (arbre du DUO) : le legs d'un meneur tombé est persisté
     /// (<see cref="InheritedLeaderPower"/> / <see cref="InheritedLeaderHp"/>), le tombé ayant quitté le roster.
@@ -42,7 +46,7 @@ public sealed class RunSave
     /// En revanche un <see cref="CombatNumber"/> hors [1..<see cref="Run.TotalCombats"/>] est à ignorer
     /// (cf. <see cref="IsUsable"/>).
     /// </summary>
-    public int Version { get; set; } = 9;
+    public int Version { get; set; } = 10;
 
     public int CombatNumber { get; set; } = 1;
 
@@ -129,6 +133,19 @@ public sealed class RunSave
     /// </summary>
     public string? ForcedMap { get; set; }
 
+    /// <summary>
+    /// BRUTE : nombre d'unités alliées tombées depuis le début de la run (cf. <see cref="Run.AllyDeaths"/>).
+    /// C'est LUI qui porte ses deux bonus de branche (PV max et puissance), d'où la persistance. Absent
+    /// (v9 ou antérieure) → 0.
+    /// </summary>
+    public int AllyDeaths { get; set; }
+
+    /// <summary>
+    /// Choix retenus sur les nœuds d'arbre à OPTIONS : id du nœud → asset choisi (cf.
+    /// <see cref="Run.NodeChoices"/>). Absent (v9 ou antérieure) → aucun.
+    /// </summary>
+    public Dictionary<string, string>? NodeChoices { get; set; }
+
     /// <summary>Nombre d'unités de l'inventaire (résumé léger pour l'écran de slots).</summary>
     public int UnitCount => Roster.Count;
 
@@ -157,6 +174,8 @@ public sealed class RunSave
             InheritedLeaderPower = run.InheritedLeaderPower,
             InheritedLeaderHp = run.InheritedLeaderHp,
             ForcedMap = run.ForcedMapName,
+            AllyDeaths = run.AllyDeaths,
+            NodeChoices = run.NodeChoices.Count == 0 ? null : new Dictionary<string, string>(run.NodeChoices),
         };
         foreach (var spec in run.Roster)
             save.Roster.Add(UnitSpecSave.From(spec));
@@ -177,7 +196,7 @@ public sealed class RunSave
         return Run.Restore(roster, CombatNumber, Seed, FirstRun, inventory, LegendaryPity, RarePity,
             CommandPoints, CommandNodes, Rerolls, CommanderId, Difficulty, Stats?.ToStats(),
             AiFreshTier2, AiFreshTier3, UltimateReviveUsed, LeaderBonusHp,
-            InheritedLeaderPower, InheritedLeaderHp, ForcedMap);
+            InheritedLeaderPower, InheritedLeaderHp, ForcedMap, AllyDeaths, NodeChoices);
     }
 }
 
@@ -255,27 +274,48 @@ public sealed class UnitSpecSave
     /// <summary>Total d'ennemis tués À VIE par ce pion. Absent (vieux save) → 0. Voir <see cref="UnitSpec.Kills"/>.</summary>
     public int Kills { get; set; }
 
+    /// <summary>
+    /// Paliers du trait « Survivant » (cf. <see cref="UnitSpec.SurvivantStacks"/>). Absent (vieux save) → 0.
+    /// </summary>
+    public int Survivant { get; set; }
+
+    /// <summary>
+    /// Porte les bonus « commandant » de l'arbre (cf. <see cref="UnitSpec.CommanderBody"/>). Absent (vieux
+    /// save) → déduit de <see cref="Essential"/>, ce qui restitue exactement l'ancien comportement.
+    /// </summary>
+    public bool? CommanderBody { get; set; }
+
     public static UnitSpecSave From(UnitSpec spec) => new()
     {
         Domaine = spec.Domaine,
         Class = spec.UnitClass.Asset,
         Essential = spec.Essential,
         Companion = spec.Companion,
+        CommanderBody = spec.CommanderBody,
         EquipmentIds = spec.Equipments.Select(e => e.Id).ToList(),
         Kills = spec.Kills,
+        Survivant = spec.SurvivantStacks,
     };
 
     public UnitSpec ToSpec()
     {
         UnitSpec spec;
-        if (Essential)
+        // L'ASSET décide de la reconstruction, pas le drapeau « essentiel » : depuis « Révolte » (arbre de la
+        // Brute), un commandant peut avoir cessé d'être essentiel et un simple Paysan l'être devenu.
+        var commande = Commandes.All.FirstOrDefault(c => c.BaseClass.Asset == Class);
+        if (commande == null && Essential && ExclusiveClasses.Find(Class) == null
+            && FindClass(Domaines.Of(Domaine).BaseClass, Class) == null)
+            commande = Commandes.Commander;   // asset de commandant disparu du JSON : repli historique
+
+        if (commande != null)
         {
-            // Unité COMMANDE (commandant ou second meneur d'un DUO) : retrouvée par asset dans le registre,
-            // repli sur le commandant. Le rôle sauvegardé prime, et le registre le confirme (un asset de
-            // compagnon reste un compagnon même si le drapeau manque — vieille sauvegarde).
-            var def = Commandes.All.FirstOrDefault(c => c.BaseClass.Asset == Class) ?? Commandes.Commander;
-            var companion = Companion || def.Role == CommandeRole.Companion;
-            spec = new UnitSpec(def.Movement, def.BaseClass, essential: true, companion) { Kills = Kills };
+            var companion = Companion || commande.Role == CommandeRole.Companion;
+            spec = new UnitSpec(commande.Movement, commande.BaseClass, essential: true, companion) { Kills = Kills };
+        }
+        else if (ExclusiveClasses.Find(Class) is { } exclusive)
+        {
+            // Pion EXCLUSIF (le Paysan de la Brute), éventuellement déjà évolué par un nœud d'arbre.
+            spec = new UnitSpec(ExclusiveClasses.DomaineOf(Class) ?? Domaine, exclusive) { Kills = Kills };
         }
         else
         {
@@ -283,6 +323,9 @@ public sealed class UnitSpecSave
             var cls = FindClass(Domaines.Of(Domaine).BaseClass, Class) ?? Domaines.Of(Domaine).BaseClass;
             spec = new UnitSpec(Domaine, cls) { Kills = Kills };
         }
+
+        spec.SurvivantStacks = Survivant;
+        spec.SetRole(Essential, CommanderBody ?? (Essential && !Companion));
 
         // Multi-slot depuis le Marchand ; une sauvegarde plus ancienne n'a que le champ mono-slot.
         var ids = EquipmentIds ?? (Equipment is { } legacy ? new List<string> { legacy } : new List<string>());

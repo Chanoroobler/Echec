@@ -371,7 +371,7 @@ internal sealed class MainForm : Form
             return;
         try
         {
-            _save.Version = 5;
+            _save.Version = 10;   // format courant (cf. RunSave.Version) : pertes cumulées + choix de nœuds
             SaveIo.SaveSlot(SlotIndex, _save);
             _status.Text = $"Enregistré : {GamePaths.SlotPath(SlotIndex)}";
         }

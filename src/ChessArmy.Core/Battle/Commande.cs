@@ -33,8 +33,11 @@ public sealed class CommandeDef
         int missionPoints = Campaign.Run.PointsPerMission,
         int healPoints = 0, int healCap = int.MaxValue,
         int pairKillPoints = 0, int pairKillCap = int.MaxValue,
-        string? companionId = null, bool noArmy = false)
+        string? companionId = null, bool noArmy = false,
+        int allyDeathPoints = 0, int allyDeathCap = int.MaxValue)
     {
+        AllyDeathPoints = allyDeathPoints;
+        AllyDeathCap = allyDeathCap;
         HealPoints = healPoints;
         HealCap = healCap;
         PairKillPoints = pairKillPoints;
@@ -191,6 +194,18 @@ public sealed class CommandeDef
 
     /// <summary>COMMANDANT : nombre MAX de mises à mort « à deux » comptabilisées par combat pour <see cref="PairKillPoints"/>.</summary>
     public int PairKillCap { get; }
+
+    /// <summary>
+    /// COMMANDANT : points de commandement gagnés à chaque fois qu'une unité ALLIÉE tombe en combat,
+    /// plafonnés à <see cref="AllyDeathCap"/> pertes par combat. Source de gain de la BRUTE, qui joue ses
+    /// pions comme de la monnaie : un pion qu'elle a elle-même sacrifié paie autant qu'un pion tué par
+    /// l'ennemi. 0 = ce commandant ne gagne pas de points ainsi. Cf. <see cref="Campaign.Run.RegisterAllyDeath"/>.
+    /// </summary>
+    public int AllyDeathPoints { get; }
+
+    /// <summary>COMMANDANT : nombre MAX de pertes comptabilisées par combat pour <see cref="AllyDeathPoints"/>
+    /// (<see cref="int.MaxValue"/> = aucun plafond, le cas de la BRUTE).</summary>
+    public int AllyDeathCap { get; }
 
     /// <summary>
     /// COMMANDANT DUO : <see cref="Id"/> du SECOND meneur (une <see cref="CommandeDef"/> de rôle
