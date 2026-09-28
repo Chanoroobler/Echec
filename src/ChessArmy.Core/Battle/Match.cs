@@ -722,9 +722,10 @@ public sealed class Match
     }
 
     /// <summary>
-    /// Cibles d'un lancer depuis <paramref name="from"/> : les ennemis à <see cref="ChairACanonRange"/> cases
-    /// ou moins. C'est un JET, pas un tir : ni motif de domaine ni ligne de vue — seule la distance compte.
-    /// Vide s'il n'y a personne à empoigner (le lancer n'aurait pas de projectile).
+    /// Cibles d'un lancer depuis <paramref name="from"/> : les ennemis HORS CONTACT, de 2 à
+    /// <see cref="ChairACanonRange"/> cases (au contact, le porteur frappe lui-même). C'est un JET, pas un
+    /// tir : ni motif de domaine ni ligne de vue — seule la distance compte. Vide s'il n'y a personne à
+    /// empoigner (le lancer n'aurait pas de projectile).
     /// </summary>
     public List<Cell> ThrowTargets(Cell from)
     {
@@ -734,9 +735,52 @@ public sealed class Match
             return result;
 
         foreach (var (cell, other) in Units())
-            if (other.Faction != unit.Faction && other.IsAlive && ChebyshevDistance(from, cell) <= ChairACanonRange)
+        {
+            var distance = ChebyshevDistance(from, cell);
+            if (other.Faction != unit.Faction && other.IsAlive && distance >= 2 && distance <= ChairACanonRange)
                 result.Add(cell);
+        }
         return result;
+    }
+
+    /// <summary>
+    /// Allié jeté sur <paramref name="target"/> : parmi ceux au contact du porteur, le plus PROCHE de la cible
+    /// (départage par ordre de parcours → déterministe). Le joueur ne choisit pas son projectile : il vise.
+    /// </summary>
+    public Cell? PickThrowAlly(Cell from, Cell target)
+    {
+        Cell? best = null;
+        var bestDistance = int.MaxValue;
+        foreach (var cell in ThrowableAllies(from))
+        {
+            var distance = ChebyshevDistance(cell, target);
+            if (distance < bestDistance)
+            {
+                best = cell;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Portée AFFICHÉE en plus pour le porteur de « Chair à canon » posté en <paramref name="cell"/> quand un
+    /// allié est au contact : de quoi annoncer <see cref="ChairACanonRange"/> sur sa carte. 0 sinon. Pur
+    /// affichage : le jet a ses propres cibles (cf. <see cref="ThrowTargets"/>), la portée de frappe ne change pas.
+    /// </summary>
+    public int ThrowRangeBonus(Cell cell)
+    {
+        if (UnitAt(cell) is not { } unit || !unit.HasTrait(Trait.ChairACanon))
+            return 0;
+        var hasAlly = false;
+        foreach (var (other, ally) in Units())
+            if (!ReferenceEquals(ally, unit) && ally.Faction == unit.Faction && ally.IsAlive
+                && ChebyshevDistance(cell, other) == 1)
+            {
+                hasAlly = true;
+                break;
+            }
+        return hasAlly ? System.Math.Max(0, ChairACanonRange - unit.AttackRange - AttackRangeBonus(cell)) : 0;
     }
 
     /// <summary>
@@ -765,6 +809,12 @@ public sealed class Match
         }
         return best;
     }
+
+    /// <summary>
+    /// Lance l'allié au contact le plus proche de <paramref name="target"/> (cf. <see cref="PickThrowAlly"/>).
+    /// </summary>
+    public MoveKind TryThrow(Cell from, Cell target) =>
+        PickThrowAlly(from, target) is { } ally ? TryThrow(from, ally, target) : MoveKind.Invalid;
 
     /// <summary>
     /// Lance l'allié de <paramref name="allyCell"/> sur l'ennemi de <paramref name="target"/> :

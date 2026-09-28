@@ -128,6 +128,14 @@ public sealed class GameplayScene : Scene
     private int _specialRoundsLeft;            // rounds restants (décrémenté à chaque action ennemie résolue)
     private bool _specialBriefOpen;            // modale de briefing ouverte : gèle le placement jusqu'au clic / A
 
+    // Intro de BOSS (placement d'un combat de boss) : le boss en GRAND au centre avec son nom, jusqu'au clic / A ;
+    // puis il rétrécit et vole jusqu'à sa case. Tant que _bossIntroCell est non nul, le pion est masqué sur sa case
+    // (cf. IsHiddenForFx) et le placement est gelé.
+    private Cell? _bossIntroCell;
+    private bool _bossIntroFlying;
+    private float _bossIntroT;                 // avancement du vol [0,1]
+    private const float BossIntroFlightDuration = 0.45f;
+
     /// <summary>
     /// Chiffres d'une mission spéciale FIGÉS à sa clôture (avant que la complétion ne retire les pertes du
     /// roster), affichés par la modale de bilan avant l'écran de récupération des pions.
@@ -1428,6 +1436,18 @@ public sealed class GameplayScene : Scene
             wave = _run.BuildEnemyWave(Context.Saves.IsUnitDiscovered);
         PlaceEnemies(wave);
 
+        // Combat de boss : intro « le boss en grand » avant la préparation (cf. DrawBossIntro).
+        _bossIntroCell = null;
+        _bossIntroFlying = false;
+        _bossIntroT = 0f;
+        if (_run.IsBossCombat)
+            foreach (var (cell, unit) in _match.Units())
+                if (unit.Faction == Faction.Enemy && unit.IsEssential)
+                {
+                    _bossIntroCell = cell;
+                    break;
+                }
+
         // Découverte À L'APPARITION (méta-progression) : tout pion ennemi RÉELLEMENT placé — vague, escortes
         // ET boss — passe au codex. C'est la SEULE voie de découverte des T2/T3 côté IA : une classe rendue
         // éligible « nouveauté » mais jamais alignée reste inconnue. Idempotent (écrit sur disque à la 1re fois).
@@ -2602,6 +2622,29 @@ public sealed class GameplayScene : Scene
             return;
         }
 
+        // Intro de boss : attend le clic / A, puis le vol jusqu'à la case ; le placement reste gelé jusqu'à l'atterrissage.
+        if (_bossIntroCell != null)
+        {
+            if (!_bossIntroFlying)
+            {
+                if (Context.Input.WasLeftClicked || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+                {
+                    _bossIntroFlying = true;
+                    Context.Sounds.Play("unit_pick");
+                }
+            }
+            else
+            {
+                _bossIntroT += (float)gameTime.ElapsedGameTime.TotalSeconds / BossIntroFlightDuration;
+                if (_bossIntroT >= 1f)
+                {
+                    _bossIntroCell = null;
+                    Context.Sounds.Play("unit_place");
+                }
+            }
+            return;
+        }
+
         // Tuto, PRÉPARATION guidée : ces étapes pilotent elles-mêmes les modales (sous-phase Équipement,
         // arbre de commandement) et doivent donc être évaluées AVANT les retours anticipés ci-dessous.
         if (_tutorial is { InPreparation: true })
@@ -3313,8 +3356,7 @@ public sealed class GameplayScene : Scene
             var acts = new List<Cell>(_attackTargets);
             acts.AddRange(_healTargets);
             acts.AddRange(_satchelTargets);
-            acts.AddRange(_throwTargets);   // BRUTE : cibles du jet (2e temps de « Chair à canon »)
-            acts.AddRange(_throwAllies);    // …et alliés empoignables (1er temps)
+            acts.AddRange(_throwTargets);   // BRUTE : cibles du jet (« Chair à canon »)
             acts.AddRange(_legalMoves);
             if (acts.Count > 0) return acts;
         }
@@ -5710,7 +5752,11 @@ public sealed class GameplayScene : Scene
                 // « Protéger » : dès qu'il n'y a PLUS d'adversaire, les paysans restants sont sauvés → victoire
                 // IMMÉDIATE (inutile d'attendre la fin des tours ; l'élimination ne clôt pas seule une mission).
                 var noEnemiesLeft = IsProtectMission && !_match.Units().Any(u => u.Unit.Faction == Faction.Enemy);
-                done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0 || noEnemiesLeft;
+                // Les paysans protégés ne peuvent que DIMINUER : dès que le quota est cassé, la défaite est
+                // acquise → clôture IMMÉDIATE (prononcée au quota gate ci-dessous), sans jouer les tours restants.
+                var quotaBroken = IsProtectMission && PaysansSaved < PaysansRequired;
+                done = (PaysansTotal > 0 && PaysansResolved >= PaysansTotal) || _specialRoundsLeft <= 0 || noEnemiesLeft
+                       || quotaBroken;
             }
             if (!done)
                 return;
@@ -6735,27 +6781,16 @@ public sealed class GameplayScene : Scene
             if (Context.Input.WasConfirmPressed) { CombatActAt(_cursor); return; }
             if (Context.Input.WasCancelPressed && _selected is not null)
             {
-                // « Chair à canon » : B repose d'abord l'allié empoigné, sans lâcher le porteur.
-                if (_throwAlly is not null && _selected is { } carrying)
-                    RefreshThrowAllies(carrying);
-                else
-                    ClearSelection();
+                ClearSelection();
                 Context.Sounds.Play("unit_deselect");
                 return;
             }
         }
 
-        // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place). « Chair à canon » :
-        // un allié DÉJÀ empoigné est d'abord reposé — on revient au choix du projectile sans tout perdre.
+        // Clic droit : repose le pion porté et annule la sélection (l'unité reste en place).
         if (Context.Input.WasRightClicked && (_selected is not null || _combatDragFrom is not null))
         {
             _combatDragFrom = null;
-            if (_throwAlly is not null && _selected is { } thrower)
-            {
-                RefreshThrowAllies(thrower);
-                Context.Sounds.Play("unit_deselect");
-                return;
-            }
             ClearSelection();
             Context.Sounds.Play("unit_deselect");
             return;
@@ -6797,11 +6832,6 @@ public sealed class GameplayScene : Scene
             EndPlayerAction();
             return;
         }
-        if (_selected is { } selA && _throwAllies.Contains(cell))    // « Chair à canon » : on empoigne
-        {
-            CarryForThrow(selA, cell);
-            return;
-        }
         if (_selected is { } sel2 && _legalMoves.Contains(cell))
         {
             TryMoveWithFx(sel2, cell);
@@ -6821,7 +6851,7 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _attackReach);
             _match.HealTargets(cell, _healTargets);
             RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
-            RefreshThrowAllies(cell);                   // BRUTE : alliés empoignables (« Chair à canon »)
+            RefreshThrowTargets(cell);                  // BRUTE : cibles du jet (« Chair à canon »), APRÈS les attaques
             FilterTutorialActions();
 
             // Manette : le curseur se pose d'emblée sur l'ennemi attaquable le PLUS PROCHE — attaquer ne
@@ -6951,11 +6981,6 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        if (_selected is not null && _throwAllies.Contains(cell))    // « Chair à canon » : on empoigne l'allié
-        {
-            CarryForThrow(_selected.Value, cell);
-            return;
-        }
 
         if (_selected is not null && _legalMoves.Contains(cell))
         {
@@ -6978,7 +7003,7 @@ public sealed class GameplayScene : Scene
             _match.ThreatenedCells(cell, _attackReach); // toute la portée de tir (affichée avec le déplacement)
             _match.HealTargets(cell, _healTargets);     // trait « Soin » : alliés blessés ciblables
             RefreshSatchelTargets(cell);                // DUO : sacoches aimantables depuis cette case
-            RefreshThrowAllies(cell);                   // BRUTE : alliés empoignables (« Chair à canon »)
+            RefreshThrowTargets(cell);                  // BRUTE : cibles du jet (« Chair à canon »), APRÈS les attaques
             FilterTutorialActions();
             _combatDragFrom = cell;                 // on soulève le pion (suit la souris jusqu'au relâché)
             Context.Sounds.Play("unit_select");
@@ -7024,11 +7049,6 @@ public sealed class GameplayScene : Scene
         {
             ResolveThrow(from, cell);
             EndPlayerAction();
-        }
-        else if (_throwAllies.Contains(cell))       // glissé sur un allié au contact : on l'empoigne
-        {
-            CarryForThrow(from, cell);
-            TriggerLanding(from);
         }
         else if (_legalMoves.Contains(cell))
         {
@@ -7834,60 +7854,66 @@ public sealed class GameplayScene : Scene
         _combatDragFrom = null;
     }
 
-    // ── « CHAIR À CANON » (arbre de la BRUTE) : le lancer en deux temps ───────────────────────────
-    // 1. Le porteur sélectionné met en évidence les alliés AU CONTACT (_throwAllies) — comme le trait
-    //    « Soin » met en évidence les alliés blessés, cliquer l'un d'eux l'EMPOIGNE au lieu de le
-    //    sélectionner. 2. Les ennemis à portée deviennent alors les cibles du jet (_throwTargets).
-    // Annuler (clic droit / B) repose le pion sans consommer le tour.
+    // ── « CHAIR À CANON » (arbre de la BRUTE) : le lancer en UN geste ──────────────────────────────
+    // Dès qu'un allié est au contact, la portée du porteur passe à Match.ChairACanonRange : les ennemis
+    // HORS CONTACT dans ce rayon sont des cibles (_throwTargets) et la zone de portée s'étend (cf.
+    // RefreshThrowTargets). Viser l'un d'eux (clic, glisser ou A) jette l'allié au contact le plus proche
+    // de la cible. Au contact, le porteur frappe lui-même (attaque normale).
 
-    /// <summary>Alliés empoignables par le porteur sélectionné (vide hors « Chair à canon »).</summary>
-    private readonly List<Cell> _throwAllies = new();
-
-    /// <summary>Allié actuellement EMPOIGNÉ (2e temps du lancer), ou null.</summary>
-    private Cell? _throwAlly;
-
-    /// <summary>Ennemis visables par le jet une fois l'allié empoigné.</summary>
+    /// <summary>Ennemis visables par le jet depuis le porteur sélectionné (vide hors « Chair à canon »).</summary>
     private readonly List<Cell> _throwTargets = new();
 
-    private void ClearThrow()
-    {
-        _throwAllies.Clear();
-        _throwTargets.Clear();
-        _throwAlly = null;
-    }
+    private void ClearThrow() => _throwTargets.Clear();
 
-    /// <summary>Recalcule les alliés empoignables depuis <paramref name="from"/> (1er temps du lancer).</summary>
-    private void RefreshThrowAllies(Cell from)
+    /// <summary>
+    /// Recalcule les cibles du jet depuis <paramref name="from"/> et étend la zone de portée affichée au rayon
+    /// du lancer. Appelé à la sélection, APRÈS le calcul des attaques normales (qui restent prioritaires).
+    /// </summary>
+    private void RefreshThrowTargets(Cell from)
     {
         ClearThrow();
-        if (_match.UnitAt(from) is not { Faction: Faction.Player } thrower
-            || !thrower.HasTrait(Trait.ChairACanon))
-            return;
-        // Pas de cible à portée : inutile de proposer d'empoigner qui que ce soit.
-        if (_match.ThrowTargets(from).Count == 0)
-            return;
-        _throwAllies.AddRange(_match.ThrowableAllies(from));
-    }
-
-    /// <summary>Empoigne l'allié de <paramref name="ally"/> : on passe aux cibles du jet.</summary>
-    private void CarryForThrow(Cell from, Cell ally)
-    {
-        _throwAlly = ally;
-        _throwAllies.Clear();
-        _throwTargets.Clear();
-        _throwTargets.AddRange(_match.ThrowTargets(from));
-        Context.Sounds.Play("unit_select");
+        AddThrowPreview(from, _attackTargets, _attackReach, _throwTargets);
     }
 
     /// <summary>
-    /// Résout le jet : la cible encaisse la puissance du porteur et le projectile atterrit au plus près
-    /// d'elle. Le tour du porteur est consommé par le moteur.
+    /// Ajoute l'aperçu du jet depuis <paramref name="from"/> : les cibles du jet absentes de
+    /// <paramref name="attacks"/> vont dans <paramref name="throwsOut"/>, et <paramref name="reach"/> s'étend
+    /// à tout le rayon du lancer (cases vides comprises, comme la portée d'un tireur). Sans effet hors du
+    /// trait ou sans allié au contact. Partagé par la sélection et l'aperçu au survol.
+    /// </summary>
+    private void AddThrowPreview(Cell from, List<Cell> attacks, List<Cell> reach, List<Cell> throwsOut)
+    {
+        if (_match.UnitAt(from) is not { Faction: Faction.Player } thrower
+            || !thrower.HasTrait(Trait.ChairACanon)
+            || _match.ThrowableAllies(from).Count == 0)
+            return;
+
+        foreach (var t in _match.ThrowTargets(from))
+            if (!attacks.Contains(t) && !throwsOut.Contains(t))
+                throwsOut.Add(t);
+
+        for (var column = from.Column - Match.ChairACanonRange; column <= from.Column + Match.ChairACanonRange; column++)
+        for (var row = from.Row - Match.ChairACanonRange; row <= from.Row + Match.ChairACanonRange; row++)
+        {
+            var c = new Cell(column, row);
+            if (c != from && column >= 0 && row >= 0 && column < Columns && row < Rows && !reach.Contains(c))
+                reach.Add(c);
+        }
+    }
+
+    /// <summary>
+    /// Résout le jet : l'allié au contact le plus proche de la cible est lancé, la cible encaisse la puissance
+    /// du porteur et le projectile atterrit au plus près d'elle. Le tour du porteur est consommé par le moteur.
     /// </summary>
     private void ResolveThrow(Cell from, Cell target)
     {
-        if (_throwAlly is not { } ally)
-            return;
-        var kind = _match.TryThrow(from, ally, target);
+        // Figé AVANT le lancer : la cible peut mourir (sprite pour sa dissolution), et le chiffre affiché est
+        // celui d'une attaque du porteur (même calcul que le moteur, borné aux PV).
+        var victim = _match.UnitAt(target);
+        var victimSprite = victim != null ? UnitSprite(victim) : null;
+        var damage = victim != null ? _match.PreviewDamage(from, target) : 0;
+
+        var kind = _match.TryThrow(from, target);
         if (kind == MoveKind.Invalid)
         {
             ClearThrow();
@@ -7896,14 +7922,30 @@ public sealed class GameplayScene : Scene
 
         if (_match.LastThrow is { } thrown)
         {
-            // Le projectile regarde sa cible en arrivant ; le porteur regarde son jet.
-            if (_match.UnitAt(thrown.To) is { } flying)
-                FaceToward(flying, thrown.To, thrown.Target);
+            // Le porteur regarde son jet ; le projectile regarde sa cible pendant tout le vol.
             if (_match.UnitAt(from) is { } thrower)
                 FaceToward(thrower, from, thrown.Target);
-            TriggerLanding(thrown.To);
+            Texture2D? flyingSprite = null;
+            if (_match.UnitAt(thrown.To) is { } flying)
+            {
+                FaceToward(flying, thrown.From, thrown.Target);
+                flyingSprite = UnitSprite(flying);
+            }
+
+            RecordIfEnemyKilled(victim);
+            // Le pion lancé SAUTE sur l'ennemi (grand arc), le percute — chiffre, flash ou dissolution — puis
+            // rebondit sur sa case d'arrivée. Gèle le tour comme toute attaque animée (_fx.Active).
+            _pendingDamage = damage;
+            _pendingDodge = false;
+            _pendingPhenix = false;
+            _pendingGiantBonus = 0;
+            _shieldJump = null;
+            _victimMove = null;
+            _fx.Begin(thrown.From, thrown.Target, thrown.To, flyingSprite, victimSprite, thrown.Killed,
+                advanced: thrown.Killed, AttackStyle.Throw, thrower: from);
+            _impactHandled = false;
         }
-        Context.Sounds.Play("unit_attack");
+        Context.Sounds.Play("unit_charge");
         ClearThrow();
     }
 
@@ -8702,6 +8744,8 @@ public sealed class GameplayScene : Scene
                     _sparks.Draw(sb, Context.Pixel);        // fin du feu d'artifice (pièce rangée)
                 if (_specialBriefOpen)
                     DrawSpecialBriefingModal(sb, viewport);   // briefing d'ouverture : PAR-DESSUS tout le reste
+                if (_bossIntroCell != null)
+                    DrawBossIntro(sb, viewport, board);       // boss en grand, puis vol vers sa case
                 break;
             case RunPhase.Battle:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -8929,6 +8973,7 @@ public sealed class GameplayScene : Scene
             if (EvoPlaying) DrawEvolutionAnimation(sb, viewport);
             else if (_sparks.HasActive) _sparks.Draw(sb, Context.Pixel);
             if (_specialBriefOpen) DrawSpecialBriefingModal(sb, viewport);
+            if (_bossIntroCell != null) DrawBossIntro(sb, viewport, hit);
         }
         else   // Battle
         {
@@ -9102,6 +9147,8 @@ public sealed class GameplayScene : Scene
         if (FusionOpen || CommandTreeOpen || (EvoPlaying && _evoLong) || _recrueReveals.Count > 0 || ChestRevealActive
             || _specialBriefOpen)
             return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre / briefing : = DrawDim
+        if (_bossIntroCell != null)
+            return Palette.Black1 * (0.62f * BossIntroDimFactor);   // = voile de DrawBossIntro (s'efface pendant le vol)
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -9116,7 +9163,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool BoardOverlayActive =>
         _pauseMenu.IsOpen || _codex.IsOpen || CommandTreeOpen || FusionOpen || EvoPlaying
-        || _recrueReveals.Count > 0 || ChestRevealActive || _specialBriefOpen;
+        || _recrueReveals.Count > 0 || ChestRevealActive || _specialBriefOpen || _bossIntroCell != null;
 
     /// <summary>Vrai quand l'animation d'assemblage du plateau est finie (toutes les tuiles en place).</summary>
     private bool BoardAssembled => _boardIntro >= _boardIntroTotal;
@@ -9377,7 +9424,7 @@ public sealed class GameplayScene : Scene
         if (_selected is { } sel)
         {
             DrawMoveAttackZones(sb, layout, sel, _attackReach, _legalMoves, _attackTargets, _healTargets, _satchelTargets);
-            DrawThrowZones(sb, layout);   // BRUTE : alliés empoignables puis cibles du jet
+            DrawThrowZones(sb, layout);   // BRUTE : cibles du jet
             foreach (var c in _attackTargets) _trembleTargets.Add(c);
             foreach (var c in _throwTargets) _trembleTargets.Add(c);
             return;
@@ -9391,6 +9438,7 @@ public sealed class GameplayScene : Scene
             _match.LegalMoves(cell, _hoverMoves);
             _match.AttackTargets(cell, _hoverAttackTargets);
             _match.HealTargets(cell, _hoverHealTargets);
+            AddThrowPreview(cell, _hoverAttackTargets, _hoverReach, _hoverAttackTargets);   // BRUTE : portée du jet
             DrawMoveAttackZones(sb, layout, cell, _hoverReach, _hoverMoves, _hoverAttackTargets, _hoverHealTargets);
             foreach (var c in _hoverAttackTargets) _trembleTargets.Add(c);
         }
@@ -9453,21 +9501,10 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// « Chair à canon » : les alliés EMPOIGNABLES (1er temps, couleur du butin) puis, une fois l'un d'eux
-    /// empoigné, les cibles du JET (2e temps, rouge appuyé) plus un liseré sur le projectile pour qu'on voie
-    /// qui part. Rien à dessiner hors du trait.
+    /// « Chair à canon » : les cibles du JET (rouge appuyé, comme une attaque). Rien à dessiner hors du trait.
     /// </summary>
     private void DrawThrowZones(SpriteBatch sb, GridLayout layout)
     {
-        foreach (var cell in _throwAllies)
-        {
-            DrawZone(sb, layout, cell, Palette.Yellow1 * 0.45f);
-            DrawZoneBorder(sb, layout, cell, Palette.Yellow1, 1);
-        }
-
-        if (_throwAlly is { } carried)
-            DrawZoneBorder(sb, layout, carried, Palette.Yellow2, 3);
-
         foreach (var cell in _throwTargets)
         {
             DrawZone(sb, layout, cell, Palette.Purple5 * 0.5f);
@@ -11054,7 +11091,12 @@ public sealed class GameplayScene : Scene
         // 2. Attaquant animé (fente/charge sautée puis avance ou recul) + ombre projetée à l'aplomb.
         if (_fx.AttackerSprite is { } attackerSprite)
         {
-            var ground = _fx.AttackerTopLeft(fromTop, toTop, size);   // position au sol (sans le saut)
+            // Case de repos RÉELLE (pion lancé : sa case d'arrivée, qui n'est ni l'origine ni forcément la cible).
+            var restTop = layout.CellToScreen(_fx.Attacker.Column, _fx.Attacker.Row) - new Vector2(0, spriteLift);
+            Vector2? throwerTop = _fx.Thrower is { } tc
+                ? layout.CellToScreen(tc.Column, tc.Row) - new Vector2(0, spriteLift)
+                : null;
+            var ground = _fx.AttackerTopLeft(fromTop, toTop, size, restTop, throwerTop);   // position au sol (sans le saut)
             var jump = (int)_fx.AttackerJumpLift(size);               // hauteur du bond (charge sautée)
             var rect = new Rectangle((int)ground.X, (int)ground.Y - jump, size, size);
             // L'ombre reste AU SOL et glisse/s'éclaircit avec le bond (cf. DrawPieceCastShadow).
@@ -11484,7 +11526,8 @@ public sealed class GameplayScene : Scene
     /// commandant (« Bouclier humain »).
     /// </summary>
     private bool IsHiddenForFx(Cell cell) =>
-        _fx.Active && (_fx.Attacker == cell || (_shieldJump is { } sj && sj.Rest == cell));
+        (_fx.Active && (_fx.Attacker == cell || (_shieldJump is { } sj && sj.Rest == cell)))
+        || _bossIntroCell == cell;   // intro de boss : dessiné en grand / en vol par DrawBossIntro
 
     /// <summary>
     /// Décalage (px entiers) du GLISSEMENT de la victime qui a changé de case (« Recule » ou repli d'« Esquive »)
@@ -12390,7 +12433,7 @@ public sealed class GameplayScene : Scene
             contextualMove = _match.MoveRangeBonus(bonusCell);
             // Tuile « tour de guet » : c'est au PLACEMENT qu'on choisit d'y monter son tireur, la carte doit
             // donc montrer la portée gagnée là aussi — c'est même là qu'elle sert le plus.
-            contextualRange = _match.AttackRangeBonus(bonusCell);
+            contextualRange = _match.AttackRangeBonus(bonusCell) + _match.ThrowRangeBonus(bonusCell);
             granted = GrantedTraitsFor(placed, bonusCell);   // traits prêtés par une aura alliée au contact
         }
         // Carte + popups DIFFÉRÉS (cf. DrawDeferredCards) : la carte d'aperçu doit rester lisible PAR-DESSUS
@@ -14002,6 +14045,9 @@ public sealed class GameplayScene : Scene
         // Tuile « tour de guet » sous le pion : +N portée pour un tireur. Même raison que ci-dessus — la carte
         // annoncerait une portée INFÉRIEURE à celle que le moteur joue (cf. Match.EffectiveAttackRange).
         var contextualRange = cell is { } rc ? _match.AttackRangeBonus(rc) : 0;
+        // « Chair à canon » : allié au contact → la carte annonce la portée du jet.
+        if (cell is { } tc)
+            contextualRange += _match.ThrowRangeBonus(tc);
         // Carte + popups DIFFÉRÉS : dessinés en dernier (cf. DrawDeferredCards) pour passer PAR-DESSUS tout le
         // HUD (frise, briefing, panneau), sinon l'UI dessinée après recouvrait la carte-tooltip qu'on lit.
         // hover : carte d'un pion SURVOLÉ (non sélectionné) → file fondue en entrée, à part de la sélection.
@@ -16028,6 +16074,88 @@ public sealed class GameplayScene : Scene
         const int innerW = 360;
         var body = WrapText(Loc.T("boss.brief_goal"), innerW, 1);
         DrawBriefingBox(sb, Loc.T("combat.boss"), body);
+    }
+
+    /// <summary>Avancement lissé du vol de l'intro de boss (0 tant qu'on attend le clic, 1 à l'atterrissage).</summary>
+    private float BossIntroEase
+    {
+        get
+        {
+            if (!_bossIntroFlying)
+                return 0f;
+            var t = MathHelper.Clamp(_bossIntroT, 0f, 1f);
+            return t * t * (3f - 2f * t);
+        }
+    }
+
+    /// <summary>Opacité relative du voile de l'intro de boss : plein à l'arrêt, s'efface pendant le vol.</summary>
+    private float BossIntroDimFactor => 1f - BossIntroEase;
+
+    /// <summary>
+    /// Intro du combat de BOSS, au début du placement : voile, « COMBAT DE BOSS », le boss en GRAND au milieu
+    /// de la zone du plateau (échelle ENTIÈRE, pixel-art net) avec son crâne et son nom, et l'invite. Au clic
+    /// (cf. <see cref="UpdatePlacement"/>) il rétrécit PAR PALIERS ENTIERS (jamais d'échelle fractionnaire) en
+    /// volant jusqu'à sa case ; le voile et les textes s'effacent en route.
+    /// </summary>
+    private void DrawBossIntro(SpriteBatch sb, Viewport viewport, GridLayout layout)
+    {
+        if (_bossIntroCell is not { } cell || _match.UnitAt(cell) is not { } boss)
+            return;
+
+        var e = BossIntroEase;
+        var size = layout.TileSize;
+        var bigK = System.Math.Clamp((int)(viewport.Height * 0.45f) / System.Math.Max(1, size), 1, 4);
+        var k = System.Math.Max(1, (int)MathF.Round(MathHelper.Lerp(bigK, 1, e)));
+        var cur = size * k;
+
+        // Centre de départ : milieu de la zone du plateau (hors panneau de droite), léger flottement à l'arrêt.
+        var bob = _bossIntroFlying ? 0f : MathF.Round(MathF.Sin(_time * 2f) * 2f);
+        var from = new Vector2(CenteringWidth() / 2f, viewport.Height / 2f - 10 + bob);
+        // Arrivée : exactement là où DrawUnit pose le sprite (socle remonté de SpriteLiftFraction).
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        var to = new Vector2(top.X + size / 2f, top.Y - (int)(size * SpriteLiftFraction) + size / 2f);
+        var c = Vector2.Lerp(from, to, e);
+        var rect = new Rectangle((int)MathF.Round(c.X) - cur / 2, (int)MathF.Round(c.Y) - cur / 2, cur, cur);
+
+        var textA = 1f - MathHelper.Clamp(e * 3f, 0f, 1f);   // les textes s'éclipsent dès le début du vol
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * (0.62f * BossIntroDimFactor));
+
+        if (textA > 0f)
+        {
+            var bigBottom = rect.Bottom;
+            var name = UnitName(boss.Class).ToUpperInvariant();
+            var nameScale = Context.Font.Measure(name, 3) <= CenteringWidth() - 32 ? 3 : 2;
+            Context.Font.DrawCentered(sb, name,
+                new Rectangle(0, bigBottom + 6, (int)CenteringWidth(), 7 * nameScale), nameScale, Palette.Yellow2 * textA);
+            var prompt = Loc.T(Context.Input.UsingGamepad ? "special.brief_continue_gp" : "special.brief_continue");
+            var pulse = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+            Context.Font.DrawCentered(sb, prompt,
+                new Rectangle(0, bigBottom + 6 + 7 * nameScale + 16, (int)CenteringWidth(), 7), 1,
+                Palette.Cyan1 * (pulse * textA));
+        }
+
+        if (UnitSprite(boss) is { } sprite)
+            sb.Draw(sprite, rect, Color.White);
+        else
+            DrawChip(sb, boss.Class, boss.Faction, rect);
+
+        // Au-dessus du pion : le crâne du boss (même icône que sur le plateau, échelle entière du pion), puis
+        // « COMBAT DE BOSS » JUSTE EN DESSOUS du crâne. Texte dessiné après pour ne jamais être recouvert.
+        if (textA > 0f)
+        {
+            var labelY = rect.Y - 12;
+            if (IconOrNull("mission_boss") is { } skull)
+            {
+                var z = k * System.Math.Max(1, size / GridLayout.DefaultTileSize);
+                int w = skull.Width * z, h = skull.Height * z;
+                sb.Draw(skull, new Rectangle(rect.Center.X - w / 2, labelY - 4 - h, w, h), Color.White * textA);
+            }
+            Context.Font.DrawCentered(sb, Loc.T("combat.boss"),
+                new Rectangle(rect.Center.X - 200, labelY, 400, 7), 1, Palette.Purple5 * textA);
+        }
+        sb.End();
     }
 
     /// <summary>

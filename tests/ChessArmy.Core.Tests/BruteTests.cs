@@ -282,6 +282,30 @@ public class BruteTests : IDisposable
         Assert.Equal(new Cell(3, 1), match.CellOf(ally));   // la case libérée est la plus proche de la cible
     }
 
+    [Fact]
+    public void ChairACanon_OneGesture_ThrowsTheAllyNearestToTheTarget_AndSkipsAdjacentEnemies()
+    {
+        var match = Board();
+        var brute = Make(Faction.Player, 40, 14, new[] { Trait.ChairACanon }, attackRange: 1);
+        var behind = Make(Faction.Player, 30, 5, None);
+        var ahead = Make(Faction.Player, 30, 5, None);
+        match.Place(new Cell(2, 2), brute);
+        match.Place(new Cell(1, 2), behind);
+        match.Place(new Cell(3, 2), ahead);
+        match.Place(new Cell(2, 3), Make(Faction.Enemy, 40, 5, None));   // au contact : attaque normale, pas un jet
+        match.Place(new Cell(5, 2), Make(Faction.Enemy, 40, 5, None));   // à 3 cases
+
+        var targets = match.ThrowTargets(new Cell(2, 2));
+        Assert.DoesNotContain(new Cell(2, 3), targets);
+        Assert.Contains(new Cell(5, 2), targets);
+        Assert.Equal(new Cell(3, 2), match.PickThrowAlly(new Cell(2, 2), new Cell(5, 2)));
+        Assert.Equal(2, match.ThrowRangeBonus(new Cell(2, 2)));          // portée affichée : 1 + 2 = 3
+
+        Assert.Equal(MoveKind.Attacked, match.TryThrow(new Cell(2, 2), new Cell(5, 2)));
+        Assert.Equal(new Cell(1, 2), match.CellOf(behind));              // l'allié le plus loin n'a pas bougé
+        Assert.NotEqual(new Cell(3, 2), match.CellOf(ahead));            // le plus proche est parti
+    }
+
     private static int Chebyshev(Cell a, Cell b) =>
         Math.Max(Math.Abs(a.Column - b.Column), Math.Abs(a.Row - b.Row));
 

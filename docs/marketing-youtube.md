@@ -1051,3 +1051,37 @@ Alternatives :
 `#indiegame #roguelike #pixelart #chess #tacticalrpg`
 
 **À vérifier** : les noms anglais d'archer monté et d'arbalétrier monté dans `strings.csv`.
+
+---
+
+## Short : un légendaire dès le début de la run
+
+*Quatrième clip sur les légendaires. Angle : le moment où l'objet tombe compte plus que sa rareté.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Legendary on the first fight.`
+🇫🇷 *Légendaire dès le premier combat.*
+
+Alternative : 🇬🇧 `This run is starting well.`
+
+**Titre** : 🇬🇧 A legendary on the first fight changes the whole run
+
+Alternatives :
+- 🇬🇧 This run is starting well / 🇫🇷 Cette run commence bien
+- 🇬🇧 Finding it early is better than finding it late / 🇫🇷 Le trouver tôt vaut mieux que le trouver tard
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Un légendaire dès le premier combat. Ce n'est pas seulement de la chance : plus un objet arrive tôt, plus il oriente la run entière. Trouvé à la fin, il récompense l'armée que tu as construite. Trouvé au début, c'est lui qui décide de l'armée que tu vas construire. La rareté compte moins que le moment où elle tombe.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> A legendary on the very first fight. It isn't just luck: the earlier an item shows up, the more it steers the whole run. Found late, it rewards the army you built. Found early, it decides the army you're going to build. When it drops matters more than how rare it is.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #rpg #gamedev`

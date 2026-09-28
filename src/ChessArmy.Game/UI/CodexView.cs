@@ -683,12 +683,101 @@ public sealed class CodexView
     /// <summary>Pose la carte du pion à côté de la tuile, TOUJOURS rabattue dans <paramref name="bounds"/>.</summary>
     private void DrawUnitCardTooltip(SpriteBatch sb, UnitClass c, Rectangle anchor, Rectangle bounds)
     {
-        var x = anchor.Right + 8;
-        if (x + CardW > bounds.Right)
-            x = anchor.X - CardW - 8;   // pas la place à droite : bascule à gauche de la tuile
+        // Carte + pile de traits forment UN bloc collé (pile côté extérieur) : on le pose du côté de la tuile
+        // où il tient en entier, sinon la pile finissait de l'autre côté de la tuile (cf. retour « trop loin »).
+        var boxes = KeywordBoxes(c);
+        var blockW = boxes.Count > 0 ? 2 * CardW + KwSideGap : CardW;
+        bool onRight;
+        if (anchor.Right + 8 + blockW <= bounds.Right) onRight = true;
+        else if (anchor.X - 8 - blockW >= bounds.X) onRight = false;
+        else onRight = bounds.Right - anchor.Right >= anchor.X - bounds.X;   // aucun côté ne suffit : le plus large
+
+        var x = onRight ? anchor.Right + 8 : anchor.X - 8 - CardW;
         x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - CardW));
         var y = Math.Clamp(anchor.Center.Y - CardH / 2, bounds.Y, Math.Max(bounds.Y, bounds.Bottom - CardH));
-        DrawUnitCard(sb, c, Domaines.All[_domaineIndex].Id, new Rectangle(x, y, CardW, CardH));
+        var card = new Rectangle(x, y, CardW, CardH);
+        DrawUnitCard(sb, c, Domaines.All[_domaineIndex].Id, card);
+        if (boxes.Count > 0)
+            DrawKeywordPopups(sb, boxes, card, onRight, bounds);
+    }
+
+    // ── Popups de traits (comme la pile du jeu, cf. GameplayScene.DrawKeywordPopupStack) ──────────
+    private const int KwPad = 8, KwGap = 8, KwSideGap = 8;
+    private int KwLineH => _ctx.Font.GlyphHeight + 2;
+    private int KwTitleH => _ctx.Font.GlyphHeight + 4;
+
+    /// <summary>Popups d'une classe (libellé + description repliée + hauteur). Hors run : valeurs de BASE
+    /// des traits renforçables (aucun bonus d'arbre).</summary>
+    private List<(string Label, List<string> Lines, int H)> KeywordBoxes(UnitClass c) => KeywordBoxes(UnitKeywordList(c));
+
+    private List<(string Label, List<string> Lines, int H)> KeywordBoxes(IEnumerable<UnitKeywords.Keyword> keywords)
+    {
+        var boxes = new List<(string Label, List<string> Lines, int H)>();
+        foreach (var kw in keywords)
+        {
+            var lines = Wrap(SentenceCase(KeywordDescription(kw)), CardW - 2 * KwPad, 1);
+            boxes.Add((kw.Label, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad));
+        }
+        return boxes;
+    }
+
+    /// <summary>
+    /// Empile un popup par trait COLLÉ à la carte, côté extérieur (loin de la tuile survolée) ; rabattu dans
+    /// le cadre si la place manque.
+    /// </summary>
+    private void DrawKeywordPopups(SpriteBatch sb, List<(string Label, List<string> Lines, int H)> boxes,
+        Rectangle card, bool outwardRight, Rectangle bounds)
+    {
+        var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
+        var x = outwardRight ? card.Right + KwSideGap : card.X - KwSideGap - CardW;
+        x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - CardW));
+        var y = Math.Clamp(card.Y, bounds.Y, Math.Max(bounds.Y, bounds.Bottom - total));
+
+        foreach (var (label, lines, h) in boxes)
+        {
+            var box = new Rectangle(x, y, CardW, h);
+            _ctx.Style.DrawPanel(sb, box);
+            _ctx.Font.Draw(sb, label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, Palette.Cyan1);
+            var ly = box.Y + KwPad + KwTitleH;
+            foreach (var line in lines)
+            {
+                _ctx.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                ly += KwLineH;
+            }
+            y += h + KwGap;
+        }
+    }
+
+    /// <summary>Description d'un trait, marqueur <c>{0}</c> résolu avec la valeur de BASE (pas de run dans le codex).</summary>
+    private static string KeywordDescription(UnitKeywords.Keyword kw)
+    {
+        int? value = null;
+        if (kw.Label == UnitKeywords.For(Trait.Rempart).Label) value = Match.BaseRempartReduction;
+        else if (kw.Label == UnitKeywords.For(Trait.TueurDeGeants).Label) value = Match.BaseGiantSlayerBonus;
+        else if (kw.Label == UnitKeywords.For(Trait.Formation).Label) value = Match.BaseFormationBonus;
+        else if (kw.Label == UnitKeywords.For(Trait.Impact).Label) value = Match.BaseImpactDamage;
+        var desc = kw.Description;
+        if (desc.Contains("{0}"))
+            desc = string.Format(desc, value ?? 0);
+        return desc;
+    }
+
+    /// <summary>Majuscule en début de phrase, le reste en minuscules (même rendu que les popups du jeu).</summary>
+    private static string SentenceCase(string text)
+    {
+        var chars = text.ToLowerInvariant().ToCharArray();
+        var startOfSentence = true;
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var ch = chars[i];
+            if (char.IsLetter(ch))
+            {
+                if (startOfSentence) { chars[i] = char.ToUpperInvariant(ch); startOfSentence = false; }
+            }
+            else if (ch is '.' or '!' or '?')
+                startOfSentence = true;
+        }
+        return new string(chars);
     }
 
     private void DrawUnitCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect)
@@ -859,10 +948,25 @@ public sealed class CodexView
         {
             lines.Add((Loc.T("codex.undiscovered"), Palette.Grey));
         }
-        DrawTooltipPanel(sb, revealed ? EquipmentNames.Localized(e) : "???", revealed ? Palette.Yellow2 : Palette.Grey, lines, anchor, bounds);
+        var box = DrawTooltipPanel(sb, revealed ? EquipmentNames.Localized(e) : "???", revealed ? Palette.Yellow2 : Palette.Grey, lines, anchor, bounds);
+        if (!revealed)
+            return;
+
+        // Popups des traits accordés par l'objet (+ « Éphémère » s'il se lance), collés à droite de
+        // l'infobulle, ou à gauche si la place manque.
+        var keywords = new List<UnitKeywords.Keyword>();
+        var seen = new HashSet<string>();
+        foreach (var eff in e.Effects)
+            if (eff.Trait is { } t && seen.Add(UnitKeywords.For(t).Label))
+                keywords.Add(UnitKeywords.For(t));
+        if (e.IsThrown)
+            keywords.Add(UnitKeywords.Ephemeral);
+        var boxes = KeywordBoxes(keywords);
+        if (boxes.Count > 0)
+            DrawKeywordPopups(sb, boxes, box, box.Right + KwSideGap + CardW <= bounds.Right, bounds);
     }
 
-    private void DrawTooltipPanel(SpriteBatch sb, string title, Color titleColor,
+    private Rectangle DrawTooltipPanel(SpriteBatch sb, string title, Color titleColor,
         List<(string Text, Color Color)> lines, Rectangle anchor, Rectangle bounds)
     {
         const int pad = 8;
@@ -890,25 +994,30 @@ public sealed class CodexView
             _ctx.Font.Draw(sb, text, new Vector2(box.X + pad, ty), 1, color, preserveCase: true);
             ty += lineH;
         }
+        return box;
     }
 
     /// <summary>Libellés des mots-clés (traits) d'une classe, sans doublon (mêmes règles que la carte de jeu).</summary>
-    private static List<string> UnitKeywordLabels(UnitClass c)
+    private static List<string> UnitKeywordLabels(UnitClass c) =>
+        UnitKeywordList(c).Select(k => k.Label).ToList();
+
+    /// <summary>Mots-clés (traits) d'une classe, sans doublon de libellé (mêmes règles que la carte de jeu).</summary>
+    private static List<UnitKeywords.Keyword> UnitKeywordList(UnitClass c)
     {
         var seen = new HashSet<string>();
-        var labels = new List<string>();
-        void Add(string label)
+        var list = new List<UnitKeywords.Keyword>();
+        void Add(UnitKeywords.Keyword kw)
         {
-            if (label.Length > 0 && seen.Add(label))
-                labels.Add(label);
+            if (kw.Label.Length > 0 && seen.Add(kw.Label))
+                list.Add(kw);
         }
         foreach (var t in c.Traits)
-            Add(UnitKeywords.For(t).Label);
+            Add(UnitKeywords.For(t));
         if (c.PiercesAllies && !c.Traits.Contains("Franchissement"))
-            Add(UnitKeywords.PiercesAllies.Label);
+            Add(UnitKeywords.PiercesAllies);
         if (c.MinAttackRange > 1)
-            Add(UnitKeywords.DeadZone.Label);
-        return labels;
+            Add(UnitKeywords.DeadZone);
+        return list;
     }
 
     private static string StatLabel(EquipStat stat) => stat switch

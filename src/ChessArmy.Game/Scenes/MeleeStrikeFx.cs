@@ -19,6 +19,9 @@ public enum AttackStyle
     /// <summary>Tir à l'arc : l'archer reste en place (recul de bande) et décoche une flèche rapide
     /// qui file jusqu'à la cible ; l'impact se produit à l'arrivée (archer / domaine Dame).</summary>
     Shoot,
+    /// <summary>Pion LANCÉ (« Chair à canon ») : grand arc depuis sa case jusqu'à percuter la cible, puis petit
+    /// rebond sur sa case d'arrivée (<see cref="MeleeStrikeFx.Attacker"/>) — il ne revient jamais au départ.</summary>
+    Throw,
 }
 
 /// <summary>
@@ -38,6 +41,10 @@ public sealed class MeleeStrikeFx
     private const double LeapDur     = 0.26; // approche de la charge sautée (plus longue : on voit le bond)
     private const double CastDur     = 0.32; // vol du projectile magique jusqu'à la cible
     private const double ShootDur    = 0.22; // vol de la flèche (plus rapide que le sort)
+    private const double ThrowPickupDur = 0.24; // le pion saute de sa case au-dessus de la tête du lanceur
+    private const double ThrowHoldDur   = 0.12; // brandi au-dessus de la tête, le temps de le voir
+    private const double ThrowDur    = 0.40; // vol du pion lancé (2-3 cases, on doit le voir partir)
+    private const double ThrowHopDur = 0.18; // rebond du pion lancé vers sa case d'arrivée (cible survivante)
     private const double DissolveDur = 0.45; // désintégration du mort
     private const double BlinkDur    = 0.34; // clignotement du survivant
     private const double AdvanceDur  = 0.14; // l'attaquant prend la place libérée
@@ -51,6 +58,8 @@ public sealed class MeleeStrikeFx
     private const float LeapContactGap = 0.25f; // arrêt de la charge avant la case cible (fraction de case)
     private const float LeapJumpFraction = 0.55f; // hauteur du bond principal (fraction de case)
     private const float LeapHopFraction = 0.30f;  // hauteur du petit saut d'avance/repli
+    private const float ThrowJumpFraction = 1.1f; // hauteur de l'arc du pion lancé (fraction de case)
+    private const float ThrowHeadFraction = 0.8f; // hauteur du pion brandi au-dessus du lanceur (fraction de case)
     private const float MoveHopFraction = 0.16f;  // petit saut du pion pendant un déplacement rejoué
 
     private double _elapsed;
@@ -98,10 +107,15 @@ public sealed class MeleeStrikeFx
     /// <summary>Graine de bruit propre à cette mort (chaque dissolution diffère).</summary>
     public Vector2 Seed => _seed;
 
+    /// <summary>Case du LANCEUR (style <see cref="AttackStyle.Throw"/>) : le pion passe au-dessus de sa tête avant
+    /// d'être jeté. Null hors lancer.</summary>
+    public Cell? Thrower { get; private set; }
+
     public void Begin(Cell from, Cell to, Cell attackerCell, Texture2D? attackerSprite,
         Texture2D? victimSprite, bool killed, bool advanced, AttackStyle style = AttackStyle.Lunge,
-        bool victimDoomed = false, double leadIn = 0)
+        bool victimDoomed = false, double leadIn = 0, Cell? thrower = null)
     {
+        Thrower = thrower;
         From = from;
         To = to;
         Attacker = attackerCell;
@@ -118,6 +132,7 @@ public sealed class MeleeStrikeFx
             AttackStyle.Leap  => LeapDur,
             AttackStyle.Cast  => CastDur,
             AttackStyle.Shoot => ShootDur,
+            AttackStyle.Throw => ThrowPickupDur + ThrowHoldDur + ThrowDur,   // soulevé, brandi, puis jeté
             _                 => LungeDur,
         };
         _elapsed = 0;
@@ -270,8 +285,12 @@ public sealed class MeleeStrikeFx
     /// d'origine (<paramref name="fromTop"/>) et de la cible (<paramref name="toTop"/>) : fente,
     /// puis maintien + avance (mêlée mortelle) ou recul (sinon).
     /// </summary>
-    public Vector2 AttackerTopLeft(Vector2 fromTop, Vector2 toTop, float tile)
+    public Vector2 AttackerTopLeft(Vector2 fromTop, Vector2 toTop, float tile, Vector2? restTop = null,
+        Vector2? throwerTop = null)
     {
+        if (_style == AttackStyle.Throw)
+            return ThrowGround(fromTop, toTop, restTop ?? toTop, throwerTop ?? fromTop, tile);
+
         if (MoveOnly)   // déplacement rejoué : glissement plein de From à To (ni fente ni recul)
             return Vector2.Lerp(fromTop, toTop, EaseInOut(Clamp01(T / _total)));
 
@@ -338,6 +357,41 @@ public sealed class MeleeStrikeFx
     }
 
     /// <summary>
+    /// Position AU SOL du pion lancé : il saute de sa case jusqu'à l'aplomb du lanceur (<paramref name="throwerTop"/>),
+    /// y reste brandi, part de là jusqu'au contact de la cible, puis rebondit vers sa case d'arrivée
+    /// <paramref name="restTop"/> — après la dissolution si la cible meurt, aussitôt sinon.
+    /// La hauteur (au-dessus de la tête, puis arc du jet) est fournie à part par <see cref="AttackerJumpLift"/>.
+    /// </summary>
+    private Vector2 ThrowGround(Vector2 fromTop, Vector2 toTop, Vector2 restTop, Vector2 throwerTop, float tile)
+    {
+        if (T < ThrowPickupDur)
+            return Vector2.Lerp(fromTop, throwerTop, EaseInOut((float)(T / ThrowPickupDur)));
+        if (T < ThrowPickupDur + ThrowHoldDur)
+            return throwerTop;
+
+        var dir = toTop - throwerTop;
+        if (dir.LengthSquared() > 0.0001f)
+            dir.Normalize();
+        var contact = toTop - dir * (tile * LeapContactGap);
+
+        if (T < _approachDur)
+            return Vector2.Lerp(throwerTop, contact, EaseIn(ThrowFlightProgress()));   // lancer qui accélère
+        var k = ThrowHopProgress();
+        return k <= 0f ? contact : Vector2.Lerp(contact, restTop, EaseInOut(k));
+    }
+
+    /// <summary>Avancement [0,1] du vol du jet proprement dit (après le soulevé et le brandi).</summary>
+    private float ThrowFlightProgress() => Clamp01((T - ThrowPickupDur - ThrowHoldDur) / ThrowDur);
+
+    /// <summary>Avancement [0,1] du rebond final du pion lancé (0 tant qu'il n'a pas commencé).</summary>
+    private float ThrowHopProgress()
+    {
+        var start = Killed ? _approachDur + DissolveDur : _approachDur;
+        var dur = Killed ? AdvanceDur : ThrowHopDur;
+        return Clamp01((T - start) / dur);
+    }
+
+    /// <summary>
     /// Hauteur (px, positive = vers le haut) du bond de l'attaquant à cet instant. 0 pour la fente
     /// classique ; pour la charge sautée : grosse parabole à l'approche/au repli (retombe pile au
     /// contact pour « percuter »), petit saut à l'avance sur la case.
@@ -346,6 +400,24 @@ public sealed class MeleeStrikeFx
     {
         if (MoveOnly)   // déplacement rejoué : petit arc de saut, retombe à plat sur la case d'arrivée
             return Arc(Clamp01(T / _total)) * tile * MoveHopFraction;
+
+        if (_style == AttackStyle.Throw)
+        {
+            var head = tile * ThrowHeadFraction;
+            if (T < ThrowPickupDur)   // saute sur la tête du lanceur : monte jusqu'à la hauteur brandie, petit arc
+            {
+                var p = (float)(T / ThrowPickupDur);
+                return head * EaseOut(p) + Arc(p) * tile * LeapHopFraction;
+            }
+            if (T < ThrowPickupDur + ThrowHoldDur)
+                return head;                                                // brandi au-dessus de la tête
+            if (T < _approachDur)   // jeté : part de la tête, grand arc, retombe pile au contact
+            {
+                var f = ThrowFlightProgress();
+                return head * (1f - f) + Arc(f) * tile * ThrowJumpFraction;
+            }
+            return Arc(ThrowHopProgress()) * tile * LeapHopFraction;        // rebond vers la case d'arrivée
+        }
 
         if (_style != AttackStyle.Leap)
             return 0f;

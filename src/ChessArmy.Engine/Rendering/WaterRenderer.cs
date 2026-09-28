@@ -69,10 +69,11 @@ public sealed class WaterRenderer
         Set("WaterPixel", 3f);    // taille d'un pixel d'eau en unités canvas
 
         // Rampe de 4 tons francs (du plus profond au plus clair) — toutes de la palette.
-        Set("Ramp0", ToVec4(Palette.WaterDeep));
-        Set("Ramp1", ToVec4(Palette.WaterMid1));
-        Set("Ramp2", ToVec4(Palette.WaterMid2));
-        Set("Ramp3", ToVec4(Palette.WaterShallow));
+        // Décalée d'un cran vers le sombre (sans WaterShallow) : l'eau de fond attirait trop l'œil.
+        Set("Ramp0", ToVec4(Palette.Black3));
+        Set("Ramp1", ToVec4(Palette.WaterDeep));
+        Set("Ramp2", ToVec4(Palette.WaterMid1));
+        Set("Ramp3", ToVec4(Palette.WaterMid2));
 
         // Ombre dégradée autour du plateau.
         Set("ShadowStrength", 0.82f);
