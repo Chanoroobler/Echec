@@ -166,7 +166,7 @@ public sealed class UnitCardRenderer
             _ctx.Font.DrawCentered(sb, iconKey.ToUpperInvariant()[..1], icon, 2, valueColor);
         }
 
-        _ctx.Font.Draw(sb, label, new Vector2(icon.Right + 8, row.Y + (row.Height - 7) / 2), 1, Palette.Blue1);
+        _ctx.Font.Draw(sb, label, new Vector2(icon.Right + 8, row.Y + (row.Height - 7) / 2), 1, Palette.White);
         var vw = _ctx.Font.Measure(value, 2);
         _ctx.Font.Draw(sb, value, new Vector2(row.Right - vw, row.Y + (row.Height - 14) / 2), 2, valueColor);
     }
@@ -239,7 +239,7 @@ public sealed class UnitCardRenderer
             _ctx.Font.DrawCentered(sb, iconKey.ToUpperInvariant()[..1], icon, 2, valueColor);
         }
 
-        _ctx.Font.Draw(sb, label, new Vector2(icon.Right + 8, y + (iconSize - 7) / 2), 1, Palette.Blue1);
+        _ctx.Font.Draw(sb, label, new Vector2(icon.Right + 8, y + (iconSize - 7) / 2), 1, Palette.White);
         var vw = _ctx.Font.Measure(value, 2);
         _ctx.Font.Draw(sb, value, new Vector2(card.Right - CardPad - vw, y + (iconSize - 14) / 2), 2, valueColor);
         return y + iconSize + 4;

@@ -351,6 +351,10 @@ public sealed class MainMenuScene : Scene
             case MenuAction.LanguageChanged:
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
+            case MenuAction.ThemeChanged:
+                Context.Style.SetTheme(Context.Settings.UiTheme);   // à chaud : la frame suivante est au nouveau thème
+                Context.Saves.SaveSettings(Context.Settings);
+                break;
         }
 
         // « Retour » depuis Options ramène à la racine du menu pause : ici, la racine = le menu

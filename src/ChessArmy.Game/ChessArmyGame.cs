@@ -233,8 +233,8 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         }
         catch (System.Exception ex) { System.Diagnostics.Debug.WriteLine($"police CJK ignorée : {ex.Message}"); }
 
-        var ditherTile = Textures.CreateDitherTile(GraphicsDevice, 8, Palette.Black3, Palette.Black2);
-        var style = new UiStyle(pixel, ditherTile);
+        // Style d'UI au thème de couleur des réglages chargés (changeable à chaud depuis Options).
+        var style = new UiStyle(GraphicsDevice, pixel, _settings.UiTheme);
         _cursor = Textures.CreateCursor(GraphicsDevice, Palette.White, Palette.Black1);
 
         _context = new GameContext(

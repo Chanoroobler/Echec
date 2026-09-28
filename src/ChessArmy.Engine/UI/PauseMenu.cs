@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework;
 namespace ChessArmy.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged }
+public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged, ThemeChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -26,6 +26,7 @@ public enum PauseElement
     MusicLeft, MusicRight,
     SfxLeft, SfxRight,
     LangLeft, LangRight,
+    ThemeLeft, ThemeRight,
     Back,
 }
 
@@ -46,6 +47,7 @@ public struct PauseLayout
     public Rectangle MusicRow, MusicLeft, MusicValue, MusicRight;
     public Rectangle SfxRow, SfxLeft, SfxValue, SfxRight;
     public Rectangle LangRow, LangLeft, LangValue, LangRight;
+    public Rectangle ThemeRow, ThemeLeft, ThemeValue, ThemeRight;
     public Rectangle Back;
 }
 
@@ -119,7 +121,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 7;
+    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 8;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -135,7 +137,7 @@ public sealed class PauseMenu
         return _focus switch
         {
             0 => l.ResRow, 1 => l.ModeRow,
-            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, _ => l.Back,
+            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, 6 => l.ThemeRow, _ => l.Back,
         };
     }
 
@@ -165,8 +167,8 @@ public sealed class PauseMenu
             };
         return _focus switch
         {
-            6 => BackAction(),
-            _ => MenuAction.None,   // les pas (résolution, mode, volumes, langue) se règlent avec gauche/droite
+            7 => BackAction(),
+            _ => MenuAction.None,   // les pas (résolution, mode, volumes, langue, thème) se règlent avec gauche/droite
         };
     }
 
@@ -183,6 +185,7 @@ public sealed class PauseMenu
             case 3: _s.Audio.Music = Step(_s.Audio.Music, dir * 10); return MenuAction.VolumeChanged;
             case 4: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
             case 5: StepLanguage(dir); return MenuAction.LanguageChanged;
+            case 6: StepTheme(dir); return MenuAction.ThemeChanged;
             default: return MenuAction.None;
         }
     }
@@ -217,6 +220,15 @@ public sealed class PauseMenu
         Language.Turkce => Loc.T("lang.turkce"),
         Language.ChineseSimplified => Loc.T("lang.chinese"),
         _ => Loc.T("lang.francais"),
+    };
+
+    /// <summary>Nom du thème de couleur de l'UI courant.</summary>
+    public string ThemeText => _s.UiTheme switch
+    {
+        UiThemeId.Dark => Loc.T("theme.dark"),
+        UiThemeId.Olive => Loc.T("theme.olive"),
+        UiThemeId.Crimson => Loc.T("theme.crimson"),
+        _ => Loc.T("theme.gold"),
     };
 
     // ── Mise en page ────────────────────────────────────────────────────────────
@@ -273,7 +285,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (6 * BtnH + 5 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (7 * BtnH + 6 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -304,6 +316,10 @@ public sealed class PauseMenu
 
         l.LangRow = new Rectangle(panel.X, y, panel.Width, BtnH);
         (l.LangLeft, l.LangValue, l.LangRight) = Stepper(ctrlX, y);
+        y += BtnH + Gap;
+
+        l.ThemeRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        (l.ThemeLeft, l.ThemeValue, l.ThemeRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
         int backW = 130;
@@ -354,6 +370,9 @@ public sealed class PauseMenu
         if (l.LangLeft.Contains(p)) { StepLanguage(-1); return MenuAction.LanguageChanged; }
         if (l.LangRight.Contains(p)) { StepLanguage(+1); return MenuAction.LanguageChanged; }
 
+        if (l.ThemeLeft.Contains(p)) { StepTheme(-1); return MenuAction.ThemeChanged; }
+        if (l.ThemeRight.Contains(p)) { StepTheme(+1); return MenuAction.ThemeChanged; }
+
         if (l.Back.Contains(p)) { Back(); return MenuAction.None; }
         return MenuAction.None;
     }
@@ -389,6 +408,8 @@ public sealed class PauseMenu
         if (l.SfxRight.Contains(p)) return PauseElement.SfxRight;
         if (l.LangLeft.Contains(p)) return PauseElement.LangLeft;
         if (l.LangRight.Contains(p)) return PauseElement.LangRight;
+        if (l.ThemeLeft.Contains(p)) return PauseElement.ThemeLeft;
+        if (l.ThemeRight.Contains(p)) return PauseElement.ThemeRight;
         if (l.Back.Contains(p)) return PauseElement.Back;
         return PauseElement.None;
     }
@@ -422,5 +443,16 @@ public sealed class PauseMenu
         i = MathHelper.Clamp(i + dir, 0, values.Length - 1);
         _s.Language = values[i];
         Loc.Current = _s.Language;
+    }
+
+    /// <summary>
+    /// Fait défiler le thème de couleur de l'UI, EN BOUCLE, dans l'ordre DORE → OLIVE → CRAMOISI → SOMBRE.
+    /// L'appelant applique le thème au style (<see cref="MenuAction.ThemeChanged"/>) puis sauvegarde.
+    /// </summary>
+    private void StepTheme(int dir)
+    {
+        var order = UiTheme.MenuOrder;
+        var i = Math.Max(0, Array.IndexOf(order, _s.UiTheme));
+        _s.UiTheme = order[((i + dir) % order.Length + order.Length) % order.Length];
     }
 }

@@ -442,6 +442,7 @@ public sealed class GameplayScene : Scene
     private TutorialGuide? _tutorial;
     private readonly List<Cell> _tutorialMoves = new();   // buffer des coups de l'ennemi scripté du tuto
     private int _tutorialCardIndex;                        // donnée de carte en cours de revue (0..3)
+    private Rectangle? _tutorialSkipDrawn;                 // bouton « Passer » dessiné à la dernière frame (encart / bandeau / repli)
     private const int TutorialCardStats = 5;              // Déplacement (domaine), PV, Puissance, Mouvement, Portée
     private double _tutorialHold;                          // temps de maintien cumulé (leçon « zones de danger »)
     private const double TutorialDangerHoldSeconds = 0.45; // durée de maintien ESPACE/RT pour valider la leçon danger
@@ -3033,6 +3034,43 @@ public sealed class GameplayScene : Scene
         t.EnemySoldier = target;
     }
 
+    /// <summary>
+    /// Leçon « traits » : fait apparaître un ARCHER ennemi (Zone morte + Transpercement), le plus haut possible
+    /// sur le plateau et au plus près du centre, sur une case libre et praticable. Il ne joue jamais (l'étape gèle
+    /// le combat) et disparaît avec les autres pions au passage en préparation (cf. BeginTutorialPreparation).
+    /// Pas de découverte méta : c'est un pion de démonstration.
+    /// </summary>
+    private void SpawnTutorialTraitUnit()
+    {
+        var t = _tutorial!;
+        var baseClass = Domaines.Dame.BaseClass;
+        var archer = baseClass.Evolutions.FirstOrDefault(c => c.Asset == "archer")
+                     ?? baseClass.Evolutions.FirstOrDefault(c => c.Traits.Count > 0)
+                     ?? baseClass;
+        var center = Columns / 2;
+        Cell? spot = null;
+        for (var row = 0; row < Rows && spot is null; row++)
+            foreach (var col in Enumerable.Range(0, Columns).OrderBy(c => System.Math.Abs(c - center)))
+            {
+                var cell = new Cell(col, row);
+                if (_match.UnitAt(cell) == null && !_battlefield[cell].BlocksMovement
+                    && !(_chestCells.Contains(cell) && !_chestConsumed.Contains(cell)))
+                {
+                    spot = cell;
+                    break;
+                }
+            }
+        if (spot is not { } at)
+        {
+            t.Advance();   // plateau plein (ne devrait pas arriver) : on saute la leçon plutôt que de bloquer
+            return;
+        }
+
+        _match.Place(at, new UnitSpec(Domaine.Dame, archer).Spawn(Faction.Enemy));
+        t.TraitUnit = at;
+        Context.Sounds.Play("unit_pick");
+    }
+
     /// <summary>Case du soldat du tuto (seul pion joueur non essentiel sur le plateau).</summary>
     private Cell FindTutorialSoldierCell()
     {
@@ -5134,7 +5172,33 @@ public sealed class GameplayScene : Scene
                     if (Context.Input.IsKeyDown(Keys.Space) || Context.Input.IsRightTriggerDown)
                         _tutorialHold += dt;                        // maintien cumulé (les cases menacées s'allument)
                     if (_tutorialHold >= TutorialDangerHoldSeconds)
+                        tut.Advance();                              // → TooltipLesson
+                    return;
+                case TutorialStep.TooltipLesson:
+                    // La bascule condensé ↔ détaillé est traitée plus haut (clic droit / LT). Validée dès qu'une
+                    // carte est DÉPLIÉE sur un pion survolé. À la manette, le curseur reste mobile pour viser un pion.
+                    if (Context.Input.UsingGamepad)
+                        MoveCursor(CombatSnapTargets);
+                    if (_detailedTooltip && _tooltipHoverCell is not null)
                         tut.Advance();                              // → Chest
+                    return;
+                case TutorialStep.TraitLesson:
+                    // Le soldat ennemi est mort : un ARCHER apparaît (plateau posé d'abord, pour ne pas surgir
+                    // pendant la dissolution). Le combat reste GELÉ (il ne joue pas). Une fois sa carte DÉPLIÉE
+                    // (clic droit / LT), le joueur LIT ses traits à son rythme, puis valide (clic / A) : l'encart
+                    // suivant ne doit pas recouvrir la carte qu'il vient d'ouvrir.
+                    if (tut.TraitUnit is null)
+                    {
+                        if (BattleSettled)
+                            SpawnTutorialTraitUnit();
+                        return;
+                    }
+                    if (Context.Input.UsingGamepad)
+                        MoveCursor(CombatSnapTargets);
+                    if (_detailedTooltip && _tooltipHoverCell == tut.TraitUnit)
+                        tut.TraitsSeen = true;
+                    else if (tut.TraitsSeen && Advanced())
+                        tut.Advance();                              // → Commander
                     return;
                 case TutorialStep.ReplayLesson:
                     // _lastAiAction est garanti non nul ici : l'ennemi a bougé pendant la phase Move (cf. script).
@@ -5330,11 +5394,28 @@ public sealed class GameplayScene : Scene
         (TutorialSkipRect().Contains(Context.Input.MousePosition) && Context.Input.WasLeftClicked)
         || Context.Input.WasSelectPressed;
 
-    /// <summary>Rectangle du bouton « Passer le tuto » (coin bas-GAUCHE, hors du panneau d'inventaire).</summary>
-    private Rectangle TutorialSkipRect()
+    /// <summary>
+    /// Rectangle du bouton « Passer le tuto » RÉELLEMENT dessiné à la dernière frame : dans l'encart ou le
+    /// bandeau quand une pop-up est visible, sinon l'emplacement de repli (coin bas-gauche).
+    /// </summary>
+    private Rectangle TutorialSkipRect() => _tutorialSkipDrawn ?? TutorialSkipFallbackRect();
+
+    /// <summary>Bouton « Passer » de repli (coin bas-GAUCHE), quand aucune pop-up du tuto n'est affichée.</summary>
+    private Rectangle TutorialSkipFallbackRect()
     {
         var vp = VirtualViewport;
         return new Rectangle(20, vp.Height - 60, 200, 40);
+    }
+
+    /// <summary>
+    /// Zone de jeu : tout l'écran SAUF le panneau de droite au placement (en combat il n'est plus là : tout
+    /// l'écran). Les pop-ups du tuto n'en sortent jamais.
+    /// </summary>
+    private Rectangle PlayArea()
+    {
+        var vp = VirtualViewport;
+        var w = _run.Phase == RunPhase.Placement ? vp.Width - RightPanelWidth : vp.Width;
+        return new Rectangle(0, 0, w, vp.Height);
     }
 
     /// <summary>
@@ -5385,6 +5466,10 @@ public sealed class GameplayScene : Scene
         {
             DrawZoneBorder(sb, board, chestCell, pcol, 3);
         }
+        else if (t.Step == TutorialStep.TraitLesson && t.TraitUnit is { } traitCell)
+        {
+            DrawZoneBorder(sb, board, traitCell, pcol, 3);   // l'Archer dont il faut lire les traits
+        }
         else if (!_fx.Active && t.Step is TutorialStep.Move or TutorialStep.Attack or TutorialStep.Commander)
         {
             var cell = t.Step switch
@@ -5400,114 +5485,355 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
 
-        // 2) Consigne selon l'étape : TOUJOURS une pop ancrée près de l'élément concerné (jamais de bandeau haut).
+        // 2) Consigne selon l'étape, TOUJOURS dans la zone de jeu (jamais sur le panneau de droite) :
+        //    ENCART centré quand le jeu attend un clic, BANDEAU (haut, ou bas s'il masque un pion) quand le
+        //    plateau reste jouable. Le bandeau porte son bouton « Passer » (cf. _tutorialSkipDrawn).
         //    L'animation d'attaque doit se TERMINER avant la pop suivante → étapes post-attaque gelées si _fx.Active.
+        _tutorialSkipDrawn = null;
+        var gp = Context.Input.UsingGamepad;
         switch (t.Step)
         {
             case TutorialStep.Intro:
-                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.intro_title"), TutoT("tuto.intro_body"), TutoT("tuto.intro_continue"));
+                DrawTutorialCard(sb, TutoT("tuto.intro_title"), TutoT("tuto.intro_lead"), TutoT("tuto.intro_continue"), phases: true);
                 break;
             case TutorialStep.PadLesson:
                 // Manette seulement (l'étape s'auto-enjambe à la souris) : croix ≠ stick gauche.
-                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.pad_title"), TutoT("tuto.pad_body"), TutoT("tuto.intro_continue"));
+                DrawTutorialCard(sb, TutoT("tuto.pad_title"), TutoT("tuto.pad_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.PickSoldier:
-                // À côté de la carte du soldat dans l'inventaire.
-                DrawAnchoredPopup(sb, PanelCardRect(0), TutoT("tuto.pick_soldier"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.pick_soldier"));
                 break;
             case TutorialStep.PlaceSoldier:
-                // Près de la zone de déploiement (bas du plateau).
-                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), TutoT("tuto.place_soldier"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.place_soldier"));
                 break;
             case TutorialStep.ReviewCard:
                 DrawTutorialCardReview(sb, viewport);
                 break;
             case TutorialStep.StartCombat:
-                // Près du soldat posé ; touche de lancement selon le périphérique.
-                DrawPawnPopup(sb, board, t.PlayerSoldier, TutoT("tuto.start_combat"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.start_combat"));
                 break;
             case TutorialStep.CameraLesson:
-                DrawPawnPopup(sb, board, t.Commander, TutoT("tuto.camera"), TutoT("tuto.next"));
+                DrawTutorialBanner(sb, board, TutoT("tuto.camera"), TutoT("tuto.next"),
+                    gp ? "RS" : Loc.T("tuto.key_camera"), Loc.T("tuto.key_move"));
                 break;
             case TutorialStep.DangerLesson:
-                DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.danger"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.danger"), null,
+                    gp ? "RT" : Loc.T("tuto.key_space"), Loc.T("tuto.key_hold"));
+                break;
+            case TutorialStep.TooltipLesson:
+                DrawTutorialBanner(sb, board, TutoT("tuto.tooltip"), null,
+                    gp ? "LT" : Loc.T("tuto.key_rclick"), Loc.T("tuto.key_press"));
                 break;
             case TutorialStep.Chest:
-                if (t.Chest is { } chestCell)
-                    DrawPawnPopup(sb, board, chestCell, TutoT("tuto.chest"), null);
+                if (t.Chest != null)
+                    DrawTutorialBanner(sb, board, TutoT("tuto.chest"));
                 break;
             case TutorialStep.Move:
-                if (_match.CurrentTurn == Faction.Enemy)
-                    DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.enemy_plays"), null);
-                else
-                    DrawPawnPopup(sb, board, t.PlayerSoldier, TutoT("tuto.move"), null);
+                DrawTutorialBanner(sb, board,
+                    TutoT(_match.CurrentTurn == Faction.Enemy ? "tuto.enemy_plays" : "tuto.move"));
                 break;
             case TutorialStep.ReplayLesson:
                 if (!_fx.Active)   // pendant le replay lui-même, on n'affiche pas de pop par-dessus l'anim
-                    DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.replay"), null);
+                    DrawTutorialBanner(sb, board, TutoT("tuto.replay"), null,
+                        gp ? "RB" : "R", Loc.T("tuto.key_press"));
                 break;
             case TutorialStep.Attack:
                 if (!_fx.Active)
                 {
                     if (_match.CurrentTurn == Faction.Enemy)
-                        DrawPawnPopup(sb, board, t.EnemySoldier, TutoT("tuto.counter"), null);   // l'ennemi va contre-attaquer
+                        DrawTutorialBanner(sb, board, TutoT("tuto.counter"));   // l'ennemi va contre-attaquer
                     else
                     {
                         // 1re attaque (ennemi intact) vs 2e attaque (ennemi blessé → prise de place).
                         var enemy = _match.UnitAt(t.EnemySoldier);
                         var damaged = enemy != null && enemy.Hp < enemy.MaxHp;
-                        DrawPawnPopup(sb, board, t.EnemySoldier, TutoT(damaged ? "tuto.attack2" : "tuto.attack"), null);
+                        DrawTutorialBanner(sb, board, TutoT(damaged ? "tuto.attack2" : "tuto.attack"));
                     }
                 }
                 break;
+            case TutorialStep.TraitLesson:
+                if (t.TraitUnit != null)
+                    DrawTutorialBanner(sb, board, TutoT("tuto.traits"), t.TraitsSeen ? TutoT("tuto.next") : null,
+                        gp ? "LT" : Loc.T("tuto.key_rclick"), Loc.T("tuto.key_press"));
+                break;
             case TutorialStep.Commander:
                 if (!_fx.Active)   // on laisse l'attaque se terminer avant d'afficher la pop commandant
-                    DrawPawnPopup(sb, board, t.Commander, TutoT("tuto.commander"), TutoT("tuto.continue"));
+                    DrawTutorialCard(sb, TutoT("tuto.commander_title"), TutoT("tuto.commander"), TutoT("tuto.continue"));
                 break;
 
             // ── Préparation guidée ──────────────────────────────────────────────────────────────
             case TutorialStep.FusionIntro:
-                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.fusion_title"), TutoT("tuto.fusion_body"), TutoT("tuto.intro_continue"));
+                DrawTutorialCard(sb, TutoT("tuto.fusion_title"), TutoT("tuto.fusion_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.FusionDo:
                 if (!FusionOpen && !EvoPlaying && _pending.Count > 0)
-                    DrawAnchoredPopup(sb, PanelCardRect(0), TutoT("tuto.fusion_do"), null);
+                    DrawTutorialBanner(sb, board, TutoT("tuto.fusion_do"));
                 break;
             case TutorialStep.RerollLesson:
-                DrawAnchoredPopup(sb, RerollIconRect(), TutoT("tuto.reroll"), TutoT("tuto.next"));
+                DrawTutorialBanner(sb, board, TutoT("tuto.reroll"), TutoT("tuto.next"));
                 break;
             case TutorialStep.DeployFused:
-                DrawPawnPopup(sb, board, new Cell(Columns / 2, Rows - 2), TutoT("tuto.deploy_fused"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.deploy_fused"));
                 break;
             case TutorialStep.EquipIntro:
-                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.equip_title"), TutoT("tuto.equip_body"), TutoT("tuto.intro_continue"));
+                DrawTutorialCard(sb, TutoT("tuto.equip_title"), TutoT("tuto.equip_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.EquipDo:
-                DrawAnchoredPopup(sb, EquipRowRect(0), TutoT("tuto.equip_do"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.equip_do"));
                 break;
             case TutorialStep.TreeIntro:
-                DrawTutorialBigPanel(sb, viewport, TutoT("tuto.tree_title"), TutoT("tuto.tree_body"), TutoT("tuto.intro_continue"));
+                DrawTutorialCard(sb, TutoT("tuto.tree_title"), TutoT("tuto.tree_body"), TutoT("tuto.intro_continue"));
                 break;
             case TutorialStep.TreeOpen:
-                DrawAnchoredPopup(sb, CommandTreeButtonRect(), TutoT("tuto.tree_open"), null);
+                DrawTutorialBanner(sb, board, TutoT("tuto.tree_open"));
                 break;
             case TutorialStep.TreeDo:
                 break;   // l'arbre est ouvert par-dessus : le rappel est dessiné après la modale
             case TutorialStep.Done:
                 if (!_fx.Active)
-                    DrawTutorialBigPanel(sb, viewport, TutoT("tuto.victory_title"), TutoT("tuto.recap_body"), TutoT("tuto.continue"));
+                    DrawTutorialCard(sb, TutoT("tuto.victory_title"), TutoT("tuto.recap_body"), TutoT("tuto.continue"));
                 break;
         }
 
-        // 3) Bouton « Passer le tuto » (toujours visible) — le rappel « (X) » seulement à la manette.
-        var skip = TutorialSkipRect();
-        var hover = skip.Contains(Context.Input.MousePosition);
-        var off = Context.Style.DrawButton(sb, skip, UiStyle.StateOf(hover, hover && Context.Input.IsLeftDown));
-        var label = Loc.T("tuto.skip") + (Context.Input.UsingGamepad ? " (BACK)" : "");
-        Context.Font.DrawCentered(sb, label,
-            new Rectangle(skip.X, skip.Y + off, skip.Width, skip.Height), 1, Palette.White);
+        // 3) Seul le BANDEAU porte son bouton « Passer ». Partout ailleurs (encarts, revue de carte, arbre,
+        //    animation) : bouton en bas à gauche de l'écran. Pas sur Done : la récap finale n'en a pas.
+        if (_tutorialSkipDrawn == null && t.Step != TutorialStep.Done)
+            DrawTutorialSkipButton(sb, TutorialSkipFallbackRect());
 
         sb.End();
+    }
+
+    /// <summary>Libellé du bouton « Passer le tuto » ; le rappel « (BACK) » seulement à la manette.</summary>
+    private string TutorialSkipLabel() =>
+        Loc.T("tuto.skip") + (Context.Input.UsingGamepad ? " (BACK)" : "");
+
+    /// <summary>Largeur du bouton « Passer » d'une pop-up : au moins 140 px, élargi si le libellé est long.</summary>
+    private int TutorialSkipWidth() =>
+        System.Math.Max(140, Context.Font.Measure(TutorialSkipLabel(), 1) + 16);
+
+    /// <summary>Dessine le bouton « Passer le tuto » et mémorise son rectangle (cf. <see cref="TutorialSkipRect"/>).</summary>
+    private void DrawTutorialSkipButton(SpriteBatch sb, Rectangle r)
+    {
+        var hover = r.Contains(Context.Input.MousePosition);
+        var off = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover, hover && Context.Input.IsLeftDown));
+        Context.Font.DrawCentered(sb, TutorialSkipLabel(), new Rectangle(r.X, r.Y + off, r.Width, r.Height), 1, Palette.White);
+        _tutorialSkipDrawn = r;
+    }
+
+    /// <summary>Chapitres du tuto pour la barre de progression : libellé + première/dernière étape.</summary>
+    private static readonly (string Key, TutorialStep First, TutorialStep Last)[] TutorialChapters =
+    {
+        ("tuto.chapter_placement", TutorialStep.Intro,        TutorialStep.StartCombat),
+        ("tuto.chapter_combat",    TutorialStep.CameraLesson, TutorialStep.Commander),
+        ("tuto.chapter_prep",      TutorialStep.FusionIntro,  TutorialStep.TreeDo),
+    };
+
+    /// <summary>
+    /// Barre de progression par chapitres : pour chacun, son libellé puis une rangée de segments (un par
+    /// étape). <paramref name="compact"/> : tout sur UNE ligne (bandeau) ; sinon libellé au-dessus des
+    /// segments (encart, hauteur 14). À la souris, PadLesson est sautée : comptée faite.
+    /// </summary>
+    private void DrawTutorialProgress(SpriteBatch sb, Rectangle r, bool compact)
+    {
+        const int chapterGap = 12, labelGap = 6;
+        var cur = _tutorial!.Step;
+        var total = 0;
+        var labelsW = 0;
+        foreach (var ch in TutorialChapters)
+        {
+            total += ch.Last - ch.First + 1;
+            labelsW += Context.Font.Measure(Loc.T(ch.Key), 1);
+        }
+
+        var avail = r.Width - chapterGap * (TutorialChapters.Length - 1)
+                    - (compact ? labelsW + labelGap * TutorialChapters.Length : 0);
+        var x = r.X;
+        for (var i = 0; i < TutorialChapters.Length; i++)
+        {
+            var (key, first, last) = TutorialChapters[i];
+            var n = last - first + 1;
+            var label = Loc.T(key);
+            var isCurrent = cur >= first && cur <= last;
+            Context.Font.Draw(sb, label, new Vector2(x, r.Y), 1, isCurrent ? Palette.Yellow2 : Palette.Blue1);
+
+            int segX, segY;
+            if (compact)
+            {
+                segX = x + Context.Font.Measure(label, 1) + labelGap;
+                segY = r.Y + 2;
+            }
+            else
+            {
+                segX = x;
+                segY = r.Y + 11;
+            }
+            var w = i == TutorialChapters.Length - 1 ? r.Right - segX : avail * n / total;
+            DrawTutorialSegments(sb, segX, segY, w, first, n, cur);
+            x = segX + w + chapterGap;
+        }
+    }
+
+    /// <summary>Rangée de segments d'un chapitre (3 px de haut, 2 px d'écart) : fait / courant / à venir.</summary>
+    private void DrawTutorialSegments(SpriteBatch sb, int x, int y, int width, TutorialStep first, int count, TutorialStep cur)
+    {
+        const int gap = 2, h = 3;
+        var segW = System.Math.Max(1, (width - gap * (count - 1)) / count);
+        for (var k = 0; k < count; k++)
+        {
+            var step = first + k;
+            var sx = x + k * (segW + gap);
+            var sw = k == count - 1 ? System.Math.Max(1, x + width - sx) : segW;
+            var done = cur == TutorialStep.Done || step < cur
+                       || (step == TutorialStep.PadLesson && !Context.Input.UsingGamepad);
+            var color = step == cur ? Palette.Yellow2 : done ? Palette.Yellow1 : Palette.Black5;
+            DrawRect(sb, new Rectangle(sx, y, sw, h), color);
+        }
+    }
+
+    /// <summary>
+    /// ENCART du tuto (le jeu attend un clic) : centré dans la zone de jeu,
+    /// sans voile. Progression, TITRE ×2, corps ×1 replié (alignés à gauche), liste des 3 phases (Intro), puis
+    /// l'invite alignée à droite. Pas de bouton « Passer » ici : celui de repli, en bas à gauche de l'écran.
+    /// </summary>
+    private void DrawTutorialCard(SpriteBatch sb, string title, string body, string footer, bool phases = false)
+    {
+        const int pad = 24, progH = 14, titleH = 14, lineH = 12, phaseH = 7, phaseGap = 4, footH = 7;
+        var area = PlayArea();
+        var pw = System.Math.Min(area.Width - 48, 560);
+        var inner = pw - 2 * pad;
+        var lines = WrapText(body, inner, 1);
+
+        var ph = pad + progH + 14 + titleH + 10 + lines.Count * lineH - (lineH - 7)
+                 + (phases ? 10 + 3 * (phaseH + phaseGap) - phaseGap : 0)
+                 + 18 + footH + pad;
+        var box = new Rectangle(area.X + (area.Width - pw) / 2,
+            System.Math.Max(area.Y + 10, area.Y + (area.Height - ph) / 2), pw, ph);
+
+        Context.Style.DrawPanel(sb, box);   // pas de voile : le plateau reste visible autour
+
+        var y = box.Y + pad;
+        DrawTutorialProgress(sb, new Rectangle(box.X + pad, y, inner, progH), compact: false);
+        y += progH + 14;
+
+        // Le TITRE reste en capitales (c'est un libellé d'UI) ; le corps et l'invite sont des phrases.
+        // Tout est aligné à GAUCHE, comme la progression et le bouton « Passer ».
+        Context.Font.Draw(sb, title, new Vector2(box.X + pad, y), 2, Palette.Yellow2);
+        y += titleH + 10;
+        foreach (var line in lines)
+        {
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad, y), 1, Palette.White, preserveCase: true);
+            y += lineH;
+        }
+        y -= lineH - 7;
+
+        if (phases)
+        {
+            // Les 3 phases d'un combat : simple liste numérotée, SANS cadre (ce ne sont pas des champs). La 1re
+            // (préparation), celle en cours, en blanc ; les suivantes en retrait.
+            string[] keys = { "tuto.phase_prep", "tuto.phase_combat", "tuto.phase_reward" };
+            y += 10;
+            for (var i = 0; i < keys.Length; i++)
+            {
+                var color = i == 0 ? Palette.White : Palette.Blue1;
+                Context.Font.Draw(sb, $"{i + 1}. " + TutoT(keys[i]), new Vector2(box.X + pad + 8, y), 1, color,
+                    preserveCase: true);
+                y += phaseH + phaseGap;
+            }
+            y -= phaseGap;
+        }
+
+        // Pied : l'invite, alignée à droite.
+        y += 18;
+        Context.Font.Draw(sb, footer, new Vector2(box.Right - pad - Context.Font.Measure(footer, 1), y), 1, Palette.Cyan1,
+            preserveCase: true);
+    }
+
+    /// <summary>
+    /// BANDEAU du tuto (étape d'action : le plateau reste jouable, pas de voile) : en haut de la zone de jeu,
+    /// ou en BAS s'il masquerait un pion / la case visée. Colonne gauche : progression compacte + consigne ;
+    /// au milieu : touche dessinée + verbe, et/ou invite ; à droite : bouton « Passer ».
+    /// </summary>
+    private void DrawTutorialBanner(SpriteBatch sb, GridLayout board, string text, string? footer = null,
+        string? keyLabel = null, string? keyVerb = null)
+    {
+        const int pad = 10, gap = 12, skipH = 32, capH = 20, lineH = 12;
+        var area = PlayArea();
+        var bw = area.Width - 40;
+        var skipW = TutorialSkipWidth();
+
+        // Colonne du milieu : touche (cadre + nom) + verbe, puis l'invite éventuelle dessous.
+        int capW = 0, midW = 0, midH = 0;
+        if (keyLabel != null)
+        {
+            capW = Context.Font.Measure(keyLabel, 1) + 14;
+            midW = capW + 6 + Context.Font.Measure(keyVerb ?? "", 1);
+            midH = capH;
+        }
+        if (footer != null)
+        {
+            midW = System.Math.Max(midW, Context.Font.Measure(footer, 1));
+            midH += (midH > 0 ? 6 : 0) + 7;
+        }
+
+        var leftW = bw - 2 * pad - skipW - gap - (midW > 0 ? midW + gap : 0);
+        var lines = WrapText(text, leftW, 1);
+        var leftH = 7 + 6 + lines.Count * lineH - (lineH - 7);
+        var bh = System.Math.Max(System.Math.Max(leftH, skipH), midH) + 2 * pad;
+        var box = new Rectangle(area.X + 20, area.Y + 10, bw, bh);
+        if (TutorialBannerHidesBoard(board, box))
+            box.Y = area.Bottom - 10 - bh;
+
+        Context.Style.DrawPanel(sb, box);
+
+        var ly = box.Y + (bh - leftH) / 2;
+        DrawTutorialProgress(sb, new Rectangle(box.X + pad, ly, leftW, 7), compact: true);
+        ly += 7 + 6;
+        foreach (var line in lines)
+        {
+            // Consignes du tuto : phrases en casse normale (preserveCase), pas en capitales comme l'UI.
+            Context.Font.Draw(sb, line, new Vector2(box.X + pad, ly), 1, Palette.Yellow2, preserveCase: true);
+            ly += lineH;
+        }
+
+        if (midW > 0)
+        {
+            var mx = box.X + pad + leftW + gap;
+            var my = box.Y + (bh - midH) / 2;
+            if (keyLabel != null)
+            {
+                var cap = new Rectangle(mx, my, capW, capH);
+                Context.Style.DrawButton(sb, cap, UiStyle.StateOf(false, false));   // touche : jamais cliquable
+                Context.Font.DrawCentered(sb, keyLabel, cap, 1, Palette.White);
+                Context.Font.Draw(sb, keyVerb ?? "", new Vector2(cap.Right + 6, my + (capH - 7) / 2), 1, Palette.Cyan1);
+                my += capH + 6;
+            }
+            if (footer != null)
+                Context.Font.Draw(sb, footer, new Vector2(mx, my), 1, Palette.Cyan1, preserveCase: true);
+        }
+
+        DrawTutorialSkipButton(sb, new Rectangle(box.Right - pad - skipW, box.Y + (bh - skipH) / 2, skipW, skipH));
+    }
+
+    /// <summary>
+    /// Vrai si le bandeau posé en <paramref name="box"/> masquerait un pion (sprite compris, qui déborde au-dessus
+    /// de sa case), le coffre du tuto ou la case de déploiement visée.
+    /// </summary>
+    private bool TutorialBannerHidesBoard(GridLayout board, Rectangle box)
+    {
+        var ts = board.TileSize;
+        bool Hides(Cell c)
+        {
+            var p = board.CellToScreen(c.Column, c.Row);
+            return new Rectangle((int)p.X, (int)p.Y - ts / 2, ts, ts + ts / 2).Intersects(box);
+        }
+
+        foreach (var (cell, _) in _match.Units())
+            if (Hides(cell))
+                return true;
+        var t = _tutorial!;
+        if (t.Step == TutorialStep.Chest && t.Chest is { } chest && Hides(chest))
+            return true;
+        return t.Step is TutorialStep.PlaceSoldier or TutorialStep.DeployFused && Hides(new Cell(Columns / 2, Rows - 2));
     }
 
     /// <summary>
@@ -5629,27 +5955,6 @@ public sealed class GameplayScene : Scene
         if (footer != null)
             Context.Font.DrawCentered(sb, footer,
                 new Rectangle(bubble.X, bubble.Bottom - 14, bubble.Width, 10), 1, Palette.Cyan1, preserveCase: true);
-    }
-
-    /// <summary>Grand encart central : TITRE (échelle 3) + corps replié (échelle 2) + invite (bas).</summary>
-    private void DrawTutorialBigPanel(SpriteBatch sb, Viewport viewport, string title, string body, string footer)
-    {
-        var pw = System.Math.Min(viewport.Width - 120, 700);
-        var lines = WrapText(body, pw - 48, 2);
-        var ph = 20 + 28 + 14 + lines.Count * 18 + 24 + 16;
-        var box = new Rectangle((viewport.Width - pw) / 2, (viewport.Height - ph) / 2, pw, ph);
-        Context.Style.DrawPanel(sb, box);
-
-        // Le TITRE reste en capitales (c'est un libellé d'UI) ; le corps et l'invite sont des phrases.
-        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, box.Y + 20, box.Width, 24), 3, Palette.Yellow2);
-        var y = box.Y + 20 + 28 + 14;
-        foreach (var line in lines)
-        {
-            Context.Font.DrawCentered(sb, line, new Rectangle(box.X, y, box.Width, 16), 2, Palette.White, preserveCase: true);
-            y += 18;
-        }
-        Context.Font.DrawCentered(sb, footer, new Rectangle(box.X, box.Bottom - 22, box.Width, 12), 1, Palette.Cyan1,
-            preserveCase: true);
     }
 
     /// <summary>Encart central : corps (texte replié, échelle 2) + bas de page facultatif (invite).</summary>
@@ -8205,7 +8510,7 @@ public sealed class GameplayScene : Scene
         // Esquive : le coup a bien porté, mais la victime s'est repliée dans la foulée → callout dédié.
         _pendingDodge = dodge != null;
         if (_tutorial is { Step: TutorialStep.Attack } && killed && victim is { Faction: Faction.Enemy })
-            _tutorial.Advance();            // mort de l'ENNEMI → Attack → Commander (pas sur la contre-attaque)
+            _tutorial.Advance();            // mort de l'ENNEMI → Attack → TraitLesson (pas sur la contre-attaque)
         // L'attaquant a-t-il quitté sa case en tuant ? Il a pu prendre la case de la victime OU glisser plus loin
         // sur la glace (« Glace »). On repère sa case de repos RÉELLE : l'anim d'avance l'y mènera d'un trait.
         var slidRest = _match.LastSlide is { } sp && ReferenceEquals(_match.UnitAt(sp[^1]), attacker) ? sp[^1] : (Cell?)null;
@@ -11747,8 +12052,8 @@ public sealed class GameplayScene : Scene
     private void DrawPanelBackground(SpriteBatch sb)
     {
         var panel = PanelRect();
-        Context.Style.FillDither(sb, panel);   // fond tramé pixel-art, comme les cartes / boutons
-        DrawRect(sb, new Rectangle(panel.X, 0, 2, panel.Height), Palette.Navy1);
+        Context.Style.FillPanelDither(sb, panel);   // fond tramé pixel-art, aux couleurs du thème d'UI
+        DrawRect(sb, new Rectangle(panel.X, 0, 2, panel.Height), Context.Style.Theme.PanelEdge);
 
         // Bord DROIT = bord du canvas : sur écran ultra-large, l'eau du letterbox affleure le panneau
         // et ses tons (proches du fond) le rendent peu lisible. Cette bande au ton le plus sombre de la
@@ -14461,7 +14766,7 @@ public sealed class GameplayScene : Scene
         var rowH = new Rectangle(icon.Right + 8, y, card.Right - CardPad - (icon.Right + 8), iconSize);
         var midBig = rowH.Y + (iconSize - 7 * 2) / 2;   // ligne de base des textes scale 2 (14 px), centrée
         // Libellé en scale 1 (l'icône identifie déjà la stat) → laisse la place à un bonus BIEN visible.
-        Context.Font.Draw(sb, label, new Vector2(rowH.X, rowH.Y + (iconSize - 7) / 2), 1, Palette.Blue1);
+        Context.Font.Draw(sb, label, new Vector2(rowH.X, rowH.Y + (iconSize - 7) / 2), 1, Palette.White);
         var vw = Context.Font.Measure(value, 2);
         Context.Font.Draw(sb, value, new Vector2(rowH.Right - vw, midBig), 2, valueColor);
         if (bonus > 0)
@@ -16409,7 +16714,7 @@ public sealed class GameplayScene : Scene
         // Fond tramé pixel-art (style maison des panneaux) pour détacher la frise du plateau.
         var bg = new Rectangle(startX - 14, 6, contentW + 28, TimelineTopY + TimelineNodeSize + 2);
         Context.Style.FillDither(sb, bg);
-        DrawRectBorder(sb, bg, Palette.Navy1, 2);
+        DrawRectBorder(sb, bg, Context.Style.Theme.PanelEdge, 2);   // cadre aux couleurs du thème d'UI (liseré du panneau)
 
         // Libellé « PHASE n/N » centré au-dessus des nœuds (N = phase de fin, cf. Run.EndAtPhase).
         Context.Font.DrawCentered(sb, Loc.T("hud.phase", _run.PhaseIndex, Run.EndAtPhase),
@@ -16883,6 +17188,10 @@ public sealed class GameplayScene : Scene
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
             case MenuAction.LanguageChanged:
+                Context.Saves.SaveSettings(Context.Settings);
+                break;
+            case MenuAction.ThemeChanged:
+                Context.Style.SetTheme(Context.Settings.UiTheme);   // à chaud : la frame suivante est au nouveau thème
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
         }

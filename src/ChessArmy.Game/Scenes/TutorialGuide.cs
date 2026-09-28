@@ -16,10 +16,12 @@ public enum TutorialStep
     StartCombat,   // lancer le combat
     CameraLesson,  // INTERACTIF : bouger la caméra (flèches / ZQSD / stick droit) pour observer le plateau
     DangerLesson,  // INTERACTIF : maintenir ESPACE / RT pour voir les cases menacées par l'ennemi
+    TooltipLesson, // INTERACTIF : survoler une unité puis clic droit / LT pour déplier sa carte en détail
     Chest,         // aller sur le coffre : c'est comme ça qu'on trouve un équipement (l'ennemi attend)
     Move,          // une action/tour : déplacer le soldat vers l'ennemi
     ReplayLesson,  // INTERACTIF : presser R / RB pour revoir la dernière action de l'IA (après son 1er coup)
     Attack,        // se déplacer SUR l'ennemi pour l'attaquer
+    TraitLesson,   // INTERACTIF : un Archer ennemi apparaît ; clic droit / LT dessus pour lire ses TRAITS
     Commander,     // encart : le commandant, sa mort = défaite
 
     // ── Préparation guidée (retour en phase de placement, sur la même map) ──────────────────────
@@ -72,6 +74,12 @@ public sealed class TutorialGuide
     /// <summary>Case du coffre de la map de tuto (leçon « équipement »), si elle en porte un.</summary>
     public Cell? Chest { get; set; }
 
+    /// <summary>Case de l'Archer ennemi de la leçon « traits » (posé à l'entrée de l'étape, null avant).</summary>
+    public Cell? TraitUnit { get; set; }
+
+    /// <summary>Vrai dès que la carte de l'Archer a été dépliée : le joueur lit, puis valide pour continuer.</summary>
+    public bool TraitsSeen { get; set; }
+
     /// <summary>En combat, seul le soldat scénarisé est sélectionnable.</summary>
     public bool CanSelectInCombat(Cell cell) => cell == PlayerSoldier;
 
@@ -91,11 +99,13 @@ public sealed class TutorialGuide
         TutorialStep.StartCombat  => "tuto.start_combat",
         TutorialStep.CameraLesson => "tuto.camera",
         TutorialStep.DangerLesson => "tuto.danger",
+        TutorialStep.TooltipLesson => "tuto.tooltip",
         TutorialStep.ReviewCard   => "tuto.card_title",
         TutorialStep.Chest        => "tuto.chest",
         TutorialStep.Move         => "tuto.move",
         TutorialStep.ReplayLesson => "tuto.replay",
         TutorialStep.Attack       => "tuto.attack",
+        TutorialStep.TraitLesson  => "tuto.traits",
         TutorialStep.Commander    => "tuto.commander",
         TutorialStep.FusionIntro  => "tuto.fusion_title",
         TutorialStep.FusionDo     => "tuto.fusion_do",

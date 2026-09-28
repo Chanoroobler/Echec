@@ -78,6 +78,9 @@ public sealed class PauseMenuRenderer
             Label(sb, l.LangRow, Loc.T("options.language"));
             Stepper(sb, l.LangLeft, l.LangValue, l.LangRight, menu.LanguageText, p, pointerDown, focus);
 
+            Label(sb, l.ThemeRow, Loc.T("options.ui_theme"));
+            Stepper(sb, l.ThemeLeft, l.ThemeValue, l.ThemeRight, menu.ThemeText, p, pointerDown, focus);
+
             Button(sb, l.Back, Loc.T("options.back"), p, pointerDown, focus);
         }
     }

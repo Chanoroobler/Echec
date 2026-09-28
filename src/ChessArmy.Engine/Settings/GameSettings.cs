@@ -1,4 +1,5 @@
 using ChessArmy.Engine.Localization;
+using ChessArmy.Engine.UI;
 
 namespace ChessArmy.Engine.Settings;
 
@@ -10,6 +11,9 @@ public sealed class GameSettings
 
     /// <summary>Langue de l'interface. Pilote <see cref="Loc.Current"/>.</summary>
     public Language Language { get; set; } = Language.Francais;
+
+    /// <summary>Thème de couleur de l'UI (tramage + biseau des panneaux/boutons, fond du panneau de droite).</summary>
+    public UiThemeId UiTheme { get; set; } = UiThemeId.Gold;
 
     /// <summary>
     /// Mode DÉMO (version de démonstration). Restreint la partie : la run s'arrête plus tôt (cf.

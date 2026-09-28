@@ -1,4 +1,5 @@
 using System;
+using ChessArmy.Engine.Rendering;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -12,21 +13,46 @@ public enum ButtonState { Normal, Hover, Pressed }
 /// biseau (liseré clair en haut/gauche, ombre épaisse en bas/droite). Les boutons donnent un
 /// retour d'ENFONCEMENT : léger au survol, plus marqué au clic (biseau inversé + contenu décalé
 /// vers le bas). Toutes les couleurs viennent de la <see cref="Palette"/>. (Portée de CosyFarmer.)
+/// Les couleurs du tramage et du biseau suivent le <see cref="UiTheme"/> courant, changeable à chaud
+/// (<see cref="SetTheme"/>) : tout ce qui est dessiné ensuite prend les nouvelles couleurs, sans redémarrer.
 /// </summary>
 public sealed class UiStyle
 {
-    private static readonly Color Highlight = Palette.Black5; // arête éclairée
-    private static readonly Color Shadow = Palette.Black1;    // arête dans l'ombre
+    private const int TileSize = 8;
     private static readonly Color HoverTint = Palette.White;  // × alpha (éclaircit au survol)
     private static readonly Color PressTint = Palette.Black1; // × alpha (assombrit au clic)
 
+    private readonly GraphicsDevice _device;
     private readonly Texture2D _pixel;
-    private readonly Texture2D _tile;
+    private Texture2D _tile = null!;        // pop-ups, panneaux, boutons
+    private Texture2D _panelTile = null!;   // fond du panneau de droite
 
-    public UiStyle(Texture2D pixel, Texture2D tile)
+    public UiStyle(GraphicsDevice device, Texture2D pixel, UiThemeId theme)
     {
+        _device = device;
         _pixel = pixel;
+        SetTheme(theme);
+    }
+
+    /// <summary>Thème courant (couleurs du tramage, du biseau et du panneau de droite).</summary>
+    public UiTheme Theme { get; private set; } = null!;
+    public UiThemeId ThemeId { get; private set; }
+
+    private Color Highlight => Theme.Highlight;   // arête éclairée
+    private Color Shadow => Theme.Shadow;         // arête dans l'ombre
+
+    /// <summary>Applique un thème À CHAUD : recrée les deux tuiles tramées, le biseau suit (lu à chaque dessin).</summary>
+    public void SetTheme(UiThemeId id)
+    {
+        var theme = UiTheme.For(id);
+        var tile = Textures.CreateDitherTile(_device, TileSize, theme.DitherA, theme.DitherB);
+        var panelTile = Textures.CreateDitherTile(_device, TileSize, theme.PanelA, theme.PanelB);
+        _tile?.Dispose();
+        _panelTile?.Dispose();
         _tile = tile;
+        _panelTile = panelTile;
+        Theme = theme;
+        ThemeId = id;
     }
 
     /// <summary>État d'un bouton à partir du survol et de l'enfoncement du bouton souris.</summary>
@@ -34,14 +60,19 @@ public sealed class UiStyle
         => !hover ? ButtonState.Normal : (pointerDown ? ButtonState.Pressed : ButtonState.Hover);
 
     /// <summary>Remplit <paramref name="r"/> avec la tuile tramée (répétée, rognée aux bords).</summary>
-    public void FillDither(SpriteBatch sb, Rectangle r)
+    public void FillDither(SpriteBatch sb, Rectangle r) => Fill(sb, r, _tile);
+
+    /// <summary>Remplit <paramref name="r"/> avec le tramage du PANNEAU DE DROITE (couleurs propres au thème).</summary>
+    public void FillPanelDither(SpriteBatch sb, Rectangle r) => Fill(sb, r, _panelTile);
+
+    private static void Fill(SpriteBatch sb, Rectangle r, Texture2D tile)
     {
-        for (int y = r.Y; y < r.Bottom; y += _tile.Height)
-            for (int x = r.X; x < r.Right; x += _tile.Width)
+        for (int y = r.Y; y < r.Bottom; y += tile.Height)
+            for (int x = r.X; x < r.Right; x += tile.Width)
             {
-                int w = Math.Min(_tile.Width, r.Right - x);
-                int h = Math.Min(_tile.Height, r.Bottom - y);
-                sb.Draw(_tile, new Rectangle(x, y, w, h), new Rectangle(0, 0, w, h), Color.White);
+                int w = Math.Min(tile.Width, r.Right - x);
+                int h = Math.Min(tile.Height, r.Bottom - y);
+                sb.Draw(tile, new Rectangle(x, y, w, h), new Rectangle(0, 0, w, h), Color.White);
             }
     }
 
@@ -84,8 +115,9 @@ public sealed class UiStyle
         }
     }
 
+    // Cadre extérieur d'1 px : TOUJOURS Black1, quel que soit le thème.
     private void Frame(SpriteBatch sb, Rectangle r)
-        => sb.Draw(_pixel, new Rectangle(r.X - 1, r.Y - 1, r.Width + 2, r.Height + 2), Shadow);
+        => sb.Draw(_pixel, new Rectangle(r.X - 1, r.Y - 1, r.Width + 2, r.Height + 2), Palette.Black1);
 
     private void Bevel(SpriteBatch sb, Rectangle r, bool raised, int thickness)
     {

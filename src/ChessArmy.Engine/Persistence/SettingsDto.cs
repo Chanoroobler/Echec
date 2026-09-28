@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using ChessArmy.Engine.Localization;
 using ChessArmy.Engine.Settings;
+using ChessArmy.Engine.UI;
 
 namespace ChessArmy.Engine.Persistence;
 
@@ -28,6 +29,9 @@ public sealed class SettingsDto
     public int Sfx { get; set; } = 80;
     public Language Language { get; set; } = Language.Francais;
 
+    /// <summary>Thème de couleur de l'UI. Absent d'un ancien options.json → Doré (défaut).</summary>
+    public UiThemeId UiTheme { get; set; } = UiThemeId.Gold;
+
     /// <summary>Mode démo persisté (toggle pratique en test ; l'argument -demo et demo.flag l'activent aussi).</summary>
     public bool IsDemo { get; set; }
 
@@ -40,6 +44,7 @@ public sealed class SettingsDto
         Music = s.Audio.Music,
         Sfx = s.Audio.Sfx,
         Language = s.Language,
+        UiTheme = s.UiTheme,
         IsDemo = s.IsDemo,
     };
 
@@ -58,6 +63,7 @@ public sealed class SettingsDto
         s.Audio.Music = Music;
         s.Audio.Sfx = Sfx;
         s.Language = Language;
+        s.UiTheme = UiTheme;
         s.IsDemo = IsDemo;
     }
 }
