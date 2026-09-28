@@ -67,4 +67,19 @@ internal sealed class ProfileDto
     /// pas mais DOIT le porter, sinon réécrire le profil effacerait ces victoires.
     /// </summary>
     public Dictionary<string, int> CommanderWins { get; set; } = new();
+
+    /// <summary>
+    /// Historique par commandant (parties, victoires, ennemis tués, temps) de l'écran de sélection. Même raison
+    /// que <see cref="ChestsOpened"/> : l'éditeur ne l'expose pas mais DOIT le porter.
+    /// </summary>
+    public Dictionary<string, CommanderHistoryDto> CommanderHistory { get; set; } = new();
+}
+
+/// <summary>Copie de <c>CommanderHistoryDto</c> (ChessArmy.Engine) : noms de propriétés alignés.</summary>
+internal sealed class CommanderHistoryDto
+{
+    public int RunsStarted { get; set; }
+    public int RunsWon { get; set; }
+    public int EnemiesKilled { get; set; }
+    public double PlayTimeSeconds { get; set; }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -297,7 +298,70 @@ public sealed class SaveService
         return true;
     }
 
-    /// <summary>Efface toute la méta-progression (unités, équipements découverts, commandants débloqués, coffres ouverts ET campagnes gagnées). Garde le reste du profil.</summary>
+    // ── Historique par commandant (écran de sélection) ──────────────────────────────
+
+    private Dictionary<string, CommanderHistoryDto>? _commanderHistory;
+
+    private Dictionary<string, CommanderHistoryDto> CommanderHistorySet() =>
+        _commanderHistory ??= new Dictionary<string, CommanderHistoryDto>(
+            TryRead<ProfileDto>(ProfilePath)?.CommanderHistory ?? new Dictionary<string, CommanderHistoryDto>());
+
+    /// <summary>
+    /// Historique du commandant (copie : la modifier n'a aucun effet). Jamais null : un commandant jamais joué
+    /// renvoie des compteurs à 0.
+    /// </summary>
+    public CommanderHistoryDto CommanderHistory(string commanderId) =>
+        !string.IsNullOrEmpty(commanderId) && CommanderHistorySet().TryGetValue(commanderId, out var h)
+            ? h.Clone()
+            : new CommanderHistoryDto();
+
+    /// <summary>Une partie LANCÉE avec ce commandant (clic sur LANCER).</summary>
+    public void RecordCommanderRunStarted(string commanderId) =>
+        UpdateCommanderHistory(commanderId, h => h.RunsStarted++);
+
+    /// <summary>Une campagne GAGNÉE avec ce commandant.</summary>
+    public void RecordCommanderRunWon(string commanderId) =>
+        UpdateCommanderHistory(commanderId, h => h.RunsWon++);
+
+    /// <summary>Ennemis abattus avec ce commandant (versé par lot, en fin de combat). Sans effet si ≤ 0.</summary>
+    public void AddCommanderKills(string commanderId, int count)
+    {
+        if (count > 0)
+            UpdateCommanderHistory(commanderId, h => h.EnemiesKilled += count);
+    }
+
+    /// <summary>Temps de jeu avec ce commandant (versé par lot). Sans effet si nul, négatif ou non fini.</summary>
+    public void AddCommanderPlayTime(string commanderId, double seconds)
+    {
+        if (seconds > 0 && double.IsFinite(seconds))
+            UpdateCommanderHistory(commanderId, h => h.PlayTimeSeconds += seconds);
+    }
+
+    /// <summary>
+    /// Modifie l'historique d'un commandant : mémoire SYNCHRONE, persistance disque (lecture-modification-écriture
+    /// sous verrou pour préserver les autres champs) en arrière-plan, comme les autres compteurs du profil.
+    /// </summary>
+    private void UpdateCommanderHistory(string commanderId, Action<CommanderHistoryDto> change)
+    {
+        if (string.IsNullOrEmpty(commanderId))
+            return;
+        var set = CommanderHistorySet();
+        if (!set.TryGetValue(commanderId, out var h))
+            set[commanderId] = h = new CommanderHistoryDto();
+        change(h);
+        var snapshot = set.ToDictionary(kv => kv.Key, kv => kv.Value.Clone());
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.CommanderHistory = snapshot;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+    }
+
+    /// <summary>Efface toute la méta-progression (unités, équipements découverts, commandants débloqués, coffres ouverts, campagnes gagnées ET historique des commandants). Garde le reste du profil.</summary>
     public void ResetMetaProgression()
     {
         _discovered = new HashSet<string>();
@@ -306,6 +370,7 @@ public sealed class SaveService
         _chestsOpened = 0;
         _enemiesKilled = 0;
         _commanderWins = new Dictionary<string, int>();
+        _commanderHistory = new Dictionary<string, CommanderHistoryDto>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
         dto.DiscoveredUnits = new List<string>();
         dto.DiscoveredEquipment = new List<string>();
@@ -313,6 +378,7 @@ public sealed class SaveService
         dto.ChestsOpened = 0;
         dto.EnemiesKilled = 0;
         dto.CommanderWins = new Dictionary<string, int>();
+        dto.CommanderHistory = new Dictionary<string, CommanderHistoryDto>();
         TryWrite(ProfilePath, dto);
     }
 

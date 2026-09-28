@@ -783,6 +783,7 @@ public sealed class GameplayScene : Scene
 
     public override void Unload()
     {
+        FlushCommanderPlayTime();   // historique du commandant : le temps joué depuis le dernier combat
         foreach (var tile in _tiles.Values)
             tile.Dispose();
         _tiles.Clear();
@@ -2521,7 +2522,12 @@ public sealed class GameplayScene : Scene
         // temps réellement joué : menu pause et codex sont exclus d'office, et l'écran de récap l'est par
         // le filtre de phase. Cumulé dans les stats, donc sauvegardé avec le slot et affiché en fin de run.
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle or RunPhase.Recruitment)
+        {
             _run.Stats.AddPlayTime(gameTime.ElapsedGameTime.TotalSeconds);
+            // Historique du commandant (écran de sélection) : même temps, tuto exclu, versé au profil par lot.
+            if (_tutorial == null)
+                _pendingCommanderPlayTime += gameTime.ElapsedGameTime.TotalSeconds;
+        }
 
         // Bascule du quadrillage permanent du plateau : F1 (clavier) ou Select (manette).
         if (Context.Input.WasKeyPressed(Keys.F1) || Context.Input.WasSelectPressed)
@@ -6210,6 +6216,27 @@ public sealed class GameplayScene : Scene
         // Méta-progression : le compteur À VIE du profil suit le même delta (déblocage du commandant DUO).
         // Versé par COMBAT et non par mort, pour une seule écriture profil au lieu d'une par ennemi.
         Context.Saves.AddEnemiesKilled(kills);
+        // Historique du commandant (écran de sélection) : ennemis tués et temps joué. Le tuto ne compte pas.
+        if (_tutorial == null)
+        {
+            Context.Saves.AddCommanderKills(_run.CommanderDef.Id, kills);
+            FlushCommanderPlayTime();
+        }
+    }
+
+    /// <summary>Temps joué pas encore versé à l'historique du commandant (cf. <see cref="FlushCommanderPlayTime"/>).</summary>
+    private double _pendingCommanderPlayTime;
+
+    /// <summary>
+    /// Verse au profil le temps joué avec le commandant depuis le dernier versement. Appelé à chaque fin de
+    /// combat et à la sortie de la scène, pour une écriture profil par lot plutôt qu'une par image.
+    /// </summary>
+    private void FlushCommanderPlayTime()
+    {
+        if (_pendingCommanderPlayTime <= 0)
+            return;
+        Context.Saves.AddCommanderPlayTime(_run.CommanderDef.Id, _pendingCommanderPlayTime);
+        _pendingCommanderPlayTime = 0;
     }
 
     /// <summary>Nœud « relève » (arbre TROUPES) : un pion T1 déjà vu arrive en réserve par unité tier 2+ tombée.
@@ -7036,7 +7063,10 @@ public sealed class GameplayScene : Scene
         // marque en vert les difficultés déjà bouclées avec ce commandant. Seul le MAXIMUM est gardé, donc
         // un niveau élevé vaut aussi pour ceux du dessous (cf. SaveService.RecordCampaignWin).
         if (_run.Phase == RunPhase.Victory)
+        {
             Context.Saves.RecordCampaignWin(_run.CommanderDef.Id, _run.Difficulty);
+            Context.Saves.RecordCommanderRunWon(_run.CommanderDef.Id);   // historique de l'écran de sélection
+        }
 
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
         if (_run.Phase is RunPhase.Victory or RunPhase.Defeat)

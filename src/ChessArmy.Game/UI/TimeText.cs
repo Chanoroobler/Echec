@@ -20,4 +20,14 @@ public static class TimeText
         var s = total % 60;
         return h > 0 ? $"{h}:{m:00}:{s:00}" : $"{m}:{s:00}";
     }
+
+    /// <summary>
+    /// Durée cumulée en heures et minutes : <c>6H 42</c> (minutes sur deux chiffres, secondes ignorées).
+    /// Sert à l'historique de l'écran de sélection du commandant. Les valeurs négatives ou non finies valent 0.
+    /// </summary>
+    public static string Hours(double seconds)
+    {
+        var total = seconds > 0 && double.IsFinite(seconds) ? (long)seconds : 0;
+        return $"{total / 3600}H {total / 60 % 60:00}";
+    }
 }

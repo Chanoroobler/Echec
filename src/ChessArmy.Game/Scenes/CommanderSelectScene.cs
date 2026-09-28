@@ -6,6 +6,7 @@ using ChessArmy.Core.Campaign;
 using ChessArmy.Engine;
 using ChessArmy.Engine.Input;
 using ChessArmy.Engine.Localization;
+using ChessArmy.Engine.Persistence;
 using ChessArmy.Engine.Rendering;
 using ChessArmy.Engine.Scenes;
 using ChessArmy.Engine.UI;
@@ -21,15 +22,18 @@ namespace ChessArmy.Game.Scenes;
 /// nouvelle campagne dans un slot vide (une reprise va directement au jeu). Il fixe les deux choix qui
 /// valent pour TOUTE la run et sont ensuite persistés avec elle : le COMMANDANT et la DIFFICULTÉ.
 ///
-/// Présentation en VITRINE, pas en formulaire : le commandant occupe le centre, son sprite agrandi ×3
-/// (facteur ENTIER — le pixel-art ne doit jamais être mis à l'échelle fractionnairement), encadré par les
-/// flèches du carrousel, avec son nom en gros dessous. Ses chiffres sont répartis dans deux sous-panneaux
-/// qui flanquent le portrait (stats à gauche, armée &amp; points à droite), ses pions de départ en bande
-/// centrée, et la barre du bas porte la difficulté, l'arbre puis les deux actions.
+/// Deux moitiés (maquette docs/maquettes/selection-commandant.png, spec docs/selection-commandant.md) :
+/// <list type="bullet">
+/// <item>à GAUCHE, le commandant : titre, sprite ×4 encadré de ses voisins ×2 atténués (carrousel), nom avec
+/// les flèches, pastilles de position, puis les trois boutons de difficulté et, toujours visible, ce que
+/// change le niveau retenu ;</item>
+/// <item>à DROITE, sa fiche dans un cadre toujours affiché : stats, gains de points, unités de départ, bouton
+/// de l'arbre et historique ; sous le cadre, RETOUR et LANCER.</item>
+/// </list>
 ///
-/// MISE EN PAGE ÉLASTIQUE : le bloc du haut est ancré en HAUT, le pied en BAS, et la bande des pions de
-/// départ se CENTRE dans ce qui reste. L'écran remplit donc aussi bien le canevas 1280×720 (1440p) que le
-/// 960×540 (1080p, le plus serré) sans laisser un grand vide d'un côté.
+/// MISE EN PAGE ÉLASTIQUE : les cotes de la spec sont celles du canevas 960×540 (1080p, le plus serré). Sur
+/// un canevas plus grand, le cadre de droite s'élargit en proportion et reste ancré à droite, la colonne de
+/// gauche prend le reste et son contenu s'y centre, et le surplus vertical se répartit haut/bas.
 ///
 /// Souris, clavier et manette, sur le modèle de <see cref="CodexView"/> : géométrie déterministe recalculée
 /// en tête d'Update et de Draw, focusables reconstruits à chaque image, navigation par rangées.
@@ -40,40 +44,50 @@ public sealed class CommanderSelectScene : Scene
     // (Commander) : gauche/droite y fait défiler les pions au lieu de sauter de flèche en flèche.
     private enum Kind { Commander, StartTile, DiffLevel, Tree, Back, Start }
 
-    private const int Margin = 8;
-    /// <summary>TOUS les pions du carrousel sont à cette échelle : 64 → 192 px, facteur ENTIER.</summary>
-    private const int SpriteScale = 3;
-    private const int SpriteBox = 64 * SpriteScale;
-    private const int PortraitPad = 10;         // zone de survol autour du pion central
-    private const int SlotSpacing = 224;        // écart entre deux emplacements (192 + 32 de respiration)
-    private const int ArrowW = 40, ArrowH = 56;
-    private const int ArrowOffset = SlotSpacing + SpriteBox / 2 + 20 + ArrowW / 2;  // centre → axe de la flèche
-    private const int PanelW = 260;             // sous-panneaux de stats (superposés, apparaissent au survol)
-    private const int PanelGap = 16;
-    private const int DomaineBadge = 39;
+    // ── Cotes du canevas de référence 960×540 ──
+    private const int RefW = 960, RefH = 540;
+    private const int Top = 24;                 // haut du cadre de droite et du titre
+    private const int EdgeRight = 32;           // marge droite du cadre
+    private const int ColumnGap = 20;           // entre la colonne de gauche et le cadre
+    private const int RefFrameW = 388;          // largeur du cadre à 960
+    private const int FrameBottomGap = 84;      // bas du cadre = H - 84 (456 à 540)
+    private const int BarBottomGap = 26;        // bas de la barre RETOUR/LANCER = H - 26 (514 à 540)
+    private const int BarH = 40, BarGap = 12, RefBackW = 126;
+
+    /// <summary>Pion choisi à l'échelle 4 (256 px), voisins à l'échelle 2 (128 px) : facteurs ENTIERS.</summary>
+    private const int MainScale = 4, SideScale = 2;
+    private const int MainBox = 64 * MainScale;
+    private const int SlotSpacing = 192;        // centre → centre d'un voisin (il reste dans la moitié gauche)
     private const float SlideDuration = 0.22f;
 
     /// <summary>
-    /// Perte de luminosité par emplacement d'écart avec le centre. Comme la TAILLE ne change plus (les
-    /// facteurs d'échelle doivent rester entiers, donc non interpolables), c'est ce fondu — lui, continu —
-    /// qui désigne le pion choisi et fait disparaître celui qui sort, au lieu de le laisser déborder.
+    /// Perte de luminosité par emplacement d'écart avec le centre : les voisins sont ATTÉNUÉS, et le pion qui
+    /// sort du carrousel s'efface au lieu de déborder. Continu, contrairement à l'échelle (entière).
     /// </summary>
     private const float FadePerSlot = 0.55f;
+
+    private const int ArrowW = 36, ArrowH = 40;
+    private const int ArrowLeftOffset = 212, ArrowRightOffset = 176;   // centre gauche → bord gauche des flèches
+    private const int DotSize = 4, DotActiveW = 16, DotGap = 4;
+    private const int DiffHalfW = 218;          // groupe de difficulté : 42 → 478 à 960
+    private const int DiffH = 36, DiffGap = 9;
+    private const int GaugeSquare = 6, GaugeGap = 2;
     private int NameH => Context.Font.LineHeight(3);   // hauteur du nom (scale 3) : 21 latin / 36 cjk (police active)
-    private const int TileGap = 10;
-    private const int BtnH = 38;
-    private const int BackW = 150, StartW = 220;
-    private const int TreeIcon = 32;            // icône d'arbre, coin haut-droit du sprite du commandant
-    private const int DiffBtn = 32, DiffGap = 6;
-    private const int BarH = 32;
-    private const int LineH = 11;               // interligne des textes à l'échelle 1
-    private const int BodyIndent = 10;          // retrait du corps de texte sous son titre
-    private const int Pad = 10;                 // marge interne des sous-panneaux
+
+    // ── Cadre de droite ──
+    private const int FramePadX = 16, FramePadY = 16;
+    private const int BodyIndent = 8;           // retrait des lignes sous leur titre de section
+    private const int StatLabelW = 84, StatValueW = 28;
+    private const int DomaineBadge = 39;
+    private const int TreeH = 36;
+    private const int TileStep = 86;            // pas des vignettes de départ (cadre 76 + 10)
+    private const int MinSectionGap = 3, MaxSectionGap = 20;
 
     private readonly int _saveSlot;
 
     private UnitCardRenderer _card = null!;
     private CommandTreeView _tree = null!;
+    private Texture2D? _background;
 
     /// <summary>Icône d'accès à l'arbre (Assets/UI/arbre.png). Null = absente, on dessine un repli.</summary>
     private Texture2D? _treeIcon;
@@ -148,6 +162,8 @@ public sealed class CommanderSelectScene : Scene
         _tree.Unload();
         _treeIcon?.Dispose();
         _treeIcon = null;
+        _background?.Dispose();
+        _background = null;
     }
 
     /// <summary>Recrée la run d'aperçu sur le commandant courant (son arbre est lu depuis elle).</summary>
@@ -155,118 +171,165 @@ public sealed class CommanderSelectScene : Scene
 
     private Viewport VirtualViewport => new(0, 0, Context.VirtualResolution.X, Context.VirtualResolution.Y);
 
+    /// <summary>Même fond que le menu principal, (re)généré si absent ou si le canevas a changé de taille.</summary>
+    private void EnsureBackground(int w, int h)
+    {
+        if (_background != null && _background.Width == w && _background.Height == h)
+            return;
+        _background?.Dispose();
+        _background = Textures.CreateVerticalDitherGradient(Context.GraphicsDevice, w, h,
+            Palette.Black4, Palette.Navy2, Palette.Black1);
+    }
+
     // ── Mise en page ─────────────────────────────────────────────────────────────
 
     private struct Layout
     {
-        public Rectangle Panel, Title;
-        public Rectangle Portrait, Sprite, NamePrev, NameNext, Name, Index;
-        public Rectangle Stats, Army;                        // sous-panneaux SUPERPOSÉS (survol seulement)
-        public Rectangle StartLabel;
+        public Rectangle Left, Title, Sprite, Portrait, NamePrev, NameNext, Name, Dots;
+        public Rectangle[] DiffLevels;
+        public Point Effects;                                 // haut-gauche de la liste des effets
+        public Rectangle Frame, Inner;
+        public int StatsY, Sep1Y, PointsY, Sep2Y, UnitsY, HistoryY;
+        public List<string> PointLines;
         public List<(UnitClass Cls, Domaine Domaine, Rectangle Rect)> StartTiles;
-        public Rectangle DiffLabel;
-        public Rectangle[] DiffLevels;                       // un bouton numéroté par niveau
-        public Rectangle Tree, Back, Start, Hint;
+        public Rectangle Tree, Back, Start;
     }
 
-    /// <summary>
-    /// Tout l'écran est une PILE VERTICALE centrée : titre → carrousel → nom → pions de départ → difficulté
-    /// → actions. On ne fixe plus le haut en haut et le pied en bas ; sinon, sur un grand canevas (1280×720,
-    /// le cas du 1440p), le surplus s'accumule en deux TROUS au milieu au lieu de marges équilibrées.
-    ///
-    /// Le surplus vertical est réparti entre deux respirations internes (sous le nom, sous les pions) et les
-    /// marges haut/bas, dans cet ordre : les respirations sont bornées, et tout ce qui dépasse va aux marges.
-    /// Sur un canevas serré (960×540), elles retombent à leur minimum et la pile tient quand même.
-    /// </summary>
+    private int TextH => Context.Font.LineHeight(1);
+    private int RowH => Math.Max(16, TextH + 6);             // lignes libellé/valeur (stats, historique)
+    private int TitleStep => TextH + 9;                      // titre de section → première ligne
+    private int PointStep => TextH + 5;                      // lignes de gain de points
+    private int EffectStep => Context.Font.GlyphHeight + 6;  // liste des effets de difficulté
+
     private Layout BuildLayout(Viewport vp)
     {
-        const int titleH = 18, gapTitle = 14, gapSprite = 10, gapName = 4, indexH = 10;
-        const int labelH = 10, labelGap = 8, gapButtons = 14;
+        var l = new Layout();
+        var w = vp.Width;
+        var h = vp.Height;
+        var def = Selected;
 
-        var panel = new Rectangle(Margin, Margin, vp.Width - 2 * Margin, vp.Height - 2 * Margin);
-        var l = new Layout { Panel = panel };
-        var cx = panel.Center.X;
-        var starts = Selected.StartingUnits;
+        // ── Cadre de droite et barre du bas ──
+        var frameW = Math.Max(RefFrameW, w * RefFrameW / RefW);
+        var frameX = w - EdgeRight - frameW;
+        l.Frame = new Rectangle(frameX, Top, frameW, h - FrameBottomGap - Top);
+        l.Inner = new Rectangle(l.Frame.X + FramePadX, l.Frame.Y + FramePadY,
+            l.Frame.Width - 2 * FramePadX, l.Frame.Height - 2 * FramePadY);
+        var backW = frameW * RefBackW / RefFrameW;
+        var barY = h - BarBottomGap - BarH;
+        l.Back = new Rectangle(frameX, barY, backW, BarH);
+        l.Start = new Rectangle(l.Back.Right + BarGap, barY, l.Frame.Right - l.Back.Right - BarGap, BarH);
 
-        // L'indice de bas de page reste collé au bas : c'est une aide, pas un élément de la composition.
-        l.Hint = new Rectangle(panel.X, panel.Bottom - 16, panel.Width, 10);
+        // ── Colonne de gauche : pile verticale ──
+        l.Left = new Rectangle(0, 0, frameX - ColumnGap, h);
+        var cx = l.Left.Center.X;
+        const int gapTitle = 26, gapSprite = 26, gapName = 25, gapDots = 12, gapDiff = 12;
+        var titleH = Context.Font.LineHeight(2);
+        var stackH = titleH + gapTitle + MainBox + gapSprite + NameH + gapName + DotSize + gapDots + DiffH
+                     + gapDiff + (MaxEffectLines() + 1) * EffectStep;
+        // Le titre s'aligne sur le haut du cadre à 540 ; au-delà, la moitié du surplus passe au-dessus.
+        var y = Math.Max(8, Math.Min(Top + (h - RefH) / 2, h - stackH - 4));
 
-        // Le bloc « unités de départ » réserve TOUJOURS sa rangée de pions, même pour un commandant qui
-        // commence seul (le DUO) : sinon la pile entière — titre, portrait, nom — se recalcule plus haut et
-        // TOUT L'ÉCRAN SAUTE en faisant défiler le carrousel. La hauteur de la composition ne doit dépendre
-        // que du gabarit, jamais du commandant sélectionné. La ligne « il commence seul » s'écrit dans cette
-        // place réservée (cf. Draw).
-        var startBlockH = labelH + labelGap + UnitCardRenderer.TileH;
-        var stackH = titleH + gapTitle + SpriteBox + gapSprite + NameH + gapName + indexH
-                     + startBlockH + BarH + gapButtons + BtnH;
-
-        var usable = l.Hint.Y - 8 - (panel.Y + 8);
-        var slack = Math.Max(0, usable - stackH);
-        var breathe = Math.Clamp(slack / 4, 8, 40);            // respiration sous le nom ET sous les pions
-        var y = panel.Y + 8 + Math.Max(0, (slack - 2 * breathe) / 2);
-
-        l.Title = new Rectangle(panel.X, y, panel.Width, titleH);
+        l.Title = new Rectangle(l.Left.X, y, l.Left.Width, titleH);
         y += titleH + gapTitle;
+        l.Sprite = new Rectangle(cx - MainBox / 2, y, MainBox, MainBox);
+        l.Portrait = l.Sprite;
+        y += MainBox + gapSprite;
 
-        l.Sprite = new Rectangle(cx - SpriteBox / 2, y, SpriteBox, SpriteBox);
-        // Zone de survol du commandant (elle ne se voit pas : les pions n'ont plus de cadre).
-        l.Portrait = Inflate(l.Sprite, PortraitPad);
-        // Flèches AU-DELÀ des voisins du carrousel, pour ne pas les recouvrir.
-        var arrowY = y + (SpriteBox - ArrowH) / 2;
-        l.NamePrev = new Rectangle(cx - ArrowOffset - ArrowW / 2, arrowY, ArrowW, ArrowH);
-        l.NameNext = new Rectangle(cx + ArrowOffset - ArrowW / 2, arrowY, ArrowW, ArrowH);
-        // Sous-panneaux de stats : SUPERPOSÉS au carrousel (ils recouvrent les voisins) et affichés
-        // seulement au survol du portrait — ils ne réservent donc aucune place dans la pile.
-        l.Stats = new Rectangle(l.Portrait.X - PanelGap - PanelW, l.Portrait.Y, PanelW, l.Portrait.Height);
-        l.Army = new Rectangle(l.Portrait.Right + PanelGap, l.Portrait.Y, PanelW, l.Portrait.Height);
-        // L'arbre n'est pas un bouton du pied : c'est une icône posée au coin haut-droit du commandant.
-        l.Tree = new Rectangle(l.Sprite.Right - TreeIcon, l.Sprite.Y, TreeIcon, TreeIcon);
-        y += SpriteBox + gapSprite;
-
-        l.Name = new Rectangle(panel.X, y, panel.Width, NameH);
+        l.Name = new Rectangle(cx - ArrowRightOffset, y, 2 * ArrowRightOffset, NameH);
+        var arrowY = l.Name.Center.Y - ArrowH / 2;
+        l.NamePrev = new Rectangle(cx - ArrowLeftOffset, arrowY, ArrowW, ArrowH);
+        l.NameNext = new Rectangle(cx + ArrowRightOffset, arrowY, ArrowW, ArrowH);
         y += NameH + gapName;
-        l.Index = new Rectangle(panel.X, y, panel.Width, indexH);
-        y += indexH + breathe;
 
-        l.StartLabel = new Rectangle(panel.X, y, panel.Width, labelH);
-        l.StartTiles = new List<(UnitClass, Domaine, Rectangle)>();
-        // Les pions avec lesquels le commandant démarre : la classe de base de chaque domaine déclaré, plus
-        // — pour un commandant DUO — son SECOND MENEUR en tête de rangée. Il n'est pas une « unité de départ »
-        // au sens du roster (il ne se recrute ni ne se fusionne), mais c'est bien avec lui qu'on part : le
-        // joueur doit le voir ici, sinon le duo a l'air de commencer seul.
-        var tiles = new List<(UnitClass Cls, Domaine Domaine)>();
-        if (Commandes.CompanionById(Selected.CompanionId) is { } companion)
-            tiles.Add((companion.BaseClass, companion.Movement));
-        foreach (var d in starts)
-            tiles.Add((Domaines.Of(d).BaseClass, d));
+        var n = _commanders.Count;
+        var dotsW = DotActiveW + Math.Max(0, n - 1) * (DotSize + DotGap);
+        l.Dots = new Rectangle(cx - dotsW / 2, y, dotsW, DotSize);
+        y += DotSize + gapDots;
 
-        var rowW = tiles.Count * UnitCardRenderer.TileW + Math.Max(0, tiles.Count - 1) * TileGap;
-        var rowX = cx - rowW / 2;
-        var rowY = l.StartLabel.Bottom + labelGap;
-        for (var i = 0; i < tiles.Count; i++)
-            l.StartTiles.Add((tiles[i].Cls, tiles[i].Domaine,
-                new Rectangle(rowX + i * (UnitCardRenderer.TileW + TileGap), rowY,
-                    UnitCardRenderer.TileW, UnitCardRenderer.TileH)));
-        y += startBlockH + breathe;
-
-        // Difficulté : un bouton NUMÉROTÉ par niveau ; ce que chacun change sort au survol. Le groupe entier
-        // (libellé + boutons) est CENTRÉ, largeur du libellé mesurée pour qu'il colle aux boutons.
         var levels = AvailableLevels.Count;
-        var labelW = Context.Font.Measure(Loc.T("difficulty.label"), 1);
-        var groupW = labelW + 12 + levels * DiffBtn + (levels - 1) * DiffGap;
-
-        l.DiffLabel = new Rectangle(cx - groupW / 2, y, labelW, BarH);
+        var btnW = (2 * DiffHalfW - (levels - 1) * DiffGap) / levels;
         l.DiffLevels = new Rectangle[levels];
         for (var i = 0; i < levels; i++)
-            l.DiffLevels[i] = new Rectangle(l.DiffLabel.Right + 12 + i * (DiffBtn + DiffGap),
-                y + (BarH - DiffBtn) / 2, DiffBtn, DiffBtn);
-        y += BarH + gapButtons;
+            l.DiffLevels[i] = new Rectangle(cx - DiffHalfW + i * (btnW + DiffGap), y, btnW, DiffH);
+        y += DiffH + gapDiff;
+        l.Effects = new Point(cx - DiffHalfW, y);
 
-        l.Back = new Rectangle(cx - (BackW + 24 + StartW) / 2, y, BackW, BtnH);
-        l.Start = new Rectangle(l.Back.Right + 24, y, StartW, BtnH);
+        // ── Contenu du cadre ──
+        var inner = l.Inner;
+        var unlocked = IsUnlocked(def);
+        l.PointLines = unlocked ? PointLines(def, inner.Width - BodyIndent) : new List<string> { "???" };
+
+        var statsH = TitleStep + Math.Max(4 * RowH, 2 * RowH + DomaineBadge);
+        var pointsH = TitleStep + l.PointLines.Count * PointStep;
+        var unitsH = TitleStep + UnitCardRenderer.TileH;
+        var historyH = TitleStep + 2 * RowH;
+        var fixedH = statsH + 2 + pointsH + 2 + unitsH + TreeH + historyH;
+        // Si le contenu déborde (beaucoup de sources de points), ce sont les ÉCARTS qui cèdent, jamais le texte.
+        var gap = Math.Clamp((inner.Height - fixedH) / 6, MinSectionGap, MaxSectionGap);
+
+        var fy = inner.Y;
+        l.StatsY = fy; fy += statsH + gap;
+        l.Sep1Y = fy; fy += 2 + gap;
+        l.PointsY = fy; fy += pointsH + gap;
+        l.Sep2Y = fy; fy += 2 + gap;
+        l.UnitsY = fy; fy += unitsH + gap;
+        l.Tree = new Rectangle(inner.X, fy, inner.Width, TreeH); fy += TreeH + gap;
+        l.HistoryY = fy;
+
+        // Pions de départ : la classe de base de chaque domaine déclaré, plus — pour un commandant DUO — son
+        // SECOND MENEUR en tête de rangée (il ne se recrute ni ne se fusionne, mais c'est bien avec lui qu'on part).
+        l.StartTiles = new List<(UnitClass, Domaine, Rectangle)>();
+        var tiles = new List<(UnitClass Cls, Domaine Domaine)>();
+        if (Commandes.CompanionById(def.CompanionId) is { } companion)
+            tiles.Add((companion.BaseClass, companion.Movement));
+        foreach (var d in def.StartingUnits)
+            tiles.Add((Domaines.Of(d).BaseClass, d));
+        // DrawTile pose son cadre 10 px à l'intérieur du rectangle : on recule d'autant pour l'aligner au retrait.
+        var tileX = inner.X + BodyIndent - 10;
+        var tileY = l.UnitsY + TitleStep;
+        for (var i = 0; i < tiles.Count; i++)
+            l.StartTiles.Add((tiles[i].Cls, tiles[i].Domaine,
+                new Rectangle(tileX + i * TileStep, tileY, UnitCardRenderer.TileW, UnitCardRenderer.TileH)));
 
         return l;
     }
+
+    /// <summary>Nombre maximal de lignes d'effets parmi les niveaux proposés : la pile de gauche le réserve.</summary>
+    private int MaxEffectLines()
+    {
+        var max = 0;
+        for (var i = 0; i < AvailableLevels.Count; i++)
+            max = Math.Max(max, DifficultyLines(i).Count);
+        return max;
+    }
+
+    /// <summary>
+    /// Sources de points de commandement, déjà coupées à <paramref name="width"/> : la mission EN PREMIER (tous
+    /// les commandants, valeur lue dans la donnée), puis celles propres au commandant, puis le rappel du duo.
+    /// </summary>
+    private List<string> PointLines(CommandeDef def, int width)
+    {
+        var texts = new List<string> { Loc.T("commander.points_mission", def.MissionPoints) };
+        if (def.FusionPoints > 0) texts.Add(Loc.T("commander.points_fusion", def.FusionPoints));
+        if (def.OnHitPoints > 0) texts.Add(Loc.T("commander.points_onhit", def.OnHitPoints));
+        if (def.RangedHitPoints > 0) texts.Add(Loc.T("commander.points_ranged", def.RangedHitPoints));
+        if (def.JumpPoints > 0) texts.Add(Loc.T("commander.points_jump", def.JumpPoints));
+        if (def.LootPoints > 0) texts.Add(Loc.T("commander.points_loot", def.LootPoints));
+        if (def.HealPoints > 0) texts.Add(Loc.T("commander.points_heal", def.HealPoints));
+        // Le plafond est annoncé pour la mise à mort à deux : à 2 par combat il pèse sur la façon de jouer.
+        if (def.PairKillPoints > 0) texts.Add(Loc.T("commander.points_pairkill", def.PairKillPoints, def.PairKillCap));
+        if (def.AllyDeathPoints > 0) texts.Add(Loc.T("commander.points_allydeath", def.AllyDeathPoints));
+
+        var lines = new List<string>();
+        foreach (var t in texts)
+            lines.AddRange(_card.Wrap(t, width, 1));
+        // DUO : le rappel « deux commandants » est marqué d'un préfixe pour être dessiné en Yellow2.
+        if (def.CompanionId != null)
+            lines.AddRange(_card.Wrap(Loc.T("commander.duo_leaders"), width, 1).Select(s => DuoMark + s));
+        return lines;
+    }
+
+    private const char DuoMark = '\u0001';
 
     // ── Mise à jour ─────────────────────────────────────────────────────────────
 
@@ -315,7 +378,7 @@ public sealed class CommanderSelectScene : Scene
             return;
 
         var p = Context.Input.MousePosition;
-        if (lay.Tree.Contains(p)) { OpenTree(); return; }        // avant le carrousel : elle est POSÉE dessus
+        if (lay.Tree.Contains(p)) { OpenTree(); return; }
         for (var i = 0; i < lay.DiffLevels.Length; i++)
             if (lay.DiffLevels[i].Contains(p)) { PickDifficulty(i); return; }
 
@@ -331,11 +394,15 @@ public sealed class CommanderSelectScene : Scene
         // Le commandant EN TÊTE (index 0) : le focus reste dessus quand on fait défiler le carrousel, alors même
         // que la liste se reconstruit à chaque frame (le nombre de pions de départ change d'un commandant à l'autre).
         _focusables.Add((lay.Portrait, Kind.Commander, 0));
-        _focusables.Add((lay.Tree, Kind.Tree, 0));
-        for (var i = 0; i < lay.StartTiles.Count; i++)
-            _focusables.Add((lay.StartTiles[i].Rect, Kind.StartTile, i));
         for (var i = 0; i < lay.DiffLevels.Length; i++)
             _focusables.Add((lay.DiffLevels[i], Kind.DiffLevel, i));
+        for (var i = 0; i < lay.StartTiles.Count; i++)
+        {
+            // Zone de survol limitée au pas des vignettes, pour que deux voisines ne se chevauchent pas.
+            var r = lay.StartTiles[i].Rect;
+            _focusables.Add((new Rectangle(r.X + 5, r.Y, TileStep, r.Height), Kind.StartTile, i));
+        }
+        _focusables.Add((lay.Tree, Kind.Tree, 0));
         _focusables.Add((lay.Back, Kind.Back, 0));
         _focusables.Add((lay.Start, Kind.Start, 0));
     }
@@ -376,7 +443,7 @@ public sealed class CommanderSelectScene : Scene
         return _commanders[((_index + slot) % n + n) % n];
     }
 
-    /// <summary>Choix direct d'un niveau par son bouton numéroté.</summary>
+    /// <summary>Choix direct d'un niveau par son bouton.</summary>
     private void PickDifficulty(int level)
     {
         var next = Math.Clamp(level, 0, AvailableLevels.Count - 1);
@@ -406,11 +473,12 @@ public sealed class CommanderSelectScene : Scene
         }
 
         Context.Sounds.Play("menu_click");
+        Context.Saves.RecordCommanderRunStarted(Selected.Id);   // historique : une partie lancée
         Context.Scenes.Change(new GameplayScene(Context, _saveSlot, run: null,
             commander: Selected, difficulty: SelectedDifficulty));
     }
 
-    // ── Navigation manette par rangées (même logique que CodexView) ───────────────
+    // ── Navigation manette par rangées ────────────────────────────────────────────
 
     private void MoveFocus(NavDir dir)
     {
@@ -446,20 +514,26 @@ public sealed class CommanderSelectScene : Scene
         }
     }
 
+    /// <summary>
+    /// Rangées EXPLICITES (les deux colonnes de l'écran se mélangeraient si on triait par Y) : carrousel →
+    /// difficultés → unités de départ → arbre → retour/lancer. Une rangée vide (commandant seul) est sautée.
+    /// </summary>
     private List<List<int>> BuildFocusRows()
     {
-        var order = Enumerable.Range(0, _focusables.Count).ToList();
-        order.Sort((a, b) => _focusables[a].Rect.Center.Y.CompareTo(_focusables[b].Rect.Center.Y));
-        var rows = new List<List<int>>();
-        foreach (var i in order)
+        var order = new[]
         {
-            var cy = _focusables[i].Rect.Center.Y;
-            if (rows.Count == 0 || Math.Abs(cy - _focusables[rows[^1][0]].Rect.Center.Y) > 24)
-                rows.Add(new List<int>());
-            rows[^1].Add(i);
-        }
-        foreach (var row in rows)
+            new[] { Kind.Commander }, new[] { Kind.DiffLevel }, new[] { Kind.StartTile },
+            new[] { Kind.Tree }, new[] { Kind.Back, Kind.Start },
+        };
+        var rows = new List<List<int>>();
+        foreach (var kinds in order)
+        {
+            var row = Enumerable.Range(0, _focusables.Count).Where(i => kinds.Contains(_focusables[i].Kind)).ToList();
+            if (row.Count == 0)
+                continue;
             row.Sort((a, b) => _focusables[a].Rect.Center.X.CompareTo(_focusables[b].Rect.Center.X));
+            rows.Add(row);
+        }
         return rows;
     }
 
@@ -496,83 +570,47 @@ public sealed class CommanderSelectScene : Scene
         // Arbre ouvert : on neutralise le survol du fond pour ne pas allumer les boutons à travers l'overlay.
         var mouse = _tree.IsOpen ? new Point(int.MinValue, int.MinValue) : Context.Input.MousePosition;
         var def = Selected;
+        var unlocked = IsUnlocked(def);
 
-        sb.Begin(samplerState: SamplerState.PointClamp);
-        sb.Draw(Context.Pixel, new Rectangle(0, 0, vp.Width, vp.Height), Palette.Navy2);
-        Context.Style.DrawPanel(sb, lay.Panel);
-
-        Context.Font.DrawCentered(sb, Loc.T("commander.title"), lay.Title, 2, Palette.Yellow2);
-
-        // Kind sous le focus manette : pilote la surbrillance (le « curseur »).
+        // Kind sous le focus manette : l'élément focus est dessiné à l'état SURVOLÉ (pas de cadre).
         Kind? fk = gp && _focus < _focusables.Count ? _focusables[_focus].Kind : null;
         var hoverIndex = HoverIndex(gp, mouse);
 
+        EnsureBackground(vp.Width, vp.Height);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(_background!, Vector2.Zero, Color.White);
+
+        // ── Moitié gauche ──
         DrawCarousel(sb, lay);
-        // Cadre jaune autour du commandant central quand il est focus à la manette : c'est le « curseur » du
-        // carrousel, qui manquait (on ne voyait pas qu'on pouvait le faire défiler à gauche/droite).
-        if (fk == Kind.Commander)
-            Border(sb, Inflate(lay.Sprite, 6), Palette.Yellow2, 3);
-        var unlocked = IsUnlocked(def);
+        Context.Font.DrawCentered(sb, Loc.T("commander.title"), lay.Title, 2, Palette.Yellow2);
 
-        // Nom en grand (masqué si verrouillé) + position dans le carrousel.
-        Context.Font.DrawCentered(sb, unlocked ? CommanderName(def) : "???", lay.Name, 3,
-            unlocked ? Palette.White : Palette.Grey);
-        if (HasChoice)
-            Context.Font.DrawCentered(sb, Loc.T("commander.index", _index + 1, _commanders.Count),
-                lay.Index, 1, Palette.Blue1);
+        // Nom en grand (masqué si verrouillé), repli à l'échelle 2 s'il ne tient pas entre les flèches.
+        var name = unlocked ? CommanderName(def) : "???";
+        var nameScale = Context.Font.Measure(name, 3) <= lay.Name.Width ? 3 : 2;
+        Context.Font.DrawCentered(sb, name, lay.Name, nameScale, unlocked ? Palette.White : Palette.Grey);
 
-        // L'arbre n'est consultable que sur un commandant débloqué (il révélerait ses effets).
-        if (unlocked)
-            DrawTreeIcon(sb, lay.Tree, mouse, gp, fk == Kind.Tree);
-
-        // Les deux flèches s'allument ensemble quand le commandant est focus : elles montrent que GAUCHE/DROITE
-        // fait défiler le carrousel (elles ne sont plus des focus séparés).
+        // Les deux flèches s'enfoncent ensemble quand le commandant est focus : elles montrent que
+        // GAUCHE/DROITE fait défiler le carrousel.
         Arrow(sb, lay.NamePrev, "<", mouse, gp, fk == Kind.Commander);
         Arrow(sb, lay.NameNext, ">", mouse, gp, fk == Kind.Commander);
+        DrawDots(sb, lay.Dots);
 
-        // Pions de départ, en bande centrée — en silhouette si le commandant est verrouillé, et le titre
-        // de la section cède la place à l'annonce du verrou.
-        Context.Font.DrawCentered(sb, Loc.T(unlocked ? "commander.starting_units"
-                : Context.Settings.IsDemo ? "commander.locked_demo" : "commander.locked"),
-            lay.StartLabel, 1, unlocked ? Palette.Yellow1 : Palette.Grey);
-        if (unlocked && lay.StartTiles.Count == 0)
-            Context.Font.DrawCentered(sb, Loc.T("commander.alone"),
-                new Rectangle(lay.Panel.X, lay.StartLabel.Bottom + 10, lay.Panel.Width, 10), 1, Palette.Grey);
-        for (var i = 0; i < lay.StartTiles.Count; i++)
-            _card.DrawTile(sb, lay.StartTiles[i].Cls, lay.StartTiles[i].Rect,
-                IsTileHighlighted(i, hoverIndex), revealed: unlocked);
-
-        // Barre du bas : les niveaux de difficulté en boutons numérotés, puis les deux actions.
-        Context.Font.Draw(sb, Loc.T("difficulty.label"),
-            new Vector2(lay.DiffLabel.X, lay.DiffLabel.Y + (lay.DiffLabel.Height - 7) / 2), 1, Palette.Yellow1);
         for (var i = 0; i < lay.DiffLevels.Length; i++)
             DrawDifficultyButton(sb, lay.DiffLevels[i], i, mouse, gp, fk == Kind.DiffLevel && FocusData() == i);
+        DrawDifficultyEffects(sb, lay.Effects);
 
-        Button(sb, lay.Back, Loc.T("commander.back"), mouse, gp, fk == Kind.Back, 1, Palette.White);
-        // LANCER : action principale — distinguée par sa TAILLE et son texte à l'échelle 2, sans liseré
-        // permanent (le liseré doit rester le signe du survol / du focus, sinon il ne veut plus rien dire).
-        // Éteint sur un commandant verrouillé : le bouton doit dire ce qu'il fait.
-        Button(sb, lay.Start, Loc.T("commander.start"), mouse, gp, fk == Kind.Start, 2, Palette.Yellow2,
+        // ── Cadre de droite ──
+        DrawSheet(sb, lay, def, unlocked, mouse, gp, fk, hoverIndex);
+
+        // ── Barre du bas ──
+        Button(sb, lay.Back, Loc.T("commander.back"), mouse, gp, fk == Kind.Back, Palette.White);
+        // LANCER : éteint sur un commandant verrouillé (le bouton doit dire ce qu'il fait).
+        Button(sb, lay.Start, Loc.T("commander.start"), mouse, gp, fk == Kind.Start, Palette.Yellow2,
             enabled: unlocked);
 
-        Context.Font.DrawCentered(sb, Loc.T(gp ? "commander.hint_gp" : "commander.hint"),
-            lay.Hint, 1, Palette.Blue1);
-
-        // Détail du commandant : SUPERPOSÉ, seulement quand on le survole (ou, à la manette, quand le focus
-        // est sur le carrousel). Le reste du temps la place est rendue au carrousel.
-        if (ShowDetails(lay, gp, mouse, fk))
-        {
-            DrawStatsPanel(sb, lay.Stats, def);
-            DrawArmyPanel(sb, lay.Army, def);
-        }
-
         // Carte du pion de départ survolé/focus, par-dessus le reste.
-        if (TileUnderPointer(lay, hoverIndex) is { } tile)
-            _card.DrawCardNear(sb, tile.Cls, tile.Domaine, tile.Rect, lay.Panel);
-
-        // Niveau de difficulté survolé/focus : son nom et ce qu'il change, au-dessus de son bouton.
-        if (DifficultyUnderPointer(lay, hoverIndex) is { } level)
-            DrawDifficultyTooltip(sb, level, lay.DiffLevels[level], lay.Panel);
+        if (unlocked && TileUnderPointer(lay, hoverIndex) is { } tile)
+            _card.DrawCardNear(sb, tile.Cls, tile.Domaine, tile.Rect, vp.Bounds);
         sb.End();
 
         if (_tree.IsOpen)
@@ -580,10 +618,9 @@ public sealed class CommanderSelectScene : Scene
     }
 
     /// <summary>
-    /// Le carrousel : tous les pions à la MÊME taille, alignés, la rangée entière glissant d'un cran à
-    /// chaque pas. Seule la LUMINOSITÉ distingue le pion choisi, et elle varie continûment avec la distance
-    /// au centre : pendant le glissement le pion sortant s'efface pendant que l'entrant s'éclaire, sans
-    /// aucun changement de taille (donc aucun à-coup).
+    /// Le carrousel : le pion choisi à l'échelle 4, ses voisins à l'échelle 2, tous centrés verticalement sur
+    /// le sprite choisi. Pendant le glissement la POSITION et le FONDU varient continûment ; l'échelle, qui
+    /// doit rester entière, bascule à mi-course (au passage de la demi-distance entre deux emplacements).
     ///
     /// On dessine jusqu'aux emplacements ±2 pendant le glissement, sinon un trou apparaîtrait du côté d'où
     /// arrive le nouveau pion. Le plus lointain est de toute façon rendu invisible par le fondu.
@@ -591,7 +628,7 @@ public sealed class CommanderSelectScene : Scene
     private void DrawCarousel(SpriteBatch sb, Layout lay)
     {
         var offset = SlideOffset();
-        var cx = lay.Panel.Center.X;
+        var cx = lay.Sprite.Center.X;
         var far = _slideT > 0f ? 2 : 1;
 
         // Du plus lointain au plus proche : le pion courant se dessine en dernier, donc par-dessus.
@@ -600,11 +637,7 @@ public sealed class CommanderSelectScene : Scene
                 DrawSlot(sb, lay, CommanderAt(slot), cx + slot * SlotSpacing + offset, cx);
     }
 
-    /// <summary>
-    /// Un emplacement du carrousel : le sprite seul, SANS cadre — les pions posent à même le panneau. Le
-    /// badge de domaine suit le sprite (calculé ici et non dans la mise en page statique : sinon il resterait
-    /// planté au centre pendant que le pion glisse).
-    /// </summary>
+    /// <summary>Un emplacement du carrousel : le sprite seul, sans socle ni cadre.</summary>
     private void DrawSlot(SpriteBatch sb, Layout lay, CommandeDef def, int x, int centerX)
     {
         var distance = Math.Abs(x - centerX) / (float)SlotSpacing;
@@ -615,237 +648,101 @@ public sealed class CommanderSelectScene : Scene
         // VERROUILLÉ : silhouette noire, comme un pion non découvert du Codex. Le fondu du carrousel
         // s'applique par-dessus, donc un voisin verrouillé s'estompe comme les autres.
         var unlocked = IsUnlocked(def);
-        var sprite = new Rectangle(x - SpriteBox / 2, lay.Sprite.Center.Y - SpriteBox / 2, SpriteBox, SpriteBox);
-        _card.DrawScaled(sb, def.BaseClass, sprite.Center, SpriteScale,
-            (unlocked ? Color.White : Color.Black) * alpha);
+        var scale = distance < 0.5f ? MainScale : SideScale;
+        var center = new Point(x, lay.Sprite.Center.Y);
+        _card.DrawScaled(sb, def.BaseClass, center, scale, (unlocked ? Color.White : Color.Black) * alpha);
 
         // En démo, tampon DEMO sur les commandants verrouillés (réservés au jeu complet).
         if (Context.Settings.IsDemo && !unlocked)
-            Context.Font.DrawCentered(sb, Loc.T("menu.demo"), sprite, 2, Palette.Yellow2 * alpha);
-
-        // Le badge de domaine RÉVÈLE une information : on le tait sur un commandant verrouillé. Et il
-        // n'accompagne que le pion (quasi) centré, sinon il brouillerait la lecture.
-        if (distance < 0.5f && unlocked)
-            _card.DrawDomaineBadge(sb, def.Movement,
-                new Rectangle(sprite.X, sprite.Bottom - DomaineBadge, DomaineBadge, DomaineBadge));
+        {
+            var box = 64 * scale;
+            Context.Font.DrawCentered(sb, Loc.T("menu.demo"),
+                new Rectangle(x - box / 2, center.Y - box / 2, box, box), scale / 2, Palette.Yellow2 * alpha);
+        }
     }
 
-    /// <summary>
-    /// Vrai si les panneaux de détail doivent s'afficher : survol du portrait à la souris, ou focus sur le
-    /// carrousel à la manette (où il n'y a pas de pointeur pour « survoler »).
-    /// </summary>
-    private bool ShowDetails(Layout lay, bool gp, Point mouse, Kind? focused) =>
-        IsUnlocked(Selected)   // rien à révéler sur un commandant verrouillé
-        && (gp ? focused == Kind.Commander
-               : lay.Portrait.Contains(mouse));
-
-    /// <summary>Sous-panneau gauche : PV (barre) puis puissance / mouvement / portée.</summary>
-    private void DrawStatsPanel(SpriteBatch sb, Rectangle area, CommandeDef def)
+    /// <summary>Pastilles de position : une barre par commandant, celle du courant plus large et dorée.</summary>
+    private void DrawDots(SpriteBatch sb, Rectangle area)
     {
-        if (area.Width < 120)
-            return;   // canevas trop étroit : on renonce plutôt que de dessiner un panneau illisible
-        Context.Style.DrawPanel(sb, area);
-        var inner = new Rectangle(area.X + Pad, area.Y + Pad, area.Width - 2 * Pad, area.Height - 2 * Pad);
-        var c = def.BaseClass;
-
-        Context.Font.Draw(sb, Loc.T("commander.stats"), new Vector2(inner.X, inner.Y), 1, Palette.Yellow1);
-        var y = inner.Y + 16;
-
-        _card.DrawHp(sb, new Rectangle(inner.X, y, inner.Width, 14), c.MaxHp);
-        y += 16;
-        // PV CENTRÉS sous leur barre (comme sur la carte de pion), pas calés à gauche.
-        Context.Font.DrawCentered(sb, $"{c.MaxHp}/{c.MaxHp}", new Rectangle(inner.X, y, inner.Width, 14), 2,
-            Palette.White);
-        y += 22;
-
-        var rowH = Math.Min(36, Math.Max(24, (inner.Bottom - y) / 3));
-        _card.DrawStatRow(sb, new Rectangle(inner.X, y, inner.Width, rowH),
-            "deg", Loc.T("stat.power"), c.Damage.ToString(), Palette.Brown3);
-        _card.DrawStatRow(sb, new Rectangle(inner.X, y + rowH, inner.Width, rowH),
-            "dep", Loc.T("stat.movement"), c.MoveRange.ToString(), Palette.Cyan2);
-        _card.DrawStatRow(sb, new Rectangle(inner.X, y + 2 * rowH, inner.Width, rowH),
-            "tir", Loc.T("stat.range"), c.AttackRange.ToString(), Palette.Yellow2);
-    }
-
-    /// <summary>Sous-panneau droit : plafonds d'armée et sources de points de commandement.</summary>
-    private void DrawArmyPanel(SpriteBatch sb, Rectangle area, CommandeDef def)
-    {
-        if (area.Width < 120)
+        if (!HasChoice)
             return;
-        Context.Style.DrawPanel(sb, area);
-        var inner = new Rectangle(area.X + Pad, area.Y + Pad, area.Width - 2 * Pad, area.Height - 2 * Pad);
-
-        // Les TITRES sont calés à gauche ; leur corps de texte est mis EN RETRAIT, ce qui donne au panneau
-        // sa hiérarchie sans avoir à ajouter de trait ni de cadre.
-        var body = new Rectangle(inner.X + BodyIndent, inner.Y, inner.Width - BodyIndent, inner.Height);
-
-        Context.Font.Draw(sb, Loc.T("commander.army"), new Vector2(inner.X, inner.Y), 1, Palette.Yellow1);
-        var y = inner.Y + 16;
-
-        // Valeurs alignées en COLONNE juste après le plus long libellé — pas plaquées au bord droit du
-        // panneau, où le chiffre se retrouvait détaché de ce qu'il qualifie.
-        var valueX = body.X + 16 + Math.Max(Context.Font.Measure(Loc.T("commander.deploy"), 1),
-                                            Context.Font.Measure(Loc.T("commander.reserve"), 1));
-        y = LabelValue(sb, body, y, valueX, Loc.T("commander.deploy"), def.Deployments.ToString(), Palette.White);
-        y = LabelValue(sb, body, y, valueX, Loc.T("commander.reserve"), def.ReserveSize.ToString(), Palette.White);
-
-        // Gain de points : une PHRASE par source, la commune (mission) puis celle propre au commandant.
-        y += 10;
-        Context.Font.Draw(sb, Loc.T("commander.points"), new Vector2(inner.X, y), 1, Palette.Yellow1);
-        y += 16;
-        foreach (var line in _card.Wrap(Loc.T("commander.points_mission", def.MissionPoints), body.Width, 1))
+        var x = area.X;
+        for (var i = 0; i < _commanders.Count; i++)
         {
-            Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.White);
-            y += LineH;
+            var current = i == _index;
+            var w = current ? DotActiveW : DotSize;
+            Fill(sb, new Rectangle(x, area.Y, w, DotSize), current ? Palette.Yellow2 : Palette.Black5);
+            x += w + DotGap;
         }
-        if (def.FusionPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_fusion", def.FusionPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur coup reçu » (commandant du Lancier) : +N points quand il se fait toucher.
-        if (def.OnHitPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_onhit", def.OnHitPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur coup à distance » (commandant du Fou) : +N points quand il touche une cible à distance.
-        if (def.RangedHitPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_ranged", def.RangedHitPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur saut » (commandant Cavalier) : +N points quand il saute par-dessus une unité ou un obstacle.
-        if (def.JumpPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_jump", def.JumpPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur butin » (Marchand) : +N points par coffre ouvert ou recrue ramassée en combat.
-        if (def.LootPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_loot", def.LootPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur soin » (DUO) : +N points chaque fois qu'un des deux meneurs reprend des PV.
-        if (def.HealPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_heal", def.HealPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « mise à mort à deux » (DUO) : +N points par ennemi tombé que les DEUX meneurs avaient
-        // frappé. Le plafond est annoncé ici (contrairement aux sources ci-dessus) : à 2 par combat il pèse
-        // sur la façon de jouer, le taire survendrait la source.
-        if (def.PairKillPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_pairkill", def.PairKillPoints, def.PairKillCap), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // Source « sur perte » (BRUTE) : +N points chaque fois qu'une unité alliée tombe. Aucun plafond n'est
-        // annoncé parce qu'il n'y en a pas : c'est tout l'esprit du personnage.
-        if (def.AllyDeathPoints > 0)
-            foreach (var line in _card.Wrap(Loc.T("commander.points_allydeath", def.AllyDeathPoints), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Cyan1);
-                y += LineH;
-            }
-        // DUO : rappeler que ce commandant en a DEUX et que la chute de l'un OU l'autre perd la run.
-        if (def.CompanionId != null)
-            foreach (var line in _card.Wrap(Loc.T("commander.duo_leaders"), body.Width, 1))
-            {
-                Context.Font.Draw(sb, line, new Vector2(body.X, y), 1, Palette.Yellow2);
-                y += LineH;
-            }
     }
 
-    /// <summary>
-    /// Icône d'accès à l'arbre, posée au coin haut-droit du commandant. Le PNG attendu est
-    /// <c>Assets/UI/arbre.png</c> (32×32) ; à défaut on dessine un petit arbre à trois nœuds.
-    /// </summary>
-    private void DrawTreeIcon(SpriteBatch sb, Rectangle r, Point mouse, bool gp, bool focusedGp)
-    {
-        var active = focusedGp || (!gp && r.Contains(mouse));
-        var tint = active ? Palette.Yellow2 : Palette.White;
-
-        if (_treeIcon != null)
-        {
-            sb.Draw(_treeIcon, r, tint);
-        }
-        else
-        {
-            // Repli : deux nœuds hauts reliés en Y à un nœud bas — lisible même en 32 px.
-            const int n = 8;
-            var mid = r.Center.X;
-            Fill(sb, new Rectangle(mid - 1, r.Y + n, 2, r.Height - 2 * n), tint);
-            Fill(sb, new Rectangle(r.X + n / 2, r.Y + r.Height / 2, r.Width - n, 2), tint);
-            Fill(sb, new Rectangle(r.X + n / 2 - 1, r.Y + r.Height / 2, 2, r.Height / 2 - n), tint);
-            Fill(sb, new Rectangle(r.Right - n / 2 - 1, r.Y + r.Height / 2, 2, r.Height / 2 - n), tint);
-            Fill(sb, new Rectangle(mid - n / 2, r.Y, n, n), tint);
-            Fill(sb, new Rectangle(r.X, r.Bottom - n, n, n), tint);
-            Fill(sb, new Rectangle(r.Right - n, r.Bottom - n, n, n), tint);
-        }
-
-        if (active)
-            Border(sb, Inflate(r, 3), Palette.Yellow2, 2);
-    }
+    // ── Difficulté ──
 
     /// <summary>
     /// Campagne déjà GAGNÉE à ce niveau avec le commandant COURANT du carrousel — un niveau plus dur compte
-    /// pour tous ceux du dessous (cf. <see cref="SaveService.HasWonWith"/>). Suit le commandant affiché :
-    /// faire défiler le carrousel remet les marques à jour.
+    /// pour tous ceux du dessous (cf. <see cref="SaveService.HasWonWith"/>).
     /// </summary>
     private bool AlreadyWon(int level) =>
         level >= 0 && level < DifficultySettings.AllLevels.Count
         && Context.Saves.HasWonWith(Selected.Id, DifficultySettings.AllLevels[level]);
 
     /// <summary>
-    /// Un niveau de difficulté, en bouton NUMÉROTÉ. Le niveau retenu garde un liseré or ; un niveau déjà
-    /// GAGNÉ avec ce commandant passe en VERT (libellé + liseré) — le vert « fait » de la frise de missions.
+    /// Un niveau de difficulté : son nom à gauche, sa jauge de danger à droite (1 à 3 carrés allumés, en
+    /// <c>Purple5</c>, ou en <c>Grey</c> si ce niveau est déjà gagné avec ce commandant). Le niveau retenu a
+    /// le fond clair « sélection » et son nom en <c>Yellow2</c>.
     /// </summary>
     private void DrawDifficultyButton(SpriteBatch sb, Rectangle r, int level, Point mouse, bool gp, bool focusedGp)
     {
         var selected = level == _difficultyIndex;
-        var won = AlreadyWon(level);
         var hover = !gp && r.Contains(mouse);
-        var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || selected || focusedGp,
-            hover && Context.Input.IsLeftDown));
-        var area = r; area.Offset(0, dy);
-        // Le vert du « déjà gagné » prime sur la couleur de difficulté : c'est l'info qu'on vient chercher.
-        Context.Font.DrawCentered(sb, Loc.T($"difficulty.level_{level}"), area, 2,
-            won ? Palette.Green1
-            : selected ? DifficultyColor(DifficultySettings.AllLevels[level])
-            : Palette.White);
-        if (selected)
-            Border(sb, Inflate(r, 1), Palette.Yellow1, 2);
-        else if (won)
-            Border(sb, Inflate(r, 1), Palette.Green1, 2);   // le liseré or de la sélection reste prioritaire
-        if (focusedGp)
-            Border(sb, Inflate(r, 3), Palette.Yellow2, 2);
+        var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || focusedGp,
+            hover && Context.Input.IsLeftDown), selected);
+
+        var textY = r.Y + (r.Height - Context.Font.GlyphHeight) / 2 + dy;
+        Context.Font.Draw(sb, DifficultyName(DifficultySettings.AllLevels[level]), new Vector2(r.X + 8, textY), 1,
+            selected ? Palette.Yellow2 : Palette.White);
+
+        var lit = level + 1;
+        var litColor = AlreadyWon(level) ? Palette.Grey : Palette.Purple5;
+        var gx = r.Right - 10 - 3 * GaugeSquare - 2 * GaugeGap;
+        var gy = r.Y + (r.Height - GaugeSquare) / 2 + dy;
+        for (var i = 0; i < 3; i++)
+            Fill(sb, new Rectangle(gx + i * (GaugeSquare + GaugeGap), gy, GaugeSquare, GaugeSquare),
+                i < lit ? litColor : Palette.Black1);
     }
 
     /// <summary>
-    /// Ce que change le niveau survolé : son nom, la précision de l'IA, et — s'il envoie des vagues plus
-    /// fortes que le niveau juste en dessous — une mention QUALITATIVE de ce renfort. Volontairement sans
-    /// chiffre : le joueur n'a pas à savoir qu'un seul pion est promu, seulement que ça monte.
+    /// Sous les boutons, TOUJOURS visible : ce que change le niveau retenu (un tiret par ligne), puis, s'il est
+    /// déjà gagné avec ce commandant, une ligne dorée « à cette difficulté » ou « tous les niveaux ».
     /// </summary>
-    private void DrawDifficultyTooltip(SpriteBatch sb, int level, Rectangle anchor, Rectangle bounds)
+    private void DrawDifficultyEffects(SpriteBatch sb, Point at)
     {
-        // Trois modifications empilées se lisaient comme un pavé : un tiret par ligne et un interligne plus
-        // large en font une LISTE, qu'on parcourt d'un coup d'œil.
-        const int pad = 8, bullet = 10;
-        // Espacements dérivés de la police active (titre CJK plus haut) ; identiques au latin (titre 22 / ligne 13).
-        var lineH = Context.Font.GlyphHeight + 6;
-        var titleBlock = Context.Font.LineHeight(2) + 8;
-        var difficulty = DifficultySettings.AllLevels[level];
-        var title = DifficultyName(difficulty);
+        const int bullet = 10;
+        var y = at.Y;
+        foreach (var line in DifficultyLines(_difficultyIndex))
+        {
+            // preserveCase : ce sont des PHRASES, pas des libellés d'UI — et la police ne dessine les
+            // accents QU'EN MINUSCULES (en capitales, « é » retombe sur « E »).
+            Context.Font.Draw(sb, "-", new Vector2(at.X, y), 1, Palette.White);
+            Context.Font.Draw(sb, line, new Vector2(at.X + bullet, y), 1, Palette.White, preserveCase: true);
+            y += EffectStep;
+        }
+        if (AlreadyWon(_difficultyIndex))
+        {
+            var allWon = AlreadyWon(DifficultySettings.AllLevels.Count - 1);
+            Context.Font.Draw(sb, Loc.T(allWon ? "difficulty.already_won" : "difficulty.already_won_level"),
+                new Vector2(at.X, y + 3), 1, Palette.Yellow2, preserveCase: true);
+        }
+    }
 
+    /// <summary>
+    /// Ce que change un niveau : la précision de l'IA, puis — s'ils montent par rapport au niveau juste en
+    /// dessous — les vagues, l'équipement ennemi, le quota de la mission spéciale et l'absence de recommencer.
+    /// Volontairement sans chiffre : le joueur n'a pas à savoir qu'un seul pion est promu, seulement que ça monte.
+    /// </summary>
+    private List<string> DifficultyLines(int level)
+    {
+        var difficulty = DifficultySettings.AllLevels[level];
         // L'IA : même grammaire que les autres leviers — on dit ce qui CHANGE par rapport au palier du
         // dessous. Le niveau le plus bas n'a rien en dessous, il se décrit donc lui-même.
         var lines = new List<string>
@@ -854,8 +751,7 @@ public sealed class CommanderSelectScene : Scene
                 : SharperAi(level - 1) ? "difficulty.ai_fewer_again"
                 : "difficulty.ai_fewer"),
         };
-        // « Encore plus » dès qu'un niveau INFÉRIEUR faisait déjà monter le même levier : c'est un cran de
-        // plus sur une échelle qui monte, pas un premier palier.
+        // « Encore plus » dès qu'un niveau INFÉRIEUR faisait déjà monter le même levier.
         if (RaisesWaves(level))
             lines.Add(Loc.T(RaisesWaves(level - 1) ? "difficulty.more_evolved_again" : "difficulty.more_evolved"));
         if (EquipsEnemies(level))
@@ -866,49 +762,14 @@ public sealed class CommanderSelectScene : Scene
         // Run sans filet : « Recommencer la mission » est retiré du menu pause (cf. DifficultySettings.AllowRestart).
         if (!DifficultySettings.For(difficulty).AllowRestart)
             lines.Add(Loc.T("difficulty.no_restart"));
-
-        // Palier DÉJÀ BOUCLÉ avec ce commandant : dit en toutes lettres ce que le vert du bouton signale.
-        // Sans puce et en dernier — ce n'est pas un levier de difficulté mais un état de progression.
-        var wonLine = AlreadyWon(level) ? Loc.T("difficulty.already_won") : null;
-
-        var w = Context.Font.Measure(title, 2);
-        foreach (var line in lines)
-            w = Math.Max(w, bullet + Context.Font.Measure(line, 1));
-        if (wonLine != null)
-            w = Math.Max(w, Context.Font.Measure(wonLine, 1));
-        w += 2 * pad;
-        var h = pad + titleBlock + (lines.Count + (wonLine != null ? 1 : 0)) * lineH + pad;
-
-        var x = Math.Clamp(anchor.Center.X - w / 2, bounds.X, Math.Max(bounds.X, bounds.Right - w));
-        // Au-DESSUS du bouton : la barre de difficulté est déjà en bas de l'écran.
-        var y = Math.Max(bounds.Y, anchor.Y - h - 6);
-
-        var box = new Rectangle(x, y, w, h);
-        Context.Style.DrawPanel(sb, box);
-        Context.Font.Draw(sb, title, new Vector2(box.X + pad, box.Y + pad), 2, DifficultyColor(difficulty));
-        var ty = box.Y + pad + titleBlock;
-        foreach (var line in lines)
-        {
-            // preserveCase : ce sont des PHRASES, pas des libellés d'UI — et la police ne dessine les
-            // accents QU'EN MINUSCULES (en capitales, « é » retombe sur « E »).
-            Context.Font.Draw(sb, "-", new Vector2(box.X + pad, ty), 1, Palette.Yellow1);
-            Context.Font.Draw(sb, line, new Vector2(box.X + pad + bullet, ty), 1, Palette.White,
-                preserveCase: true);
-            ty += lineH;
-        }
-        if (wonLine != null)
-            Context.Font.Draw(sb, wonLine, new Vector2(box.X + pad, ty), 1, Palette.Green1, preserveCase: true);
+        return lines;
     }
 
-    /// <summary>
-    /// Vrai si <paramref name="level"/> envoie des vagues plus fortes que le niveau juste en dessous.
-    /// Comparé au PRÉCÉDENT et non à Normal : la mention reste juste si d'autres niveaux s'ajoutent plus
-    /// tard. Le niveau le plus bas n'a rien sous lui, donc rien à annoncer.
-    /// </summary>
     /// <summary>Vrai si l'IA de <paramref name="level"/> se trompe moins que celle du niveau juste en dessous.</summary>
     private static bool SharperAi(int level) =>
         Climbs(level, s => s.AiAccuracy);
 
+    /// <summary>Vrai si <paramref name="level"/> envoie des vagues plus fortes que le niveau juste en dessous.</summary>
     private static bool RaisesWaves(int level) =>
         Climbs(level, s => s.TierShift);
 
@@ -926,30 +787,167 @@ public sealed class CommanderSelectScene : Scene
         && lever(DifficultySettings.For(DifficultySettings.AllLevels[level]))
          > lever(DifficultySettings.For(DifficultySettings.AllLevels[level - 1]));
 
-    /// <summary>Index du focusable courant (manette), ou -1.</summary>
-    private int FocusData() => _focus < _focusables.Count ? _focusables[_focus].Data : -1;
+    // ── Fiche du commandant (cadre de droite) ──
 
-    /// <summary>Niveau de difficulté survolé/focus, ou null.</summary>
-    private int? DifficultyUnderPointer(Layout lay, int hoverIndex)
+    /// <summary>
+    /// La fiche, toujours visible : stats, gains de points, unités de départ, bouton de l'arbre, historique.
+    /// Commandant VERROUILLÉ : les valeurs sont tues (« ? »), les unités en silhouette et toute la fiche passe
+    /// sous un voile SOMBRE ; seule l'annonce du verrou reste lisible par-dessus.
+    /// </summary>
+    private void DrawSheet(SpriteBatch sb, Layout lay, CommandeDef def, bool unlocked, Point mouse, bool gp,
+        Kind? fk, int hoverIndex)
     {
-        if (hoverIndex < 0 || hoverIndex >= _focusables.Count)
-            return null;
-        var f = _focusables[hoverIndex];
-        return f.Kind == Kind.DiffLevel && f.Data < lay.DiffLevels.Length ? f.Data : null;
+        Context.Style.DrawPanel(sb, lay.Frame);
+        var inner = lay.Inner;
+        var body = inner.X + BodyIndent;
+        string V(string value) => unlocked ? value : "?";
+
+        // 1. STATS, sur deux colonnes séparées par un filet vertical.
+        Context.Font.Draw(sb, Loc.T("commander.stats"), new Vector2(inner.X, lay.StatsY), 1, Palette.Yellow1);
+        var rowsY = lay.StatsY + TitleStep;
+        var c = def.BaseClass;
+        var leftLabels = new[] { Loc.T("stat.hp"), Loc.T("stat.power"), Loc.T("stat.movement"), Loc.T("stat.range") };
+        var leftValues = new[] { c.MaxHp.ToString(), c.Damage.ToString(), c.MoveRange.ToString(), c.AttackRange.ToString() };
+        var leftColors = new[] { Palette.White, Palette.Brown3, Palette.Cyan2, Palette.Yellow2 };
+        var labelW = LabelWidth(leftLabels);
+        for (var i = 0; i < 4; i++)
+            LabelValue(sb, body, rowsY + i * RowH, labelW, leftLabels[i], V(leftValues[i]), leftColors[i]);
+
+        var statsBottom = rowsY + Math.Max(4 * RowH, 2 * RowH + DomaineBadge);
+        var vx = body + labelW + StatValueW + 12;
+        Fill(sb, new Rectangle(vx, rowsY - 2, 1, statsBottom - rowsY), Palette.Black1);
+        Fill(sb, new Rectangle(vx + 1, rowsY - 2, 1, statsBottom - rowsY), Palette.Black5);
+
+        var col2 = vx + 14;
+        var rightLabels = new[] { Loc.T("commander.deploy"), Loc.T("commander.reserve"), Loc.T("commander.movement_pattern") };
+        var rightW = LabelWidth(rightLabels);
+        LabelValue(sb, col2, rowsY, rightW, rightLabels[0], V(def.Deployments.ToString()), Palette.White);
+        LabelValue(sb, col2, rowsY + RowH, rightW, rightLabels[1], V(def.ReserveSize.ToString()), Palette.White);
+        var badge = new Rectangle(col2 + rightW, rowsY + 2 * RowH, DomaineBadge, DomaineBadge);
+        Context.Font.Draw(sb, rightLabels[2],
+            new Vector2(col2, badge.Center.Y - Context.Font.GlyphHeight / 2), 1, Palette.White);
+        if (unlocked)
+            _card.DrawDomaineBadge(sb, def.Movement, badge);   // le domaine RÉVÈLE une information : tu si verrouillé
+        else
+            Context.Font.DrawCentered(sb, "?", badge, 1, Palette.White);
+
+        HSeparator(sb, inner, lay.Sep1Y);
+
+        // 2. GAIN DE POINT DE COMMANDE.
+        Context.Font.Draw(sb, Loc.T("commander.points"), new Vector2(inner.X, lay.PointsY), 1, Palette.Yellow1);
+        var py = lay.PointsY + TitleStep;
+        foreach (var line in lay.PointLines)
+        {
+            var duo = line.Length > 0 && line[0] == DuoMark;
+            Context.Font.Draw(sb, duo ? line[1..] : line, new Vector2(body, py), 1, duo ? Palette.Yellow2 : Palette.White);
+            py += PointStep;
+        }
+
+        HSeparator(sb, inner, lay.Sep2Y);
+
+        // 3. UNITÉS DE DÉPART (titre remplacé par l'annonce du verrou, dessinée après le voile).
+        if (unlocked)
+            Context.Font.Draw(sb, Loc.T("commander.starting_units"), new Vector2(inner.X, lay.UnitsY), 1, Palette.Yellow1);
+        if (unlocked && lay.StartTiles.Count == 0)
+            Context.Font.Draw(sb, Loc.T("commander.alone"), new Vector2(body, lay.UnitsY + TitleStep), 1, Palette.Grey);
+        for (var i = 0; i < lay.StartTiles.Count; i++)
+            _card.DrawTile(sb, lay.StartTiles[i].Cls, lay.StartTiles[i].Rect,
+                unlocked && IsTileHighlighted(i, hoverIndex), revealed: unlocked);
+
+        // 4. ARBRE DE COMPÉTENCE (consultable seulement sur un commandant débloqué : il révélerait ses effets).
+        DrawTreeButton(sb, lay.Tree, mouse, gp, fk == Kind.Tree, unlocked);
+
+        // 5. HISTORIQUE, grille 2×2.
+        var history = Context.Saves.CommanderHistory(def.Id);
+        Context.Font.Draw(sb, Loc.T("commander.history"), new Vector2(inner.X, lay.HistoryY), 1, Palette.Yellow1);
+        var hy = lay.HistoryY + TitleStep;
+        var hcol2 = inner.X + inner.Width / 2 + BodyIndent;
+        var histLabels = new[] { Loc.T("commander.runs"), Loc.T("commander.wins"), Loc.T("commander.kills"), Loc.T("commander.playtime") };
+        var histW = Math.Max(100, histLabels.Max(s => Context.Font.Measure(s, 1)) + 12);
+        HistoryItem(sb, body, hy, histW, histLabels[0], history.RunsStarted.ToString(), Palette.White);
+        HistoryItem(sb, hcol2, hy, histW, histLabels[1], history.RunsWon.ToString(), Palette.Yellow1);
+        HistoryItem(sb, body, hy + RowH, histW, histLabels[2], history.EnemiesKilled.ToString(), Palette.White);
+        HistoryItem(sb, hcol2, hy + RowH, histW, histLabels[3], TimeText.Hours(history.PlayTimeSeconds), Palette.White);
+
+        if (!unlocked)
+        {
+            // Fiche d'un commandant verrouillé : tout le contenu s'assombrit, seule l'annonce du verrou ressort.
+            Fill(sb, new Rectangle(lay.Frame.X + 3, lay.Frame.Y + 3, lay.Frame.Width - 6, lay.Frame.Height - 6),
+                Palette.Black1 * 0.6f);
+            Context.Font.Draw(sb, Loc.T(Context.Settings.IsDemo ? "commander.locked_demo" : "commander.locked"),
+                new Vector2(inner.X, lay.UnitsY), 1, Palette.Grey);
+        }
+    }
+
+    /// <summary>Largeur de la colonne des libellés : au moins la cote de la spec, plus si une langue l'exige.</summary>
+    private int LabelWidth(IEnumerable<string> labels) =>
+        Math.Max(StatLabelW, labels.Max(s => Context.Font.Measure(s, 1)) + 8);
+
+    /// <summary>Ligne « libellé, puis valeur alignée à droite sur <see cref="StatValueW"/> ».</summary>
+    private void LabelValue(SpriteBatch sb, int x, int y, int labelW, string label, string value, Color color)
+    {
+        Context.Font.Draw(sb, label, new Vector2(x, y), 1, Palette.White);
+        var vw = Context.Font.Measure(value, 1);
+        Context.Font.Draw(sb, value, new Vector2(x + labelW + StatValueW - vw, y), 1, color);
+    }
+
+    /// <summary>Case d'historique : libellé puis valeur calée à gauche en colonne.</summary>
+    private void HistoryItem(SpriteBatch sb, int x, int y, int labelW, string label, string value, Color color)
+    {
+        Context.Font.Draw(sb, label, new Vector2(x, y), 1, Palette.White);
+        Context.Font.Draw(sb, value, new Vector2(x + labelW, y), 1, color);
+    }
+
+    /// <summary>Filet horizontal : 1 px <c>Black1</c> + 1 px <c>Black5</c> dessous, sur la largeur utile.</summary>
+    private void HSeparator(SpriteBatch sb, Rectangle inner, int y)
+    {
+        Fill(sb, new Rectangle(inner.X, y, inner.Width, 1), Palette.Black1);
+        Fill(sb, new Rectangle(inner.X, y + 1, inner.Width, 1), Palette.Black5);
     }
 
     /// <summary>
-    /// Ligne « libellé, puis valeur en colonne ». Valeur à la MÊME échelle que le libellé : dans ce panneau
-    /// tout le reste est en petit, un chiffre à l'échelle 2 y détonnait (la grammaire « valeur en gros » de
-    /// la carte de pion ne se transpose pas ici). C'est la couleur qui la distingue. Renvoie le Y suivant.
+    /// Bouton ARBRE DE COMPÉTENCE, toute la largeur du cadre : icône (<c>Assets/UI/arbre.png</c>, ou un petit
+    /// arbre à trois nœuds dessiné à défaut) puis le libellé, le tout centré.
     /// </summary>
-    private int LabelValue(SpriteBatch sb, Rectangle body, int y, int valueX, string label, string value, Color color)
+    private void DrawTreeButton(SpriteBatch sb, Rectangle r, Point mouse, bool gp, bool focusedGp, bool enabled)
     {
-        const int rowH = 16;
-        Context.Font.Draw(sb, label, new Vector2(body.X, y), 1, Palette.Blue1);
-        Context.Font.Draw(sb, value, new Vector2(valueX, y), 1, color);
-        return y + rowH;
+        var hover = enabled && !gp && r.Contains(mouse);
+        var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || (enabled && focusedGp),
+            hover && Context.Input.IsLeftDown));
+        var color = enabled ? Palette.White : Palette.Grey;
+        var label = Loc.T("commander.tree");
+
+        var png = _treeIcon != null && _treeIcon.Height <= r.Height - 8 ? _treeIcon : null;
+        var iconW = png?.Width ?? 11;
+        var iconH = png?.Height ?? 9;
+        const int iconGap = 10;
+        var total = iconW + iconGap + Context.Font.Measure(label, 1);
+        var x = r.Center.X - total / 2;
+        var iy = r.Y + (r.Height - iconH) / 2 + dy;
+
+        if (png != null)
+        {
+            sb.Draw(png, new Vector2(x, iy), enabled ? Color.White : Palette.Grey);
+        }
+        else
+        {
+            // Repli : un nœud haut relié par un T à deux nœuds bas — lisible même en 11×9.
+            Fill(sb, new Rectangle(x + 4, iy, 3, 3), color);
+            Fill(sb, new Rectangle(x + 5, iy + 3, 1, 2), color);
+            Fill(sb, new Rectangle(x + 1, iy + 4, 9, 1), color);
+            Fill(sb, new Rectangle(x + 1, iy + 5, 1, 1), color);
+            Fill(sb, new Rectangle(x + 9, iy + 5, 1, 1), color);
+            Fill(sb, new Rectangle(x, iy + 6, 3, 3), color);
+            Fill(sb, new Rectangle(x + 8, iy + 6, 3, 3), color);
+        }
+        Context.Font.Draw(sb, label, new Vector2(x + iconW + iconGap,
+            r.Y + (r.Height - Context.Font.GlyphHeight) / 2 + dy), 1, color);
     }
+
+    // ── Aides ──
+
+    /// <summary>Index du focusable courant (manette), ou -1.</summary>
+    private int FocusData() => _focus < _focusables.Count ? _focusables[_focus].Data : -1;
 
     /// <summary>Index dans _focusables de l'élément survolé (souris) ou sous le focus (manette), ou -1.</summary>
     private int HoverIndex(bool gp, Point mouse)
@@ -978,6 +976,7 @@ public sealed class CommanderSelectScene : Scene
         return f.Kind == Kind.StartTile && f.Data < lay.StartTiles.Count ? lay.StartTiles[f.Data] : null;
     }
 
+    /// <summary>Flèche du carrousel. <paramref name="focusedGp"/> : dessinée enfoncée (commandant focus à la manette).</summary>
     private void Arrow(SpriteBatch sb, Rectangle r, string glyph, Point mouse, bool gp, bool focusedGp)
     {
         // Un seul commandant : les flèches restent visibles mais éteintes, pour que l'écran ne mente pas
@@ -985,29 +984,25 @@ public sealed class CommanderSelectScene : Scene
         if (!HasChoice)
         {
             Context.Style.DrawRecessed(sb, r);
-            Context.Font.DrawCentered(sb, glyph, r, 2, Palette.Grey);
+            Context.Font.DrawCentered(sb, glyph, r, 3, Palette.Grey);
             return;
         }
 
         var hover = !gp && r.Contains(mouse);
         var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || focusedGp, hover && Context.Input.IsLeftDown));
         var area = r; area.Offset(0, dy);
-        Context.Font.DrawCentered(sb, glyph, area, 3, focusedGp ? Palette.Yellow2 : Palette.White);
-        if (focusedGp)
-            Border(sb, Inflate(r, 3), Palette.Yellow2, 2);
+        Context.Font.DrawCentered(sb, glyph, area, 3, Palette.White);
     }
 
+    /// <summary>Bouton texte (échelle 1) : survol / focus manette = enfoncé + fond clair, jamais de cadre.</summary>
     private void Button(SpriteBatch sb, Rectangle r, string label, Point mouse, bool gp, bool focusedGp,
-        int scale, Color color, bool enabled = true)
+        Color color, bool enabled = true)
     {
         var hover = enabled && !gp && r.Contains(mouse);
         var dy = Context.Style.DrawButton(sb, r, UiStyle.StateOf(hover || (enabled && focusedGp),
             hover && Context.Input.IsLeftDown));
         var area = r; area.Offset(0, dy);
-        var text = !enabled ? Palette.Grey : hover || focusedGp ? Palette.Yellow2 : color;
-        Context.Font.DrawCentered(sb, label, area, scale, text);
-        if (focusedGp)
-            Border(sb, Inflate(r, 3), enabled ? Palette.Yellow2 : Palette.Grey, 2);
+        Context.Font.DrawCentered(sb, label, area, 1, enabled ? color : Palette.Grey);
     }
 
     private static string CommanderName(CommandeDef def) =>
@@ -1015,23 +1010,5 @@ public sealed class CommanderSelectScene : Scene
 
     private static string DifficultyName(Difficulty d) => Loc.T("difficulty." + d.ToString().ToLowerInvariant());
 
-    private static Color DifficultyColor(Difficulty d) => d switch
-    {
-        Difficulty.Facile => Palette.Green1,
-        Difficulty.Difficile => Palette.Purple5,
-        _ => Palette.Cyan1,
-    };
-
     private void Fill(SpriteBatch sb, Rectangle r, Color c) => sb.Draw(Context.Pixel, r, c);
-
-    private void Border(SpriteBatch sb, Rectangle r, Color c, int t)
-    {
-        Fill(sb, new Rectangle(r.X, r.Y, r.Width, t), c);
-        Fill(sb, new Rectangle(r.X, r.Bottom - t, r.Width, t), c);
-        Fill(sb, new Rectangle(r.X, r.Y, t, r.Height), c);
-        Fill(sb, new Rectangle(r.Right - t, r.Y, t, r.Height), c);
-    }
-
-    private static Rectangle Inflate(Rectangle r, int by) =>
-        new(r.X - by, r.Y - by, r.Width + 2 * by, r.Height + 2 * by);
 }

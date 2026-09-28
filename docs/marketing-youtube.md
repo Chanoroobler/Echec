@@ -1085,3 +1085,138 @@ Alternatives :
 > Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
 
 `#indiegame #roguelike #pixelart #rpg #gamedev`
+
+---
+
+## Short : nouvelle interface de choix du commandant
+
+*Angle : la décision la plus lourde de la run se prend avant le premier coup.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `This choice decides the whole run.`
+🇫🇷 *Ce choix décide toute la run.*
+
+Alternative : 🇬🇧 `The run is decided before the first move.`
+
+**Titre** : 🇬🇧 The most important choice happens before the first move
+
+Alternatives :
+- 🇬🇧 I rebuilt the commander selection screen / 🇫🇷 J'ai refait l'écran de choix du commandant
+- 🇬🇧 This choice decides the whole run / 🇫🇷 Ce choix décide toute la run
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> J'ai refait l'écran de choix du commandant. Chaque commandant vient avec son domaine, son armée de départ et la branche de l'arbre de classes qu'il ouvre, donc ce choix engage toute la partie avant même le premier déplacement. L'écran montre maintenant tout ça côte à côte, au lieu de te faire choisir à l'aveugle.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> I rebuilt the commander selection screen. Each commander comes with its own domain, its own starting army and the branch of the class tree it opens, so the pick commits your whole run before you move a single piece. The screen now shows all of that side by side instead of making you choose blind.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #gameui #roguelike`
+
+**Note de tournage** : fais défiler le carrousel d'un commandant à l'autre plutôt que de rester sur un seul. C'est le défilement qui montre qu'il y a du choix, et le choix est le sujet du clip.
+
+**Version X / Twitter** (lien en commentaire, pas dans le post)
+
+Le post :
+
+🇬🇧
+> Rebuilt the commander selection screen in Chess Army.
+>
+> Each commander brings its own domain, starting army and branch of the class tree, so the pick commits your whole run before you move a single piece.
+>
+> #indiedev #pixelart
+
+Le commentaire, posté juste après :
+
+🇬🇧
+> Steam page if you want to follow it: https://store.steampowered.com/app/4971900/Chess_Army/
+
+Variante avant/après, si une capture de l'ancien écran existe :
+
+🇬🇧
+> Commander selection, before and after.
+>
+> Same three things to compare every time: domain, starting army, and which branch of the class tree opens up. The old screen made you guess.
+>
+> Chess Army, a pixel art roguelike RPG built on chess movement.
+>
+> Wishlist → https://store.steampowered.com/app/4971900/Chess_Army/
+
+---
+
+## Short : refonte de l'interface du tutoriel
+
+*Angle : l'aveu. Personne ne lit les tutos, et tout dev le sait.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Nobody reads the tutorial.`
+🇫🇷 *Personne ne lit le tutoriel.*
+
+Alternative : 🇬🇧 `I rewrote the part everyone skips.`
+
+**Titre** : 🇬🇧 Nobody reads the tutorial, so I rebuilt mine
+
+Alternatives :
+- 🇬🇧 I rewrote the part everyone skips / 🇫🇷 J'ai réécrit la partie que tout le monde saute
+- 🇬🇧 Teaching a game with this many systems is hard / 🇫🇷 Enseigner un jeu avec autant de systèmes, c'est difficile
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> J'ai retravaillé l'interface du tutoriel. C'est la partie la plus difficile du jeu à écrire : il faut enseigner les déplacements d'échecs, les fusions, l'équipement et 28 traits différents sans noyer quelqu'un qui vient juste de lancer sa première partie. Et tout le monde saute les tutoriels, donc le mien doit tenir en le moins de mots possible.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> I reworked the tutorial interface. It's the hardest part of the game to write: it has to teach chess movement, fusions, equipment and 28 different traits without drowning someone who just started their first run. And everyone skips tutorials, so mine has to do it in as few words as possible.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #devlog #gameui #pixelart`
+
+**À compléter** : ce qui a changé exactement dans cette refonte. La description parle du problème, pas de la solution. Une phrase et j'en fais un vrai avant/après.
+
+---
+
+## Short : option de couleur de l'interface
+
+*Clip satisfaisant : le défilement des teintes porte le clip tout seul.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Pick your own colour.`
+🇫🇷 *Choisis ta couleur.*
+
+Alternative : 🇬🇧 `Same board, different mood.`
+
+**Titre** : 🇬🇧 You can recolour the whole interface now
+
+Alternatives :
+- 🇬🇧 Pick your own colour / 🇫🇷 Choisis ta couleur
+- 🇬🇧 Same board, different mood / 🇫🇷 Même plateau, autre ambiance
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouvelle option : la couleur de l'interface. Le jeu fait passer beaucoup d'informations par la couleur, entre les zones de menace, les deux camps et les raretés d'objets, donc pouvoir ajuster la teinte de l'habillage change le confort de lecture d'un écran à l'autre et d'un joueur à l'autre.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New option: the interface colour. The game carries a lot of information through colour, between threat zones, the two sides and item rarities, so being able to tune the shade of the frame changes how comfortable it is to read from one screen to the next and from one player to the next.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #gameui #roguelike`
+
+**Note de tournage** : fais défiler toutes les teintes d'affilée, sans coupe. C'est le défilement lui-même qui rend le clip satisfaisant.

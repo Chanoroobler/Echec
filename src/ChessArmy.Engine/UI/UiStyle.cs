@@ -19,13 +19,12 @@ public enum ButtonState { Normal, Hover, Pressed }
 public sealed class UiStyle
 {
     private const int TileSize = 8;
-    private static readonly Color HoverTint = Palette.White;  // × alpha (éclaircit au survol)
-    private static readonly Color PressTint = Palette.Black1; // × alpha (assombrit au clic)
 
     private readonly GraphicsDevice _device;
     private readonly Texture2D _pixel;
     private Texture2D _tile = null!;        // pop-ups, panneaux, boutons
     private Texture2D _panelTile = null!;   // fond du panneau de droite
+    private Texture2D _selectTile = null!;  // fond clair des boutons survolés / sélectionnés
 
     public UiStyle(GraphicsDevice device, Texture2D pixel, UiThemeId theme)
     {
@@ -41,16 +40,19 @@ public sealed class UiStyle
     private Color Highlight => Theme.Highlight;   // arête éclairée
     private Color Shadow => Theme.Shadow;         // arête dans l'ombre
 
-    /// <summary>Applique un thème À CHAUD : recrée les deux tuiles tramées, le biseau suit (lu à chaque dessin).</summary>
+    /// <summary>Applique un thème À CHAUD : recrée les trois tuiles tramées, le biseau suit (lu à chaque dessin).</summary>
     public void SetTheme(UiThemeId id)
     {
         var theme = UiTheme.For(id);
         var tile = Textures.CreateDitherTile(_device, TileSize, theme.DitherA, theme.DitherB);
         var panelTile = Textures.CreateDitherTile(_device, TileSize, theme.PanelA, theme.PanelB);
+        var selectTile = Textures.CreateDitherTile(_device, TileSize, theme.SelectA, theme.SelectB);
         _tile?.Dispose();
         _panelTile?.Dispose();
+        _selectTile?.Dispose();
         _tile = tile;
         _panelTile = panelTile;
+        _selectTile = selectTile;
         Theme = theme;
         ThemeId = id;
     }
@@ -94,19 +96,19 @@ public sealed class UiStyle
     /// <summary>
     /// Bouton avec retour d'état. Renvoie le décalage VERTICAL à appliquer au contenu
     /// (texte/icône) pour accentuer la sensation d'enfoncement.
+    /// Survol et clic prennent la tuile CLAIRE « sélection » du thème (le bouton s'enfonce et s'éclaire) ;
+    /// <paramref name="selected"/> donne ce même fond clair à un bouton au repos (choix retenu), biseau normal.
     /// </summary>
-    public int DrawButton(SpriteBatch sb, Rectangle r, ButtonState state)
+    public int DrawButton(SpriteBatch sb, Rectangle r, ButtonState state, bool selected = false)
     {
         Frame(sb, r);
-        FillDither(sb, r);
+        Fill(sb, r, state != ButtonState.Normal || selected ? _selectTile : _tile);
         switch (state)
         {
             case ButtonState.Hover:
-                sb.Draw(_pixel, r, HoverTint * 0.12f);
                 Bevel(sb, r, raised: false, thickness: 1);
                 return 1;
             case ButtonState.Pressed:
-                sb.Draw(_pixel, r, PressTint * 0.30f);
                 Bevel(sb, r, raised: false, thickness: 3);
                 return 2;
             default:

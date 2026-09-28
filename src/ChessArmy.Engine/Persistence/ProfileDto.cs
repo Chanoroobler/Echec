@@ -50,4 +50,28 @@ public sealed class ProfileDto
     /// Absent d'un vieux profil ou commandant absent de la table → jamais gagné.
     /// </summary>
     public System.Collections.Generic.Dictionary<string, int> CommanderWins { get; set; } = new();
+
+    /// <summary>
+    /// Historique PAR COMMANDANT (<c>CommandeDef.Id</c>) affiché sur l'écran de sélection : parties lancées,
+    /// gagnées, ennemis tués et temps de jeu. Absent d'un vieux profil ou commandant absent → tout à 0.
+    /// </summary>
+    public System.Collections.Generic.Dictionary<string, CommanderHistoryDto> CommanderHistory { get; set; } = new();
+}
+
+/// <summary>Compteurs d'historique d'UN commandant (cf. <see cref="ProfileDto.CommanderHistory"/>). Tuto exclu.</summary>
+public sealed class CommanderHistoryDto
+{
+    /// <summary>Parties lancées avec ce commandant (clic sur LANCER).</summary>
+    public int RunsStarted { get; set; }
+
+    /// <summary>Campagnes gagnées avec ce commandant.</summary>
+    public int RunsWon { get; set; }
+
+    /// <summary>Ennemis abattus pendant les parties avec ce commandant.</summary>
+    public int EnemiesKilled { get; set; }
+
+    /// <summary>Temps de jeu cumulé (secondes, hors menus pause) avec ce commandant.</summary>
+    public double PlayTimeSeconds { get; set; }
+
+    public CommanderHistoryDto Clone() => (CommanderHistoryDto)MemberwiseClone();
 }
