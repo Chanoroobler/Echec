@@ -246,6 +246,34 @@ public sealed class SaveService
         });
     }
 
+    // Cache mémoire du compteur de morts (même logique que les ennemis abattus).
+    private int? _unitsDied;
+
+    /// <summary>Total d'unités mortes en combat, tous camps confondus, depuis toujours.</summary>
+    public int UnitsDied() => _unitsDied ??= TryRead<ProfileDto>(ProfilePath)?.UnitsDied ?? 0;
+
+    /// <summary>
+    /// Comptabilise <paramref name="count"/> morts en combat (tous camps). Versé par LOT en fin de combat, même
+    /// persistance que <see cref="AddEnemiesKilled"/>. Renvoie le nouveau total.
+    /// </summary>
+    public int AddUnitsDied(int count)
+    {
+        if (count <= 0)
+            return UnitsDied();
+        var total = UnitsDied() + count;
+        _unitsDied = total;
+        Task.Run(() =>
+        {
+            lock (_ioLock)
+            {
+                var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
+                dto.UnitsDied = total;
+                TryWrite(ProfilePath, dto);
+            }
+        });
+        return total;
+    }
+
     // ── Méta-progression : campagnes GAGNÉES (commandant × difficulté) ──────────────
     // On ne retient que la difficulté la PLUS HAUTE gagnée avec chaque commandant : « terminer un niveau
     // élevé termine les niveaux inférieurs » tombe alors tout seul (une simple comparaison), et le profil
@@ -369,6 +397,7 @@ public sealed class SaveService
         _unlockedCommanders = new HashSet<string>();
         _chestsOpened = 0;
         _enemiesKilled = 0;
+        _unitsDied = 0;
         _commanderWins = new Dictionary<string, int>();
         _commanderHistory = new Dictionary<string, CommanderHistoryDto>();
         var dto = TryRead<ProfileDto>(ProfilePath) ?? new ProfileDto();
@@ -377,6 +406,7 @@ public sealed class SaveService
         dto.UnlockedCommanders = new List<string>();
         dto.ChestsOpened = 0;
         dto.EnemiesKilled = 0;
+        dto.UnitsDied = 0;
         dto.CommanderWins = new Dictionary<string, int>();
         dto.CommanderHistory = new Dictionary<string, CommanderHistoryDto>();
         TryWrite(ProfilePath, dto);

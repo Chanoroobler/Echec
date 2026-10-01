@@ -55,10 +55,10 @@ public sealed class MainMenuScene : Scene
     private UnitCardRenderer _units = null!;
 
     /// <summary>
-    /// Fond du menu : dégradé vertical tramé (dithering) régénéré si la taille du canevas change (le joueur
-    /// peut changer de résolution depuis les Options). Disposé au <see cref="Unload"/>.
+    /// Fond du menu : dégradé vertical tramé, prolongé dans les bandes du letterbox pour couvrir tout
+    /// l'écran (ultra-large, 4:3…). Partagé avec l'écran du logo. Disposé au <see cref="Unload"/>.
     /// </summary>
-    private Texture2D? _background;
+    private MenuBackdrop _backdrop = null!;
 
     /// <summary>
     /// Pions du décor : tirés AU HASARD parmi ceux déjà découverts par le joueur (méta-progression), une
@@ -68,6 +68,15 @@ public sealed class MainMenuScene : Scene
 
     /// <summary>Horloge du va-et-vient du décor (avance en continu, même sous un overlay semi-transparent).</summary>
     private float _decorTime;
+
+    // Décor DÉPLAÇABLE à la souris : on attrape un pion et on le repose où on veut sur le fond.
+    // Positions reposées (pieds, en pixels canvas) par indice de _decorUnits ; null = emplacement d'origine.
+    // Le temps de la visite du menu seulement (la sélection de pions change à chaque venue).
+    private Point?[] _decorMoved = new Point?[DecorSlots];
+    private readonly List<int> _decorOrder = new();   // ordre de tracé, du fond vers l'avant (dernier = devant)
+    private int _decorDrag = -1;                      // pion tenu (-1 = aucun)
+    private Point _decorGrab;                         // pieds du pion − souris, figé à la prise
+    private const int DecorLift = 8;                  // soulèvement du pion tenu (px)
 
     // État des 3 slots (null = vide), relu au chargement et après chaque effacement.
     private readonly RunSave?[] _slots = new RunSave?[SaveService.SlotCount];
@@ -113,6 +122,7 @@ public sealed class MainMenuScene : Scene
         _menuRenderer = new PauseMenuRenderer(Context.Pixel, Context.Style);
         _codex = new CodexView(Context);
         _units = new UnitCardRenderer(Context);
+        _backdrop = new MenuBackdrop(Context.GraphicsDevice, Context.Pixel);
         RefreshSlots();
         SelectDecor();
         Context.Music.Play(MusicScene.Calm);   // menu principal : piste « Relaxed » (continue dans le placement)
@@ -122,22 +132,28 @@ public sealed class MainMenuScene : Scene
     {
         _codex.Unload();
         _units.Unload();
-        _background?.Dispose();
-        _background = null;
+        _backdrop.Dispose();
     }
 
     /// <summary>
-    /// (Re)génère le fond dégradé si absent ou si le canevas a changé de taille. Paliers du HAUT vers le BAS :
-    /// vert-nuit un peu plus clair en haut (derrière la lignée de pions et le titre), fondu vers le presque
-    /// noir en bas pour asseoir le panneau.
+    /// Bandes du letterbox : le dégradé continue sur tout l'écran, avec les mêmes voiles que le canvas
+    /// quand un overlay est ouvert (confirmation, options, confirmation méta, codex), dans le même ordre.
     /// </summary>
-    private void EnsureBackground(int w, int h)
+    public override void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale)
     {
-        if (_background != null && _background.Width == w && _background.Height == h)
-            return;
-        _background?.Dispose();
-        _background = Textures.CreateVerticalDitherGradient(Context.GraphicsDevice, w, h,
-            Palette.Black4, Palette.Navy2, Palette.Black1);
+        var veils = new List<Color>();
+        if (_confirmDelete >= 0)
+            veils.Add(Palette.Navy2 * 0.85f);          // = DrawConfirm
+        else if (_menu.IsOpen)
+        {
+            veils.Add(Palette.Navy2 * 0.85f);          // = PauseMenuRenderer.Overlay
+            if (_confirmMetaReset)
+                veils.Add(Palette.Navy2 * 0.85f);      // = DrawMetaConfirm
+        }
+        if (_codex.IsOpen)
+            veils.Add(Palette.Black1 * 0.72f);         // = voile de CodexView.Draw
+        _backdrop.DrawBands(Context.SpriteBatch, realScreen, canvasOffset, canvasScale, Context.VirtualResolution,
+            veils.ToArray());
     }
 
     /// <summary>
@@ -186,6 +202,13 @@ public sealed class MainMenuScene : Scene
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         _decorUnits.AddRange(pool.Take(DecorSlots));
+
+        // Du plus extérieur vers le centre : le pion central est tracé EN DERNIER, donc devant les autres.
+        _decorMoved = new Point?[DecorSlots];
+        _decorOrder.Clear();
+        for (var i = _decorUnits.Count - 1; i >= 0; i--)
+            _decorOrder.Add(i);
+        _decorDrag = -1;
     }
 
     private static void Flatten(UnitClass c, List<UnitClass> acc)
@@ -221,6 +244,8 @@ public sealed class MainMenuScene : Scene
         var h = Context.VirtualResolution.Y;
         var lay = BuildLayout(w, h);
         ClampFocus();
+
+        if (_decorDrag >= 0) { UpdateDecorDrag(w, h); return; }   // pion tenu : capte la souris jusqu'au lâcher
 
         // Manette : navigation 2D (haut/bas change de ligne, gauche/droite change de colonne :
         // slot ↔ croix d'effacement, ou Codex ↔ Options ↔ Quitter). A valide, X efface le slot focus.
@@ -259,6 +284,66 @@ public sealed class MainMenuScene : Scene
         else if (lay.Options.Contains(p)) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
         else if (lay.Quit.Contains(p)) { Context.Sounds.Play("menu_click"); Context.Quit(); }
         else if (Context.Settings.IsDemo && lay.Wishlist.Contains(p)) { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }
+        else if (!lay.Panel.Contains(p)) TryGrabDecor(lay.Panel, p);   // hors UI : attrape un pion du décor
+    }
+
+    /// <summary>Attrape le pion du décor le plus en avant sous <paramref name="p"/>, s'il y en a un.</summary>
+    private void TryGrabDecor(Rectangle panel, Point p)
+    {
+        var placements = DecorPlacements(panel);
+        for (var k = _decorOrder.Count - 1; k >= 0; k--)   // de l'avant vers le fond
+        {
+            var i = _decorOrder[k];
+            if (!DecorRect(placements[i], bob: 0).Contains(p))
+                continue;
+            _decorDrag = i;
+            _decorGrab = new Point(placements[i].X - p.X, placements[i].Y - p.Y);
+            _decorOrder.RemoveAt(k);
+            _decorOrder.Add(i);   // passe devant les autres
+            Context.Sounds.Play("unit_pick");
+            return;
+        }
+    }
+
+    /// <summary>Pion tenu : suit la souris ; au lâcher il est reposé là, gardé dans le canvas.</summary>
+    private void UpdateDecorDrag(int w, int h)
+    {
+        if (Context.Input.IsLeftDown)
+            return;
+        var m = Context.Input.MousePosition;
+        _decorMoved[_decorDrag] = new Point(Math.Clamp(m.X + _decorGrab.X, 0, w), Math.Clamp(m.Y + _decorGrab.Y, 0, h));
+        _decorDrag = -1;
+        Context.Sounds.Play("unit_place");
+    }
+
+    /// <summary>Pieds (X, Y) + échelle de chaque pion du décor : position reposée, sinon emplacement d'origine.</summary>
+    private (int X, int Y, int Scale)[] DecorPlacements(Rectangle panel)
+    {
+        var w = Context.VirtualResolution.X;
+        var baseline = panel.Y;                        // haut du panneau : réf. pour l'échelle du central
+        var centerScale = baseline >= 224 ? 3 : 2;     // pion central agrandi seulement si le canevas le permet
+        var feet = baseline + DecorDrop;               // « sol » de l'arc, descendu d'un cran sous le panneau
+
+        // Emplacements en ordre de PRIORITÉ (centre d'abord) : une sélection réduite garnit d'abord le centre.
+        var slots = new (int X, int Y, int Scale)[]
+        {
+            (w / 2,            feet - 24, centerScale),  // centre (derrière le titre)
+            ((int)(w * 0.30f), feet - 6,  2),            // flanc gauche
+            ((int)(w * 0.70f), feet - 6,  2),            // flanc droit
+            ((int)(w * 0.12f), feet + 70, 2),            // gouttière gauche
+            ((int)(w * 0.88f), feet + 70, 2),            // gouttière droite
+        };
+        for (var i = 0; i < slots.Length; i++)
+            if (_decorMoved[i] is { } moved)
+                slots[i] = (moved.X, moved.Y, slots[i].Scale);
+        return slots;
+    }
+
+    /// <summary>Carré du sprite d'un pion du décor (pieds en bas, 64 px × échelle).</summary>
+    private static Rectangle DecorRect((int X, int Y, int Scale) s, int bob)
+    {
+        var size = 64 * s.Scale;
+        return new Rectangle(s.X - size / 2, s.Y - size + bob, size, size);
     }
 
     /// <summary>
@@ -444,17 +529,15 @@ public sealed class MainMenuScene : Scene
         // survol — sinon les boutons s'allument à travers l'overlay semi-transparent (fausse navigation).
         // L'overlay lui-même, en revanche, utilise la vraie position souris. En manette : pointeur
         // synthétique = centre de l'élément focus (réutilise la surbrillance de survol).
-        var overlay = _menu.IsOpen || _confirmDelete >= 0 || _codex.IsOpen;
+        var overlay = _menu.IsOpen || _confirmDelete >= 0 || _codex.IsOpen || _decorDrag >= 0;   // pion tenu : pas de survol des boutons
         var bgPointer = overlay ? new Point(int.MinValue, int.MinValue)
             : (gp ? FocusedRect(lay).Center : mouse);
         var bgDown = !overlay && !gp && mouseDown;
 
-        EnsureBackground(w, h);
-
         sb.Begin(samplerState: SamplerState.PointClamp);
-        sb.Draw(_background!, new Rectangle(0, 0, w, h), Color.White);   // EnsureBackground vient de le garantir
+        _backdrop.Draw(sb, w, h);
 
-        // Lignée de pions du décor, DERRIÈRE le titre et le panneau (posée sur le fond, non interactive).
+        // Lignée de pions du décor, DERRIÈRE le titre et le panneau (déplaçable à la souris, cf. TryGrabDecor).
         DrawDecor(sb, lay.Panel);
 
         // Le logo est toujours le latin CHESS ARMY : on force la PixelFont (dégradé doré tramé) dans TOUTES
@@ -515,6 +598,8 @@ public sealed class MainMenuScene : Scene
         // Codex par-dessus le menu (dessine son propre voile + panneau).
         if (_codex.IsOpen)
             _codex.Draw(sb, new Viewport(0, 0, w, h));
+
+        DrawDraggedDecor(sb, lay.Panel);
     }
 
     private void DrawSlot(SpriteBatch sb, Rectangle main, Rectangle del, int index, Point pointer, bool down)
@@ -585,30 +670,28 @@ public sealed class MainMenuScene : Scene
         if (_decorUnits.Count == 0)
             return;
 
-        var w = Context.VirtualResolution.X;
-        var baseline = panel.Y;                        // haut du panneau : réf. pour l'échelle du central
-        var centerScale = baseline >= 224 ? 3 : 2;     // pion central agrandi seulement si le canevas le permet
-        var feet = baseline + DecorDrop;               // « sol » de l'arc, descendu d'un cran sous le panneau
-
-        // Emplacements en ordre de PRIORITÉ (centre d'abord) : une sélection réduite garnit d'abord le centre.
-        var slots = new[]
+        var placements = DecorPlacements(panel);
+        foreach (var i in _decorOrder)   // du fond vers l'avant
         {
-            (X: w / 2,            FeetY: feet - 24, Scale: centerScale),  // centre (derrière le titre)
-            (X: (int)(w * 0.30f), FeetY: feet - 6,  Scale: 2),           // flanc gauche
-            (X: (int)(w * 0.70f), FeetY: feet - 6,  Scale: 2),           // flanc droit
-            (X: (int)(w * 0.12f), FeetY: feet + 70, Scale: 2),           // gouttière gauche
-            (X: (int)(w * 0.88f), FeetY: feet + 70, Scale: 2),           // gouttière droite
-        };
-
-        var count = Math.Min(_decorUnits.Count, slots.Length);
-        // Du plus extérieur vers le centre : le pion central est tracé EN DERNIER, donc devant les autres.
-        for (var i = count - 1; i >= 0; i--)
-        {
-            var s = slots[i];
+            if (i == _decorDrag)
+                continue;   // le pion tenu est tracé à part, PAR-DESSUS toute l'UI (cf. DrawDraggedDecor)
+            var s = placements[i];
             var bob = (int)Math.Round(Math.Sin(_decorTime * DecorBobSpeed + i * 1.1f) * DecorBobAmp);
-            var center = new Point(s.X, s.FeetY - 32 * s.Scale + bob);
-            _units.DrawScaled(sb, _decorUnits[i], center, s.Scale);
+            _units.DrawScaled(sb, _decorUnits[i], DecorRect(s, bob).Center, s.Scale);
         }
+    }
+
+    /// <summary>Pion du décor tenu à la souris : soulevé, sans va-et-vient, au-dessus du titre et du panneau.</summary>
+    private void DrawDraggedDecor(SpriteBatch sb, Rectangle panel)
+    {
+        if (_decorDrag < 0)
+            return;
+        var m = Context.Input.MousePosition;
+        var s = DecorPlacements(panel)[_decorDrag];
+        s = (m.X + _decorGrab.X, m.Y + _decorGrab.Y, s.Scale);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        _units.DrawScaled(sb, _decorUnits[_decorDrag], DecorRect(s, -DecorLift).Center, s.Scale);
+        sb.End();
     }
 
     private void DrawConfirm(SpriteBatch sb, int w, int h, Point pointer, bool down)

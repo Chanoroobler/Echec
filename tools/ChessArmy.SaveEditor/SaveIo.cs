@@ -62,6 +62,12 @@ internal sealed class ProfileDto
     public int EnemiesKilled { get; set; }
 
     /// <summary>
+    /// Unités mortes en combat À VIE, tous camps (succès Steam « 500 morts »). Même raison que
+    /// <see cref="ChestsOpened"/> — l'éditeur ne l'expose pas mais DOIT le porter.
+    /// </summary>
+    public int UnitsDied { get; set; }
+
+    /// <summary>
     /// Difficulté la plus haute GAGNÉE par commandant (id → valeur de <c>Difficulty</c>) : marque en vert les
     /// boutons de difficulté du carrousel. Même raison que <see cref="ChestsOpened"/> — l'éditeur ne l'expose
     /// pas mais DOIT le porter, sinon réécrire le profil effacerait ces victoires.

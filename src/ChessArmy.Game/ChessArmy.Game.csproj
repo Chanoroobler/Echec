@@ -25,6 +25,15 @@
     </PropertyGroup>
     <Message Importance="high" Text="Build DEMO : symbole DEMO grave (IsDemo force au compile, non desactivable par le joueur)." />
   </Target>
+  <!-- Build PLAYTEST : -p:PlaytestBuild=true (profil FolderProfile) grave le symbole PLAYTEST, qui active les
+       particularités du playtest (tous les commandants débloqués, cf. CommanderSelectScene). Sans ce symbole
+       (profil FolderProfileFull) : JEU COMPLET, méta-progression normale. Même mécanique de cible que DEMO. -->
+  <Target Name="ApplyPlaytestDefine" BeforeTargets="CoreCompile" Condition="'$(PlaytestBuild)'=='true'">
+    <PropertyGroup>
+      <DefineConstants>$(DefineConstants);PLAYTEST</DefineConstants>
+    </PropertyGroup>
+    <Message Importance="high" Text="Build PLAYTEST : symbole PLAYTEST grave (tous les commandants debloques)." />
+  </Target>
   <ItemGroup>
     <None Remove="Icon.ico" />
     <None Remove="Icon.bmp" />
@@ -105,6 +114,17 @@
          dans ChessArmy.Engine.csproj lors d'une montee de version. -->
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.5.1" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.5.1" />
+    <!-- Wrapper C# de Steamworks (SDK 1.60). La DLL NATIVE steam_api64.dll n'est pas dans le package :
+         la copier depuis le SDK Steamworks 1.60 (sdk/redistributable_bin/win64/) dans Native/. -->
+    <PackageReference Include="Steamworks.NET" Version="2024.8.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Absente => le jeu tourne sans Steam (SteamService échoue en silence). -->
+    <None Include="Native\steam_api64.dll" Condition="Exists('Native\steam_api64.dll')"
+          Link="steam_api64.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- steam_appid.txt : permet de lancer HORS Steam (Visual Studio) avec l'AppID. Debug uniquement :
+         la build livrée est lancée par Steam, qui fournit l'AppID lui-même. -->
+    <None Include="steam_appid.txt" Condition="'$(Configuration)'=='Debug'" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ChessArmy.Engine\ChessArmy.Engine.csproj" />

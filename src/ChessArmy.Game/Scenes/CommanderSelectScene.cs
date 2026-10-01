@@ -87,7 +87,7 @@ public sealed class CommanderSelectScene : Scene
 
     private UnitCardRenderer _card = null!;
     private CommandTreeView _tree = null!;
-    private Texture2D? _background;
+    private MenuBackdrop _backdrop = null!;   // même fond que le menu principal, sur tout l'écran
 
     /// <summary>Icône d'accès à l'arbre (Assets/UI/arbre.png). Null = absente, on dessine un repli.</summary>
     private Texture2D? _treeIcon;
@@ -128,9 +128,13 @@ public sealed class CommanderSelectScene : Scene
     /// <summary>Vrai s'il y a de quoi faire défiler : sinon les flèches sont inertes et grisées.</summary>
     private bool HasChoice => _commanders.Count > 1;
 
-    // ⚠️ HACK PLAYTEST — débloque TOUS les commandants. Pour revenir au comportement normal : mettre à false
-    // (ou supprimer cette ligne + le « UnlockAllForPlaytest || » ci-dessous). Rien d'autre à toucher.
+    // Build PLAYTEST (compilée avec -p:PlaytestBuild=true, profil FolderProfile) : TOUS les commandants
+    // débloqués d'office. Build JEU COMPLET (profil FolderProfileFull) : méta-progression normale.
+#if PLAYTEST
     private const bool UnlockAllForPlaytest = true;
+#else
+    private const bool UnlockAllForPlaytest = false;
+#endif
 
     /// <summary>
     /// SEUL point de vérité du verrouillage d'un commandant : ouvert d'office par la donnée
@@ -147,6 +151,7 @@ public sealed class CommanderSelectScene : Scene
     public override void Load()
     {
         _card = new UnitCardRenderer(Context);
+        _backdrop = new MenuBackdrop(Context.GraphicsDevice, Context.Pixel);
         _tree = new CommandTreeView(Context);
         _treeIcon = Textures.LoadPngOrNull(Context.GraphicsDevice,
             System.IO.Path.Combine(AppContext.BaseDirectory, "Assets/UI/arbre.png"));
@@ -162,24 +167,21 @@ public sealed class CommanderSelectScene : Scene
         _tree.Unload();
         _treeIcon?.Dispose();
         _treeIcon = null;
-        _background?.Dispose();
-        _background = null;
+        _backdrop.Dispose();
     }
+
+    /// <summary>
+    /// Bandes du letterbox : le dégradé du menu continue sur tout l'écran, avec le voile de l'arbre de
+    /// commandement quand il est ouvert (= celui de CommandTreeView.Draw).
+    /// </summary>
+    public override void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale) =>
+        _backdrop.DrawBands(Context.SpriteBatch, realScreen, canvasOffset, canvasScale, Context.VirtualResolution,
+            _tree.IsOpen ? new[] { Palette.Black1 * 0.62f } : Array.Empty<Color>());
 
     /// <summary>Recrée la run d'aperçu sur le commandant courant (son arbre est lu depuis elle).</summary>
     private void RebuildPreview() => _preview = new Run(seed: 0, commander: Selected, difficulty: SelectedDifficulty);
 
     private Viewport VirtualViewport => new(0, 0, Context.VirtualResolution.X, Context.VirtualResolution.Y);
-
-    /// <summary>Même fond que le menu principal, (re)généré si absent ou si le canevas a changé de taille.</summary>
-    private void EnsureBackground(int w, int h)
-    {
-        if (_background != null && _background.Width == w && _background.Height == h)
-            return;
-        _background?.Dispose();
-        _background = Textures.CreateVerticalDitherGradient(Context.GraphicsDevice, w, h,
-            Palette.Black4, Palette.Navy2, Palette.Black1);
-    }
 
     // ── Mise en page ─────────────────────────────────────────────────────────────
 
@@ -461,7 +463,11 @@ public sealed class CommanderSelectScene : Scene
         _tree.Open();
     }
 
-    private void Back() => Context.Scenes.Change(new MainMenuScene(Context));
+    private void Back()
+    {
+        Context.Sounds.Play("menu_click");   // bouton RETOUR, Échap ou B : même clic que les boutons du menu
+        Context.Scenes.Change(new MainMenuScene(Context));
+    }
 
     private void StartGame()
     {
@@ -576,9 +582,8 @@ public sealed class CommanderSelectScene : Scene
         Kind? fk = gp && _focus < _focusables.Count ? _focusables[_focus].Kind : null;
         var hoverIndex = HoverIndex(gp, mouse);
 
-        EnsureBackground(vp.Width, vp.Height);
         sb.Begin(samplerState: SamplerState.PointClamp);
-        sb.Draw(_background!, Vector2.Zero, Color.White);
+        _backdrop.Draw(sb, vp.Width, vp.Height);
 
         // ── Moitié gauche ──
         DrawCarousel(sb, lay);

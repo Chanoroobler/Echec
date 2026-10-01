@@ -67,6 +67,9 @@ public sealed class UiStyle
     /// <summary>Remplit <paramref name="r"/> avec le tramage du PANNEAU DE DROITE (couleurs propres au thème).</summary>
     public void FillPanelDither(SpriteBatch sb, Rectangle r) => Fill(sb, r, _panelTile);
 
+    /// <summary>Hauteur du motif du fond de panneau : pour caler un prolongement sur la même trame.</summary>
+    public int PanelTileHeight => _panelTile.Height;
+
     private static void Fill(SpriteBatch sb, Rectangle r, Texture2D tile)
     {
         for (int y = r.Y; y < r.Bottom; y += tile.Height)

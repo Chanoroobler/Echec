@@ -131,6 +131,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         if (!_settings.IsDemo)
             return;
 
+        SteamService.AchievementsEnabled = false;   // pas de succès en démo (y compris le mode démo de test)
         ChessArmy.Core.Campaign.Run.EndAtPhase = DemoEndAtPhase;
         ChessArmy.Core.Campaign.Run.MaxUnitTier = DemoMaxUnitTier;
         ChessArmy.Core.Equip.Equipments.DemoOnly = true;   // coffres + ennemis : équipements hors démo exclus
@@ -242,7 +243,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             _input, _scenes, Window, _settings, _audio, _sounds, _music, this, _saves, Exit);
 
         ConfigureVirtualScreen();
-        _scenes.Change(new MainMenuScene(_context));
+        _scenes.Change(new SplashScene(_context));   // logo du studio, qui enchaîne sur le menu principal
     }
 
     protected override void UnloadContent()
@@ -266,6 +267,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             _showFps = !_showFps;   // bascule l'overlay de diagnostic FPS / ms
         _scenes.Update(gameTime);
         _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
+        SteamService.Update();     // callbacks Steam (stats reçues → succès en attente)
         base.Update(gameTime);
     }
 

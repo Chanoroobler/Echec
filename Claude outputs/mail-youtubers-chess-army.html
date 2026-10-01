@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mail YouTubers – Chess Army</title>
+<style>
+  :root{--bg:#14181f;--panel:#1d232d;--line:#2e3644;--text:#e8ecf2;--muted:#9aa5b5;--accent:#d8a03a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif}
+  .wrap{display:grid;grid-template-columns:340px 1fr;gap:24px;max-width:1100px;margin:0 auto;padding:24px 16px}
+  @media (max-width:860px){.wrap{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;align-self:start;position:sticky;top:16px}
+  h1{font-size:18px;margin:0 0 4px} .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+  input[type=text],textarea{width:100%;background:#11151b;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px 10px;font:inherit}
+  textarea{min-height:64px;resize:vertical}
+  .row{display:flex;gap:8px;align-items:center;margin-top:12px}
+  .seg button{flex:1}
+  button{background:#2a3240;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;cursor:pointer}
+  button.on{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:600}
+  button.primary{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:700;width:100%;padding:11px}
+  .subject{background:#11151b;border:1px dashed var(--line);border-radius:6px;padding:8px 10px;font-size:14px;margin-top:4px}
+  .toast{color:#7fd18b;font-size:13px;min-height:18px;margin-top:6px}
+  .preview{background:#e9e6df;border-radius:10px;padding:24px 8px;overflow:auto}
+  .enbox{margin-top:5px;padding-left:10px;border-left:2px solid var(--accent)}
+  .enlab{display:block;font-size:11px;color:var(--accent);margin-bottom:3px}
+  .enlab i{color:var(--muted);font-style:normal}
+  input.en{font-size:13px;padding:6px 8px;background:#161b22}
+  .hint{color:var(--muted);font-size:12px;margin-top:14px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <h1>Mail YouTubers · Chess Army</h1>
+    <p class="sub">Remplis les champs, l'aperçu se met à jour, puis copie et colle dans Gmail / Outlook.</p>
+
+    <div class="row seg"><button id="fr" class="on">Français</button><button id="en">English</button></div>
+
+    <label>Prénom / pseudo du YouTuber</label>
+    <input type="text" id="prenom" placeholder="ex. Alex">
+    <label>Nom de la chaîne</label>
+    <input type="text" id="chaine" placeholder="ex. Pixel Tactics">
+    <label>Une vidéo à lui que tu as vue (optionnel)</label>
+    <input type="text" id="video" placeholder="ex. ta vidéo sur Into the Breach">
+    <div class="enbox" style="display:none"><span class="enlab">EN · traduction auto <i id="video_st"></i></span><input type="text" id="video_en" class="en" placeholder="(traduction)"></div>
+    <label>Ce qui t'a plu dans cette vidéo (optionnel)</label>
+    <textarea id="perso" placeholder="ex. ta façon d'expliquer chaque coup avant de le jouer"></textarea>
+    <div class="enbox" style="display:none"><span class="enlab">EN · traduction auto <i id="perso_st"></i></span><input type="text" id="perso_en" class="en" placeholder="(traduction)"></div>
+    <label>Pourquoi Chess Army colle à sa chaîne</label>
+    <textarea id="pourquoi" placeholder="ex. tu couvres beaucoup de roguelikes tactiques"></textarea>
+    <div class="enbox" style="display:none"><span class="enlab">EN · traduction auto <i id="pourquoi_st"></i></span><input type="text" id="pourquoi_en" class="en" placeholder="(traduction)"></div>
+    <div class="row"><input type="checkbox" id="cle"><span style="font-size:14px">Proposer une clé Steam</span></div>
+    <div id="cleBox" style="display:none">
+      <label>Clé Steam</label>
+      <input type="text" id="cleVal" placeholder="XXXXX-XXXXX-XXXXX" style="font-family:Consolas,monospace;letter-spacing:.05em">
+    </div>
+    <label>Signature</label>
+    <input type="text" id="signature" value="ChaNoRoobler">
+    <label>Pseudo sur les réseaux</label>
+    <select id="pseudo" style="width:100%;background:#11151b;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px 10px;font:inherit">
+      <option value="ChaNoRoobler|ChaNoStudio">ChaNoRoobler (ou ChaNoStudio)</option><option>ChaNoRoobler</option><option>ChaNoStudio</option><option>ChaNoCreArt</option>
+    </select>
+
+    <label>Objet</label>
+    <div class="subject" id="objet"></div>
+    <div class="row"><button id="copyObj" style="width:100%">Copier l'objet</button></div>
+    <div class="row"><button id="copyMail" class="primary">Copier le mail (avec images)</button></div>
+    <div class="toast" id="toast"></div>
+    <p class="hint">Les images sont celles de ta page Steam, hébergées par Steam : elles s'affichent chez le destinataire sans pièce jointe. Les champs vides restent surlignés en jaune dans l'aperçu pour ne rien oublier.</p>
+  </div>
+
+  <div class="preview"><div id="mail"></div></div>
+</div>
+
+<script>
+const STEAM = 'https://store.steampowered.com/app/4971900/Chess_Army/';
+const B = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4971900/';
+const ss = id => B + id + '/ss_' + id + '.600x338.jpg';
+const IMG = {
+  capsule: B + '7b012e6c617442f20b5814fcf5b0c25f6315faef/capsule_616x353.jpg',
+  board:   ss('ae62991ab1400bbe88be107ee5e30f210d6d469d'),
+  recrue:  ss('0f59ed86b052d4b193beabdfb1e45b3703e1d540'),
+  water:   ss('a792ad34620814e9f4e797779f10fd58b6b7e4a1'),
+  trailer: 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/257380231/3ab47bdbf81286c71fdf118c26d88f38a237e1c1/movie_600x337.jpg'
+};
+
+const T = {
+  fr: {
+    objet: c => `Chess Army × ${c} : un roguelike où tes pièces d'échecs meurent pour de vrai`,
+    hello: p => `Salut ${p},`,
+    intro: (s, k) => `Mon pseudo est ${k} sur les réseaux, et je développe seul <b>Chess Army</b>, un roguelike tactique en pixel art bâti sur les déplacements des échecs.`,
+    perso: (v, x) => v && x ? `J'ai regardé ${v} et j'ai beaucoup aimé ${x}. C'est ce qui m'a donné envie de t'écrire.`
+                   : v ? `J'ai regardé ${v}, et c'est ce qui m'a donné envie de t'écrire.`
+                   : `J'ai beaucoup aimé ${x} dans tes vidéos. C'est ce qui m'a donné envie de t'écrire.`,
+    pitch: `Le principe : chaque unité se déplace comme une pièce d'échecs, une seule action par tour, et la mort est définitive. Si ton commandant tombe, la run s'arrête.`,
+    f1t: 'Quatre corps, quatre façons de bouger',
+    f1: `Les mages vont en diagonale comme le fou, la cavalerie saute en L, les lanciers frappent en ligne droite comme la tour, l'infanterie se déplace comme la dame.`,
+    f2t: 'Une armée née de tes victoires',
+    f2: `Après chaque combat, tu enrôles un des ennemis vaincus. Fusionne trois unités identiques pour les faire évoluer : 28 classes sur 4 branches et 3 paliers.`,
+    f3t: 'De quoi varier chaque run',
+    f3: `Plus de 60 objets à trouver et combiner, plus de 40 maps, et des commandants qui changent ton armée de départ.`,
+    why: (c, w) => `Je pense que ça peut plaire à l'audience de ${c} parce que ${w}.`,
+    dates: `Chess Army sort le <b>28 octobre</b> sur Steam, et la démo sera présente au prochain <b>Steam Next Fest</b>. Tu n'as pas besoin d'attendre la sortie : tu peux faire des vidéos dès maintenant.`,
+    below: `Tu trouveras une présentation du jeu et quelques images juste en dessous.`,
+    about: 'Chess Army en bref',
+    onSteam: 'Chess Army sur Steam',
+    key: `Et voici une clé Steam rien que pour toi :`,
+    keyHow: `À activer dans Steam : Jeux › Activer un produit sur Steam.`,
+    net: 'sur les réseaux',
+    cta: 'Voir Chess Army sur Steam',
+    trailer: '▶ Voir la bande-annonce',
+    end: `Aucune obligation bien sûr. Si ça ne te parle pas, pas de souci. Et si tu as des questions sur le jeu, je réponds avec plaisir.`,
+    bye: 'Merci pour ton temps,',
+    caps: ['Le plateau', 'Le recrutement', 'Les maps']
+  },
+  en: {
+    objet: c => `Chess Army × ${c}: a roguelike where your chess pieces die for real`,
+    hello: p => `Hi ${p},`,
+    intro: (s, k) => `I go by ${k} on social media, and I'm the solo developer of <b>Chess Army</b>, a pixel art tactical roguelike built on chess movement.`,
+    perso: (v, x) => v && x ? `I watched ${v} and really liked ${x}. That's what made me want to reach out.`
+                   : v ? `I watched ${v}, and that's what made me want to reach out.`
+                   : `I really liked ${x} in your videos. That's what made me want to reach out.`,
+    pitch: `The idea: every unit moves like a chess piece, you get one action per turn, and death is permanent. If your commander falls, the run is over.`,
+    f1t: 'Four corps, four ways to move',
+    f1: `Mages move diagonally like the bishop, cavalry jumps in an L, lancers strike in straight lines like the rook, infantry moves like the queen.`,
+    f2t: 'An army built from your victories',
+    f2: `After each fight you recruit one of the enemies you defeated. Merge three identical units to evolve them: 28 classes across 4 branches and 3 tiers.`,
+    f3t: 'Every run plays differently',
+    f3: `Over 60 items to find and combine, more than 40 maps, and commanders that change your starting army.`,
+    why: (c, w) => `I think it could be a good fit for ${c}'s audience because ${w}.`,
+    dates: `Chess Army releases on Steam on <b>October 28</b>, and the demo will be part of the next <b>Steam Next Fest</b>. No need to wait for launch: you're free to make videos right now.`,
+    below: `You'll find a quick overview of the game and some screenshots below.`,
+    about: 'Chess Army at a glance',
+    onSteam: 'Chess Army on Steam',
+    key: `And here's a Steam key just for you:`,
+    keyHow: `To redeem it in Steam: Games › Activate a Product on Steam.`,
+    net: 'on social media',
+    cta: 'See Chess Army on Steam',
+    trailer: '▶ Watch the trailer',
+    end: `No pressure at all. If it's not for you, no worries. And if you have any questions about the game, I'm happy to answer.`,
+    bye: 'Thanks for your time,',
+    caps: ['The board', 'Recruitment', 'The maps']
+  }
+};
+
+let lang = 'fr';
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hole = (v, ph) => v.trim() ? esc(v.trim()) : `<span data-hole style="background:#ffe066;color:#5a4300;padding:0 3px">[${ph}]</span>`;
+const pseudoHTML = () => { const [a, b] = $('pseudo').value.split('|'); return b ? `<b>${esc(a)}</b> (${lang==='fr'?'ou':'or'} <b>${esc(b)}</b>)` : `<b>${esc(a)}</b>`; };
+const pseudoTXT = () => { const [a, b] = $('pseudo').value.split('|'); return b ? `${a} (${lang==='fr'?'ou':'or'} ${b})` : a; };
+const plain = (v, ph) => v.trim() || `[${ph}]`;
+
+const F = "font-family:Arial,Helvetica,sans-serif;";
+const P = `margin:0 0 14px;${F}font-size:15px;line-height:1.55;color:#2b2b2b;`;
+
+function feature(img, alt, cap, title, text) {
+  return `<tr><td style="padding:0 28px 18px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td width="220" valign="top" style="padding-right:16px">
+      <a href="${STEAM}" target="_blank"><img src="${img}" width="220" alt="${alt}" style="display:block;width:220px;height:auto;border:0;border-radius:6px"></a>
+      <div style="${F}font-size:11px;color:#8a8577;padding-top:4px">${cap}</div>
+    </td>
+    <td valign="top">
+      <div style="${F}font-size:16px;font-weight:bold;color:#1d232d;margin:0 0 6px">${title}</div>
+      <div style="${F}font-size:14px;line-height:1.5;color:#444">${text}</div>
+    </td>
+  </tr></table></td></tr>`;
+}
+
+function build() {
+  const t = T[lang], v = k => $(k).value;
+  const ph = lang === 'fr'
+    ? {p:'prénom', c:'chaîne', v:'sa vidéo', x:'ce qui t\'a plu', w:'pourquoi lui', s:'ton nom'}
+    : {p:'first name', c:'channel', v:'their video', x:'what you liked', w:'why them', s:'your name'};
+  const p = hole(v('prenom'), ph.p), c = hole(v('chaine'), ph.c),
+        src = k => lang === 'en' ? v(k + '_en') : v(k),
+        vi = src('video').trim() ? esc(src('video').trim()) : '', x = src('perso').trim() ? esc(src('perso').trim()) : '',
+        w = hole(src('pourquoi'), ph.w), s = hole(v('signature'), ph.s);
+
+  $('objet').textContent = t.objet(plain(v('chaine'), ph.c));
+
+  $('mail').innerHTML = `
+<table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:10px;overflow:hidden;border-collapse:separate">
+  <tr><td style="padding:26px 28px 6px">
+    <p style="${P}">${t.hello(p)}</p>
+    <p style="${P}">${t.intro(s, pseudoHTML())}</p>
+    ${vi || x ? `<p style="${P}">${t.perso(vi, x)}</p>` : ''}
+    <p style="${P}">${t.why(c, w)}</p>
+    <p style="${P}">${t.dates}</p>
+    ${$('cle').checked ? `<p style="${P}margin-bottom:8px">${t.key}</p>
+    <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px"><tr>
+      <td style="border:2px dashed #d8a03a;background:#fff8e8;border-radius:6px;padding:10px 18px;font-family:Consolas,'Courier New',monospace;font-size:18px;font-weight:bold;letter-spacing:2px;color:#1d232d">${hole(v('cleVal'), lang==='fr' ? 'clé Steam' : 'Steam key')}</td>
+    </tr></table>
+    <p style="${P}font-size:12px;color:#8a8577;text-align:center">${t.keyHow}</p>` : ''}
+    <p style="${P}">${t.below} ${t.end}</p>
+    <p style="${P}margin:0 0 24px">${t.bye}<br><b>${s}</b><br><span style="color:#8a8577;font-size:13px">${esc(pseudoTXT())} ${t.net} · <a href="${STEAM}" style="color:#b07a1c">${t.onSteam}</a></span></p>
+  </td></tr>
+  <tr><td style="padding:0 28px"><div style="border-top:1px solid #e3ded3;height:1px;line-height:1px;font-size:1px">&nbsp;</div></td></tr>
+  <tr><td style="padding:22px 28px 14px">
+    <div style="${F}font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;color:#b07a1c;margin:0 0 12px">${t.about}</div>
+    <a href="${STEAM}" target="_blank"><img src="${IMG.capsule}" width="544" alt="Chess Army" style="display:block;width:100%;height:auto;border:0;border-radius:6px"></a>
+  </td></tr>
+  <tr><td style="padding:0 28px 6px">
+    <p style="${P}">${t.pitch}</p>
+  </td></tr>
+  ${feature(IMG.board, 'Chess Army', t.caps[0], t.f1t, t.f1)}
+  ${feature(IMG.recrue, 'Chess Army', t.caps[1], t.f2t, t.f2)}
+  ${feature(IMG.water, 'Chess Army', t.caps[2], t.f3t, t.f3)}
+  <tr><td style="padding:0 28px 18px">
+    <a href="${STEAM}" target="_blank" style="text-decoration:none">
+      <img src="${IMG.trailer}" width="544" alt="Trailer" style="display:block;width:100%;height:auto;border:0;border-radius:6px">
+      <div style="${F}font-size:13px;color:#b07a1c;text-align:center;padding-top:6px;font-weight:bold">${t.trailer}</div>
+    </a>
+  </td></tr>
+  <tr><td align="center" style="padding:0 28px 28px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="background:#d8a03a;border-radius:6px">
+        <a href="${STEAM}" target="_blank" style="display:inline-block;padding:13px 26px;${F}font-size:15px;font-weight:bold;color:#1a1205;text-decoration:none">${t.cta}</a>
+      </td></tr></table>
+  </td></tr>
+</table>`;
+}
+
+function toast(m){ $('toast').textContent = m; setTimeout(()=>$('toast').textContent='', 3500); }
+
+async function copyMail() {
+  const holes = $('mail').querySelectorAll('[data-hole]').length;
+  const html = $('mail').innerHTML;
+  const text = $('mail').innerText;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], {type:'text/html'}),
+      'text/plain': new Blob([text], {type:'text/plain'})
+    })]);
+  } catch (e) {
+    const r = document.createRange(); r.selectNode($('mail'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    document.execCommand('copy'); sel.removeAllRanges();
+  }
+  toast(holes ? `Copié, mais ${holes} champ(s) encore vide(s) !` : 'Mail copié. Colle-le dans ton client mail.');
+}
+
+// --- Traduction automatique FR -> EN des champs libres ---
+const TR_FIELDS = ['video', 'perso', 'pourquoi'];
+const lastSrc = {}, timers = {};
+async function translate(text) {
+  try {
+    const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q=' + encodeURIComponent(text));
+    const j = await r.json();
+    return j[0].map(x => x[0]).join('');
+  } catch (e) {
+    const r = await fetch('https://api.mymemory.translated.net/get?langpair=fr|en&q=' + encodeURIComponent(text));
+    const j = await r.json();
+    if (!j.responseData) throw new Error('échec');
+    return j.responseData.translatedText;
+  }
+}
+async function translateField(id) {
+  const fr = $(id).value.trim();
+  if (fr === lastSrc[id]) return;
+  lastSrc[id] = fr;
+  if (!fr) { $(id + '_en').value = ''; $(id + '_st').textContent = ''; build(); return; }
+  $(id + '_st').textContent = '· en cours…';
+  try {
+    const en = await translate(fr);
+    if ($(id).value.trim() !== fr) return; // texte modifié entre-temps
+    $(id + '_en').value = en;
+    $(id + '_st').textContent = '· modifiable';
+  } catch (e) {
+    $(id + '_st').textContent = '· échec, écris-la à la main';
+  }
+  build();
+}
+function translateAll() { TR_FIELDS.forEach(translateField); }
+TR_FIELDS.forEach(id => $(id).addEventListener('input', () => {
+  if (lang !== 'en') return;
+  clearTimeout(timers[id]); timers[id] = setTimeout(() => translateField(id), 700);
+}));
+function setLang(l) {
+  lang = l;
+  $('fr').classList.toggle('on', l === 'fr'); $('en').classList.toggle('on', l === 'en');
+  document.querySelectorAll('.enbox').forEach(b => b.style.display = l === 'en' ? 'block' : 'none');
+  if (l === 'en') translateAll();
+  build();
+}
+$('fr').onclick = () => setLang('fr');
+$('en').onclick = () => setLang('en');
+document.querySelectorAll('input,textarea').forEach(el => el.addEventListener('input', build));
+$('cle').addEventListener('change', () => { $('cleBox').style.display = $('cle').checked ? 'block' : 'none'; build(); });
+$('pseudo').addEventListener('change', build);
+$('copyObj').onclick = async () => { await navigator.clipboard.writeText($('objet').textContent); toast('Objet copié.'); };
+$('copyMail').onclick = copyMail;
+build();
+</script>
+</body>
+</html>

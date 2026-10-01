@@ -44,6 +44,12 @@ public sealed class ProfileDto
     public int EnemiesKilled { get; set; }
 
     /// <summary>
+    /// Nombre TOTAL d'unités mortes en combat, tous camps et tous tueurs confondus (pertes du joueur comprises),
+    /// toutes parties confondues. Sert au succès Steam « 500 morts ». Absent d'un vieux profil → 0.
+    /// </summary>
+    public int UnitsDied { get; set; }
+
+    /// <summary>
     /// Méta-progression : pour chaque commandant (<c>CommandeDef.Id</c>), la difficulté la PLUS HAUTE avec
     /// laquelle la campagne a été GAGNÉE — valeur de l'énumération <c>Difficulty</c> (0 = Facile). Comme on
     /// ne garde que le maximum, terminer un niveau élevé vaut d'office pour tous les niveaux en dessous.

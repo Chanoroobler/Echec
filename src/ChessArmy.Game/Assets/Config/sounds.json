@@ -43,6 +43,10 @@
   // équipement LÉGENDAIRE. Cf. GameplayScene.UpdateChestRoll.
   "reward_legendary": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up C.wav",
 
+  // ── Logo du studio (écran de lancement) ──────────────────────
+  // Joué quand le logo « atterrit » à sa taille native après le zoom. Cf. SplashScene.
+  "logo_land":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Item Gather Plop A.wav",
+
   // ── Menus ────────────────────────────────────────────────────
   "menu_open":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu A.wav",
   "menu_close": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu B.wav",

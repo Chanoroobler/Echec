@@ -50,6 +50,12 @@ public sealed class GameplayScene : Scene
 
     // Panneau latéral droit (inventaire au placement, infos en combat).
     private const int RightPanelWidth = 240;   // élargi pour 3 colonnes de portraits 64×64
+
+    // Prolongement du panneau dans les bandes du letterbox (cf. DrawPanelBands), relevé pendant Draw :
+    // décalage X du panneau s'il a été dessiné cette frame (null sinon), et s'il est passé sous un voile.
+    private float? _panelBandDx;
+    private bool _panelDimmed;
+    private float _panelSlideDx;   // translation du panneau qui sort pendant l'entrée en combat
     private const int PanelPad = 12;
     // Inventaire en grille : portraits 64×64 NATIFS (jamais redimensionnés), 3 colonnes.
     private const int InvIconSize = 64;
@@ -1454,12 +1460,12 @@ public sealed class GameplayScene : Scene
         // ET boss — passe au codex. C'est la SEULE voie de découverte des T2/T3 côté IA : une classe rendue
         // éligible « nouveauté » mais jamais alignée reste inconnue. Idempotent (écrit sur disque à la 1re fois).
         foreach (var spec in wave)
-            Context.Saves.DiscoverUnit(spec.UnitClass.Asset);
+            DiscoverUnit(spec.UnitClass.Asset);
 
         // Les tier 1 débloqués (même absents de CETTE vague) restent « vus » pour que la tuile recrue puisse
         // les proposer à tout moment, y compris dans les runs suivantes (cf. RollSeenTier1). Idempotent.
         foreach (var asset in _run.UnlockedTier1Assets())
-            Context.Saves.DiscoverUnit(asset);
+            DiscoverUnit(asset);
 
         // Auto-sauvegarde : la progression n'est persistée qu'ici (phase de placement), jamais en
         // plein combat — on reprend toujours proprement au placement du combat courant. L'instantané
@@ -2034,7 +2040,7 @@ public sealed class GameplayScene : Scene
                     {
                         _run.AddEquipment(item);
                         _run.Stats.AddEquipmentFound();   // récap : équipement ramassé
-                        if (Context.Saves.DiscoverEquipment(item.Id))   // méta-progression : désormais connu (codex)
+                        if (DiscoverEquipment(item.Id))   // méta-progression : désormais connu (codex)
                             _run.Stats.AddDiscoveredEquipment(item.Name);   // récap : équipement DÉCOUVERT cette run
                     }
                     _chestPhase = ChestPhase.Settle;
@@ -2677,7 +2683,10 @@ public sealed class GameplayScene : Scene
                 // cf. SyncReserveWithRoster) → grande révélation, de sa forme ordinaire à celle de meneuse.
                 var revolteNow = !_revolteAnnounced && _run.RevolteDone;
                 if (revolteNow)
+                {
                     StartRevolteReveal();
+                    SteamService.Unlock(Achievements.Revolte);
+                }
 
                 // Nœud à CHOIX cliqué : l'arbre s'est refermé pour laisser place à la popup de FUSION, qui
                 // présente les deux formes. Annuler rouvre l'arbre ; valider achète et joue l'évolution.
@@ -2941,7 +2950,7 @@ public sealed class GameplayScene : Scene
                 if (!_run.EquipmentInventory.Any() && Equipments.ById(TutorialEquipmentId) is { } spare)
                 {
                     _run.AddEquipment(spare);
-                    Context.Saves.DiscoverEquipment(spare.Id);   // méta-progression : désormais connu (codex)
+                    DiscoverEquipment(spare.Id);   // méta-progression : désormais connu (codex)
                 }
                 EnterEquipPhase();   // le tuto ouvre la sous-phase à la place du bouton SUIVANT
                 break;
@@ -3998,7 +4007,7 @@ public sealed class GameplayScene : Scene
         foreach (var item in loot)
         {
             _run.Stats.AddEquipmentFound();
-            if (Context.Saves.DiscoverEquipment(item.Id))
+            if (DiscoverEquipment(item.Id))
                 _run.Stats.AddDiscoveredEquipment(item.Name);
         }
         if (loot.Count > 0)
@@ -4652,6 +4661,8 @@ public sealed class GameplayScene : Scene
             DisbandFusionToOrigin();            // échec inattendu : on ne perd rien
             return;
         }
+        if (fused.UnitClass.Tier == 3)
+            SteamService.Unlock(Achievements.FusionT3);
 
         Rectangle source;   // emplacement de la pièce (point de zoom de la « caméra »)
         if (cell is { } c)
@@ -4673,7 +4684,7 @@ public sealed class GameplayScene : Scene
 
         // Version LONGUE (grand moment) uniquement la 1re fois qu'on obtient l'unité ; sinon version courte.
         var firstTime = !Context.Saves.IsUnitDiscovered(fused.UnitClass.Asset);
-        Context.Saves.DiscoverUnit(fused.UnitClass.Asset);   // méta-progression : désormais connue
+        DiscoverUnit(fused.UnitClass.Asset);   // méta-progression : désormais connue
         _run.Stats.AddFusion();                                   // récap : fusion réalisée
         if (firstTime)
             _run.Stats.AddDiscoveredClass(fused.UnitClass.Name);  // récap : évolution DÉCOUVERTE cette run
@@ -6086,6 +6097,7 @@ public sealed class GameplayScene : Scene
 
             AccumulateCombatStats();   // récap : contribution du combat (AVANT sync/permadeath)
             _run.Stats.AddPaysansSaved(PaysansSaved);   // paysans sauvés/libérés de cette mission
+            UnlockAllPaysansAchievement();
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
 
             // Bilan FIGÉ ici : la complétion va retirer les pertes du roster (permadeath) et remettre le
@@ -6136,6 +6148,68 @@ public sealed class GameplayScene : Scene
             GrantCommanderHitPoints();
         }
         FinishBattleEnd();
+    }
+
+    /// <summary>
+    /// Succès Steam : TOUS les paysans de la mission spéciale récupérés (« libérer »/« sauver ») ou protégés
+    /// (« protéger »), en difficulté Normale ou plus. Appelée sur une mission GAGNÉE uniquement.
+    /// </summary>
+    private void UnlockAllPaysansAchievement()
+    {
+        if (_run.Difficulty < Difficulty.Normal || PaysansTotal == 0 || PaysansSaved < PaysansTotal)
+            return;
+        var id = _specialObjective switch
+        {
+            SpecialObjective.LibererPaysans => Achievements.LibererAll,
+            SpecialObjective.SauverPaysans => Achievements.SauverAll,
+            SpecialObjective.ProtegerPaysans => Achievements.ProtegerAll,
+            _ => null,
+        };
+        if (id != null)
+            SteamService.Unlock(id);
+    }
+
+    /// <summary>
+    /// Succès Steam « Triple kill » : au moins 3 ENNEMIS tombés pendant une action du JOUEUR, effets en chaîne
+    /// compris (tout ce que le moteur a résolu depuis <paramref name="deathLogStart"/>). Hors tutoriel.
+    /// </summary>
+    private void CheckTripleKill(Unit? actor, int deathLogStart)
+    {
+        if (actor?.Faction != Faction.Player || _tutorial != null)
+            return;
+        var kills = 0;
+        for (var i = deathLogStart; i < _match.DeathLog.Count; i++)
+            if (_match.DeathLog[i].Unit.Faction == Faction.Enemy)
+                kills++;
+        if (kills >= 3)
+            SteamService.Unlock(Achievements.TripleKill);
+    }
+
+    /// <summary>Découverte d'une classe (codex) + succès « toutes les unités » quand la dernière classe normale tombe.</summary>
+    private void DiscoverUnit(string asset)
+    {
+        if (!Context.Saves.DiscoverUnit(asset))
+            return;
+        foreach (var def in Domaines.All)
+            for (var tier = 1; tier <= 3; tier++)
+                foreach (var cls in Run.ClassesAtTier(def.Id, tier))
+                    if (!Context.Saves.IsUnitDiscovered(cls.Asset))
+                        return;
+        SteamService.Unlock(Achievements.UnitsAll);
+    }
+
+    /// <summary>Découverte d'un équipement (codex) + succès « moitié » / « tous les équipements ». Renvoie vrai si nouveau.</summary>
+    private bool DiscoverEquipment(string id)
+    {
+        if (!Context.Saves.DiscoverEquipment(id))
+            return false;
+        var total = Equipments.All.Count;
+        var known = Equipments.All.Count(e => Context.Saves.IsEquipmentDiscovered(e.Id));
+        if (known * 2 >= total)
+            SteamService.Unlock(Achievements.EquipmentHalf);
+        if (known >= total)
+            SteamService.Unlock(Achievements.EquipmentAll);
+        return true;
     }
 
     /// <summary>
@@ -6216,6 +6290,9 @@ public sealed class GameplayScene : Scene
         // Méta-progression : le compteur À VIE du profil suit le même delta (déblocage du commandant DUO).
         // Versé par COMBAT et non par mort, pour une seule écriture profil au lieu d'une par ennemi.
         Context.Saves.AddEnemiesKilled(kills);
+        // Succès « 500 morts » : TOUTES les unités tombées du combat (tous camps, pertes du joueur comprises).
+        if (Context.Saves.AddUnitsDied(_match.DeathLog.Count) >= Achievements.DeathsThreshold)
+            SteamService.Unlock(Achievements.Deaths);
         // Historique du commandant (écran de sélection) : ennemis tués et temps joué. Le tuto ne compte pas.
         if (_tutorial == null)
         {
@@ -6572,7 +6649,7 @@ public sealed class GameplayScene : Scene
         basile.AddEquipment(item);
         if (_playerSpec.TryGetValue(basile, out var spec))
             spec.AddEquipment(item);   // le gabarit aussi : la carte du pion et le rendu le montrent
-        Context.Saves.DiscoverEquipment(item.Id);   // codex : l'objet est vu
+        DiscoverEquipment(item.Id);   // codex : l'objet est vu
         // Pas de « +NOM DE L'OBJET » ici : l'icône apparaît aussitôt au-dessus de sa tête et le tooltip de
         // survol donne déjà son nom. Un troisième rappel au même endroit ne fait que masquer le plateau.
         // Nœud « barda » : chaque objet pris donne des PV max DÉFINITIFS aux DEUX meneurs.
@@ -7066,6 +7143,10 @@ public sealed class GameplayScene : Scene
         {
             Context.Saves.RecordCampaignWin(_run.CommanderDef.Id, _run.Difficulty);
             Context.Saves.RecordCommanderRunWon(_run.CommanderDef.Id);   // historique de l'écran de sélection
+            SteamService.Unlock(Achievements.RunWon);
+            SteamService.Unlock(Achievements.WinWith(_run.CommanderDef.Id));
+            if (_run.Difficulty == Difficulty.Difficile)
+                SteamService.Unlock(Achievements.WinHardWith(_run.CommanderDef.Id));
         }
 
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
@@ -8141,7 +8222,11 @@ public sealed class GameplayScene : Scene
     {
         var group = pool.Where(u => !u.Essential && Run.SameClass(u, rep)).Take(FusionSizeOf(rep)).ToList();
         if (_run.Fuse(group, evolution) != null)
+        {
             GrantFusionRecruits();   // nœud « fusion » de l'arbre : recrues offertes en plus
+            if (evolution.Tier == 3)
+                SteamService.Unlock(Achievements.FusionT3);
+        }
         Context.Sounds.Play("recruit");
         _reserveSel = null;
         _reserveFuseChoice = false;
@@ -8248,12 +8333,15 @@ public sealed class GameplayScene : Scene
         var victimSprite = victim != null ? UnitSprite(victim) : null;
         var damage = victim != null ? _match.PreviewDamage(from, target) : 0;
 
+        var throwActor = _match.UnitAt(from);
+        var deathLogStart = _match.DeathLog.Count;
         var kind = _match.TryThrow(from, target);
         if (kind == MoveKind.Invalid)
         {
             ClearThrow();
             return;
         }
+        CheckTripleKill(throwActor, deathLogStart);
 
         if (_match.LastThrow is { } thrown)
         {
@@ -8301,7 +8389,10 @@ public sealed class GameplayScene : Scene
         // Sprite du mobile capturé AVANT le déplacement : une « Interception » peut le tuer dans TryMove, et on a
         // alors besoin de son sprite pour rejouer l'animation d'attaque de l'intercepteur (le mort a été retiré).
         var moverSprite = _match.UnitAt(from) is { } mover ? UnitSprite(mover) : null;
+        var actor = _match.UnitAt(from);
+        var deathLogStart = _match.DeathLog.Count;
         var kind = _match.TryMove(from, to);
+        CheckTripleKill(actor, deathLogStart);
         foreach (var (cell, dmg) in _match.LastImpactHits)
             _damagePopups.Spawn(cell, dmg);
         if (_match.LastImpactHits.Count > 0)   // l'« Impact » a frappé : tuiles de l'AoE + son (instantané sur un déplacement)
@@ -8425,9 +8516,11 @@ public sealed class GameplayScene : Scene
             shieldSprite = UnitSprite(shield);
         }
 
+        var deathLogStart = _match.DeathLog.Count;
         var kind = _match.TryAttack(from, target);
         if (kind == MoveKind.Invalid)
             return kind;
+        CheckTripleKill(attacker, deathLogStart);
 
         // Le coup a bien été détourné : le commandant n'encaisse rien (ni flash, ni recul, ni chiffre sur lui) —
         // c'est l'allié, posé devant lui au moment de l'impact, qui prend le chiffre à cet endroit-là.
@@ -8966,6 +9059,8 @@ public sealed class GameplayScene : Scene
         var layout = BuildLayout();
         var viewport = VirtualViewport;
         _dezoomLayersReady = false;
+        _panelBandDx = null;   // reposé par DrawPanelBackground si le panneau est visible cette frame
+        _panelDimmed = false;
 
         // Fond : eau animée pixel-art derrière le plateau (passes shader dédiées, hors du
         // batch principal car elles changent d'état SpriteBatch et de render target).
@@ -9462,12 +9557,50 @@ public sealed class GameplayScene : Scene
 
         // Le voile d'assombrissement (pause / recrutement / fin) est dessiné DANS le canvas et ne
         // couvre donc que la zone 16:9 ; on l'étend ici aux bandes pour que tout l'écran soit sombre.
-        if (FullScreenDim() is { } dim)
+        // Le panneau de droite suit le même empilement que dans le canvas : par-dessus le voile
+        // (recrutement, révélations) ou dessous (modale, boss, pause).
+        var dim = FullScreenDim();
+        var panelOverDim = _panelBandDx is not null && !_panelDimmed && !_pauseMenu.IsOpen;
+        if (!panelOverDim)
+            DrawPanelBands(sb, realScreen, canvasOffset, canvasScale);
+        if (dim is { } d)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(Context.Pixel, fullScreen, dim);
+            sb.Draw(Context.Pixel, fullScreen, d);
             sb.End();
         }
+        if (panelOverDim)
+            DrawPanelBands(sb, realScreen, canvasOffset, canvasScale);
+    }
+
+    /// <summary>
+    /// Prolonge le panneau de droite dans les bandes du letterbox (écran plus haut que 16:9, ex. 4:3) :
+    /// il va alors jusqu'en haut et en bas de l'écran au lieu de flotter entre deux bandes d'eau. Ne fait
+    /// rien si le panneau n'a pas été dessiné cette frame. Dessiné en coordonnées CANVAS (échelle entière),
+    /// colonne pleine hauteur que le blit du canvas recouvre ensuite en son milieu.
+    /// </summary>
+    private void DrawPanelBands(SpriteBatch sb, Point realScreen, Point canvasOffset, int canvasScale)
+    {
+        if (_panelBandDx is not { } dx)
+            return;
+
+        var panel = PanelRect();
+        panel.X += (int)dx;
+        // Haut calé sur un multiple de la trame (négatif) pour que le motif se raccorde à celui du canvas.
+        var tileH = Math.Max(1, Context.Style.PanelTileHeight);
+        var above = (canvasOffset.Y + canvasScale - 1) / canvasScale;
+        var top = -((above + tileH - 1) / tileH) * tileH;
+        var bottom = (realScreen.Y - canvasOffset.Y + canvasScale - 1) / canvasScale;
+        var column = new Rectangle(panel.X, top, panel.Width, bottom - top);
+
+        sb.Begin(samplerState: SamplerState.PointClamp,
+            transformMatrix: Matrix.CreateScale(canvasScale, canvasScale, 1f)
+                * Matrix.CreateTranslation(canvasOffset.X, canvasOffset.Y, 0f));
+        Context.Style.FillPanelDither(sb, column);
+        DrawRect(sb, new Rectangle(column.X, column.Y, 2, column.Height), Context.Style.Theme.PanelEdge);
+        const int rightEdge = 6;   // = DrawPanelBackground
+        DrawRect(sb, new Rectangle(column.Right - rightEdge, column.Y, rightEdge, column.Height), Palette.Black1);
+        sb.End();
     }
 
     /// <summary>
@@ -12081,6 +12214,8 @@ public sealed class GameplayScene : Scene
 
     private void DrawPanelBackground(SpriteBatch sb)
     {
+        _panelBandDx = _panelSlideDx;   // à prolonger dans les bandes du letterbox (cf. DrawPanelBands)
+        _panelDimmed = false;
         var panel = PanelRect();
         Context.Style.FillPanelDither(sb, panel);   // fond tramé pixel-art, aux couleurs du thème d'UI
         DrawRect(sb, new Rectangle(panel.X, 0, 2, panel.Height), Context.Style.Theme.PanelEdge);
@@ -15315,7 +15450,9 @@ public sealed class GameplayScene : Scene
         var dx = BattleIntroProgress() * RightPanelWidth;
         sb.Begin(samplerState: SamplerState.PointClamp,
             transformMatrix: Matrix.CreateTranslation(dx, 0f, 0f));
+        _panelSlideDx = dx;
         DrawPanelBackground(sb);
+        _panelSlideDx = 0f;
         DrawPlacementPanel(sb);
         sb.End();
     }
@@ -16286,8 +16423,11 @@ public sealed class GameplayScene : Scene
     // ── Helpers de dessin ───────────────────────────────────────────────────────
     private void DrawRect(SpriteBatch sb, Rectangle r, Color c) => sb.Draw(Context.Pixel, r, c);
 
-    private void DrawDim(SpriteBatch sb, Viewport viewport) =>
+    private void DrawDim(SpriteBatch sb, Viewport viewport)
+    {
+        _panelDimmed = _panelBandDx is not null;   // voile PAR-DESSUS le panneau : idem dans les bandes
         DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * 0.62f);
+    }
 
     private void DrawZone(SpriteBatch sb, GridLayout layout, Cell cell, Color c)
     {
@@ -16455,6 +16595,7 @@ public sealed class GameplayScene : Scene
         var textA = 1f - MathHelper.Clamp(e * 3f, 0f, 1f);   // les textes s'éclipsent dès le début du vol
 
         sb.Begin(samplerState: SamplerState.PointClamp);
+        _panelDimmed = _panelBandDx is not null;   // voile PAR-DESSUS le panneau : idem dans les bandes
         DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * (0.62f * BossIntroDimFactor));
 
         if (textA > 0f)
