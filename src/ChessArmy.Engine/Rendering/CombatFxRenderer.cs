@@ -60,6 +60,36 @@ public sealed class CombatFxRenderer
     }
 
     /// <summary>
+    /// Variante POSITIONNÉE de la dissolution : sprite centré sur <paramref name="center"/>, tourné de
+    /// <paramref name="rotation"/> (radians) et agrandi de <paramref name="scale"/> autour de son centre. Sert aux
+    /// moitiés d'un pion coupé en deux, qui se dissolvent dans leur pose de chute. <paramref name="progress"/> = 0
+    /// dessine le sprite intact (le shader ne retire encore rien).
+    /// </summary>
+    public void DrawDissolve(SpriteBatch sb, Texture2D sprite, Vector2 center, float rotation, float scale,
+        float progress, Color edge, Vector2 seed, Vector2? pivot = null)
+    {
+        var origin = pivot ?? new Vector2(sprite.Width / 2f, sprite.Height / 2f);   // point du sprite posé sur center
+        if (_effect == null)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(sprite, center, null, Color.White * (1f - progress), rotation, origin, scale, SpriteEffects.None, 0f);
+            sb.End();
+            return;
+        }
+
+        Set("Progress", progress);
+        Set("DissolveEdge", ToVec4(edge));
+        Set("DissolveCells", 44f);
+        Set("EdgeWidth", 0.14f);
+        Set("Seed", seed);
+        _effect.CurrentTechnique = _effect.Techniques["Dissolve"];
+
+        sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
+        sb.Draw(sprite, center, null, Color.White, rotation, origin, scale, SpriteEffects.None, 0f);
+        sb.End();
+    }
+
+    /// <summary>
     /// Éclaircit la silhouette de <paramref name="sprite"/> (réaction « touché ») par
     /// <paramref name="intensity"/> [0,1]. Mélange ADDITIF, par-dessus le sprite déjà dessiné.
     /// </summary>

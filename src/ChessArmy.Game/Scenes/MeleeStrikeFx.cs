@@ -46,6 +46,8 @@ public sealed class MeleeStrikeFx
     private const double ThrowDur    = 0.40; // vol du pion lancé (2-3 cases, on doit le voir partir)
     private const double ThrowHopDur = 0.18; // rebond du pion lancé vers sa case d'arrivée (cible survivante)
     private const double DissolveDur = 0.45; // désintégration du mort
+    private const double SliceDur    = 0.50; // mort au corps à corps : pion COUPÉ en deux, moitiés qui tombent (avant la dissolution)
+    private const double ArrowDeathDur = 0.60; // mort par flèche : recul, bascule et chute au sol (avant la dissolution)
     private const double BlinkDur    = 0.34; // clignotement du survivant
     private const double AdvanceDur  = 0.14; // l'attaquant prend la place libérée
     private const double RecoilDur   = 0.12; // retour sur sa case (pas d'avance)
@@ -89,6 +91,37 @@ public sealed class MeleeStrikeFx
     public bool Killed { get; private set; }
     public bool Advanced { get; private set; }
 
+    /// <summary>
+    /// Vrai si la victime meurt d'un coup de CORPS À CORPS (fente / charge) : elle est coupée en deux, les
+    /// moitiés se séparent et tombent (<see cref="SliceProgress"/>), PUIS se dissolvent. Tirs, sorts et pion
+    /// lancé gardent la dissolution seule.
+    /// </summary>
+    public bool Sliced { get; private set; }
+
+    /// <summary>
+    /// Option « Sang » (GameSettings.Blood), poussée par la scène : <c>false</c> = plus aucune coupe, toutes les
+    /// morts se dissolvent simplement.
+    /// </summary>
+    public static bool GoreEnabled { get; set; } = true;
+
+    /// <summary>Durée de la mort : coupe éventuelle puis dissolution.</summary>
+    private double DeathDur => PreDeathDur + DissolveDur;
+
+    /// <summary>Avancement [0,1] de la coupe (0 avant l'impact, 1 une fois les moitiés tombées).</summary>
+    public float SliceProgress => Sliced ? Clamp01((T - _approachDur) / SliceDur) : 0f;
+
+    /// <summary>
+    /// Vrai si la victime meurt d'une FLÈCHE : la flèche reste plantée, le pion recule, bascule et tombe au sol
+    /// (ou est projeté et cloué au sol sur un gros coup, choix de la scène), PUIS se dissout.
+    /// </summary>
+    public bool ArrowKill { get; private set; }
+
+    /// <summary>Avancement [0,1] de la chute après la flèche (0 avant l'impact, 1 une fois le pion à terre).</summary>
+    public float ArrowProgress => ArrowKill ? Clamp01((T - _approachDur) / ArrowDeathDur) : 0f;
+
+    /// <summary>Animation de mort jouée AVANT la dissolution : coupe (corps à corps) ou chute (flèche).</summary>
+    private double PreDeathDur => Sliced ? SliceDur : ArrowKill ? ArrowDeathDur : 0;
+
     /// <summary>Vrai si l'anim en cours est un DÉPLACEMENT rejoué (fonction « revoir la dernière action de l'IA »)
     /// et non une attaque : le pion glisse simplement de <see cref="From"/> à <see cref="To"/>, sans victime ni
     /// impact. Cf. <see cref="BeginMove"/>.</summary>
@@ -127,6 +160,8 @@ public sealed class MeleeStrikeFx
         DissolveOnly = false;
         VictimDoomed = victimDoomed;
         _style = style;
+        Sliced = GoreEnabled && killed && victimSprite != null && style is AttackStyle.Lunge or AttackStyle.Leap;
+        ArrowKill = killed && victimSprite != null && style == AttackStyle.Shoot;   // pas du gore : toujours joué
         _approachDur = style switch
         {
             AttackStyle.Leap  => LeapDur,
@@ -143,8 +178,8 @@ public sealed class MeleeStrikeFx
 
         _total = (killed, advanced) switch
         {
-            (true, true)  => _approachDur + DissolveDur + AdvanceDur, // mêlée mortelle : avance après dissolution
-            (true, false) => _approachDur + DissolveDur,              // tir mortel : reste en place
+            (true, true)  => _approachDur + DeathDur + AdvanceDur, // mêlée mortelle : avance après dissolution
+            (true, false) => _approachDur + DeathDur,              // tir mortel : reste en place
             _             => _approachDur + BlinkDur,                 // survivant : flash après contact
         };
     }
@@ -166,6 +201,8 @@ public sealed class MeleeStrikeFx
         Killed = false;
         Advanced = false;
         MoveOnly = true;
+        Sliced = false;
+        ArrowKill = false;
         DissolveOnly = false;
         VictimDoomed = false;
         _style = AttackStyle.Lunge;
@@ -192,6 +229,8 @@ public sealed class MeleeStrikeFx
         Advanced = false;
         MoveOnly = false;
         DissolveOnly = true;
+        Sliced = false;
+        ArrowKill = false;
         VictimDoomed = false;
         _style = AttackStyle.Lunge;
         _approachDur = 0;        // impact immédiat : la dissolution démarre à la première frame
@@ -263,7 +302,7 @@ public sealed class MeleeStrikeFx
 
     /// <summary>Avancement de la dissolution de la victime [0,1] (0 avant l'impact).</summary>
     public float DissolveProgress =>
-        Killed ? (float)Math.Clamp((T - _approachDur) / DissolveDur, 0, 1) : 0f;
+        Killed ? (float)Math.Clamp((T - _approachDur - PreDeathDur) / DissolveDur, 0, 1) : 0f;
 
     /// <summary>Intensité du flash « touché » du survivant [0,1] (deux pulsations qui s'éteignent).</summary>
     public float FlashIntensity
@@ -317,7 +356,7 @@ public sealed class MeleeStrikeFx
 
         if (Killed && Advanced)
         {
-            var advStart = _approachDur + DissolveDur;
+            var advStart = _approachDur + DeathDur;
             if (T < advStart)
                 return peak;                                    // maintien pendant la dissolution
             var k = Clamp01((T - advStart) / AdvanceDur);
@@ -345,7 +384,7 @@ public sealed class MeleeStrikeFx
 
         if (Killed && Advanced)
         {
-            var advStart = _approachDur + DissolveDur;
+            var advStart = _approachDur + DeathDur;
             if (T < advStart)
                 return contact;                                 // maintien au contact pendant la dissolution
             var k = Clamp01((T - advStart) / AdvanceDur);
@@ -386,7 +425,7 @@ public sealed class MeleeStrikeFx
     /// <summary>Avancement [0,1] du rebond final du pion lancé (0 tant qu'il n'a pas commencé).</summary>
     private float ThrowHopProgress()
     {
-        var start = Killed ? _approachDur + DissolveDur : _approachDur;
+        var start = Killed ? _approachDur + DeathDur : _approachDur;
         var dur = Killed ? AdvanceDur : ThrowHopDur;
         return Clamp01((T - start) / dur);
     }
@@ -427,7 +466,7 @@ public sealed class MeleeStrikeFx
 
         if (Killed && Advanced)
         {
-            var advStart = _approachDur + DissolveDur;
+            var advStart = _approachDur + DeathDur;
             if (T < advStart)
                 return 0f;                                       // posé au contact pendant la dissolution
             var k = Clamp01((T - advStart) / AdvanceDur);

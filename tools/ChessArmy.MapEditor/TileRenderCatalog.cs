@@ -29,6 +29,18 @@ internal sealed class TileInfo
     public string? Sheet { get; init; }
     /// <summary>Cellule découpée du tileset (cellW × cellH), ou null si la tuile n'a pas d'art.</summary>
     public Bitmap? Image { get; init; }
+
+    /// <summary>Image source de la tuile : la feuille de tileset, ou son PNG individuel. Null si aucun art.</summary>
+    public string? ArtPath { get; init; }
+
+    /// <summary>
+    /// Cellules de la tuile dans <see cref="ArtPath"/> (une par variante, ou une seule). Le masque des zones
+    /// verticales s'édite cellule par cellule, aux mêmes coordonnées que l'art.
+    /// </summary>
+    public IReadOnlyList<Rectangle> Cells { get; init; } = Array.Empty<Rectangle>();
+
+    /// <summary>Masque des zones VERTICALES (murs) de l'art, cf. <see cref="TileRenderCatalog.FacesPathFor"/>.</summary>
+    public string? MaskPath => ArtPath is null ? null : TileRenderCatalog.FacesPathFor(ArtPath);
 }
 
 /// <summary>
@@ -178,6 +190,8 @@ internal sealed class TileRenderCatalog
 
             var image = CropTile(t, dto.Tilesets, sheets)
                         ?? LoadStandaloneTile(Path.GetDirectoryName(tilesJsonPath), t.Id!);
+            var (artPath, cells) = ArtCells(t, dto.Tilesets, sheets, tilesetsDir,
+                Path.GetDirectoryName(tilesJsonPath), image);
             var info = new TileInfo
             {
                 Id = t.Id!,
@@ -190,6 +204,8 @@ internal sealed class TileRenderCatalog
                 // absentes de la palette).
                 Sheet = TabFor(t.Sheet),
                 Image = image,
+                ArtPath = artPath,
+                Cells = cells,
             };
             tiles.Add(info);
             byKey[info.Key] = info;
@@ -247,6 +263,42 @@ internal sealed class TileRenderCatalog
             return null;
         var path = Path.Combine(tilesDir, id + ".png");
         return File.Exists(path) ? LoadUnlocked(path) : null;
+    }
+
+    /// <summary>
+    /// Masque des zones VERTICALES d'une image de tuiles : même dossier, même nom suivi de <c>_faces</c>
+    /// (<c>TilesMurs.png</c> → <c>TilesMurs_faces.png</c>), mêmes dimensions. Un pixel opaque = face verticale
+    /// (le sang y coule au lieu de s'y poser). Absent = aucune zone verticale. Convention partagée avec le jeu
+    /// (cf. <c>GameplayScene.LoadFaceMasks</c>).
+    /// </summary>
+    public static string FacesPathFor(string artPath) =>
+        Path.Combine(Path.GetDirectoryName(artPath) ?? "", Path.GetFileNameWithoutExtension(artPath) + "_faces.png");
+
+    /// <summary>Image source + cellules (toutes les variantes) d'une tuile, pour l'édition de son masque.</summary>
+    private static (string? ArtPath, IReadOnlyList<Rectangle> Cells) ArtCells(TileDto t,
+        Dictionary<string, TilesetDto>? tilesets, Dictionary<string, Bitmap> sheets, string tilesetsDir,
+        string? tilesDir, Bitmap? image)
+    {
+        if (t.Sheet is not null && tilesets is not null && tilesets.TryGetValue(t.Sheet, out var set)
+            && sheets.ContainsKey(t.Sheet) && set.File is not null)
+        {
+            int cw = set.CellW > 0 ? set.CellW : 64;
+            int ch = set.CellH > 0 ? set.CellH : 80;
+            var refs = t.Variants is { Count: > 0 }
+                ? t.Variants.Select(v => (v.Col, v.Row))
+                : new[] { (t.Col, t.Row) };
+            return (Path.Combine(tilesetsDir, set.File),
+                refs.Select(r => new Rectangle(r.Item1 * cw, r.Item2 * ch, cw, ch)).ToList());
+        }
+
+        // Tuile sans tileset : son PNG individuel, pris en entier.
+        if (image is not null && !string.IsNullOrEmpty(tilesDir))
+        {
+            var path = Path.Combine(tilesDir, t.Id + ".png");
+            if (File.Exists(path))
+                return (path, new[] { new Rectangle(0, 0, image.Width, image.Height) });
+        }
+        return (null, Array.Empty<Rectangle>());
     }
 
     private static Bitmap? CropTile(TileDto t, Dictionary<string, TilesetDto>? tilesets,

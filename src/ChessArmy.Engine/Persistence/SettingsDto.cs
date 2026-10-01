@@ -32,6 +32,9 @@ public sealed class SettingsDto
     /// <summary>Thème de couleur de l'UI. Absent d'un ancien options.json → Doré (défaut).</summary>
     public UiThemeId UiTheme { get; set; } = UiThemeId.Gold;
 
+    /// <summary>Effets sanglants (sang, pions coupés). Absent d'un ancien options.json → activés.</summary>
+    public bool Blood { get; set; } = true;
+
     /// <summary>Mode démo persisté (toggle pratique en test ; l'argument -demo et demo.flag l'activent aussi).</summary>
     public bool IsDemo { get; set; }
 
@@ -45,6 +48,7 @@ public sealed class SettingsDto
         Sfx = s.Audio.Sfx,
         Language = s.Language,
         UiTheme = s.UiTheme,
+        Blood = s.Blood,
         IsDemo = s.IsDemo,
     };
 
@@ -64,6 +68,7 @@ public sealed class SettingsDto
         s.Audio.Sfx = Sfx;
         s.Language = Language;
         s.UiTheme = UiTheme;
+        s.Blood = Blood;
         s.IsDemo = IsDemo;
     }
 }

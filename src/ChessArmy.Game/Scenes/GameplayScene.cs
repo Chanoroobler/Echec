@@ -755,8 +755,9 @@ public sealed class GameplayScene : Scene
     {
         LoadTiles();
         LoadMaps();
-        // Sang au sol : seulement sur les tuiles du plateau (hors grille = eau du fond, la goutte disparaît).
-        _sparks.IsGround = (c, r) => c >= 0 && r >= 0 && c < Columns && r < Rows;
+        // Sang : se pose sur les tuiles, COULE sur les zones verticales (masques + épaisseur du bord), dérive sur l'eau.
+        _sparks.SurfaceAt = SurfaceAt;   // sol (tache), mur vertical (coule), ou eau (dérive)
+        MeleeStrikeFx.GoreEnabled = Context.Settings.Blood;   // option « Sang » : coupe des pions au corps à corps
         // Coffre : PNG fermé (plateau) + spritesheet d'ouverture (révélation). Placeholders si absents.
         _chestSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffre.png"));
         _chestAnim = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffreAnimate.png"));
@@ -792,6 +793,9 @@ public sealed class GameplayScene : Scene
     public override void Unload()
     {
         FlushCommanderPlayTime();   // historique du commandant : le temps joué depuis le dernier combat
+        _sliceUpper?.Dispose();
+        _sliceLower?.Dispose();
+        _sliceUpper = _sliceLower = _sliceSource = null;
         foreach (var tile in _tiles.Values)
             tile.Dispose();
         _tiles.Clear();
@@ -1111,6 +1115,9 @@ public sealed class GameplayScene : Scene
             var tex = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath($"Assets/Tilesets/{sheet.File}"));
             if (tex != null)
                 _sheets[name] = tex;
+            // Masque des zones verticales (murs) peint dans l'éditeur de cartes : <file>_faces.png, optionnel.
+            if (LoadFaceMask($"Assets/Tilesets/{System.IO.Path.GetFileNameWithoutExtension(sheet.File)}_faces.png") is { } mask)
+                _sheetFaces[name] = mask;
         }
 
         foreach (var t in doc.Tiles)
@@ -1146,6 +1153,77 @@ public sealed class GameplayScene : Scene
 
         var tex = TileTexture(id);
         return (tex, new Rectangle(0, 0, tex.Width, tex.Height));
+    }
+
+    // ── Zones verticales (murs) : le sang y coule ─────────────────────────────────────────────────────
+
+    /// <summary>Masque de faces verticales : un booléen par pixel de l'image (largeur × hauteur).</summary>
+    private sealed record FaceMask(int Width, int Height, bool[] Pixels)
+    {
+        public bool At(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height && Pixels[y * Width + x];
+    }
+
+    private readonly Dictionary<string, FaceMask> _sheetFaces = new();    // par tileset
+    private readonly Dictionary<string, FaceMask?> _tileFaces = new();    // par tuile SANS tileset (PNG individuel)
+
+    /// <summary>
+    /// Lit un masque <c>*_faces.png</c> (peint dans l'éditeur de cartes, bouton « Zones verticales ») : pixel
+    /// opaque = face verticale. Null si absent : aucune zone verticale (c'est le défaut).
+    /// </summary>
+    private FaceMask? LoadFaceMask(string relative)
+    {
+        using var tex = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath(relative));
+        if (tex is null)
+            return null;
+        var data = new Color[tex.Width * tex.Height];
+        tex.GetData(data);
+        var pixels = new bool[data.Length];   // une fois au chargement : boucle directe, sans LINQ
+        for (var i = 0; i < data.Length; i++)
+            pixels[i] = data[i].A > 0;
+        return new FaceMask(tex.Width, tex.Height, pixels);
+    }
+
+    /// <summary>Le pixel (<paramref name="lx"/>, <paramref name="ly"/>) de la tuile posée sur <paramref name="cell"/> est-il une face verticale ?</summary>
+    private bool IsFacePixel(Cell cell, int lx, int ly)
+    {
+        var id = _battlefield[cell].Id;
+        if (_tileSheet.TryGetValue(id, out var sheetName))
+        {
+            if (!_sheetFaces.TryGetValue(sheetName, out var mask) || !_tileVariants.TryGetValue(id, out var variants)
+                || variants.Count == 0)
+                return false;
+            var src = variants.Count == 1 ? variants[0] : variants[VariantIndex(id, cell, variants.Count)];
+            return lx < src.Width && ly < src.Height && mask.At(src.X + lx, src.Y + ly);
+        }
+        if (!_tileFaces.TryGetValue(id, out var own))
+            _tileFaces[id] = own = LoadFaceMask($"Assets/Tiles/{id}_faces.png");
+        return own?.At(lx, ly) ?? false;
+    }
+
+    /// <summary>Case présente sur le plateau (dans la grille et pas effondrée) : une tuile y est dessinée.</summary>
+    private bool HasTile(Cell cell) => _battlefield.Contains(cell) && !_fallenCells.Contains(cell);
+
+    /// <summary>
+    /// Nature de la surface au point <paramref name="cells"/> (en cases depuis l'origine du plateau) : sol, mur
+    /// vertical ou rien (eau). Sur une tuile : son masque de faces décide. Sans tuile mais juste sous une tuile
+    /// présente : c'est son ÉPAISSEUR (bord du plateau, trou d'une chute), verticale d'office.
+    /// </summary>
+    private BloodSurface SurfaceAt(Vector2 cells)
+    {
+        int col = (int)MathF.Floor(cells.X), row = (int)MathF.Floor(cells.Y);
+        var texPx = GridLayout.DefaultTileSize;   // les masques sont en pixels de texture (case = 64 px)
+        var lx = (int)((cells.X - col) * texPx);
+        var ly = (int)((cells.Y - row) * texPx);
+
+        var cell = new Cell(col, row);
+        if (HasTile(cell))
+            return IsFacePixel(cell, lx, ly) ? BloodSurface.Wall : BloodSurface.Ground;
+
+        var above = new Cell(col, row - 1);
+        const int thickness = 16;   // épaisseur dessinée sous chaque tuile (tiles.json « thickness »)
+        if (ly < thickness && HasTile(above))
+            return BloodSurface.Wall;
+        return BloodSurface.None;
     }
 
     /// <summary>
@@ -9187,7 +9265,7 @@ public sealed class GameplayScene : Scene
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
-                _sparks.DrawGround(sb, Context.Pixel, board.Origin, board.TileSize);   // sang au sol (tout le combat), sous les unités
+                if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, board.Origin, board.TileSize);   // sang au sol (tout le combat), sous les unités
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
@@ -9352,7 +9430,7 @@ public sealed class GameplayScene : Scene
         {
             DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
-            _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // sang au sol (tout le combat)
+            if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // sang au sol (tout le combat)
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb);
             DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
@@ -9518,7 +9596,7 @@ public sealed class GameplayScene : Scene
         }
 
         _water.DrawWater(sb, _time, w, h);
-        _sparks.DrawFloating(sb, Context.Pixel, w, h);   // sang tombé à l'eau, emporté par le courant (sous le plateau)
+        if (Context.Settings.Blood) _sparks.DrawFloating(sb, Context.Pixel, w, h);   // sang tombé à l'eau, emporté par le courant (sous le plateau)
 
         // Frange d'ombre : UNIQUEMENT quand le plateau est un « îlot » entièrement dans le canvas.
         // Zoomé / pané, le plateau déborde l'écran : il n'y a plus d'eau autour à ombrer, et le
@@ -11558,8 +11636,16 @@ public sealed class GameplayScene : Scene
         var victimRect = new Rectangle((int)victimTop.X + kb.X, (int)victimTop.Y + kb.Y, size, size);
 
         // 1. Victime qui meurt : dissolution sur sa case (reculée), sous l'attaquant qui prendra la place.
+        //    Mort au CORPS À CORPS : coupée en deux d'abord, les moitiés tombent PUIS se dissolvent.
         if (_fx.Killed && _fx.VictimSprite is { } deadSprite)
-            _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
+        {
+            if (_fx.Sliced)
+                DrawSlicedVictim(sb, layout, deadSprite, victimRect, size, fxPixel);
+            else if (_fx.ArrowKill)
+                DrawArrowKilledVictim(sb, layout, deadSprite, victimRect, size);
+            else
+                _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
+        }
 
         // 2. Attaquant animé (fente/charge sautée puis avance ou recul) + ombre projetée à l'aplomb.
         if (_fx.AttackerSprite is { } attackerSprite)
@@ -11619,6 +11705,430 @@ public sealed class GameplayScene : Scene
                 DrawArrow(sb, fromCenter, toCenter, flight, size);
             else
                 DrawMagicBolt(sb, fromCenter, toCenter, flight, size);
+        }
+    }
+
+    // ── Mort par flèche ──────────────────────────────────────────────────────────────────────────────
+
+    // Coup assez fort pour CLOUER le pion au sol (projeté, flèche traversante) au lieu de la simple chute.
+    private const int ArrowPinDamage = 20;
+    private const float ArrowRecoil = 0.10f;     // recul sous l'impact (cases)
+    private const float ArrowPinDist = 0.5f;     // projection du pion cloué (cases)
+    private const float ArrowPinHop = 0.2f;      // petit vol du pion cloué avant de retomber (cases)
+    private bool _arrowPinned;                   // décidé à l'impact (cf. OnImpact) selon les dégâts
+    private bool _arrowLandBlood;                // giclée d'atterrissage du pion cloué déjà émise
+    private readonly Dictionary<Texture2D, int> _spriteFeet = new();   // rangée opaque la plus basse (pivot de chute), par sprite
+
+    /// <summary>Rangée opaque la plus basse du sprite (ses pieds / socle) : pivot de la chute. Mesurée une fois.</summary>
+    private int SpriteFeet(Texture2D sprite)
+    {
+        if (_spriteFeet.TryGetValue(sprite, out var feet))
+            return feet;
+        int w = sprite.Width, h = sprite.Height;
+        if (_sliceSrcBuf.Length != w * h)   // réutilise le tampon de découpe (même taille de sprite)
+        {
+            _sliceSrcBuf = new Color[w * h];
+            _sliceUpBuf = new Color[w * h];
+            _sliceLowBuf = new Color[w * h];
+        }
+        sprite.GetData(_sliceSrcBuf);
+        feet = h - 1;
+        for (var y = h - 1; y >= 0; y--)
+        {
+            var any = false;
+            for (var x = 0; x < w && !any; x++)
+                any = _sliceSrcBuf[y * w + x].A > 0;
+            if (any) { feet = y; break; }
+        }
+        _spriteFeet[sprite] = feet;
+        _sliceSource = null;   // le tampon de découpe a été réécrit : forcer un nouveau découpage au besoin
+        return feet;
+    }
+
+    /// <summary>
+    /// Victime tuée par une flèche. CHUTE : la flèche reste plantée côté tireur, le pion recule sous l'impact puis
+    /// bascule en arrière (pivot sur ses pieds) et s'écrase à plat. CLOUÉ (gros coup) : la flèche le traverse, il est
+    /// projeté d'une demi-case dans le sens du tir et retombe à plat, épinglé. Puis il se dissout dans cette pose
+    /// (flèche comprise). À plat = rotation d'exactement 90° : la pose finale reste nette (pixel-perfect).
+    /// </summary>
+    private void DrawArrowKilledVictim(SpriteBatch sb, GridLayout layout, Texture2D sprite, Rectangle victimRect, int size)
+    {
+        var d = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
+        if (d.LengthSquared() < 0.0001f)
+            d = Vector2.UnitX;
+        d.Normalize();
+        // Tombe À L'OPPOSÉ du tireur ; tir vertical : côté tiré de la graine (stable pour cette mort).
+        var side = MathF.Abs(d.X) > 0.01f ? MathF.Sign(d.X) : (((int)_fx.Seed.X & 1) == 0 ? 1f : -1f);
+
+        var p = _fx.ArrowProgress;
+        var scale = size / (float)sprite.Width;
+        var feetTex = SpriteFeet(sprite) + 1f;
+        var pivotTex = new Vector2(sprite.Width / 2f, feetTex);
+        var feetWorld = new Vector2(victimRect.X + size / 2f, victimRect.Y + feetTex * scale);
+
+        Vector2 offset;
+        float fall;
+        if (_arrowPinned)
+        {
+            var e = 1f - (1f - p) * (1f - p);
+            offset = d * (ArrowPinDist * size * e) + new Vector2(0f, -ArrowPinHop * size * MathF.Sin(p * MathF.PI));
+            fall = MathF.Min(1f, p * 1.4f);
+            fall *= fall;
+        }
+        else
+        {
+            var r = MathF.Min(1f, p / 0.2f);
+            offset = d * (ArrowRecoil * size * (1f - (1f - r) * (1f - r)));
+            var f = MathHelper.Clamp((p - 0.15f) / 0.85f, 0f, 1f);
+            fall = f * f;   // bascule qui accélère : il s'écrase
+        }
+        var angle = side * MathHelper.PiOver2 * fall;
+        var pivot = feetWorld + offset;
+        pivot = new Vector2(MathF.Round(pivot.X), MathF.Round(pivot.Y));
+
+        var dissolve = _fx.DissolveProgress;
+        if (dissolve <= 0f)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(sprite, pivot, null, Color.White, angle, pivotTex, scale, SpriteEffects.None, 0f);
+            sb.End();
+        }
+        else
+            _combatFx.DrawDissolve(sb, sprite, pivot, angle, scale, dissolve, Palette.Purple5, _fx.Seed, pivotTex);
+
+        // Point d'impact au torse, côté tireur, dans le repère NON tourné (relatif au pivot des pieds).
+        var impactLocal = new Vector2(-d.X * 0.12f * size, -(feetTex - sprite.Height * 0.45f) * scale);
+        var rot = Matrix.CreateRotationZ(angle);
+        var impact = pivot + Vector2.Transform(impactLocal, rot);
+
+        // Giclée quand le pion cloué touche le sol (sang normal, persistant).
+        if (p < 0.5f)
+            _arrowLandBlood = false;
+        else if (_arrowPinned && !_arrowLandBlood && p >= 0.85f && Context.Settings.Blood)
+        {
+            _arrowLandBlood = true;
+            var top = layout.CellToScreen(_fx.To.Column, _fx.To.Row).Y + d.Y * ArrowPinDist * size;
+            _sparks.EmitBlood(impact, 16, MathF.Max(3f, size / 21f), d, 0.6f,
+                top + size * 0.55f, top + size * 0.95f, layout.Origin, size);
+        }
+
+        // La flèche plantée suit le pion (même rotation) ; elle s'efface avec la dissolution.
+        if (dissolve < 0.5f)
+            DrawStuckArrow(sb, impact, Vector2.TransformNormal(d, rot), size, dissolve <= 0f ? 1f : 0.5f, _arrowPinned);
+    }
+
+    /// <summary>
+    /// Flèche plantée : fût de blocs « bois » qui dépasse côté tireur (à l'opposé de <paramref name="dir"/>, le sens
+    /// du tir), empennage clair au bout. Traversante (clouée) : la pointe ressort aussi de l'autre côté.
+    /// </summary>
+    private void DrawStuckArrow(SpriteBatch sb, Vector2 impact, Vector2 dir, int size, float alpha, bool through)
+    {
+        var block = System.Math.Max(2, size / 14);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        for (var i = 1; i <= 3; i++)
+            DrawBlockSnapped(sb, impact - dir * (block * i), block, Palette.Brown1 * alpha);
+        DrawBlockSnapped(sb, impact - dir * (block * 4), block, Palette.Brown4 * alpha);   // empennage
+        if (through)
+        {
+            DrawBlockSnapped(sb, impact + dir * (size * 0.3f), block, Palette.Brown1 * alpha);
+            DrawBlockSnapped(sb, impact + dir * (size * 0.3f + block), block, Palette.White * alpha);   // pointe ressortie
+        }
+        sb.End();
+    }
+
+    // ── Pion coupé en deux (mort au corps à corps) ───────────────────────────────────────────────────
+
+    // Moitiés du sprite de la victime, découpées une fois par mort (cache : même sprite + même coupe = réutilisé).
+    private Texture2D? _sliceUpper, _sliceLower, _sliceSource;
+    private Color[] _sliceSrcBuf = System.Array.Empty<Color>(), _sliceUpBuf = System.Array.Empty<Color>(), _sliceLowBuf = System.Array.Empty<Color>();   // tampons de découpe réutilisés
+    private Vector2 _sliceNormal;
+    private bool _sliceHead;
+    private float _sliceCutY;   // hauteur de la coupe dans le sprite (px texture) : centre, ou cou si décapitation
+    private float _sliceHeadY;  // centre de la tête dans le sprite (px texture) : pivot de sa rotation en vol
+    private float _headTrailS;  // avancement du vol à la dernière giclée de traînée (cf. DrawSlicedVictim)
+
+    // Coupe DIAGONALE (attaque verticale ou en diagonale), en fraction de case (cf. DrawSlicedVictim).
+    private const float SliceSlide = 0.22f;      // la moitié haute glisse le long de la coupe, poussée par le coup
+    private const float SliceDrop = 0.18f;       // ...et retombe au sol
+    private const float SliceSpread = 0.06f;     // écart perpendiculaire entre les deux moitiés
+    private const float SliceTilt = 0.35f;       // bascule de la moitié haute (radians) : seul pas non pixel-perfect, bref
+    private const float SliceFlashEnd = 0.25f;   // le trait de lame reste visible sur ce début de coupe
+
+    // DÉCAPITATION (attaque horizontale) : coupe au cou, la tête s'envole en arc dans le sens du coup.
+    private const float HeadCutFraction = 0.30f; // hauteur du cou : 30 % de la silhouette depuis son sommet
+    private const float HeadFly = 1.8f;          // distance horizontale parcourue par la tête (cases)
+    private const float HeadArc = 0.7f;          // hauteur de l'arc de vol (cases)
+    private const float HeadTrailStep = 0.035f;  // traînée de sang : une giclée chaque fois que le vol avance de ce pas
+    private const int HeadTrailDrops = 3;         // gouttes par giclée de traînée
+    private const float CutSpurtStep = 0.06f;    // plaies : une giclée chaque fois que la coupe avance de ce pas
+    private const float CutSpurtEnd = 0.85f;     // ...jusqu'à ce point de la coupe (le flot se tarit avant la dissolution)
+    private const int CutSpurtDrops = 6;          // gouttes par giclée au début (diminue à mesure que le flot se tarit)
+    private float _cutSpurtS;                     // avancement de la coupe à la dernière giclée des plaies
+    private const float HeadLand = 0.75f;        // la tête finit plus bas qu'au départ : elle retombe au sol (cases)
+    private const float HeadSpin = 5.5f;         // rotation totale de la tête en vol (radians, ~1 tour)
+
+    /// <summary>
+    /// Géométrie de la coupe, en repère écran : <c>Line</c> = direction du trait, <c>Normal</c> = perpendiculaire
+    /// orientée vers le HAUT (côté de la partie qui part), <c>Push</c> = sens du coup le long du trait,
+    /// <c>Head</c> = décapitation (attaque horizontale : trait quasi horizontal au niveau du cou) ; sinon coupe
+    /// diagonale par le milieu, dans le sens du coup.
+    /// </summary>
+    private (Vector2 Line, Vector2 Normal, Vector2 Push, bool Head) SliceGeometry()
+    {
+        var d = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
+        if (d.LengthSquared() < 0.0001f)
+            d = Vector2.UnitX;
+        d.Normalize();
+
+        var head = MathF.Abs(d.X) > MathF.Abs(d.Y);
+        var line = head
+            ? new Vector2(1f, 0.12f * MathF.Sign(d.X))      // presque horizontal, légèrement incliné vers l'avant
+            : new Vector2(-d.Y, d.X) + d * 0.6f;            // perpendiculaire au coup, inclinée : en diagonale
+        line.Normalize();
+        var normal = new Vector2(-line.Y, line.X);
+        if (normal.Y > 0f)
+            normal = -normal;                               // côté HAUT
+        var push = Vector2.Dot(line, d) >= 0f ? line : -line;
+        return (line, normal, push, head);
+    }
+
+    /// <summary>
+    /// Découpe le sprite en deux textures de part et d'autre de la coupe : par le centre (diagonale), ou au
+    /// niveau du cou (décapitation), mesuré sur la silhouette opaque réelle du sprite.
+    /// </summary>
+    private void EnsureSliceTextures(Texture2D sprite, Vector2 normal, bool head)
+    {
+        if (_sliceSource == sprite && _sliceNormal == normal && _sliceHead == head && _sliceUpper != null)
+            return;
+
+        // Textures et tableaux RÉUTILISÉS d'une mise à mort à l'autre (sprites tous de même taille) : on ne
+        // réalloue que si la taille change. Le découpage n'écrit que des pixels, aucune allocation sinon.
+        int w = sprite.Width, h = sprite.Height, n = w * h;
+        if (_sliceUpper == null || _sliceUpper.Width != w || _sliceUpper.Height != h)
+        {
+            _sliceUpper?.Dispose();
+            _sliceLower?.Dispose();
+            _sliceUpper = new Texture2D(Context.GraphicsDevice, w, h);
+            _sliceLower = new Texture2D(Context.GraphicsDevice, w, h);
+        }
+        if (_sliceSrcBuf.Length != n)
+        {
+            _sliceSrcBuf = new Color[n];
+            _sliceUpBuf = new Color[n];
+            _sliceLowBuf = new Color[n];
+        }
+        var src = _sliceSrcBuf;
+        sprite.GetData(src);
+
+        var cutY = h / 2f;
+        var headTop = -1;
+        if (head)
+        {
+            int topRow = -1, bottomRow = -1;
+            for (var y = 0; y < h && topRow < 0; y++)
+                for (var x = 0; x < w; x++)
+                    if (src[y * w + x].A > 0) { topRow = y; break; }
+            for (var y = h - 1; y >= 0 && bottomRow < 0; y--)
+                for (var x = 0; x < w; x++)
+                    if (src[y * w + x].A > 0) { bottomRow = y; break; }
+            if (topRow >= 0)
+            {
+                cutY = topRow + (bottomRow - topRow) * HeadCutFraction;
+                headTop = topRow;
+            }
+        }
+
+        var up = _sliceUpBuf;
+        var low = _sliceLowBuf;
+        var c = new Vector2(w / 2f, cutY);
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                var i = y * w + x;
+                var upper = Vector2.Dot(new Vector2(x + 0.5f, y + 0.5f) - c, normal) > 0f;
+                up[i] = upper ? src[i] : Color.Transparent;   // chaque pixel est réécrit : pas besoin de vider avant
+                low[i] = upper ? Color.Transparent : src[i];
+            }
+        _sliceUpper.SetData(up);
+        _sliceLower!.SetData(low);
+        _sliceSource = sprite;
+        _sliceNormal = normal;
+        _sliceHead = head;
+        _sliceCutY = cutY;
+        _sliceHeadY = head && headTop >= 0 ? (headTop + cutY) / 2f : h / 2f;
+    }
+
+    /// <summary>
+    /// Victime coupée en deux. DIAGONALE : trait de lame, la moitié haute glisse dans le sens du coup, bascule et
+    /// retombe, la basse s'affaisse à peine. DÉCAPITATION : la tête s'envole en arc en tournant et retombe à
+    /// environ une case, le corps reste. Puis les deux morceaux se dissolvent dans leur pose finale.
+    /// </summary>
+    private void DrawSlicedVictim(SpriteBatch sb, GridLayout layout, Texture2D sprite, Rectangle victimRect, int size,
+        float fxPixel)
+    {
+        var (line, normal, push, head) = SliceGeometry();
+        EnsureSliceTextures(sprite, normal, head);
+
+        var s = _fx.SliceProgress;
+        var e = 1f - (1f - s) * (1f - s);   // ease-out : la séparation part vite puis se pose
+        var center = victimRect.Center.ToVector2();
+        var scale = size / (float)sprite.Width;
+        var side = push.X >= 0f ? 1f : -1f;
+
+        Vector2 upper, lower;
+        float tilt;
+        var pivot = new Vector2(sprite.Width / 2f, sprite.Height / 2f);   // point du morceau haut posé sur « upper »
+        if (head)
+        {
+            // Vol de la tête : avance à vitesse constante, arc (monte puis retombe) et descente vers le sol. Elle
+            // tourne sur ELLE-MÊME (pivot = centre de la tête, pas du sprite, sinon elle décrirait un grand cercle).
+            pivot = new Vector2(sprite.Width / 2f, _sliceHeadY);
+            var start = new Vector2(center.X, victimRect.Y + _sliceHeadY * scale);
+            upper = start + new Vector2(side * HeadFly * size * s,
+                -HeadArc * size * MathF.Sin(s * MathF.PI) + HeadLand * size * s * s);
+            tilt = side * HeadSpin * e;
+            lower = center + new Vector2(0f, 0.02f * size * e);   // le corps reste, à peine tassé
+            EmitHeadTrail(layout, upper, side, s);
+        }
+        else
+        {
+            upper = center + push * (SliceSlide * size * e) + normal * (SliceSpread * size * e)
+                    + new Vector2(0f, SliceDrop * size * e * e);
+            tilt = SliceTilt * e * side;   // bascule du côté où elle glisse
+            lower = center - push * (0.05f * size * e) - normal * (0.03f * size * e)
+                    + new Vector2(0f, 0.04f * size * e);
+        }
+        EmitCutSpurts(layout, head, upper, lower, normal, push, scale, sprite.Height, s);   // giclées continues des plaies
+        upper = new Vector2(MathF.Round(upper.X), MathF.Round(upper.Y));
+        lower = new Vector2(MathF.Round(lower.X), MathF.Round(lower.Y));
+
+        var dissolve = _fx.DissolveProgress;
+        if (dissolve <= 0f)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            var origin = new Vector2(sprite.Width / 2f, sprite.Height / 2f);
+            sb.Draw(_sliceLower!, lower, null, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
+            sb.Draw(_sliceUpper!, upper, null, Color.White, tilt, pivot, scale, SpriteEffects.None, 0f);
+            sb.End();
+        }
+        else
+        {
+            _combatFx.DrawDissolve(sb, _sliceLower!, lower, 0f, scale, dissolve, Palette.Purple5, _fx.Seed);
+            _combatFx.DrawDissolve(sb, _sliceUpper!, upper, tilt, scale, dissolve, Palette.Purple5,
+                _fx.Seed + new Vector2(17f, 5f), pivot);
+        }
+
+        // Trait de lame : blocs blancs alignés sur la coupe (au cou en décapitation), qui s'éteignent vite.
+        if (s < SliceFlashEnd)
+        {
+            var a = 1f - s / SliceFlashEnd;
+            var block = (int)fxPixel;
+            var cut = new Vector2(center.X, victimRect.Y + _sliceCutY * scale);
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            for (var k = -size * 0.45f; k <= size * 0.45f; k += block)
+                DrawBlockSnapped(sb, cut + line * k, block, Palette.White * a);
+            sb.End();
+        }
+    }
+
+    /// <summary>
+    /// Le sang GICLE en continu des plaies pendant que les morceaux se séparent : des deux bords de la coupe
+    /// (diagonale), ou en fontaine depuis le cou du corps resté debout (décapitation ; la tête a sa traînée).
+    /// Le flot faiblit au fil de la coupe et se tarit avant la dissolution.
+    /// </summary>
+    private void EmitCutSpurts(GridLayout layout, bool head, Vector2 upper, Vector2 lower, Vector2 normal,
+        Vector2 push, float scale, int spriteHeight, float s)
+    {
+        if (s < _cutSpurtS)
+            _cutSpurtS = 0f;   // nouvelle coupe : le flot repart
+        if (s <= 0f || s >= CutSpurtEnd)
+            return;
+
+        var tile = layout.TileSize;
+        var top = layout.CellToScreen(_fx.To.Column, _fx.To.Row).Y;
+        var pixel = MathF.Max(3f, tile / 21f);
+        while (s - _cutSpurtS >= CutSpurtStep)
+        {
+            _cutSpurtS += CutSpurtStep;
+            var flow = 1f - _cutSpurtS / CutSpurtEnd;   // 1 → 0 : la plaie se vide
+            var drops = Math.Max(1, (int)MathF.Round(CutSpurtDrops * flow));
+            if (head)
+            {
+                // Fontaine au cou : le haut du corps, là où passait la coupe.
+                var neck = lower + new Vector2(0f, (_sliceCutY - spriteHeight / 2f) * scale);
+                _sparks.EmitBlood(neck, drops + 2, pixel, normal + push * 0.3f, 0.5f + 0.4f * flow,
+                    top + tile * 0.55f, top + tile * 0.95f, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+            }
+            else
+            {
+                // Les deux bords de la coupe (centre du sprite = milieu de la coupe) : le bas gicle vers le haut,
+                // le haut gicle vers le bas et dans le sens où il glisse.
+                _sparks.EmitBlood(lower, drops, pixel, normal, 0.35f + 0.4f * flow,
+                    top + tile * 0.55f, top + tile * 0.95f, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+                _sparks.EmitBlood(upper, drops, pixel, push - normal * 0.5f, 0.25f + 0.3f * flow,
+                    top + tile * 0.55f, top + tile * 0.95f, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+            }
+        }
+    }
+
+    /// <summary>
+    /// Traînée de sang derrière la tête qui vole : une petite giclée chaque fois que le vol avance de
+    /// <see cref="HeadTrailStep"/>, depuis la position de la tête, projetée vers l'arrière ; les gouttes retombent
+    /// au sol le long de la trajectoire (ou dans l'eau si la tête survole le bord du plateau).
+    /// </summary>
+    private void EmitHeadTrail(GridLayout layout, Vector2 headPos, float side, float s)
+    {
+        if (s < _headTrailS)
+            _headTrailS = 0f;   // nouvelle décapitation : la traînée repart du début
+        if (s <= 0f || s >= 1f)
+            return;
+
+        var tile = layout.TileSize;
+        var top = layout.CellToScreen(_fx.To.Column, _fx.To.Row).Y;
+        while (s - _headTrailS >= HeadTrailStep)
+        {
+            _headTrailS += HeadTrailStep;
+            _sparks.EmitBlood(headPos, HeadTrailDrops, MathF.Max(3f, tile / 21f), new Vector2(-side, -0.4f), 0.15f,
+                top + tile * 0.55f, top + tile * 0.95f, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+        }
+    }
+
+    /// <summary>
+    /// Giclée de sang supplémentaire au moment où le pion est tranché : le long de la coupe (diagonale), ou en
+    /// fontaine depuis le cou, vers l'avant et le haut (décapitation).
+    /// </summary>
+    private void EmitSliceBlood()
+    {
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var (line, normal, push, head) = SliceGeometry();
+        var top = layout.CellToScreen(_fx.To.Column, _fx.To.Row);
+        var spriteTop = top.Y - tile * SpriteLiftFraction;
+        var pixel = MathF.Max(3f, tile / 21f);
+        var floorMin = top.Y + tile * 0.55f;
+        var floorMax = top.Y + tile * 0.95f;
+
+        if (head)
+        {
+            // Hauteur du cou mesurée sur CE sprite : on découpe dès l'impact (sinon le cache serait celui du mort précédent).
+            var neckY = spriteTop + tile * 0.3f;
+            if (_fx.VictimSprite is { } victim)
+            {
+                EnsureSliceTextures(victim, normal, head: true);
+                neckY = spriteTop + _sliceCutY * (tile / (float)victim.Height);
+            }
+            var neck = new Vector2(top.X + tile / 2f, neckY);
+            for (var k = -1; k <= 1; k++)
+                _sparks.EmitBlood(neck + line * (k * tile * 0.1f), 10, pixel, push * 0.6f + normal, 0.9f,
+                    floorMin, floorMax, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+            return;
+        }
+
+        var center = new Vector2(top.X + tile / 2f, spriteTop + tile / 2f);
+        for (var k = -2; k <= 2; k++)
+        {
+            var p = center + line * (k * tile * 0.12f);
+            _sparks.EmitBlood(p, 6, pixel, push + normal * 0.5f, 0.8f, floorMin, floorMax, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
         }
     }
 
@@ -12003,7 +12513,7 @@ public sealed class GameplayScene : Scene
     private void SpawnDamage(Cell cell, int dmg, Cell? from = null)
     {
         _damagePopups.Spawn(cell, dmg);
-        if (dmg <= 0)
+        if (dmg <= 0 || !Context.Settings.Blood)   // option « Sang » désactivée : chiffre seul
             return;
 
         var layout = BuildLayout();
@@ -12078,7 +12588,12 @@ public sealed class GameplayScene : Scene
     private void OnImpact()
     {
         _impactHandled = true;
-        SpawnDamage(_fx.To, _pendingDamage, _fx.Attacker);   // chiffre (puis éclate) + sang à l'opposé de l'attaquant
+        // Chiffre (puis éclate) + sang à l'opposé de l'attaquant. From = case de DÉPART de l'attaquant : Attacker
+        // vaut la case de la victime quand il avance sur elle, ce qui annulerait la direction.
+        SpawnDamage(_fx.To, _pendingDamage, _fx.From);
+        _arrowPinned = _fx.ArrowKill && _pendingDamage >= ArrowPinDamage;   // gros coup : cloué au sol
+        if (_fx.Sliced)
+            EmitSliceBlood();   // pion tranché : giclée le long de la coupe en plus
         if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
             _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
         if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
@@ -17400,6 +17915,10 @@ public sealed class GameplayScene : Scene
                 break;
             case MenuAction.LanguageChanged:
                 Context.Saves.SaveSettings(Context.Settings);
+                break;
+            case MenuAction.BloodChanged:
+                Context.Saves.SaveSettings(Context.Settings);
+                MeleeStrikeFx.GoreEnabled = Context.Settings.Blood;   // prochaine mise à mort : coupée ou dissoute
                 break;
             case MenuAction.ThemeChanged:
                 Context.Style.SetTheme(Context.Settings.UiTheme);   // à chaud : la frame suivante est au nouveau thème

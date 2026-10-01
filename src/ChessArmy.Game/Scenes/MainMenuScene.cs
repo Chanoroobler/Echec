@@ -437,6 +437,10 @@ public sealed class MainMenuScene : Scene
             case MenuAction.LanguageChanged:
                 Context.Saves.SaveSettings(Context.Settings);
                 break;
+            case MenuAction.BloodChanged:
+                Context.Saves.SaveSettings(Context.Settings);
+                MeleeStrikeFx.GoreEnabled = Context.Settings.Blood;   // prochaine mise à mort : coupée ou dissoute
+                break;
             case MenuAction.ThemeChanged:
                 Context.Style.SetTheme(Context.Settings.UiTheme);   // à chaud : la frame suivante est au nouveau thème
                 Context.Saves.SaveSettings(Context.Settings);

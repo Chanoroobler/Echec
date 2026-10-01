@@ -16,6 +16,12 @@ public sealed class GameSettings
     public UiThemeId UiTheme { get; set; } = UiThemeId.Gold;
 
     /// <summary>
+    /// Effets sanglants : giclées et taches de sang, pions coupés en deux / décapités au corps à corps.
+    /// <c>false</c> = morts par simple dissolution, aucun sang.
+    /// </summary>
+    public bool Blood { get; set; } = true;
+
+    /// <summary>
     /// Mode DÉMO (version de démonstration). Restreint la partie : la run s'arrête plus tôt (cf.
     /// <c>Run.EndAtPhase</c>), seuls les commandants ouverts d'office sont jouables (les autres restent
     /// verrouillés en vitrine) et les unités sont plafonnées au tier 2 (cf. <c>Run.MaxUnitTier</c>). Activé

@@ -74,6 +74,7 @@ internal sealed class MainForm : Form
     private readonly CheckBox _blocksFireChk = new();
     private readonly CheckBox _glisseChk = new();
     private readonly Label _inspectorHint = new();
+    private readonly Button _facesBtn = new();
     private TileInfo? _focusedTile;
     private bool _updatingInspector;
 
@@ -686,6 +687,18 @@ internal sealed class MainForm : Form
             "Tuile glissante (glace) : une unité qui s'arrête dessus glisse d'une case dans sa direction\n"
             + "d'arrivée, en chaîne sur les tuiles glissantes, jusqu'à un obstacle, un pion ou le bord.");
 
+        _facesBtn.Text = "Zones verticales…";
+        _facesBtn.AutoSize = true;
+        _facesBtn.FlatStyle = FlatStyle.Flat;
+        _facesBtn.BackColor = Color.FromArgb(70, 72, 80);
+        _facesBtn.ForeColor = Color.Gainsboro;
+        _facesBtn.Margin = new Padding(0, 10, 0, 0);
+        _facesBtn.FlatAppearance.BorderColor = Color.FromArgb(90, 92, 100);
+        _facesBtn.Click += (_, _) => EditFaces();
+        _tips.SetToolTip(_facesBtn,
+            "Peindre les pixels de MUR VERTICAL de cette tuile : en jeu, le sang y coule vers le bas\n"
+            + "au lieu de s'y poser. Rien par défaut. Enregistré dans le masque <image>_faces.png.");
+
         _inspectorHint.AutoSize = true;
         _inspectorHint.MaximumSize = new Size(220, 0);
         _inspectorHint.ForeColor = Color.Gray;
@@ -696,6 +709,7 @@ internal sealed class MainForm : Form
         body.Controls.Add(_blocksMoveChk);
         body.Controls.Add(_blocksFireChk);
         body.Controls.Add(_glisseChk);
+        body.Controls.Add(_facesBtn);
         body.Controls.Add(_inspectorHint);
 
         host.Controls.Add(header, 0, 0);
@@ -718,6 +732,7 @@ internal sealed class MainForm : Form
             _tileTitle.Text = "—";
             _blocksMoveChk.Checked = _blocksFireChk.Checked = _glisseChk.Checked = false;
             _blocksMoveChk.Enabled = _blocksFireChk.Enabled = _glisseChk.Enabled = false;
+            _facesBtn.Enabled = false;
             _inspectorHint.Text = "Sélectionne une tuile de terrain pour éditer ses règles.";
         }
         else
@@ -725,6 +740,7 @@ internal sealed class MainForm : Form
             _tilePreview.Image = tile.Image is not null ? ScaleNearest(tile.Image, 80, 100) : null;
             _tileTitle.Text = $"{tile.Id}  ('{tile.Key}')";
             _blocksMoveChk.Enabled = _blocksFireChk.Enabled = _glisseChk.Enabled = true;
+            _facesBtn.Enabled = tile.ArtPath is not null && tile.Cells.Count > 0;
             _blocksMoveChk.Checked = tile.BlocksMove;
             _blocksFireChk.Checked = tile.BlocksFire;
             _glisseChk.Checked = tile.Slides;
@@ -750,6 +766,24 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Impossible d'écrire tiles.json :\n{ex.Message}", "Erreur",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>Ouvre l'édition des zones verticales (murs) de la tuile de l'inspecteur.</summary>
+    private void EditFaces()
+    {
+        if (_focusedTile is not { ArtPath: not null } tile || tile.Cells.Count == 0 || _catalog is null)
+            return;
+        try
+        {
+            using var form = new FaceMaskForm(tile, _catalog.TileSize);
+            form.ShowDialog(this);
+            _status.Text = $"Zones verticales de '{tile.Id}' : {System.IO.Path.GetFileName(tile.MaskPath)}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Impossible d'ouvrir l'image de la tuile :\n{ex.Message}", "Erreur",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

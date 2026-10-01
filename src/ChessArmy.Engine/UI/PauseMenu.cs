@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework;
 namespace ChessArmy.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged, ThemeChanged }
+public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged, ThemeChanged, BloodChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -27,6 +27,7 @@ public enum PauseElement
     SfxLeft, SfxRight,
     LangLeft, LangRight,
     ThemeLeft, ThemeRight,
+    BloodLeft, BloodRight,
     Back,
 }
 
@@ -48,6 +49,7 @@ public struct PauseLayout
     public Rectangle SfxRow, SfxLeft, SfxValue, SfxRight;
     public Rectangle LangRow, LangLeft, LangValue, LangRight;
     public Rectangle ThemeRow, ThemeLeft, ThemeValue, ThemeRight;
+    public Rectangle BloodRow, BloodLeft, BloodValue, BloodRight;
     public Rectangle Back;
 }
 
@@ -121,7 +123,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 8;
+    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 9;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -137,7 +139,8 @@ public sealed class PauseMenu
         return _focus switch
         {
             0 => l.ResRow, 1 => l.ModeRow,
-            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, 6 => l.ThemeRow, _ => l.Back,
+            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, 6 => l.ThemeRow, 7 => l.BloodRow,
+            _ => l.Back,
         };
     }
 
@@ -167,7 +170,8 @@ public sealed class PauseMenu
             };
         return _focus switch
         {
-            7 => BackAction(),
+            7 => ToggleBlood(),   // A bascule aussi le sang (bascule à deux états)
+            8 => BackAction(),
             _ => MenuAction.None,   // les pas (résolution, mode, volumes, langue, thème) se règlent avec gauche/droite
         };
     }
@@ -186,6 +190,7 @@ public sealed class PauseMenu
             case 4: _s.Audio.Sfx = Step(_s.Audio.Sfx, dir * 10); return MenuAction.VolumeChanged;
             case 5: StepLanguage(dir); return MenuAction.LanguageChanged;
             case 6: StepTheme(dir); return MenuAction.ThemeChanged;
+            case 7: return ToggleBlood();
             default: return MenuAction.None;
         }
     }
@@ -221,6 +226,16 @@ public sealed class PauseMenu
         Language.ChineseSimplified => Loc.T("lang.chinese"),
         _ => Loc.T("lang.francais"),
     };
+
+    /// <summary>État des effets sanglants : OUI / NON.</summary>
+    public string BloodText => Loc.T(_s.Blood ? "common.yes" : "common.no");
+
+    /// <summary>Bascule les effets sanglants (les deux flèches font la même chose : deux états seulement).</summary>
+    private MenuAction ToggleBlood()
+    {
+        _s.Blood = !_s.Blood;
+        return MenuAction.BloodChanged;
+    }
 
     /// <summary>Nom du thème de couleur de l'UI courant.</summary>
     public string ThemeText => _s.UiTheme switch
@@ -285,7 +300,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (7 * BtnH + 6 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (8 * BtnH + 7 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -320,6 +335,10 @@ public sealed class PauseMenu
 
         l.ThemeRow = new Rectangle(panel.X, y, panel.Width, BtnH);
         (l.ThemeLeft, l.ThemeValue, l.ThemeRight) = Stepper(ctrlX, y);
+        y += BtnH + Gap;
+
+        l.BloodRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        (l.BloodLeft, l.BloodValue, l.BloodRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
         int backW = 130;
@@ -373,6 +392,8 @@ public sealed class PauseMenu
         if (l.ThemeLeft.Contains(p)) { StepTheme(-1); return MenuAction.ThemeChanged; }
         if (l.ThemeRight.Contains(p)) { StepTheme(+1); return MenuAction.ThemeChanged; }
 
+        if (l.BloodLeft.Contains(p) || l.BloodRight.Contains(p)) return ToggleBlood();
+
         if (l.Back.Contains(p)) { Back(); return MenuAction.None; }
         return MenuAction.None;
     }
@@ -410,6 +431,8 @@ public sealed class PauseMenu
         if (l.LangRight.Contains(p)) return PauseElement.LangRight;
         if (l.ThemeLeft.Contains(p)) return PauseElement.ThemeLeft;
         if (l.ThemeRight.Contains(p)) return PauseElement.ThemeRight;
+        if (l.BloodLeft.Contains(p)) return PauseElement.BloodLeft;
+        if (l.BloodRight.Contains(p)) return PauseElement.BloodRight;
         if (l.Back.Contains(p)) return PauseElement.Back;
         return PauseElement.None;
     }
