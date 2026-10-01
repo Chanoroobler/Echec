@@ -16,7 +16,10 @@
   "unit_cast":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic A.wav",
   "unit_charge":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
   "unit_shoot":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
-  "storm":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Magic G.wav",
+  // Orage / Tempête : le pack n'a pas de tonnerre → éclair composé de DEUX sons joués ensemble :
+  // « storm » = craquement sec de la foudre, « storm_tail » = traînée de décharge (plus douce, ~1 s).
+  "storm":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Wood and Stone/Stone Break B.wav",
+  "storm_tail":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Magic D.wav",
   "dodge":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh A.wav",
   // Glissade sur une tuile glace (« glisse ») : le pion dérape d'une ou plusieurs cases. Whoosh glissé.
   "unit_slide":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh C.wav",

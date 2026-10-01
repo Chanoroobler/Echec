@@ -755,6 +755,8 @@ public sealed class GameplayScene : Scene
     {
         LoadTiles();
         LoadMaps();
+        // Sang au sol : seulement sur les tuiles du plateau (hors grille = eau du fond, la goutte disparaît).
+        _sparks.IsGround = (c, r) => c >= 0 && r >= 0 && c < Columns && r < Rows;
         // Coffre : PNG fermé (plateau) + spritesheet d'ouverture (révélation). Placeholders si absents.
         _chestSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffre.png"));
         _chestAnim = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/coffreAnimate.png"));
@@ -7624,7 +7626,7 @@ public sealed class GameplayScene : Scene
         var pixel = MathF.Max(2f, tile / 32f);
         foreach (var (cell, dmg) in hits)
         {
-            _damagePopups.Spawn(cell, dmg);
+            SpawnDamage(cell, dmg);
             _damagePopups.SpawnText(cell, Loc.T("fx.seisme"), Palette.Brown3, new Vector2(0f, -0.5f));   // mot-clé au-dessus du chiffre
             // Poussière/débris giclant du sol sous chaque ennemi frappé.
             var ground = layout.CellToScreen(cell.Column, cell.Row) + new Vector2(tile / 2f, tile * 0.7f);
@@ -8394,7 +8396,7 @@ public sealed class GameplayScene : Scene
         var kind = _match.TryMove(from, to);
         CheckTripleKill(actor, deathLogStart);
         foreach (var (cell, dmg) in _match.LastImpactHits)
-            _damagePopups.Spawn(cell, dmg);
+            SpawnDamage(cell, dmg);
         if (_match.LastImpactHits.Count > 0)   // l'« Impact » a frappé : tuiles de l'AoE + son (instantané sur un déplacement)
             ShakeAoeZone(_match.LastImpactZone);
         // « Épines » : une cible de l'Impact a renvoyé la moitié du coup au mobile (instantané, comme l'Impact).
@@ -9185,6 +9187,7 @@ public sealed class GameplayScene : Scene
                 DrawChests(sb, board);                   // coffres fermés (sous les unités)
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
+                _sparks.DrawGround(sb, Context.Pixel, board.Origin, board.TileSize);   // sang au sol (tout le combat), sous les unités
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
@@ -9349,6 +9352,7 @@ public sealed class GameplayScene : Scene
         {
             DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
+            _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // sang au sol (tout le combat)
             DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb);
             DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
@@ -9514,6 +9518,7 @@ public sealed class GameplayScene : Scene
         }
 
         _water.DrawWater(sb, _time, w, h);
+        _sparks.DrawFloating(sb, Context.Pixel, w, h);   // sang tombé à l'eau, emporté par le courant (sous le plateau)
 
         // Frange d'ombre : UNIQUEMENT quand le plateau est un « îlot » entièrement dans le canvas.
         // Zoomé / pané, le plateau déborde l'écran : il n'y a plus d'eau autour à ombrer, et le
@@ -11708,7 +11713,7 @@ public sealed class GameplayScene : Scene
         if (_match.ResolveNextChainLink() is { } hit)
         {
             if (hit.Damage > 0)
-                _damagePopups.Spawn(hit.Cell, hit.Damage);
+                SpawnDamage(hit.Cell, hit.Damage);
             var layout = BuildLayout();
             var center = layout.CellToScreen(landed.Column, landed.Row)
                          + new Vector2(layout.TileSize / 2f, layout.TileSize / 2f);
@@ -11752,7 +11757,7 @@ public sealed class GameplayScene : Scene
         if (_match.ResolveNextBounce() is not { } hit || hit.Damage <= 0)
             return;
 
-        _damagePopups.Spawn(hit.Cell, hit.Damage);
+        SpawnDamage(hit.Cell, hit.Damage);
         // Gerbe d'étincelles au point d'impact : la balle a bien TOUCHÉ ce pion, elle n'a pas fait que passer.
         var layout = BuildLayout();
         var center = layout.CellToScreen(hit.Cell.Column, hit.Cell.Row)
@@ -11985,6 +11990,40 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Vrai pour la case d'une victime SURVIVANTE en cours d'animation (à reculer dans DrawUnit).</summary>
+    // Sang à l'impact : nombre de gouttes proportionnel aux dégâts, borné (un coup minuscule saigne un peu,
+    // un très gros coup n'inonde pas l'écran). BloodFullDamage = dégâts à partir desquels la giclée est maximale.
+    private const int BloodMinDrops = 8;
+    private const int BloodMaxDrops = 50;
+    private const int BloodFullDamage = 24;
+
+    /// <summary>
+    /// Un pion encaisse <paramref name="dmg"/> sur <paramref name="cell"/> : chiffre de dégâts + giclée de sang.
+    /// <paramref name="from"/> = case de l'attaquant si connue : le sang gicle alors À L'OPPOSÉ (sinon vers le haut).
+    /// </summary>
+    private void SpawnDamage(Cell cell, int dmg, Cell? from = null)
+    {
+        _damagePopups.Spawn(cell, dmg);
+        if (dmg <= 0)
+            return;
+
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var body = layout.CellToScreen(cell.Column, cell.Row) + new Vector2(tile / 2f, tile * 0.1f);   // torse (sprite soulevé)
+        var dir = Vector2.Zero;
+        if (from is { } f && f != cell)
+        {
+            dir = new Vector2(cell.Column - f.Column, cell.Row - f.Row);
+            dir.Normalize();
+        }
+        var strength = MathHelper.Clamp(dmg / (float)BloodFullDamage, 0f, 1f);
+        var drops = (int)MathHelper.Lerp(BloodMinDrops, BloodMaxDrops, strength);
+        // Sol de la case : moitié basse de la tuile (autour des pieds, le sprite étant soulevé) ; les gouttes s'y posent.
+        var top = layout.CellToScreen(cell.Column, cell.Row).Y;
+        _sparks.EmitBlood(body, drops, MathF.Max(3f, tile / 21f), dir, strength,
+            top + tile * 0.55f, top + tile * 0.95f,   // gouttes 3 px (grosses : 6)
+            layout.Origin, tile);                      // ancrage au plateau : le sang au sol suit la caméra
+    }
+
     private bool IsFxVictim(Cell cell) => _fx.Active && !_fx.Killed && cell == _fx.To && _shieldJump is null;
     // (Bouclier humain : le protégé n'encaisse rien, il ne recule donc pas — c'est l'allié devant lui qui réagit.)
 
@@ -12039,7 +12078,7 @@ public sealed class GameplayScene : Scene
     private void OnImpact()
     {
         _impactHandled = true;
-        _damagePopups.Spawn(_fx.To, _pendingDamage);   // le chiffre de dégâts jaillit au contact (puis éclate)
+        SpawnDamage(_fx.To, _pendingDamage, _fx.Attacker);   // chiffre (puis éclate) + sang à l'opposé de l'attaquant
         if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
             _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
         if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
@@ -12059,9 +12098,10 @@ public sealed class GameplayScene : Scene
         if (_pendingStormBolts != null)
         {
             _storm.Begin(_pendingStormBolts);
-            Context.Sounds.Play("storm");   // décharge de foudre, UNE fois pour toute la salve d'éclairs
+            Context.Sounds.Play("storm");             // craquement de la foudre, UNE fois pour toute la salve d'éclairs
+            Context.Sounds.Play("storm_tail", 0.7f);  // + traînée de décharge, plus discrète (cf. sounds.json)
             foreach (var (cell, dmg) in _pendingStormHits!)
-                _damagePopups.Spawn(cell, dmg);
+                SpawnDamage(cell, dmg);
             _pendingStormBolts = null;
             _pendingStormHits = null;
         }
@@ -12086,7 +12126,7 @@ public sealed class GameplayScene : Scene
                 if (cell == _fx.To && _pendingDamage > 0)
                     _damagePopups.SpawnBonus(cell, dmg, Palette.Yellow2, new Vector2(-0.22f, -0.34f));
                 else
-                    _damagePopups.Spawn(cell, dmg);
+                    SpawnDamage(cell, dmg);
             }
             if (_pendingImpactZone != null)
                 ShakeAoeZone(_pendingImpactZone);
@@ -12128,7 +12168,7 @@ public sealed class GameplayScene : Scene
         if (_pendingShield != null)
         {
             foreach (var (cell, dmg) in _pendingShield)
-                _damagePopups.Spawn(cell, dmg);
+                SpawnDamage(cell, dmg);
             _pendingShield = null;
         }
 
@@ -12149,7 +12189,7 @@ public sealed class GameplayScene : Scene
         if (_pendingPierce is { } pierce)
         {
             _pierceRecoil.Begin(pierce.Cell, pierce.Dc, pierce.Dr);
-            _damagePopups.Spawn(pierce.Cell, pierce.Damage);
+            SpawnDamage(pierce.Cell, pierce.Damage);
             _damagePopups.SpawnText(pierce.Cell, Loc.T("fx.transpercer"), Palette.Cyan2, new Vector2(0f, -0.5f));
             _pendingPierce = null;
         }

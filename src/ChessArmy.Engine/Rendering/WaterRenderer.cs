@@ -59,13 +59,25 @@ public sealed class WaterRenderer
     /// <summary>Rayon de l'ombre, en pixels canvas (converti en uv selon la résolution).</summary>
     private const float ShadowRadiusPx = 18f;
 
+    // Courant : défilement des deux couches de bruit du shader (uv/s) et échelle du bruit (uv par px canvas).
+    private const float NoiseScale = 0.0060f;
+    private static readonly Vector2 ScrollA = new(0.021f, 0.012f);   // couche DOMINANTE (poids 0,6 dans Water.fx)
+    private static readonly Vector2 ScrollB = new(-0.014f, 0.019f);
+
+    /// <summary>
+    /// Vitesse apparente du courant à la surface, en px canvas/s : déplacement du motif de la couche
+    /// dominante (uv = monde × NoiseScale + temps × ScrollA ⇒ le motif glisse de −ScrollA / NoiseScale).
+    /// Sert à faire dériver ce qui flotte (sang tombé à l'eau) dans le même sens que l'eau.
+    /// </summary>
+    public static Vector2 SurfaceDrift => -ScrollA / NoiseScale;
+
     /// <summary>Valeurs d'aspect fixes (couleurs + réglages de courant/ombre), posées une fois.</summary>
     private void ConfigureConstants()
     {
         // Courant (pixel art : grille d'art-pixels + postérisation en tons francs).
-        Set("NoiseScale", 0.0060f);
-        Set("ScrollA", new Vector2(0.021f, 0.012f));
-        Set("ScrollB", new Vector2(-0.014f, 0.019f));
+        Set("NoiseScale", NoiseScale);
+        Set("ScrollA", ScrollA);
+        Set("ScrollB", ScrollB);
         Set("WaterPixel", 3f);    // taille d'un pixel d'eau en unités canvas
 
         // Rampe de 4 tons francs (du plus profond au plus clair) — toutes de la palette.

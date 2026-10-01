@@ -123,7 +123,7 @@ internal sealed class DamagePopups
                 continue;
 
             if (p.Burst)
-                sparks.EmitFirework(DeathOrigin(layout, p), count: 22, pixel);
+                sparks.EmitFirework(DeathOrigin(layout, p), count: 22, pixel, withRed: false);   // sans rouge : distinct du sang
             _active.RemoveAt(i);
         }
     }
