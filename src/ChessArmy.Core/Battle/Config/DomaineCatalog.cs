@@ -75,7 +75,7 @@ public static class DomaineCatalog
             c.HealPoints ?? 0, c.HealCap ?? int.MaxValue,
             c.PairKillPoints ?? 0, c.PairKillCap ?? int.MaxValue,
             c.Companion, c.NoArmy ?? false,
-            c.AllyDeathPoints ?? 0, c.AllyDeathCap ?? int.MaxValue);
+            c.AllyDeathPoints ?? 0, c.AllyDeathCap ?? int.MaxValue, c.DemoUnlocked ?? false);
     }
 
     private static BossDef ToBoss(CommandeConfig c)

@@ -145,7 +145,7 @@ public sealed class CommanderSelectScene : Scene
         // Mode démo : SEULS les commandants ouverts d'office sont jouables ; les autres restent en vitrine
         // (silhouette verrouillée) et le hack playtest comme la méta-progression sont ignorés.
         Context.Settings.IsDemo
-            ? def.StartsUnlocked
+            ? def.StartsUnlocked || def.DemoUnlocked
             : (UnlockAllForPlaytest || def.StartsUnlocked || Context.Saves.IsCommanderUnlocked(def.Id));
 
     public override void Load()
@@ -155,7 +155,9 @@ public sealed class CommanderSelectScene : Scene
         _tree = new CommandTreeView(Context);
         _treeIcon = Textures.LoadPngOrNull(Context.GraphicsDevice,
             System.IO.Path.Combine(AppContext.BaseDirectory, "Assets/UI/arbre.png"));
-        _commanders = Commandes.Playable;
+        // Débloqués en tête du carrousel, verrouillés ensuite ; tri STABLE, donc chaque groupe garde l'ordre
+        // de units.json (le commandant de base, premier débloqué, reste sélectionné à l'ouverture).
+        _commanders = Commandes.Playable.OrderBy(c => IsUnlocked(c) ? 0 : 1).ToList();
         _difficultyIndex = AvailableLevels.ToList().IndexOf(Difficulty.Normal);
         RebuildPreview();
         // Pas de changement de musique : la piste du menu principal continue jusqu'au lancement de la partie.

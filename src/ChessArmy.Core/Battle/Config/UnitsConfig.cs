@@ -158,6 +158,9 @@ public sealed class CommandeConfig
     /// </summary>
     public bool? Unlocked { get; set; }
 
+    /// <summary>COMMANDANT : jouable dès le départ en version DÉMO (même si <c>unlocked</c> vaut false). Absent → false.</summary>
+    public bool? DemoUnlocked { get; set; }
+
     /// <summary>
     /// BOSS : id du COMMANDANT débloqué en battant ce boss en dernière phase (cf. <see cref="Id"/> d'un
     /// Commander). Absent → ce boss ne débloque personne (ex. la Brute). Ignoré pour un Commander.

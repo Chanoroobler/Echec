@@ -34,8 +34,9 @@ public sealed class CommandeDef
         int healPoints = 0, int healCap = int.MaxValue,
         int pairKillPoints = 0, int pairKillCap = int.MaxValue,
         string? companionId = null, bool noArmy = false,
-        int allyDeathPoints = 0, int allyDeathCap = int.MaxValue)
+        int allyDeathPoints = 0, int allyDeathCap = int.MaxValue, bool demoUnlocked = false)
     {
+        DemoUnlocked = demoUnlocked;
         AllyDeathPoints = allyDeathPoints;
         AllyDeathCap = allyDeathCap;
         HealPoints = healPoints;
@@ -85,6 +86,12 @@ public sealed class CommandeDef
     /// quand elle existera, c'est le seul point à faire évoluer (profil du joueur plutôt que donnée figée).
     /// </summary>
     public bool StartsUnlocked { get; }
+
+    /// <summary>
+    /// COMMANDANT : jouable dès le départ en version DÉMO, même s'il est verrouillé dans le jeu complet
+    /// (champ <c>demoUnlocked</c> de units.json). Sans effet hors démo.
+    /// </summary>
+    public bool DemoUnlocked { get; }
 
     public CommandeRole Role { get; }
 

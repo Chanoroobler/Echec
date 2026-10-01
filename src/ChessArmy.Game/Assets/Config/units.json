@@ -231,7 +231,9 @@
       "jumpPoints": 1,
       "jumpCap": 2,
       "startingUnits": [ "Cavalier", "Cavalier" ],
-      "unlocked": false
+      "unlocked": false,
+      // Version DEMO : jouable des le depart (verrouille seulement dans le jeu complet).
+      "demoUnlocked": true
     },
     // Commandant MARCHAND. Se deplace en L (domaine Cavalier) : un convoyeur qui traverse le plateau pour
     // ramasser le butin. Theme : l'EQUIPEMENT — son arbre "commandantMarchand" lui donne des slots (il est le

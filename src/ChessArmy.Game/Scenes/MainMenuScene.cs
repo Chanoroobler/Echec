@@ -187,7 +187,8 @@ public sealed class MainMenuScene : Scene
 
         // Commandants jouables débloqués (le commandant de base l'est toujours via StartsUnlocked).
         foreach (var cmd in Commandes.Playable)
-            if (cmd.StartsUnlocked || Context.Saves.IsCommanderUnlocked(cmd.Id))
+            if (cmd.StartsUnlocked || (Context.Settings.IsDemo && cmd.DemoUnlocked)
+                || Context.Saves.IsCommanderUnlocked(cmd.Id))
                 TryAdd(cmd.BaseClass);
 
         // Filet de sécurité : au moins le commandant de base, jamais un fond nu.
