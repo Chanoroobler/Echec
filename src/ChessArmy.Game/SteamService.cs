@@ -11,8 +11,23 @@ namespace ChessArmy.Game;
 /// </summary>
 public static class SteamService
 {
-    /// <summary>AppID de CHESS ARMY (même numéro que la page boutique, cf. <see cref="Store.SteamUrl"/>).</summary>
-    public const uint AppId = 4971900;
+    /// <summary>
+    /// AppID Steam, selon la build : l'app Playtest est une app Steam SÉPARÉE (ses propres succès, à
+    /// redéclarer dans Steamworks avec les mêmes identifiants). Jeu complet = numéro de la page boutique,
+    /// cf. <see cref="Store.SteamUrl"/>. Une build Debug (sans symbole) utilise l'AppID du jeu complet.
+    /// </summary>
+    // ⚙️ Les deux AppID à renseigner ici ; le bon est choisi automatiquement selon la build.
+    /// <summary>AppID du jeu complet (page boutique).</summary>
+    public const uint FullAppId = 4971900;
+
+    /// <summary>AppID de l'app Playtest (Steamworks → app Playtest). TODO : 0 = aucun succès en playtest.</summary>
+    public const uint PlaytestAppId = 5005760;
+
+#if PLAYTEST
+    public const uint AppId = PlaytestAppId;
+#else
+    public const uint AppId = FullAppId;
+#endif
 
     /// <summary>Steam initialisé (client lancé, DLL présente, compte possédant le jeu).</summary>
     public static bool IsActive { get; private set; }

@@ -236,6 +236,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
 
         // Style d'UI au thème de couleur des réglages chargés (changeable à chaud depuis Options).
         var style = new UiStyle(GraphicsDevice, pixel, _settings.UiTheme);
+        // Son d'entrée de survol des boutons : souris seulement (à la manette, le déplacement du focus a ses sons).
+        style.PointerOver = r => !_input.UsingGamepad && r.Contains(_input.MousePosition);
+        style.HoverEntered = () => _sounds.Play("button_hover");
         _cursor = Textures.CreateCursor(GraphicsDevice, Palette.White, Palette.Black1);
 
         _context = new GameContext(
@@ -298,6 +301,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         GraphicsDevice.SetRenderTarget(_virtualTarget);
         GraphicsDevice.Clear(Color.Black);
         _scenes.Draw(gameTime);
+        _context.Style.EndFrame();   // son de survol des boutons : bouton quitté si aucun survolé cette frame
 
         // 2. On agrandit la cible vers l'écran réel (échelle entière, PointClamp = net).
         GraphicsDevice.SetRenderTarget(null);
@@ -331,6 +335,15 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
                 _spriteBatch.Draw(ghostRt,
                     new Rectangle(_virtualDest.X + ghostDest.X, _virtualDest.Y + ghostDest.Y, ghostDest.Width, ghostDest.Height),
                     Color.White);
+        }
+
+        // 2c. Cartes de choix PENCHÉES (survol 3D) : composées à la résolution de l'ÉCRAN, pas dans le canvas,
+        //     sinon la perspective double ou saute des colonnes de pixels (cf. GameplayScene.DrawScreenOverlays).
+        if (_scenes.Current is Scenes.GameplayScene gsTilt && gsTilt.HasScreenOverlays)
+        {
+            _spriteBatch.End();
+            gsTilt.DrawScreenOverlays(_virtualDest, _virtualScale);
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         }
 
         if (!_input.UsingGamepad)   // à la manette, le pointeur n'a plus de rôle : il ne doit pas traîner à l'écran

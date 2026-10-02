@@ -104,6 +104,8 @@ public sealed class UiStyle
     /// </summary>
     public int DrawButton(SpriteBatch sb, Rectangle r, ButtonState state, bool selected = false)
     {
+        if (state != ButtonState.Normal)
+            TrackHover(r);   // son d'ENTRÉE de survol (souris), cf. TrackHover
         Frame(sb, r);
         Fill(sb, r, state != ButtonState.Normal || selected ? _selectTile : _tile);
         switch (state)
@@ -118,6 +120,44 @@ public sealed class UiStyle
                 Bevel(sb, r, raised: true, thickness: 3);
                 return 0;
         }
+    }
+
+    // ── Son d'entrée de survol des boutons ──
+    // Le style ne connaît ni la souris ni l'audio : le jeu branche PointerOver (souris sur ce rect, hors manette)
+    // et HoverEntered (joue le son). Un bouton se reconnaît d'une frame à l'autre par CHEVAUCHEMENT de son rect
+    // avec celui de la frame d'avant : un bouton qui glisse un peu (animation) ne re-sonne pas, alors que passer
+    // à un bouton voisin (séparé par un écart) sonne bien.
+
+    /// <summary>Vrai si le pointeur SOURIS est sur ce rect (le jeu y exclut la manette, qui a ses propres sons de focus).</summary>
+    public Func<Rectangle, bool>? PointerOver { get; set; }
+
+    /// <summary>Appelé une fois quand la souris ENTRE sur un bouton (pas à chaque frame de survol).</summary>
+    public Action? HoverEntered { get; set; }
+
+    private Rectangle _hoverPrev;   // bouton survolé à la frame précédente (Empty : aucun)
+    private bool _hoverSeen;        // un bouton survolé a déjà été vu CETTE frame
+
+    /// <summary>
+    /// Signale un élément cliquable dessiné cette frame. Joue <see cref="HoverEntered"/> si la souris vient
+    /// d'arriver dessus. Appelé par <see cref="DrawButton"/> ; à appeler aussi pour les boutons dessinés à la main.
+    /// </summary>
+    public void TrackHover(Rectangle r)
+    {
+        if (_hoverSeen || PointerOver == null || !PointerOver(r))
+            return;
+        _hoverSeen = true;
+        var entered = !r.Intersects(_hoverPrev);
+        _hoverPrev = r;
+        if (entered)
+            HoverEntered?.Invoke();
+    }
+
+    /// <summary>Fin de frame (après le dessin des scènes) : aucun bouton survolé cette frame = on l'a quitté.</summary>
+    public void EndFrame()
+    {
+        if (!_hoverSeen)
+            _hoverPrev = Rectangle.Empty;
+        _hoverSeen = false;
     }
 
     // Cadre extérieur d'1 px : TOUJOURS Black1, quel que soit le thème.

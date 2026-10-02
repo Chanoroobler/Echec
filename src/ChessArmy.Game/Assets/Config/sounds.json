@@ -12,14 +12,43 @@
   "unit_select":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort C.wav",
   "unit_deselect":"Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort D.wav",
   "unit_move":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Steps/Grass Step A.wav",
-  "unit_attack":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+  // Une LISTE = variantes tirées au hasard à chaque coup (jamais la même deux fois de suite).
+  // Coup d'arme, charge et tir piochent tous dans les 5 « Light Swing » pour varier.
+  "unit_attack":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing E.wav"
+  ],
   "unit_cast":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic A.wav",
-  "unit_charge":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
-  "unit_shoot":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
+  "unit_charge":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing E.wav"
+  ],
+  "unit_shoot":   [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing D.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Character Actions/Light Swing E.wav"
+  ],
   // Orage / Tempête : le pack n'a pas de tonnerre → éclair composé de DEUX sons joués ensemble :
   // « storm » = craquement sec de la foudre, « storm_tail » = traînée de décharge (plus douce, ~1 s).
   "storm":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Wood and Stone/Stone Break B.wav",
   "storm_tail":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Magic D.wav",
+  // Mort au corps à corps avec l'option SANG : le pion est COUPÉ en deux (ou décapité). Joué au contact,
+  // quand la coupe commence. Cf. GameplayScene.OnImpact. Variante au hasard parmi les 5 « Cute Monster Hit ».
+  "unit_sliced":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit D.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit E.wav"
+  ],
   "dodge":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh A.wav",
   // Glissade sur une tuile glace (« glisse ») : le pion dérape d'une ou plusieurs cases. Whoosh glissé.
   "unit_slide":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh C.wav",
@@ -32,12 +61,31 @@
 
   // ── Fin de combat / campagne ─────────────────────────────────
   "combat_won": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up A.wav",
+  // DÉCOUVERTE d'un nouveau pion par fusion (version longue de l'évolution, 1re obtention seulement) : joué
+  // au flash, quand la silhouette noire prend ses couleurs, EN PLUS de « recruit ». Cf. UpdateEvolutionAnimation.
+  // Même révélation, AVANT le flash : « evo_start » quand la silhouette apparaît et zoome au centre, puis
+  // « evo_flicker » à CHAQUE bascule de silhouette (≈24 tics qui accélèrent sur ~5,7 s, joués à gain 0,7).
+  "evo_start":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic B.wav",
+  "evo_flicker": [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort D.wav"
+  ],
+  "unit_discover": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up B.wav",
   "recruit":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",
   "victory":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up D.wav",
   "defeat":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
 
   // ── Objets / coffre ──────────────────────────────────────────
   "reward":     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",
+  // « Tic » à chaque objet qui défile dans le coffre (machine à sous) : très court (0,17-0,25 s) car il
+  // peut sonner ~25 fois/s au début. Joué à gain 0,5. Cf. GameplayScene.UpdateChestRoll.
+  "chest_tick": [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Gather Plop Lower A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Gather Plop Lower B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Gather Plop Lower C.wav"
+  ],
   "equip_lost": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification F.wav",
   // « pop » court (0,33 s) joué à chaque salve du feu d'artifice de butin : 1 fois (rare), plusieurs
   // fois en crépitement (légendaire). Cf. GameplayScene.EmitLootBurst.
@@ -53,5 +101,8 @@
   // ── Menus ────────────────────────────────────────────────────
   "menu_open":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu A.wav",
   "menu_close": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu B.wav",
+  // Souris qui ENTRE sur un bouton (une fois par bouton, pas à chaque frame ; jamais à la manette).
+  // Cf. UiStyle.TrackHover.
+  "button_hover": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Buttons/Pick Button O.wav",
   "menu_click": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Menu C.wav"
 }

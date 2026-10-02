@@ -14,6 +14,10 @@ namespace ChessArmy.Engine.Audio;
 /// Les WAV sont chargés via <see cref="SoundEffect.FromStream"/> (PCM 16 bits uniquement),
 /// dans le même esprit que les sprites chargés par <c>Texture2D.FromStream</c>. Tout est en
 /// repli silencieux : fichier de config absent, clé inconnue ou WAV illisible → no-op.
+///
+/// Une clé peut pointer vers UN fichier ("clé": "a.wav") ou une LISTE de variantes
+/// ("clé": ["a.wav", "b.wav"]) : <see cref="Play"/> en tire alors une au hasard, jamais la même
+/// deux fois de suite. Un même WAV partagé par plusieurs clés n'est chargé qu'une fois.
 /// </summary>
 public sealed class SoundBank : IDisposable
 {
@@ -24,8 +28,17 @@ public sealed class SoundBank : IDisposable
         AllowTrailingCommas = true
     };
 
+    /// <summary>Variantes d'une clé + dernière jouée (pour ne pas répéter la même deux fois de suite).</summary>
+    private sealed class Entry
+    {
+        public required SoundEffect[] Variants;
+        public int Last = -1;
+    }
+
     private readonly AudioManager _audio;
-    private readonly Dictionary<string, SoundEffect> _sounds = new();
+    private readonly Dictionary<string, Entry> _sounds = new();
+    private readonly Dictionary<string, SoundEffect> _loaded = new(StringComparer.OrdinalIgnoreCase);   // chemin → WAV (dédoublonnage)
+    private readonly Random _rng = new();
 
     public SoundBank(AudioManager audio) => _audio = audio;
 
@@ -38,10 +51,10 @@ public sealed class SoundBank : IDisposable
         if (!File.Exists(configPath))
             return;
 
-        Dictionary<string, string>? map;
+        Dictionary<string, JsonElement>? map;
         try
         {
-            map = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(configPath), Options);
+            map = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(configPath), Options);
         }
         catch (Exception ex)
         {
@@ -52,21 +65,52 @@ public sealed class SoundBank : IDisposable
         if (map == null)
             return;
 
-        foreach (var (key, relative) in map)
+        var variants = new List<SoundEffect>();
+        foreach (var (key, value) in map)
         {
-            if (string.IsNullOrWhiteSpace(relative))
-                continue;
-            var sound = LoadWavOrNull(Path.Combine(soundsRoot, relative));
-            if (sound != null)
-                _sounds[key] = sound;
+            variants.Clear();
+            if (value.ValueKind == JsonValueKind.String)
+                AddVariant(variants, value.GetString(), soundsRoot);
+            else if (value.ValueKind == JsonValueKind.Array)
+                foreach (var item in value.EnumerateArray())
+                    if (item.ValueKind == JsonValueKind.String)
+                        AddVariant(variants, item.GetString(), soundsRoot);
+
+            if (variants.Count > 0)
+                _sounds[key] = new Entry { Variants = variants.ToArray() };
         }
     }
 
-    /// <summary>Joue le son associé à <paramref name="key"/> (no-op si la clé est inconnue/non chargée).</summary>
+    private void AddVariant(List<SoundEffect> variants, string? relative, string soundsRoot)
+    {
+        if (string.IsNullOrWhiteSpace(relative))
+            return;
+        var path = Path.GetFullPath(Path.Combine(soundsRoot, relative));
+        if (!_loaded.TryGetValue(path, out var sound))
+        {
+            sound = LoadWavOrNull(path);
+            if (sound == null)
+                return;
+            _loaded[path] = sound;
+        }
+        variants.Add(sound);
+    }
+
+    /// <summary>Joue le son associé à <paramref name="key"/> (no-op si la clé est inconnue/non chargée). Clé à
+    /// plusieurs variantes : une au hasard, différente de la précédente.</summary>
     public void Play(string key, float gain = 1f)
     {
-        if (_sounds.TryGetValue(key, out var sound))
-            _audio.Play(sound, gain);
+        if (!_sounds.TryGetValue(key, out var entry))
+            return;
+        var n = entry.Variants.Length;
+        var i = 0;
+        if (n > 1)
+        {
+            // Tirage parmi les n-1 autres : décalage depuis la dernière jouée → jamais deux fois la même.
+            i = entry.Last < 0 ? _rng.Next(n) : (entry.Last + 1 + _rng.Next(n - 1)) % n;
+            entry.Last = i;
+        }
+        _audio.Play(entry.Variants[i], gain);
     }
 
     /// <summary>Charge un WAV (PCM) depuis le disque, ou <c>null</c> s'il est absent/illisible.</summary>
@@ -87,8 +131,9 @@ public sealed class SoundBank : IDisposable
 
     public void Dispose()
     {
-        foreach (var sound in _sounds.Values)
+        foreach (var sound in _loaded.Values)   // chaque WAV une seule fois, même partagé par plusieurs clés
             sound.Dispose();
+        _loaded.Clear();
         _sounds.Clear();
     }
 }

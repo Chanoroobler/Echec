@@ -2168,6 +2168,7 @@ public sealed class GameplayScene : Scene
             _chestRollSwapTimer = 0;
             for (var i = 0; i < _chestRollItems.Count; i++)
                 _chestRollItems[i] = RandomRollItem();
+            Context.Sounds.Play("chest_tick", 0.5f);   // « tic » de machine à sous : ralentit avec le défilement
         }
     }
 
@@ -4806,6 +4807,21 @@ public sealed class GameplayScene : Scene
         _evoPhase = EvoPhase.Reveal;
         _evoPhaseTimer = longVersion ? EvoRevealDuration : EvoShortDuration;
         _evoSparked = false;
+        _evoLastToggle = -1;
+        if (longVersion)
+            Context.Sounds.Play("evo_start");   // la silhouette apparaît et zoome au centre
+    }
+
+    private int _evoLastToggle = -1;   // dernière bascule de silhouette sonorisée (cf. UpdateEvolutionAnimation)
+
+    /// <summary>Numéro de bascule du clignotement à l'avancement <paramref name="p"/> (0→1) de la révélation :
+    /// impair = silhouette de l'évolution, pair = celle de la base. Partagé par le dessin et le son.</summary>
+    private static int EvoFlickerToggle(float p)
+    {
+        // Cadence = base (terme linéaire, du switch dès le début) + accélération DOUCE et CONTINUE (terme
+        // quadratique) — pas de cubique qui reste plat puis explose d'un coup.
+        var phase = (p - EvoZoomIn) / (EvoFlickerEnd - EvoZoomIn);
+        return (int)(phase * 6f + phase * phase * 18f);
     }
 
     /// <summary>
@@ -4821,6 +4837,16 @@ public sealed class GameplayScene : Scene
                 _evoPhaseTimer -= dt;
                 var dur = _evoLong ? EvoRevealDuration : EvoShortDuration;
                 var pr = 1.0 - _evoPhaseTimer / dur;
+                // Version longue : un « tic » à CHAQUE bascule de silhouette (accélère avec le clignotement).
+                if (_evoLong && pr >= EvoZoomIn && pr < EvoFlickerEnd)
+                {
+                    var toggle = EvoFlickerToggle((float)pr);
+                    if (toggle != _evoLastToggle)
+                    {
+                        _evoLastToggle = toggle;
+                        Context.Sounds.Play("evo_flicker", 0.7f);
+                    }
+                }
                 var sparkAt = _evoLong ? (double)EvoFlickerEnd : 0.2;
                 if (!_evoSparked && pr >= sparkAt)
                 {
@@ -4830,6 +4856,8 @@ public sealed class GameplayScene : Scene
                         : new Vector2(_evoSource.Center.X, _evoSource.Center.Y);
                     _sparks.EmitFirework(c, _evoLong ? 48 : 20, 1);
                     Context.Sounds.Play("recruit");
+                    if (_evoLong)
+                        Context.Sounds.Play("unit_discover");   // 1re obtention : fanfare au flash, quand la silhouette prend ses couleurs
                 }
                 if (_evoPhaseTimer <= 0)
                 {
@@ -9139,6 +9167,7 @@ public sealed class GameplayScene : Scene
         var layout = BuildLayout();
         var viewport = VirtualViewport;
         _dezoomLayersReady = false;
+        _tiltCount = 0;        // cartes penchées de cette frame (composées à l'écran par DrawScreenOverlays)
         _panelBandDx = null;   // reposé par DrawPanelBackground si le panneau est visible cette frame
         _panelDimmed = false;
 
@@ -12593,7 +12622,10 @@ public sealed class GameplayScene : Scene
         SpawnDamage(_fx.To, _pendingDamage, _fx.From);
         _arrowPinned = _fx.ArrowKill && _pendingDamage >= ArrowPinDamage;   // gros coup : cloué au sol
         if (_fx.Sliced)
+        {
             EmitSliceBlood();   // pion tranché : giclée le long de la coupe en plus
+            Context.Sounds.Play("unit_sliced");   // son de coupe, à l'instant où le pion se sépare en deux
+        }
         if (_pendingGiantBonus > 0)   // « Tueur de géants » : « +N » rouge au-dessus du chiffre (part du bonus)
             _damagePopups.SpawnBonus(_fx.To, _pendingGiantBonus, Palette.Purple5);
         if (_pendingPhenix)   // renaissance : callout « PHÉNIX ! » au-dessus du coup encaissé
@@ -13125,12 +13157,15 @@ public sealed class GameplayScene : Scene
             var card = DraftCardRect(0, count, availW, viewport.Height);
             Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recrue.join_plural" : "recrue.join"),
                 new Rectangle(0, card.Y - 44, availW, 24), 2, Palette.Yellow2);
+            TickCardFx(count,
+                !FusionOpen && !EvoPlaying ? HoveredCardIndex(count, _recruitFocus, availW, viewport.Height) : -1,
+                availW, viewport.Height);
+            // Manette : la carte désignée est encadrée (pendant du draft) quand il faut en choisir UNE.
+            var pickOne = _run.ReserveLimit - _run.ReserveCount < count && !_run.IsReserveFull && count > 1;
+            var rf = pickOne && Context.Input.UsingGamepad ? System.Math.Clamp(_recruitFocus, 0, count - 1) : -1;
             for (var i = 0; i < count; i++)
-            {
-                var spec = _recrueReveals[i];
-                DrawCardLayout(sb, DraftCardRect(i, count, availW, viewport.Height), spec.UnitClass,
-                    Faction.Player, spec.Domaine, spec.UnitClass.MaxHp, spec.UnitClass.MaxHp);
-            }
+                DrawFxDraftCard(sb, i, _recrueReveals[i], DraftCardRect(i, count, availW, viewport.Height),
+                    i == rf ? Palette.Yellow2 : null);
 
             // Pas la place pour TOUTES les recrues : faire de la place, en prendre une, ou tout abandonner.
             if (_run.ReserveLimit - _run.ReserveCount < count)
@@ -13138,10 +13173,6 @@ public sealed class GameplayScene : Scene
                 // Il reste au moins un slot : on peut en choisir UNE (clic sur sa carte / A sur la désignée).
                 if (!_run.IsReserveFull && count > 1)
                 {
-                    if (Context.Input.UsingGamepad)   // la carte désignée est encadrée (pendant du draft)
-                        DrawRectBorder(sb, Inflate(DraftCardRect(
-                            System.Math.Clamp(_recruitFocus, 0, count - 1), count, availW, viewport.Height), 3),
-                            Palette.Yellow2, 3);
                     // Entre le titre et les cartes : le dessous est déjà pris par le bouton ABANDONNER.
                     Context.Font.DrawCentered(sb,
                         Loc.T(Context.Input.UsingGamepad ? "recrue.pick_one_gp" : "recrue.pick_one"),
@@ -13149,6 +13180,7 @@ public sealed class GameplayScene : Scene
                 }
 
                 var ab = RecruitAbandonBtnRect(availW, viewport.Height);
+                Context.Style.TrackHover(ab);
                 Context.Style.FillDither(sb, ab);
                 DrawRectBorder(sb, ab, Palette.Purple5, 2);
                 // À plusieurs recrues la réserve n'est pas forcément PLEINE : il manque juste des places.
@@ -13225,12 +13257,8 @@ public sealed class GameplayScene : Scene
         }
         else if (p < EvoFlickerEnd)
         {
-            // CLIGNOTEMENT : alterne base/évolution en OMBRE NOIRE. Cadence = base (terme linéaire, du
-            // switch dès le début) + accélération DOUCE et CONTINUE (terme quadratique) — pas de cubique
-            // qui reste plat puis explose d'un coup.
-            var phase = (p - EvoZoomIn) / (EvoFlickerEnd - EvoZoomIn);
-            var toggle = (int)(phase * 6f + phase * phase * 18f);
-            if (toggle % 2 == 1)
+            // CLIGNOTEMENT : alterne base/évolution en OMBRE NOIRE, de plus en plus vite (cf. EvoFlickerToggle).
+            if (EvoFlickerToggle(p) % 2 == 1)
                 DrawEvoSprite(sb, _evoResult, rect, Color.Black, 1f);
             else
                 DrawEvoBaseSprite(sb, rect, Color.Black, 1f);
@@ -16175,34 +16203,41 @@ public sealed class GameplayScene : Scene
         var held = _recruitChoice is not null && _recruitHold <= 0f;   // pion tenu (réserve pleine)
         Context.Font.DrawCentered(sb, Loc.T(held ? "recruit.hold_prompt" : "recruit.subtitle"),
             new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, held ? Palette.Cyan1 : Palette.Blue1);
-        for (var i = 0; i < _run.Draft.Count; i++)
-            DrawDraftCard(sb, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height));
-
+        // Relief des cartes : seulement tant qu'on choisit (pas de pion tenu / en vol, pas de modale de fusion).
+        var draftLive = _recruitChoice == null && !FusionOpen && !EvoPlaying && !(Context.Input.UsingGamepad && _gpInventory);
+        TickCardFx(_run.Draft.Count,
+            draftLive ? HoveredCardIndex(_run.Draft.Count, _recruitFocus, availW, viewport.Height) : -1,
+            availW, viewport.Height);
+        // Surcouches de chaque carte, dessinées AVEC elle (elles penchent ensemble) :
+        //  - pion TENU (réserve pleine) : carte choisie encadrée, les autres grisées ;
+        //  - sinon, carte FOCUS (souris ou manette) encadrée — sauf pion déjà choisi (vol/tenu) ou focus manette
+        //    parti dans le panneau de réserve (un seul focus visible à la fois).
+        var ci = -1;
         if (held)
-        {
-            // Pion TENU : carte choisie surlignée, autres grisées, + bouton « Abandonner » (perdre le pion).
-            var ci = -1;
             for (var i = 0; i < _run.Draft.Count; i++)
                 if (ReferenceEquals(_run.Draft[i], _recruitChoice))
                     ci = i;
-            for (var i = 0; i < _run.Draft.Count; i++)
-                if (i != ci)
-                    DrawRect(sb, DraftCardRect(i, _run.Draft.Count, availW, viewport.Height), Palette.Black1 * 0.55f);
-            if (ci >= 0)
-                DrawRectBorder(sb, Inflate(DraftCardRect(ci, _run.Draft.Count, availW, viewport.Height), 3), Palette.Yellow2, 3);
+        var showFocus = !held && _recruitChoice == null && _run.Draft.Count > 0
+            && !(Context.Input.UsingGamepad && _gpInventory);
+        var fi = showFocus ? System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1) : -1;
+        for (var i = 0; i < _run.Draft.Count; i++)
+        {
+            Color? border = (held && i == ci) || i == fi ? Palette.Yellow2 : null;
+            DrawFxDraftCard(sb, i, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height),
+                border, held && i != ci ? 0.55f : 0f);
+        }
+
+        if (held)
+        {
+            // Pion TENU : bouton « Abandonner » (perdre le pion).
             var ab = RecruitAbandonBtnRect(availW, viewport.Height);
+            Context.Style.TrackHover(ab);
             Context.Style.FillDither(sb, ab);
             DrawRectBorder(sb, ab, Palette.Purple5, 2);
             Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
         }
-        // Surbrillance de la carte FOCUS (souris ou manette) — sauf si un pion est déjà choisi (vol/tenu),
-        // ou si le focus manette est parti dans le panneau de réserve (un seul focus visible à la fois).
-        else if (_recruitChoice == null && _run.Draft.Count > 0
-            && !(Context.Input.UsingGamepad && _gpInventory))
+        else if (showFocus)
         {
-            var fi = System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1);
-            var fr = DraftCardRect(fi, _run.Draft.Count, availW, viewport.Height);
-            DrawRectBorder(sb, Inflate(fr, 3), Palette.Yellow2, 3);
             // Détail des traits, par-dessus la rangée. Rien sous les cartes ici → la place libre va jusqu'au
             // bas du canvas. Pas quand un pion est TENU : le bouton « Abandonner » y est dessiné.
             DrawRowKeywords(sb, KeywordRow(_run.Draft), _recruitFocus, availW, viewport.Height,
@@ -16244,22 +16279,23 @@ public sealed class GameplayScene : Scene
         if (!flying)
             Context.Font.DrawCentered(sb, sub, new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, Palette.Blue1);
 
+        TickCardFx(rewards.Count,
+            !flying && !FusionOpen && !EvoPlaying && !(Context.Input.UsingGamepad && _gpInventory)
+                ? HoveredCardIndex(rewards.Count, _rewardFocus, availW, viewport.Height) : -1,
+            availW, viewport.Height);
+        // Manette : carte de récompense focalisée, encadrée (cadre dessiné avec la carte).
+        var rf = !flying && Context.Input.UsingGamepad && !_gpInventory && rewards.Count > 0
+            ? System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1) : -1;
         for (var i = 0; i < rewards.Count; i++)
         {
-            var rect = DraftCardRect(i, rewards.Count, availW, viewport.Height);
-            DrawDraftCard(sb, rewards[i], rect);
             var kept = i < _rewardKeep.Count && _rewardKeep[i];
-            if (!kept)
-                DrawRect(sb, rect, Palette.Black1 * 0.6f);   // décochée : grisée
-            DrawCheckbox(sb, new Rectangle(rect.X + 6, rect.Y + 6, 18, 18), kept);
+            // Décochée : grisée. Voile et case à cocher penchent AVEC la carte.
+            DrawFxDraftCard(sb, i, rewards[i], DraftCardRect(i, rewards.Count, availW, viewport.Height),
+                i == rf ? Palette.Cyan1 : null, kept ? 0f : 0.6f, kept ? 1 : 0);
         }
 
         if (!flying)
         {
-            // Manette : carte de récompense focalisée.
-            if (Context.Input.UsingGamepad && !_gpInventory && rewards.Count > 0)
-                DrawRectBorder(sb, Inflate(DraftCardRect(System.Math.Clamp(_rewardFocus, 0, rewards.Count - 1),
-                    rewards.Count, availW, viewport.Height), 3), Palette.Cyan1, 3);
 
             // Détail des traits, par-dessus la rangée. La place libre s'arrête au bouton « Récupérer »
             // (posé sous les cartes) : en pratique on est donc toujours au survol sur cet écran.
@@ -16268,6 +16304,7 @@ public sealed class GameplayScene : Scene
 
             // Bouton « Récupérer (N) » : doré si collectable, rouge sinon.
             var btn = RewardCollectBtnRect(availW, viewport.Height);
+            Context.Style.TrackHover(btn);
             Context.Style.FillDither(sb, btn);
             DrawRectBorder(sb, btn, canCollect ? Palette.Yellow1 : Palette.Purple5, 2);
             Context.Font.DrawCentered(sb, Loc.T("reward.collect", RewardCheckedCount()), btn, 1,
@@ -16406,6 +16443,7 @@ public sealed class GameplayScene : Scene
     /// <summary>Bouton texte du panneau de réserve (fond tramé + liseré ; focalisé = liseré cyan plus épais).</summary>
     private void DrawReserveButton(SpriteBatch sb, Rectangle r, string label, bool focused)
     {
+        Context.Style.TrackHover(r);   // son d'entrée de survol (comme les boutons stylés)
         Context.Style.FillDither(sb, r);
         DrawRectBorder(sb, r, focused ? Palette.Cyan1 : Palette.Yellow1, focused ? 3 : 2);
         Context.Font.DrawCentered(sb, label, r, 1, Palette.Yellow2);
@@ -16557,6 +16595,294 @@ public sealed class GameplayScene : Scene
         // Recrutement : portrait de FACE, PV pleins (l'unité est neuve). Le DÉTAIL des traits n'est pas
         // dessiné ici : il n'apparaît que sous la carte survolée (cf. DrawHoveredCardKeywords).
         DrawCardLayout(sb, rect, c, Faction.Player, spec.Domaine, c.MaxHp, c.MaxHp);
+    }
+
+    // ── Cartes de choix « vivantes » (draft / récompense / recrues) : relief + reflet ──────────────────
+    // La carte survolée se SOULÈVE et penche vers la souris SANS rien déformer (règle pixel-perfect) : tout
+    // est en décalages de pixels ENTIERS. La carte glisse un peu vers la souris (pion compris, d'un bloc),
+    // l'ombre part à l'opposé, et un reflet diagonal en escalier suit la souris.
+    // État lissé par carte dans des tableaux fixes : aucune allocation par frame.
+    private const int CardFxMax = 8;              // plus de cartes que n'en affiche aucune rangée (4 max en 1080p)
+    private const float CardFxResponse = 14f;     // vitesse de lissage (1/s) : réactif sans saccade
+    private const float CardFxLift = 5f;          // px : la carte survolée monte
+    private const float CardFxShift = 3f;         // px : la carte suit la souris
+    private const float CardFxShadowShift = 4f;   // px : l'ombre part à l'opposé de la souris
+    private const float CardFxShadowDrop = 6f;    // px : l'ombre tombe sous la carte soulevée
+    private readonly float[] _cardHover = new float[CardFxMax];      // 0 = posée, 1 = soulevée
+    private readonly Vector2[] _cardTilt = new Vector2[CardFxMax];   // souris rapportée au centre, -1..1
+    private readonly float[] _cardShineT = new float[CardFxMax];     // temps de survol continu (balayage du reflet)
+    private float _cardFxStamp = -1f;
+
+    /// <summary>
+    /// Fait avancer l'état lissé des cartes d'une rangée. À appeler UNE fois par frame, avant de dessiner la
+    /// rangée. <paramref name="hovered"/> = carte survolée / focus manette (-1 : aucune, tout retombe).
+    /// </summary>
+    private void TickCardFx(int count, int hovered, int rowW, int vpH)
+    {
+        var dt = _cardFxStamp < 0f ? 0f : MathHelper.Clamp(_time - _cardFxStamp, 0f, 0.1f);
+        _cardFxStamp = _time;
+        var k = 1f - MathF.Exp(-CardFxResponse * dt);
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < CardFxMax; i++)
+        {
+            var on = i == hovered && i < count;
+            var target = Vector2.Zero;
+            // Manette : pas de souris → pas d'inclinaison ; la carte reste posée et seul le reflet balaie (cf. CardLift).
+            if (on && !Context.Input.UsingGamepad)
+            {
+                var r = DraftCardRect(i, count, rowW, vpH);
+                target = new Vector2(
+                    MathHelper.Clamp((mouse.X - r.Center.X) / (r.Width * 0.5f), -1f, 1f),
+                    MathHelper.Clamp((mouse.Y - r.Center.Y) / (r.Height * 0.5f), -1f, 1f));
+            }
+            _cardShineT[i] = on ? _cardShineT[i] + dt : 0f;   // le reflet repart du bord gauche à chaque survol
+            _cardHover[i] += ((on ? 1f : 0f) - _cardHover[i]) * k;
+            _cardTilt[i] += (target - _cardTilt[i]) * k;
+        }
+    }
+
+    private float CardHover(int i) => i >= 0 && i < CardFxMax ? _cardHover[i] : 0f;
+    private Vector2 CardTilt(int i) => i >= 0 && i < CardFxMax ? _cardTilt[i] : Vector2.Zero;
+
+    /// <summary>Soulèvement de la carte (et de son ombre) : souris seulement. À la manette, la carte focalisée
+    /// reste posée et seul le reflet défile (cf. <see cref="DrawCardShine"/>).</summary>
+    private float CardLift(int i) => Context.Input.UsingGamepad ? 0f : CardHover(i);
+
+    /// <summary>Rectangle RÉEL de la carte <paramref name="i"/> (soulevée + décalée vers la souris, pixels entiers).</summary>
+    private Rectangle CardFxRect(int i, Rectangle rect)
+    {
+        var h = CardLift(i);
+        var t = CardTilt(i);
+        rect.Offset((int)MathF.Round(t.X * CardFxShift * h), (int)MathF.Round((t.Y * CardFxShift - CardFxLift) * h));
+        return rect;
+    }
+
+    /// <summary>Ombre portée de la carte soulevée (à dessiner AVANT la carte), décalée à l'opposé de la souris.</summary>
+    private void DrawCardFxShadow(SpriteBatch sb, int i, Rectangle cardRect)
+    {
+        var h = CardLift(i);
+        if (h < 0.02f)
+            return;
+        var t = CardTilt(i);
+        var s = cardRect;
+        s.Offset((int)MathF.Round(-t.X * CardFxShadowShift * h), (int)MathF.Round((CardFxShadowDrop - t.Y * CardFxShadowShift) * h));
+        DrawRect(sb, s, Palette.Black1 * (0.45f * h));
+    }
+
+    /// <summary>
+    /// Reflet de la carte survolée (à dessiner APRÈS la carte) : deux bandes diagonales claires, en ESCALIER
+    /// (1 px de côté toutes les 2 lignes, donc pixel-art), qui balaient la carte en boucle tant qu'elle est
+    /// survolée (souris) ou focalisée (manette). Découpé à l'intérieur du cadre.
+    /// </summary>
+    private void DrawCardShine(SpriteBatch sb, int i, Rectangle cardRect)
+    {
+        var h = CardHover(i);
+        if (h < 0.02f)
+            return;
+        var inner = Inflate(cardRect, -3);
+        if (inner.Width <= 0 || inner.Height <= 0)
+            return;
+
+        // Position du reflet le long de la carte, 0 = bord gauche, 1 = bord droit (marge pour entrer/sortir) :
+        // balayage en BOUCLE (souris comme manette), reparti du bord gauche à chaque nouveau survol.
+        var u = (_cardShineT[i] * 0.5f) % 1.6f - 0.3f;      // temps mort hors carte entre deux passages
+        var slantSpan = inner.Height / 2;                     // décalage horizontal total sur la hauteur (pente 1/2)
+        var center = inner.X + (int)MathF.Round(u * (inner.Width + slantSpan)) - slantSpan / 2;
+
+        var main = Palette.White * (0.16f * h);
+        var thin = Palette.White * (0.10f * h);
+        const int mainW = 14, thinW = 3, thinGap = 7;
+        for (var row = 0; row < inner.Height; row++)
+        {
+            var x = center + slantSpan / 2 - row / 2;         // « / » : monte vers la droite
+            var y = inner.Y + row;
+            DrawShineSegment(sb, inner, x - mainW / 2, y, mainW, main);
+            DrawShineSegment(sb, inner, x + mainW / 2 + thinGap, y, thinW, thin);
+        }
+    }
+
+    private void DrawShineSegment(SpriteBatch sb, Rectangle clip, int x, int y, int w, Color color)
+    {
+        var x0 = System.Math.Max(x, clip.X);
+        var x1 = System.Math.Min(x + w, clip.Right);
+        if (x1 > x0)
+            DrawRect(sb, new Rectangle(x0, y, x1 - x0, 1), color);
+    }
+
+    // ── Inclinaison 3D de la carte survolée (souris) ──
+    // La carte (+ reflet + surcouches) est rendue à plat (pixels du canvas), agrandie d'un facteur ENTIER dans
+    // une seconde cible, puis affichée APRÈS l'agrandissement du canvas, à la résolution de l'ÉCRAN, comme une
+    // grille de quads projetée en PERSPECTIVE (elle pivote vers la souris, le côté visé s'enfonce).
+    // Pourquoi pas dans le canvas : à 960×540, l'échantillonnage « au plus proche » d'une carte penchée DOUBLE
+    // ou SAUTE des colonnes de pixels (lettres et barre de PV en dents de scie, ×2 à l'écran). Ici, l'agrandi
+    // entier échantillonné en LINÉAIRE = « sharp bilinear » : pixels nets, seule la jonction entre deux pixels
+    // est fondue sur ~½ px d'écran, sans doublon ni saut. L'étirement léger pendant le survol est un effet
+    // DÉLIBÉRÉ, validé par le dev ; carte posée = chemin plat normal, strictement pixel-perfect.
+    // Conséquence assumée : la carte penchée passe par-dessus ce que le canvas dessine après elle (popups de
+    // traits, réserve) ; elle repasse à plat dès qu'une modale (fusion, évolution) s'ouvre.
+    private const float CardTiltMax = 0.07f;        // rad (~4°) d'inclinaison max, souris au bord de la carte (0.26 puis 0.13 jugés trop forts)
+    private const float CardTiltCamera = 800f;      // px du canvas : distance de la « caméra » (plus petit = perspective plus forte)
+    private const int CardTiltPad = 4;              // marge du rendu à plat : le cadre de focus déborde de 3 px
+    private const int TiltCols = 6, TiltRows = 10;  // subdivision de la grille (perspective correcte sans shader)
+    private const int TiltSlots = 2;                // cartes penchées à la fois (la survolée + celle qui retombe)
+    private readonly RenderTarget2D?[] _tiltFlat = new RenderTarget2D?[TiltSlots];   // carte à plat, pixels du canvas
+    private readonly RenderTarget2D?[] _tiltHi = new RenderTarget2D?[TiltSlots];     // la même, agrandie ×entier
+    private readonly TiltRequest[] _tiltRequests = new TiltRequest[TiltSlots];
+    private int _tiltCount;   // remis à 0 au début de chaque Draw
+    private BasicEffect? _tiltEffect;
+
+    /// <summary>Carte penchée à composer à l'écran : centre et taille (coordonnées canvas) + angles.</summary>
+    private struct TiltRequest
+    {
+        public Vector2 Center;
+        public int Width, Height;
+        public float Yaw, Pitch;
+    }
+    private readonly VertexPositionTexture[] _tiltVerts = new VertexPositionTexture[(TiltCols + 1) * (TiltRows + 1)];
+    private readonly short[] _tiltIdx = BuildTiltIndices();
+
+    private static short[] BuildTiltIndices()
+    {
+        var idx = new short[TiltCols * TiltRows * 6];
+        var n = 0;
+        for (var r = 0; r < TiltRows; r++)
+            for (var c = 0; c < TiltCols; c++)
+            {
+                var a = (short)(r * (TiltCols + 1) + c);
+                var b = (short)(a + 1);
+                var d = (short)(a + TiltCols + 1);
+                var e = (short)(d + 1);
+                idx[n++] = a; idx[n++] = b; idx[n++] = d;
+                idx[n++] = b; idx[n++] = e; idx[n++] = d;
+            }
+        return idx;
+    }
+
+    /// <summary>
+    /// Carte de choix complète avec son relief : ombre, carte, reflet, puis ses surcouches (voile
+    /// <paramref name="dim"/>, cadre <paramref name="border"/>, case à cocher <paramref name="checkbox"/> : -1 aucune,
+    /// 0 décochée, 1 cochée), dessinées AVEC la carte pour pencher avec elle. Le batch appelant est actif
+    /// (PointClamp) et le reste en sortie. Rend le rect réel (non penché) de la carte.
+    /// </summary>
+    private Rectangle DrawFxDraftCard(SpriteBatch sb, int i, UnitSpec spec, Rectangle baseRect,
+        Color? border = null, float dim = 0f, int checkbox = -1)
+    {
+        var r = CardFxRect(i, baseRect);
+        DrawCardFxShadow(sb, i, r);
+
+        var lift = CardLift(i);
+        if (lift < 0.02f || _tiltCount >= TiltSlots || FusionOpen || EvoPlaying)
+        {
+            DrawFxCardFlat(sb, i, spec, r, border, dim, checkbox);   // posée : chemin plat, pixel-perfect
+            return r;
+        }
+
+        // Penchée : rendu à plat (le pion bouge D'UN BLOC avec la carte), agrandi ×entier, puis composé à
+        // l'écran par DrawScreenOverlays une fois le canvas agrandi.
+        var slot = _tiltCount++;
+        var device = Context.GraphicsDevice;
+        sb.End();
+        var prev = device.GetRenderTargets();
+        int fw = r.Width + 2 * CardTiltPad, fh = r.Height + 2 * CardTiltPad;
+        EnsureTarget(device, ref _tiltFlat[slot], fw, fh);
+        device.SetRenderTarget(_tiltFlat[slot]);
+        device.Clear(Color.Transparent);
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawFxCardFlat(sb, i, spec, new Rectangle(CardTiltPad, CardTiltPad, r.Width, r.Height), border, dim, checkbox);
+        sb.End();
+
+        var m = TiltSuperSample;
+        EnsureTarget(device, ref _tiltHi[slot], fw * m, fh * m);
+        device.SetRenderTarget(_tiltHi[slot]);
+        device.Clear(Color.Transparent);
+        sb.Begin(samplerState: SamplerState.PointClamp);   // agrandi ENTIER : chaque pixel devient un bloc m×m exact
+        sb.Draw(_tiltFlat[slot], new Rectangle(0, 0, fw * m, fh * m), Color.White);
+        sb.End();
+        if (prev.Length > 0) device.SetRenderTargets(prev); else device.SetRenderTarget(null);
+
+        var t = CardTilt(i) * lift;
+        _tiltRequests[slot] = new TiltRequest
+        {
+            Center = new Vector2(r.Center.X, r.Center.Y), Width = fw, Height = fh,
+            Yaw = t.X * CardTiltMax, Pitch = t.Y * CardTiltMax,
+        };
+        sb.Begin(samplerState: SamplerState.PointClamp);   // rend la main à l'appelant avec son batch actif
+        return r;
+    }
+
+    /// <summary>Facteur d'agrandissement de la cible « sharp bilinear » : la fonte linéaire entre deux blocs
+    /// couvre alors ~½ px d'écran (net), quel que soit l'agrandissement canvas → écran.</summary>
+    private int TiltSuperSample => System.Math.Max(2, _virtualScaleHint * 2);
+
+    /// <summary>Vrai si des cartes penchées attendent d'être composées à l'écran cette frame.</summary>
+    public bool HasScreenOverlays => _tiltCount > 0;
+
+    /// <summary>
+    /// Compose les cartes penchées à la résolution de l'ÉCRAN (backbuffer déjà lié, aucun batch actif), après
+    /// le blit du canvas placé en <paramref name="virtualDest"/> à l'échelle entière <paramref name="scale"/>.
+    /// </summary>
+    public void DrawScreenOverlays(Rectangle virtualDest, int scale)
+    {
+        var device = Context.GraphicsDevice;
+        for (var s = 0; s < _tiltCount; s++)
+            if (_tiltHi[s] is { } tex)
+                DrawTiltedTexture(device, tex, _tiltRequests[s], new Vector2(virtualDest.X, virtualDest.Y), scale);
+    }
+
+    private void DrawFxCardFlat(SpriteBatch sb, int i, UnitSpec spec, Rectangle r, Color? border, float dim, int checkbox)
+    {
+        DrawDraftCard(sb, spec, r);
+        DrawCardShine(sb, i, r);
+        if (dim > 0f)
+            DrawRect(sb, r, Palette.Black1 * dim);
+        if (border is { } bc)
+            DrawRectBorder(sb, Inflate(r, 3), bc, 3);
+        if (checkbox >= 0)
+            DrawCheckbox(sb, new Rectangle(r.X + 6, r.Y + 6, 18, 18), checkbox == 1);
+    }
+
+    /// <summary>
+    /// Affiche une carte penchée : <paramref name="req"/> (coordonnées canvas) pivotée de Yaw (axe vertical :
+    /// &gt; 0 = le bord DROIT s'enfonce) et Pitch (axe horizontal : &gt; 0 = le bord BAS s'enfonce), en
+    /// perspective, convertie à l'écran (<paramref name="origin"/> + canvas × <paramref name="scale"/>).
+    /// Grille pré-allouée : aucune allocation par frame.
+    /// </summary>
+    private void DrawTiltedTexture(GraphicsDevice device, Texture2D tex, in TiltRequest req, Vector2 origin, int scale)
+    {
+        var rot = Matrix.CreateRotationY(-req.Yaw) * Matrix.CreateRotationX(req.Pitch);
+        var hw = req.Width * 0.5f;
+        var hh = req.Height * 0.5f;
+        var cx = origin.X + req.Center.X * scale;   // centre à l'écran
+        var cy = origin.Y + req.Center.Y * scale;
+        var v = 0;
+        for (var r = 0; r <= TiltRows; r++)
+        {
+            var fv = r / (float)TiltRows;
+            for (var c = 0; c <= TiltCols; c++)
+            {
+                var fu = c / (float)TiltCols;
+                var p = Vector3.Transform(new Vector3((fu * 2f - 1f) * hw, (fv * 2f - 1f) * hh, 0f), rot);
+                var s = CardTiltCamera / (CardTiltCamera + p.Z) * scale;   // plus loin (Z > 0) = plus petit ; canvas → écran
+                _tiltVerts[v++] = new VertexPositionTexture(new Vector3(cx + p.X * s, cy + p.Y * s, 0f), new Vector2(fu, fv));
+            }
+        }
+
+        var vp = device.Viewport;
+        _tiltEffect ??= new BasicEffect(device) { TextureEnabled = true, VertexColorEnabled = false, LightingEnabled = false };
+        _tiltEffect.World = Matrix.Identity;
+        _tiltEffect.View = Matrix.Identity;
+        _tiltEffect.Projection = Matrix.CreateOrthographicOffCenter(0, vp.Width, vp.Height, 0, 0, 1);
+        _tiltEffect.Texture = tex;
+        device.BlendState = BlendState.AlphaBlend;
+        device.DepthStencilState = DepthStencilState.None;
+        device.RasterizerState = RasterizerState.CullNone;
+        device.SamplerStates[0] = SamplerState.LinearClamp;   // sur l'agrandi ×entier = « sharp bilinear » (net, sans dents de scie)
+        foreach (var pass in _tiltEffect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            device.DrawUserIndexedPrimitives(PrimitiveType.TriangleList, _tiltVerts, 0, _tiltVerts.Length,
+                _tiltIdx, 0, _tiltIdx.Length / 3);
+        }
     }
 
     // ── Écrans post-combat (draft / récompense) : gabarit ───────────────────────────────────────────────
@@ -16898,6 +17224,7 @@ public sealed class GameplayScene : Scene
     private void DrawRecapButton(SpriteBatch sb, Rectangle btn, string label)
     {
         var hover = !Context.Input.UsingGamepad && btn.Contains(Context.Input.MousePosition);
+        Context.Style.TrackHover(btn);   // son d'entrée de survol
         DrawRect(sb, btn, Palette.Yellow2 * (hover ? 0.35f : 0.18f));
         DrawBorderRect(sb, btn, Palette.Yellow2);
         Context.Font.DrawCentered(sb, label, btn, 1, Palette.Yellow2);
