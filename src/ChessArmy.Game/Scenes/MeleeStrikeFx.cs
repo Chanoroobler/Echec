@@ -46,6 +46,7 @@ public sealed class MeleeStrikeFx
     private const double ThrowDur    = 0.40; // vol du pion lancé (2-3 cases, on doit le voir partir)
     private const double ThrowHopDur = 0.18; // rebond du pion lancé vers sa case d'arrivée (cible survivante)
     private const double DissolveDur = 0.45; // désintégration du mort
+    private const double BurnDur     = 0.95; // mort par MAGIE : le pion brûle (remplace la dissolution, plus longue : on voit le feu monter)
     private const double SliceDur    = 0.50; // mort au corps à corps : pion COUPÉ en deux, moitiés qui tombent (avant la dissolution)
     private const double ArrowDeathDur = 0.60; // mort par flèche : recul, bascule et chute au sol (avant la dissolution)
     private const double BlinkDur    = 0.34; // clignotement du survivant
@@ -104,8 +105,17 @@ public sealed class MeleeStrikeFx
     /// </summary>
     public static bool GoreEnabled { get; set; } = true;
 
-    /// <summary>Durée de la mort : coupe éventuelle puis dissolution.</summary>
-    private double DeathDur => PreDeathDur + DissolveDur;
+    /// <summary>
+    /// Vrai si la victime meurt d'un SORT (style Cast) : au lieu de se désintégrer, elle BRÛLE du bas vers le haut
+    /// (<see cref="DissolveProgress"/> pilote la combustion, sur <see cref="BurnDur"/>). Pas du gore : toujours joué.
+    /// </summary>
+    public bool Burned { get; private set; }
+
+    /// <summary>Durée de la disparition du mort : combustion (sort) ou dissolution (le reste).</summary>
+    private double VanishDur => Burned ? BurnDur : DissolveDur;
+
+    /// <summary>Durée de la mort : coupe éventuelle puis dissolution (ou combustion).</summary>
+    private double DeathDur => PreDeathDur + VanishDur;
 
     /// <summary>Avancement [0,1] de la coupe (0 avant l'impact, 1 une fois les moitiés tombées).</summary>
     public float SliceProgress => Sliced ? Clamp01((T - _approachDur) / SliceDur) : 0f;
@@ -162,6 +172,7 @@ public sealed class MeleeStrikeFx
         _style = style;
         Sliced = GoreEnabled && killed && victimSprite != null && style is AttackStyle.Lunge or AttackStyle.Leap;
         ArrowKill = killed && victimSprite != null && style == AttackStyle.Shoot;   // pas du gore : toujours joué
+        Burned = killed && victimSprite != null && style == AttackStyle.Cast;       // idem : brûlé par le sort
         _approachDur = style switch
         {
             AttackStyle.Leap  => LeapDur,
@@ -203,6 +214,7 @@ public sealed class MeleeStrikeFx
         MoveOnly = true;
         Sliced = false;
         ArrowKill = false;
+        Burned = false;
         DissolveOnly = false;
         VictimDoomed = false;
         _style = AttackStyle.Lunge;
@@ -231,6 +243,7 @@ public sealed class MeleeStrikeFx
         DissolveOnly = true;
         Sliced = false;
         ArrowKill = false;
+        Burned = false;
         VictimDoomed = false;
         _style = AttackStyle.Lunge;
         _approachDur = 0;        // impact immédiat : la dissolution démarre à la première frame
@@ -302,7 +315,7 @@ public sealed class MeleeStrikeFx
 
     /// <summary>Avancement de la dissolution de la victime [0,1] (0 avant l'impact).</summary>
     public float DissolveProgress =>
-        Killed ? (float)Math.Clamp((T - _approachDur - PreDeathDur) / DissolveDur, 0, 1) : 0f;
+        Killed ? (float)Math.Clamp((T - _approachDur - PreDeathDur) / VanishDur, 0, 1) : 0f;
 
     /// <summary>Intensité du flash « touché » du survivant [0,1] (deux pulsations qui s'éteignent).</summary>
     public float FlashIntensity

@@ -20,6 +20,7 @@ internal sealed class Spark
     public Vector2 BoardOrigin;        // sang : origine du plateau à l'émission (pour ancrer la tache au plateau)
     public float Tile;                 // sang : taille de case à l'émission
     public bool Persistent = true;     // sang : reste sur le terrain une fois posé (false = disparaît en touchant sol ou mur)
+    public float GravityScale = 1f;    // < 0 : la particule MONTE (braises d'un pion qui brûle)
 }
 
 /// <summary>Pixel de sang posé au sol, ancré au PLATEAU (en cases depuis son origine) : suit la caméra.</summary>
@@ -139,6 +140,7 @@ internal sealed class SparkBurst
         for (var i = 0; i < count; i++)
         {
             var s = _pool.Get();
+            s.GravityScale = 1f;   // recyclé : une braise avait pu le mettre en négatif (cf. EmitEmbers)
             var ang = baseAng + (float)(_rng.NextDouble() - 0.5) * 1.9f;   // cône ±~55°
             var speed = (60f + (float)_rng.NextDouble() * 140f) * (0.7f + strength * 1.3f);
             s.Position = origin + new Vector2((float)(_rng.NextDouble() - 0.5) * size * 4, 0f);
@@ -180,6 +182,7 @@ internal sealed class SparkBurst
         for (var i = 0; i < count; i++)
         {
             var s = _pool.Get();
+            s.GravityScale = 1f;   // recyclé : une braise avait pu le mettre en négatif (cf. EmitEmbers)
             var ang = (float)(_rng.NextDouble() * Math.PI * 2);          // tout autour
             var speed = 120f + (float)_rng.NextDouble() * 220f;
             s.Position = origin;
@@ -196,6 +199,37 @@ internal sealed class SparkBurst
         }
     }
 
+    // Teintes BRAISE (jaune, orange, rouge brique, gris cendre) d'un pion qui brûle.
+    private static readonly Color[] EmberColors =
+    {
+        new(255, 220, 110), new(255, 150, 50), new(220, 80, 40), new(120, 110, 105),
+    };
+
+    /// <summary>
+    /// BRAISES qui s'élèvent d'un pion qui brûle : nées le long de la ligne de feu (de <paramref name="left"/> à
+    /// <paramref name="left"/> + <paramref name="width"/>, à la hauteur <paramref name="y"/>), elles MONTENT en
+    /// dérivant (gravité inversée) et s'éteignent vite. À émettre par petites salves pendant la combustion.
+    /// </summary>
+    public void EmitEmbers(float left, float width, float y, int count, float pixel)
+    {
+        var size = Math.Max(2, (int)pixel);
+        for (var i = 0; i < count; i++)
+        {
+            var s = _pool.Get();
+            s.Position = new Vector2(left + (float)_rng.NextDouble() * width, y);
+            s.Velocity = new Vector2((float)(_rng.NextDouble() - 0.5) * 40f, -30f - (float)_rng.NextDouble() * 50f);
+            s.GravityScale = -0.12f;   // poussée de l'air chaud : elles accélèrent doucement vers le haut
+            s.MaxLife = 0.35f + (float)_rng.NextDouble() * 0.40f;
+            s.Life = s.MaxLife;
+            s.Size = size;
+            s.Outline = false;
+            s.FloorY = float.NaN;
+            s.Persistent = true;
+            s.Color = EmberColors[_rng.Next(EmberColors.Length)];
+            _active.Add(s);
+        }
+    }
+
     /// <summary>
     /// Gerbe de POUSSIÈRE / débris terreux depuis <paramref name="origin"/> (au sol) : projetée surtout vers
     /// le HAUT et les côtés, puis retombe sous la gravité (cf. <see cref="Update"/>). Sert au « Séisme ».
@@ -206,6 +240,7 @@ internal sealed class SparkBurst
         for (var i = 0; i < count; i++)
         {
             var s = _pool.Get();
+            s.GravityScale = 1f;   // recyclé : une braise avait pu le mettre en négatif (cf. EmitEmbers)
             var ang = (float)(-Math.PI / 2 + (_rng.NextDouble() - 0.5) * Math.PI);   // vers le haut, ±90°
             var speed = 70f + (float)_rng.NextDouble() * 150f;
             s.Position = origin;
@@ -233,7 +268,7 @@ internal sealed class SparkBurst
                 _pool.Return(s);
                 continue;
             }
-            s.Velocity.Y += Gravity * dt;
+            s.Velocity.Y += Gravity * s.GravityScale * dt;
             s.Position += s.Velocity * dt;
 
             // Goutte de sang qui RETOMBE devant un mur vertical (pixel de masque) : elle s'y écrase et coule,

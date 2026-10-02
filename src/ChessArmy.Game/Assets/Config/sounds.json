@@ -49,6 +49,18 @@
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit D.wav",
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit E.wav"
   ],
+  // Mort par FLÈCHE : bruit sourd quand le pion basculé (ou cloué) touche le sol. Cf. GameplayScene.UpdateBattle.
+  "unit_fall":    [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Interact Dirt A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Interact Dirt B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Interact Dirt C.wav"
+  ],
+  // Mort par SORT : la victime s'embrase et brûle du bas vers le haut (~0,95 s). Joué au contact du sort.
+  // Cf. GameplayScene.OnImpact / CombatFxRenderer.DrawBurn.
+  "unit_burn":    [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Fire A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Weapon Fire C.wav"
+  ],
   "dodge":        "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh A.wav",
   // Glissade sur une tuile glace (« glisse ») : le pion dérape d'une ou plusieurs cases. Whoosh glissé.
   "unit_slide":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Weapons and Combat/Action Whoosh C.wav",

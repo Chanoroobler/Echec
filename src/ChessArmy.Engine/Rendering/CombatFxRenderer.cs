@@ -90,6 +90,36 @@ public sealed class CombatFxRenderer
     }
 
     /// <summary>
+    /// Mort par MAGIE : <paramref name="sprite"/> BRÛLE du bas vers le haut dans <paramref name="rect"/>
+    /// (<paramref name="progress"/> 0 = intact, 1 = consumé) : front irrégulier, bandes jaune / orange
+    /// (<paramref name="hot"/>, <paramref name="warm"/>) puis zone calcinée (<paramref name="charred"/>), le pion
+    /// noircit en se consumant. Sans shader : simple fondu alpha.
+    /// </summary>
+    public void DrawBurn(SpriteBatch sb, Texture2D sprite, Rectangle rect, float progress, Vector2 seed,
+        Color hot, Color warm, Color charred)
+    {
+        if (_effect == null)
+        {
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            sb.Draw(sprite, rect, Color.White * (1f - progress));
+            sb.End();
+            return;
+        }
+
+        Set("Progress", progress);
+        Set("DissolveEdge", ToVec4(warm));
+        Set("BurnHot", ToVec4(hot));
+        Set("BurnChar", ToVec4(charred));
+        Set("DissolveCells", 32f);   // grain un peu plus gros que la dissolution : langues de flamme lisibles
+        Set("Seed", seed);
+        _effect.CurrentTechnique = _effect.Techniques["Burn"];
+
+        sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
+        sb.Draw(sprite, rect, Color.White);
+        sb.End();
+    }
+
+    /// <summary>
     /// Éclaircit la silhouette de <paramref name="sprite"/> (réaction « touché ») par
     /// <paramref name="intensity"/> [0,1]. Mélange ADDITIF, par-dessus le sprite déjà dessiné.
     /// </summary>

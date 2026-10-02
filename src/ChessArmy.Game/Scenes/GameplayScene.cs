@@ -5154,6 +5154,15 @@ public sealed class GameplayScene : Scene
                 if (_fx.MoveOnly) OnReplayMoveLand();   // déplacement rejoué : rebond de pose, aucun impact
                 else OnImpact();
             }
+            // Mort par flèche : « bruit sourd » quand le pion touche le sol. Chute simple = fin de la bascule
+            // (p = 1) ; cloué = l'atterrissage après son petit vol, au même instant que sa giclée (p = 0,85).
+            if (_fx.ArrowKill && _impactHandled && !_arrowThudPlayed
+                && _fx.ArrowProgress >= (_arrowPinned ? 0.85f : 1f))
+            {
+                _arrowThudPlayed = true;
+                Context.Sounds.Play("unit_fall");
+            }
+            UpdateBurnEmbers(dt);   // tué par un sort : braises qui montent pendant qu'il brûle
             _storm.Update(dt);    // les éclairs avancent en parallèle de la fin de l'anim d'attaque
             UpdateBounceFx(dt);   // …et la balle ricoche pendant ce temps-là
             return;
@@ -11672,6 +11681,9 @@ public sealed class GameplayScene : Scene
                 DrawSlicedVictim(sb, layout, deadSprite, victimRect, size, fxPixel);
             else if (_fx.ArrowKill)
                 DrawArrowKilledVictim(sb, layout, deadSprite, victimRect, size);
+            else if (_fx.Burned)   // tué par un SORT : brûle du bas vers le haut (braises émises dans UpdateBattle)
+                _combatFx.DrawBurn(sb, deadSprite, victimRect, _fx.DissolveProgress, _fx.Seed,
+                    BurnHot, BurnWarm, BurnCharred);
             else
                 _combatFx.DrawDissolve(sb, deadSprite, victimRect, _fx.DissolveProgress, Palette.Purple5, _fx.Seed);
         }
@@ -11746,6 +11758,39 @@ public sealed class GameplayScene : Scene
     private const float ArrowPinHop = 0.2f;      // petit vol du pion cloué avant de retomber (cases)
     private bool _arrowPinned;                   // décidé à l'impact (cf. OnImpact) selon les dégâts
     private bool _arrowLandBlood;                // giclée d'atterrissage du pion cloué déjà émise
+    private bool _arrowThudPlayed;               // bruit de chute au sol déjà joué (remis à faux à l'impact)
+
+    // ── Mort par SORT : le pion brûle (cf. CombatFxRenderer.DrawBurn) ──
+    // Teintes du feu : même entorse palette assumée que le feu d'artifice (le feu doit se voir).
+    private static readonly Color BurnHot = new(255, 225, 120);     // bande collée au front (jaune)
+    private static readonly Color BurnWarm = new(240, 120, 40);     // bande orange
+    private static readonly Color BurnCharred = new(40, 28, 24);    // calciné, au-dessus des flammes
+    private const float BurnEmberInterval = 0.05f;                  // s entre deux petites salves de braises
+    private float _burnEmberTimer;
+
+    /// <summary>
+    /// Pendant la combustion d'un pion tué par un sort, émet des braises le long de la ligne de feu (qui monte
+    /// avec <see cref="MeleeStrikeFx.DissolveProgress"/>, même relation que le front du shader Burn).
+    /// </summary>
+    private void UpdateBurnEmbers(float dt)
+    {
+        var p = _fx.DissolveProgress;
+        if (!_fx.Burned || p <= 0f || p >= 1f)
+            return;
+        _burnEmberTimer -= dt;
+        if (_burnEmberTimer > 0f)
+            return;
+        _burnEmberTimer = BurnEmberInterval;
+
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var top = layout.CellToScreen(_fx.To.Column, _fx.To.Row);
+        var spriteTop = top.Y - tile * SpriteLiftFraction;
+        // Hauteur du front dans le sprite : le shader brûle là où 0,7·(1 − v) + bruit ≈ seuil (bruit moyen 0,15).
+        var v = 1f - MathHelper.Clamp((p * 1.08f - 0.04f - 0.15f) / 0.7f, 0f, 1f);
+        var y = spriteTop + v * tile;
+        _sparks.EmitEmbers(top.X + tile * 0.25f, tile * 0.5f, y, 2, MathF.Max(2f, tile / 32f));
+    }
     private readonly Dictionary<Texture2D, int> _spriteFeet = new();   // rangée opaque la plus basse (pivot de chute), par sprite
 
     /// <summary>Rangée opaque la plus basse du sprite (ses pieds / socle) : pivot de la chute. Mesurée une fois.</summary>
@@ -12621,6 +12666,12 @@ public sealed class GameplayScene : Scene
         // vaut la case de la victime quand il avance sur elle, ce qui annulerait la direction.
         SpawnDamage(_fx.To, _pendingDamage, _fx.From);
         _arrowPinned = _fx.ArrowKill && _pendingDamage >= ArrowPinDamage;   // gros coup : cloué au sol
+        _arrowThudPlayed = false;   // le bruit de chute de cette mort par flèche reste à jouer (cf. UpdateBattle)
+        if (_fx.Burned)
+        {
+            Context.Sounds.Play("unit_burn");   // le sort embrase la victime : elle brûle à partir de maintenant
+            _burnEmberTimer = 0f;
+        }
         if (_fx.Sliced)
         {
             EmitSliceBlood();   // pion tranché : giclée le long de la coupe en plus

@@ -4,6 +4,7 @@
 //                de bruit chunky + liseré incandescent. Le sprite est la texture liée.
 //   • Flash    : silhouette du sprite éclaircie (réaction « touché » au contact),
 //                mélange ADDITIF.
+//   • Burn     : mort par MAGIE, le sprite brûle du bas vers le haut (bandes de feu + calcination).
 // (Le feedback d'impact lui-même = étincelles en particules + knockback, gérés côté C#.)
 //
 // Comme les sprites sont chargés en alpha DROIT (Texture2D.FromStream) puis dessinés
@@ -31,6 +32,10 @@ float4 DissolveEdge;   // teinte du liseré incandescent (braise)
 float  DissolveCells;  // résolution de la grille de bruit (chunky → pixel-art)
 float  EdgeWidth;      // épaisseur du liseré de combustion, en [0,1] de bruit
 float2 Seed;           // graine par mort (chaque dissolution diffère)
+
+// ── Burn ── (réutilise Progress, DissolveCells, Seed ; DissolveEdge = bande ORANGE)
+float4 BurnHot;        // bande la plus chaude, collée au front (jaune)
+float4 BurnChar;       // teinte de calcination (le pion noircit au-dessus du front)
 
 // ── Flash ──
 float4 FlashColor;     // teinte du flash (crème claire)
@@ -80,6 +85,35 @@ float4 DissolvePS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
     return float4(rgb * tex.a, tex.a);
 }
 
+// ── Burn ──────────────────────────────────────────────────────────────────────────
+// Mort par MAGIE : le pion BRÛLE du bas vers le haut. Front de combustion plus directionnel que la
+// dissolution (moins de grain) ; juste au-dessus du front, des bandes FRANCHES (pixel-art, pas de dégradé) :
+// jaune → orange → calciné, et tout le pion s'assombrit à mesure qu'il se consume.
+float4 BurnPS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
+{
+    float4 tex = tex2D(SpriteSampler, uv);
+
+    float2 cell  = floor(uv * DissolveCells);
+    float  noise = Hash(cell + Seed);
+    float field = noise * 0.30 + (1.0 - uv.y) * 0.70;   // monte du bas, bord irrégulier comme une flamme
+    float th    = Progress * 1.08 - 0.04;
+
+    clip(field - th);                                   // sous le front : consumé
+
+    float d = field - th;                               // distance au-dessus du front
+    float hot  = 1.0 - step(0.05, d);                   // bande jaune, collée au front
+    float warm = (1.0 - step(0.11, d)) - hot;           // bande orange au-dessus
+    float burnt = (1.0 - step(0.22, d)) - hot - warm;   // zone calcinée au-dessus
+
+    // Noircissement global progressif (le pion « cuit ») puis bandes de feu par-dessus.
+    float3 rgb = tex.rgb * (1.0 - 0.45 * saturate(Progress * 1.6));
+    rgb = lerp(rgb, BurnChar.rgb, burnt * 0.85);
+    rgb = lerp(rgb, DissolveEdge.rgb, warm);
+    rgb = lerp(rgb, BurnHot.rgb, hot);
+
+    return float4(rgb * tex.a, tex.a);                  // prémultiplié (cf. DissolvePS)
+}
+
 // ── Flash ─────────────────────────────────────────────────────────────────────────
 // Silhouette DURE (seuil sur l'alpha → bords nets, pas d'anti-aliasing) et intensité POSTÉRISÉE
 // → clignotement par paliers francs plutôt qu'un fondu lisse (rendu pixel-art).
@@ -94,3 +128,4 @@ float4 FlashPS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
 
 technique Dissolve { pass P0 { PixelShader = compile PS_SHADERMODEL DissolvePS(); } }
 technique Flash    { pass P0 { PixelShader = compile PS_SHADERMODEL FlashPS();    } }
+technique Burn     { pass P0 { PixelShader = compile PS_SHADERMODEL BurnPS();     } }
