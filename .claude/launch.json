@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sound-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/sound-preview/serve.js"],
+      "port": 8765
+    }
+  ]
+}

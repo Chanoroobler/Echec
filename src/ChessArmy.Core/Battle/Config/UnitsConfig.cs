@@ -162,6 +162,12 @@ public sealed class CommandeConfig
     public bool? DemoUnlocked { get; set; }
 
     /// <summary>
+    /// COMMANDANT : difficulté de prise en main, de 1 (accessible) à 3 (exigeant), affichée en étoiles sur
+    /// l'écran de sélection. Indépendante du niveau de difficulté de la partie. Absent → 1.
+    /// </summary>
+    public int? Difficulty { get; set; }
+
+    /// <summary>
     /// BOSS : id du COMMANDANT débloqué en battant ce boss en dernière phase (cf. <see cref="Id"/> d'un
     /// Commander). Absent → ce boss ne débloque personne (ex. la Brute). Ignoré pour un Commander.
     /// </summary>

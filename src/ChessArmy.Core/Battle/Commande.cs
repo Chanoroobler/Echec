@@ -34,8 +34,9 @@ public sealed class CommandeDef
         int healPoints = 0, int healCap = int.MaxValue,
         int pairKillPoints = 0, int pairKillCap = int.MaxValue,
         string? companionId = null, bool noArmy = false,
-        int allyDeathPoints = 0, int allyDeathCap = int.MaxValue, bool demoUnlocked = false)
+        int allyDeathPoints = 0, int allyDeathCap = int.MaxValue, bool demoUnlocked = false, int difficulty = 1)
     {
+        Difficulty = System.Math.Clamp(difficulty, MinDifficulty, MaxDifficulty);
         DemoUnlocked = demoUnlocked;
         AllyDeathPoints = allyDeathPoints;
         AllyDeathCap = allyDeathCap;
@@ -92,6 +93,15 @@ public sealed class CommandeDef
     /// (champ <c>demoUnlocked</c> de units.json). Sans effet hors démo.
     /// </summary>
     public bool DemoUnlocked { get; }
+
+    public const int MinDifficulty = 1, MaxDifficulty = 3;
+
+    /// <summary>
+    /// COMMANDANT : difficulté de prise en main, de <see cref="MinDifficulty"/> (accessible) à
+    /// <see cref="MaxDifficulty"/> (exigeant), affichée en étoiles sur l'écran de sélection (champ
+    /// <c>difficulty</c> de units.json). Sans rapport avec le niveau de difficulté de la partie.
+    /// </summary>
+    public int Difficulty { get; }
 
     public CommandeRole Role { get; }
 

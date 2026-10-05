@@ -811,6 +811,7 @@ public sealed class CommanderSelectScene : Scene
 
         // 1. STATS, sur deux colonnes séparées par un filet vertical.
         Context.Font.Draw(sb, Loc.T("commander.stats"), new Vector2(inner.X, lay.StatsY), 1, Palette.Yellow1);
+        DrawDifficultyStars(sb, inner.Right, lay.StatsY, def.Difficulty);   // même ligne, calé à droite
         var rowsY = lay.StatsY + TitleStep;
         var c = def.BaseClass;
         var leftLabels = new[] { Loc.T("stat.hp"), Loc.T("stat.power"), Loc.T("stat.movement"), Loc.T("stat.range") };
@@ -883,6 +884,54 @@ public sealed class CommanderSelectScene : Scene
                 Palette.Black1 * 0.6f);
             Context.Font.Draw(sb, Loc.T(Context.Settings.IsDemo ? "commander.locked_demo" : "commander.locked"),
                 new Vector2(inner.X, lay.UnitsY), 1, Palette.Grey);
+        }
+    }
+
+    // Étoile pixel-art 9×9 (« # » = pixel plein), dessinée par segments horizontaux : aucune texture, aucune allocation.
+    private static readonly string[] StarRows =
+    {
+        "....#....",
+        "...###...",
+        "...###...",
+        "#########",
+        ".#######.",
+        "..#####..",
+        "..#####..",
+        ".###.###.",
+        ".##...##.",
+    };
+    private const int StarSize = 9, StarGap = 3;
+
+    /// <summary>
+    /// Difficulté de PRISE EN MAIN du commandant (<see cref="CommandeDef.Difficulty"/>) : libellé puis
+    /// <see cref="CommandeDef.MaxDifficulty"/> étoiles (pleines jusqu'au niveau, éteintes ensuite), le tout calé
+    /// à droite sur <paramref name="right"/> et centré sur la ligne de titre <paramref name="titleY"/>.
+    /// </summary>
+    private void DrawDifficultyStars(SpriteBatch sb, int right, int titleY, int level)
+    {
+        const int count = CommandeDef.MaxDifficulty;
+        var sx = right - (count * StarSize + (count - 1) * StarGap);
+        var sy = titleY + (Context.Font.GlyphHeight - StarSize) / 2;
+        var label = Loc.T("commander.difficulty");
+        Context.Font.Draw(sb, label, new Vector2(sx - 8 - Context.Font.Measure(label, 1), titleY), 1, Palette.White);
+        for (var i = 0; i < count; i++)
+            DrawStar(sb, sx + i * (StarSize + StarGap), sy, i < level ? Palette.Yellow2 : Palette.Black1);
+    }
+
+    private void DrawStar(SpriteBatch sb, int x, int y, Color color)
+    {
+        for (var row = 0; row < StarRows.Length; row++)
+        {
+            var line = StarRows[row];
+            for (var col = 0; col < line.Length; col++)
+            {
+                if (line[col] != '#')
+                    continue;
+                var start = col;
+                while (col + 1 < line.Length && line[col + 1] == '#')
+                    col++;
+                Fill(sb, new Rectangle(x + start, y + row, col - start + 1, 1), color);
+            }
         }
     }
 

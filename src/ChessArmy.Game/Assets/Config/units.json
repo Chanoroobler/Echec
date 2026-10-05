@@ -156,9 +156,10 @@
   // reserveSize = pions en réserve HORS commandant), l'id de son arbre de commandement (tree →
   // commander_trees.json) et sa source de points PROPRE : soit fusionPoints (points gagnés à chaque fusion),
   // soit onHitPoints (points gagnés à chaque coup REÇU par le commandant, plafonné à onHitCap coups par combat).
+  // "difficulty" (1 a 3) : difficulte de PRISE EN MAIN du commandant, affichee en etoiles sur l'ecran de selection.
   "commandes": [
     { "role": "Commander", "id": "commandant", "domaine": "Dame", "name": "Commandant", "asset": "commandant", "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1,
-      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2,
+      "deployments": 5, "reserveSize": 8, "tree": "commandant", "fusionPoints": 2, "difficulty": 1,
       "startingUnits": [ "Tour", "Dame" ] },
     // PROVISOIRE : deuxieme commandant, la pour eprouver le carrousel de selection. Il reprend le sprite du
     // boss Commandant_brute (les boss deviendront des commandants par la suite) et l'arbre du premier.
@@ -182,6 +183,7 @@
       "fusionPoints": 0,
       "onHitPoints": 1,
       "onHitCap": 1,
+      "difficulty": 1,
       "startingUnits": [ "Tour", "Tour" ],
       "unlocked": false
     },
@@ -205,6 +207,7 @@
       "tree": "commandantFou",
       "rangedHitPoints": 1,
       "rangedHitCap": 2,
+      "difficulty": 3,
       "startingUnits": [ "Fou", "Fou" ],
       "unlocked": false
     },
@@ -230,10 +233,9 @@
       "traits": [ "Franchissement" ],
       "jumpPoints": 1,
       "jumpCap": 2,
+      "difficulty": 2,
       "startingUnits": [ "Cavalier", "Cavalier" ],
-      "unlocked": false,
-      // Version DEMO : jouable des le depart (verrouille seulement dans le jeu complet).
-      "demoUnlocked": true
+      "unlocked": false
     },
     // Commandant MARCHAND. Se deplace en L (domaine Cavalier) : un convoyeur qui traverse le plateau pour
     // ramasser le butin. Theme : l'EQUIPEMENT — son arbre "commandantMarchand" lui donne des slots (il est le
@@ -262,6 +264,7 @@
       "lootPoints": 1,
       "lootCap": 3,
       "missionPoints": 1,
+      "difficulty": 2,
       "startingUnits": [ "Dame", "Fou", "Tour" ],
       "unlocked": false
     },
@@ -293,6 +296,7 @@
       "pairKillCap": 2,
       "companion": "Basile",
       "noArmy": true,
+      "difficulty": 3,
       "startingUnits": [],
       // Verrouille au depart : il s'ouvre a 150 ennemis abattus TOUTES PARTIES CONFONDUES
       // (cf. GameplayScene.UnlockDuoIfEnoughKills / SaveService.KillUnlockThreshold).
@@ -322,6 +326,7 @@
       "reserveSize": 10,
       "tree": "commandantBrute",
       "allyDeathPoints": 1,
+      "difficulty": 2,
       "startingUnits": [ "Dame", "Dame" ],
       "unlocked": false
     },

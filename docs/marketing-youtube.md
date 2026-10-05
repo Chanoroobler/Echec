@@ -1220,3 +1220,149 @@ Alternatives :
 `#indiegame #gamedev #pixelart #gameui #roguelike`
 
 **Note de tournage** : fais défiler toutes les teintes d'affilée, sans coupe. C'est le défilement lui-même qui rend le clip satisfaisant.
+
+---
+
+## Short : effet 3D sur les cartes de sélection d'unité
+
+*Clip de polish. Angle : l'aveu assumé, personne ne l'a demandé.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Nobody asked for this.`
+🇫🇷 *Personne ne l'a demandé.*
+
+Alternative : 🇬🇧 `The cards tilt now.`
+
+**Titre** : 🇬🇧 Nobody asked for this, I did it anyway
+
+Alternatives :
+- 🇬🇧 I gave my selection cards a 3D tilt / 🇫🇷 J'ai donné un effet 3D à mes cartes de sélection
+- 🇬🇧 The cards tilt now / 🇫🇷 Les cartes s'inclinent maintenant
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Les cartes de sélection d'unité ont maintenant un effet 3D, elles s'inclinent au lieu de rester plates. Ça ne change rien à l'équilibrage et personne ne l'avait demandé. Mais c'est l'écran où tu prends une vraie décision après chaque combat, et une décision mérite de se sentir comme une décision.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> The unit selection cards now tilt in 3D instead of sitting flat. It changes nothing about the balance and nobody asked for it. But this is the screen where you make a real decision after every fight, and a decision deserves to feel like one.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #gameui #juice`
+
+**Note de montage** : clip satisfaisant, donc pas de ralenti ni de carte de fin longue. Montre l'inclinaison deux ou trois fois de suite et coupe net pour que ça reboucle.
+
+---
+
+## Short : nouvelle animation de mort, avec du sang
+
+*Angle : la mort est définitive, donc elle doit se voir.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Death should look like it matters.`
+🇫🇷 *La mort doit avoir l'air de compter.*
+
+Alternative : 🇬🇧 `New death animation. With blood.`
+
+**Titre** : 🇬🇧 Death is permanent, so it should look like it
+
+Alternatives :
+- 🇬🇧 New death animation, now with blood / 🇫🇷 Nouvelle animation de mort, avec du sang
+- 🇬🇧 Death should look like it matters / 🇫🇷 La mort doit avoir l'air de compter
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouvelle animation de mort, avec du sang. Dans ce jeu une unité qui tombe ne revient pas, et elle emporte son équipement avec elle. L'ancienne version la faisait disparaître proprement, ce qui collait mal avec ce que ça coûte vraiment. Maintenant une perte se voit.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New death animation, with blood. In this game a unit that falls doesn't come back, and it takes its equipment with it. The old version made it disappear cleanly, which sat badly with what losing one actually costs. Now a loss looks like one.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #gamefeel #roguelike`
+
+**Note de montage** : format avant/après idéal si une capture de l'ancienne dissolution existe. Même kill, deux versions, cut sec entre les deux.
+
+**Pense à vérifier** : l'ajout de sang peut changer la réponse au questionnaire de contenu de ta page Steam.
+
+---
+
+## Short : nouveau commandant qui envoie ses unités au combat
+
+*Angle : un commandant qui agit à travers son armée au lieu de frapper lui-même.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `He doesn't attack. He orders.`
+🇫🇷 *Il n'attaque pas. Il ordonne.*
+
+Alternative, si l'unité est littéralement projetée : 🇬🇧 `He throws his own soldiers at you.`
+
+**Titre** : 🇬🇧 This commander doesn't fight, he gives orders
+
+Alternatives :
+- 🇬🇧 He doesn't attack, he orders / 🇫🇷 Il n'attaque pas, il ordonne
+- 🇬🇧 A commander who acts through his army / 🇫🇷 Un commandant qui agit à travers son armée
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouveau commandant. Sa capacité n'est pas de frapper, c'est d'envoyer une de tes unités sur un ennemi. Les commandants précédents étaient ta meilleure pièce offensive, celui-ci décide quand les autres frappent. Changer de commandant ne change pas une statistique, ça change la façon dont tu joues chaque tour.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New commander. His ability isn't to hit, it's to send one of your units at an enemy. The previous commanders were your best offensive piece, this one decides when the others strike. Swapping commander doesn't change a stat, it changes how you play every turn.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #roguelike #pixelart #tacticalrpg #chess`
+
+**À préciser** : s'il donne une action supplémentaire à une unité, ou s'il la projette littéralement sur la cible. Les deux donnent un clip très différent.
+
+---
+
+## Short : nouvel effet de mort pour les mages, les unités brûlent
+
+*Suite du short sur l'animation de mort. Angle : la mort change selon ce qui l'a causée.*
+
+**Texte à l'écran** : une seule phrase, fixe
+🇬🇧 `Mages don't leave blood.`
+🇫🇷 *Les mages ne laissent pas de sang.*
+
+Alternative : 🇬🇧 `How you die depends on who killed you.`
+
+**Titre** : 🇬🇧 How a unit dies depends on who killed it
+
+Alternatives :
+- 🇬🇧 Mages don't leave blood / 🇫🇷 Les mages ne laissent pas de sang
+- 🇬🇧 New kill effect for mages / 🇫🇷 Nouvel effet de mort pour les mages
+
+🇫🇷
+> Chess Army est un RPG roguelike en pixel art bâti sur les déplacements des échecs.
+>
+> Nouvel effet de mort pour les mages : les unités tuées par magie brûlent au lieu de saigner. La mort n'a plus la même tête selon ce qui l'a causée, et ça se lit d'un coup d'œil sur le plateau. Un détail qui ne change rien aux chiffres, mais qui dit immédiatement ce qui vient de se passer.
+>
+> Wishlist sur Steam : https://store.steampowered.com/app/4971900/Chess_Army/
+
+🇬🇧
+> Chess Army is a pixel art roguelike RPG built on chess movement.
+>
+> New kill effect for mages: units killed by magic burn instead of bleeding. Death doesn't look the same depending on what caused it, and you read that at a glance across the board. A detail that changes nothing about the numbers, but tells you right away what just happened.
+>
+> Wishlist on Steam: https://store.steampowered.com/app/4971900/Chess_Army/
+
+`#indiegame #gamedev #pixelart #gamefeel #roguelike`
+
+**Note de montage** : montre un kill au corps à corps puis un kill au mage dans le même clip. La comparaison est le sujet, un seul des deux ne raconte rien.

@@ -15,7 +15,7 @@
   //             Aucun texte dans le nœud : le libellé et la description viennent de strings.csv
   //             (clés "tree.<id>" et "tree.<id>.desc") et ne s'affichent qu'en infobulle.
   // "effects" : un ou plusieurs, de type
-  //   { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" }
+  //   { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctClass" }
   //   { "kind": "commanderTrait", "trait": "Rempart" }        ← trait de Battle.Trait
   //   { "kind": "unitStat",  "stat": "hp", "amount": 2 }      ← toutes les unités HORS commandant
   //   { "kind": "unitTrait", "trait": "Riposte" }
@@ -26,25 +26,26 @@
   //   { "kind": "fusionSizeReduction", "amount": 1 }          ← réduit le nombre de pions requis pour une fusion tier 1→2 (min 2)
   //
   // "stat"  : hp | damage | moveRange | attackRange
-  // "scale" : flat (défaut) | perDistinctPair  → bonus × (classes distinctes du roster hors commandant ÷ 2),
-  //           figé au moment du placement. Récompense la variété de l'armée.
+  // "scale" : flat (défaut) | perDistinctClass → bonus × classes distinctes du roster hors commandant (réserve + jeu),
+  //           | perDistinctPair  → la même chose ÷ 2 (par paire de classes distinctes),
+  //           figés au moment du placement. Récompensent la variété de l'armée.
   "trees": [
     {
       "id": "commandant",
       "nodes": [
         // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────────
         { "id": "cmd_Duelliste", "branch": 0, "level": 1, "effects": [ { "kind": "commanderTrait", "trait": "Duelliste" } ] },
-        { "id": "cmd_puissance", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 2, "scale": "perDistinctPair" } ] },        
+        { "id": "cmd_puissance", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "damage", "amount": 1, "scale": "perDistinctClass" } ] },        
         { "id": "cmd_mouvement", "branch": 0, "level": 2, "effects": [ { "kind": "commanderStat", "stat": "moveRange",   "amount": 1 } ] },
-        { "id": "cmd_vie",       "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perDistinctPair" } ] },
+        { "id": "cmd_vie",       "branch": 0, "level": 3, "effects": [ { "kind": "commanderStat", "stat": "hp",     "amount": 2, "scale": "perDistinctClass" } ] },
         { "id": "cmd_Orage", "branch": 0, "level": 3, "effects": [ { "kind": "commanderTrait", "trait": "Orage" } ] },
         { "id": "cmd_portee",    "branch": 0, "level": 4, "effects": [ { "kind": "commanderStat", "stat": "attackRange", "amount": 1 } ] },
 
         // ── Branche 1 : les TROUPES (tout le roster hors commandant) ────────────────────────────
         { "id": "troupe_vie",       "branch": 1, "level": 1, "effects": [ { "kind": "unitStat", "stat": "hp", "amount": 2 } ] },
         { "id": "troupe_releve",    "branch": 1, "level": 2, "effects": [ { "kind": "eliteDeathRecruit", "amount": 1 } ] },        
-        { "id": "troupe_vie_paire", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "hp",     "amount": 1, "scale": "perDistinctPair" } ] },
-        { "id": "troupe_puissance", "branch": 1, "level": 3, "effects": [ { "kind": "unitStat", "stat": "damage", "amount": 1, "scale": "perDistinctPair" } ] },
+        { "id": "troupe_vie_paire", "branch": 1, "level": 2, "effects": [ { "kind": "unitStat", "stat": "hp",     "amount": 1, "scale": "perDistinctClass" } ] },
+        { "id": "troupe_puissance", "branch": 1, "level": 3, "effects": [ { "kind": "unitStat", "stat": "damage", "amount": 1, "scale": "perDistinctClass" } ] },
         { "id": "troupe_mouvement", "branch": 1, "level": 4, "effects": [ { "kind": "unitStat", "stat": "moveRange", "amount": 1 } ] },
 
         // ── Branche 2 : la LOGISTIQUE (déploiement + réserve) ───────────────────────────────────

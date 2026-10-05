@@ -330,43 +330,49 @@ public class CommandTreeTests
     }
 
     [Fact]
-    public void PerDistinctPairNode_ScalesWithTheRosterVariety()
+    public void PerDistinctClassNode_ScalesWithTheRosterVariety()
     {
+        // Foudroyeur : bonus PAR UNITÉ DIFFÉRENTE (chaque classe distincte compte), plus par paire.
         var run = RunWithPoints(100);
         run.Unlock(Node("cmd_Duelliste"));
-        run.Unlock(Node("cmd_vie"));     // +2 PV au commandant PAR PAIRE de classes distinctes
+        run.Unlock(Node("cmd_vie"));     // +2 PV au commandant PAR CLASSE distincte
 
         var commander = run.Commander;
         var baseHp = commander.UnitClass.MaxHp;
-        Assert.Equal(baseHp, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);   // roster vide : 0 paire
+        Assert.Equal(baseHp, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);   // roster vide : 0 classe
 
         run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
-        run.AddUnit(new UnitSpec(Domaine.Fou, Domaines.Fou.BaseClass));                          // 2 classes → 1 paire
-        Assert.Equal(baseHp + 2, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);
-
-        run.AddUnit(new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass));
-        run.AddUnit(new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass));                // 4 classes → 2 paires
+        run.AddUnit(new UnitSpec(Domaine.Fou, Domaines.Fou.BaseClass));                          // 2 classes → +4
         Assert.Equal(baseHp + 4, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);
+
+        run.AddUnit(new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass));                        // 3 classes → +6 (impair : compte aussi)
+        Assert.Equal(baseHp + 6, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);
+
+        run.AddUnit(new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass));                // 4 classes → +8
+        Assert.Equal(baseHp + 8, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);
+
+        run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));                        // doublon : rien de plus
+        Assert.Equal(baseHp + 8, commander.Spawn(Faction.Player, run.BuffsFor(commander)).MaxHp);
     }
 
     [Fact]
-    public void PerDistinctPairDamage_ReachesTheAttackResolution()
+    public void PerDistinctClassDamage_ReachesTheAttackResolution()
     {
-        // Le bonus « puissance par paire » doit s'appliquer aux DÉGÂTS RÉELLEMENT INFLIGÉS (Match), pas
-        // seulement à la stat affichée : c'est Unit.Damage que lit EffectiveDamage.
+        // Le bonus « puissance par unité différente » doit s'appliquer aux DÉGÂTS RÉELLEMENT INFLIGÉS (Match),
+        // pas seulement à la stat affichée : c'est Unit.Damage que lit EffectiveDamage.
         var run = RunWithPoints(100);
         run.Unlock(Node("troupe_vie"));
-        run.Unlock(Node("troupe_puissance"));   // +1 puissance par paire de classes distinctes
+        run.Unlock(Node("troupe_puissance"));   // +1 puissance par classe distincte
 
         run.AddUnit(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
         run.AddUnit(new UnitSpec(Domaine.Fou, Domaines.Fou.BaseClass));
         run.AddUnit(new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass));
         run.AddUnit(new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass));
-        Assert.Equal(2, run.DistinctPairs);   // 4 classes distinctes → 2 paires → +2 puissance
+        Assert.Equal(4, run.DistinctClasses);   // 4 classes distinctes → +4 puissance
 
         var attackerSpec = run.Roster.First(u => !u.Essential && u.Domaine == Domaine.Dame);
         var attacker = attackerSpec.Spawn(Faction.Player, run.BuffsFor(attackerSpec));
-        Assert.Equal(attackerSpec.UnitClass.Damage + 2, attacker.Damage);
+        Assert.Equal(attackerSpec.UnitClass.Damage + 4, attacker.Damage);
 
         // Un gros sac de PV encaisse le coup : on lit la différence de PV, sans autre trait en jeu.
         var target = new UnitClass("Cible", "cible", tier: 1, maxHp: 100, damage: 0, moveRange: 1, attackRange: 1);
@@ -377,7 +383,7 @@ public class CommandTreeTests
         match.Place(to, new Unit(Domaine.Dame, Faction.Enemy, target));
 
         match.TryAttack(from, to);
-        Assert.Equal(100 - (attackerSpec.UnitClass.Damage + 2), match.UnitAt(to)!.Hp);
+        Assert.Equal(100 - (attackerSpec.UnitClass.Damage + 4), match.UnitAt(to)!.Hp);
     }
 
     [Fact]

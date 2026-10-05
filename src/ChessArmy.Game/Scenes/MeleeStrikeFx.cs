@@ -99,6 +99,10 @@ public sealed class MeleeStrikeFx
     /// </summary>
     public bool Sliced { get; private set; }
 
+    /// <summary>Coupe VERTICALE (tué par un pion lancé, qui tombe du ciel) : les deux moitiés gauche/droite
+    /// s'écartent et basculent chacune de son côté, au lieu de la diagonale ou de la décapitation.</summary>
+    public bool VerticalSlice => Sliced && _style == AttackStyle.Throw;
+
     /// <summary>
     /// Option « Sang » (GameSettings.Blood), poussée par la scène : <c>false</c> = plus aucune coupe, toutes les
     /// morts se dissolvent simplement.
@@ -170,7 +174,9 @@ public sealed class MeleeStrikeFx
         DissolveOnly = false;
         VictimDoomed = victimDoomed;
         _style = style;
-        Sliced = GoreEnabled && killed && victimSprite != null && style is AttackStyle.Lunge or AttackStyle.Leap;
+        // Pion LANCÉ (« Chair à canon » de la Brute) compris : il s'abat sur sa cible, coupée VERTICALEMENT.
+        Sliced = GoreEnabled && killed && victimSprite != null
+            && style is AttackStyle.Lunge or AttackStyle.Leap or AttackStyle.Throw;
         ArrowKill = killed && victimSprite != null && style == AttackStyle.Shoot;   // pas du gore : toujours joué
         Burned = killed && victimSprite != null && style == AttackStyle.Cast;       // idem : brûlé par le sort
         _approachDur = style switch
@@ -232,22 +238,26 @@ public sealed class MeleeStrikeFx
     /// « Recule » dont le bonus de plaquage ACHÈVE une cible ayant survécu au coup direct : on rejoue sa mort
     /// APRÈS l'anim d'attaque et l'apparition du +5. Impact immédiat (la dissolution démarre tout de suite).
     /// </summary>
-    public void BeginDissolve(Cell cell, Texture2D? sprite)
+    /// <param name="shotFrom">Non null : la victime meurt comme sous une FLÈCHE (recul, bascule ou clouage, flèche
+    /// plantée) avant de se dissoudre, le coup venant de cette case. Sert au « Transpercement » qui tue le pion
+    /// DERRIÈRE la cible : <paramref name="shotFrom"/> = la cible, d'où ressort le coup.</param>
+    public void BeginDissolve(Cell cell, Texture2D? sprite, Cell? shotFrom = null)
     {
-        From = To = Attacker = cell;
-        AttackerSprite = null;   // pas d'attaquant : on ne rejoue QUE la dissolution
+        From = shotFrom ?? cell;   // From → To donne le sens du tir (chute à l'opposé, cf. DrawArrowKilledVictim)
+        To = Attacker = cell;
+        AttackerSprite = null;   // pas d'attaquant : on ne rejoue QUE la mort
         VictimSprite = sprite;
         Killed = true;
         Advanced = false;
         MoveOnly = false;
         DissolveOnly = true;
         Sliced = false;
-        ArrowKill = false;
+        ArrowKill = shotFrom != null && sprite != null;
         Burned = false;
         VictimDoomed = false;
         _style = AttackStyle.Lunge;
-        _approachDur = 0;        // impact immédiat : la dissolution démarre à la première frame
-        _total = DissolveDur;
+        _approachDur = 0;        // impact immédiat : la mort démarre à la première frame
+        _total = DeathDur;       // chute de flèche éventuelle + dissolution
         _elapsed = 0;
         _leadIn = 0;
         _seed = new Vector2((_seedCounter * 37) % 251, (_seedCounter * 101) % 241);
@@ -292,7 +302,9 @@ public sealed class MeleeStrikeFx
         get
         {
             var t = T - _approachDur;
-            if (t < 0 || t > KnockbackDur)
+            // Mort rejouée seule (cf. BeginDissolve) : le recul a déjà eu lieu pendant l'attaque, et la chute de
+            // flèche porte le sien.
+            if (DissolveOnly || t < 0 || t > KnockbackDur)
                 return 0f;
             return 1f - EaseInOut((float)(t / KnockbackDur));
         }

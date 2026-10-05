@@ -394,8 +394,9 @@ public sealed class GameplayScene : Scene
     // dissolution APRÈS l'anim d'attaque (et l'apparition du +5), sinon elle disparaîtrait sans se dissoudre.
     private (Cell Cell, Texture2D? Sprite)? _pendingSlamDissolve;
     // « Transpercement » qui TUE le pion DERRIÈRE la cible : même souci (retiré sans dissolution). On le dessine
-    // solide pendant l'anim d'attaque puis on DIFFÈRE sa dissolution après (cf. DrawCombatFx / UpdateBattle).
-    private (Cell Cell, Texture2D? Sprite)? _pendingPierceDissolve;
+    // solide pendant l'anim d'attaque puis on DIFFÈRE sa mort, jouée comme sous une FLÈCHE (ShotFrom = la cible, d'où
+    // ressort le coup ; Damage décide du clouage), cf. DrawCombatFx / UpdateBattle.
+    private (Cell Cell, Texture2D? Sprite, Cell ShotFrom, int Damage)? _pendingPierceDissolve;
     // La victime a CHANGÉ DE CASE dans le moteur — « Recule » qui a glissé (repoussée) ou « Esquive » (repli
     // après le coup encaissé). On l'anime en la faisant glisser de sa case d'origine (From) vers sa case
     // d'arrivée (To) pendant l'anim d'attaque. Les deux traits s'excluent : une cible repliée n'est plus là
@@ -1442,6 +1443,7 @@ public sealed class GameplayScene : Scene
         _fusionReserveSlot = 0;
         _fusionPunchTimer = 0;
         _evoPhase = EvoPhase.None;
+        _evoHiddenSpec = null;
         _evoBase = null;
         _evoResult = null;
         _dragSpec = null;
@@ -1451,6 +1453,8 @@ public sealed class GameplayScene : Scene
         _bounce.Clear();
         _chain.Clear();
         _chainHome = null;
+        _chainCorpseCount = 0;   // victimes de chaîne du combat précédent : on les oublie
+        System.Array.Clear(_chainCorpses);
 
         _pendingBounce = null;
         _tremor.Clear();
@@ -1644,6 +1648,8 @@ public sealed class GameplayScene : Scene
         _bounce.Clear();
         _chain.Clear();
         _chainHome = null;
+        _chainCorpseCount = 0;   // victimes de chaîne du combat précédent : on les oublie
+        System.Array.Clear(_chainCorpses);
 
         _pendingBounce = null;
         _tremor.Clear();
@@ -4770,6 +4776,8 @@ public sealed class GameplayScene : Scene
         if (firstTime)
             _run.Stats.AddDiscoveredClass(fused.UnitClass.Name);  // récap : évolution DÉCOUVERTE cette run
         StartEvolutionAnimation(baseClass, fused.UnitClass, firstTime, source);
+        if (firstTime)
+            _evoHiddenSpec = fused;   // révélation longue : la pièce n'apparaît en réserve qu'une fois revenue à sa place
         _fusionGroup.Clear();
         _fusionCell = null;
     }
@@ -4813,6 +4821,7 @@ public sealed class GameplayScene : Scene
     }
 
     private int _evoLastToggle = -1;   // dernière bascule de silhouette sonorisée (cf. UpdateEvolutionAnimation)
+    private UnitSpec? _evoHiddenSpec;  // pièce fusionnée en cours de révélation : masquée en réserve jusqu'à EndEvolutionAnimation
 
     /// <summary>Numéro de bascule du clignotement à l'avancement <paramref name="p"/> (0→1) de la révélation :
     /// impair = silhouette de l'évolution, pair = celle de la base. Partagé par le dessin et le son.</summary>
@@ -4855,9 +4864,8 @@ public sealed class GameplayScene : Scene
                         ? new Vector2(VirtualViewport.Width / 2f, VirtualViewport.Height / 2f)
                         : new Vector2(_evoSource.Center.X, _evoSource.Center.Y);
                     _sparks.EmitFirework(c, _evoLong ? 48 : 20, 1);
-                    Context.Sounds.Play("recruit");
-                    if (_evoLong)
-                        Context.Sounds.Play("unit_discover");   // 1re obtention : fanfare au flash, quand la silhouette prend ses couleurs
+                    // 1re obtention : son de révélation SEUL au flash (pas la pièce de « recruit » par-dessus).
+                    Context.Sounds.Play(_evoLong ? "unit_discover" : "recruit");
                 }
                 if (_evoPhaseTimer <= 0)
                 {
@@ -4895,6 +4903,7 @@ public sealed class GameplayScene : Scene
         _evoResultSprite = null;
         // Fin de la révélation de « Révolte » : la meneuse peut maintenant se montrer sur le plateau et en réserve.
         _revolteRevealPending = false;
+        _evoHiddenSpec = null;   // la pièce dévoilée est revenue à sa place : elle réapparaît en réserve
 
         // Un nœud à choix cliqué dans la même visite de l'arbre que « Révolte » attendait la fin de sa
         // révélation : on le présente maintenant.
@@ -4963,16 +4972,38 @@ public sealed class GameplayScene : Scene
     private Rectangle FusionCardRect(int index, int count)
     {
         var vp = VirtualViewport;
-        return DraftCardRect(index, count, vp.Width, vp.Height);
+        return DraftCardRect(index, count, vp.Width, vp.Height, FusionCardsY(vp.Height));
     }
+
+    // Empilement vertical de la popup : cadre titre, bouton Annuler, puis les cartes.
+    private const int FusionTitleTop = 8, FusionTitleH = 64, FusionTitleGap = 14;
+    private const int FusionCancelW = 180, FusionCancelH = 34, FusionCancelGap = 18;
+
+    /// <summary>
+    /// Haut des cartes de fusion : la position du draft, mais JAMAIS au point de pousser le cadre titre hors du
+    /// canvas. En 1080p (canvas 540) le draft met les cartes à y=125, ce qui sortait le cadre de 5 px par le haut.
+    /// </summary>
+    private static int FusionCardsY(int vpH) => System.Math.Max(DraftCardsY(vpH),
+        FusionTitleTop + FusionTitleH + FusionTitleGap + FusionCancelH + FusionCancelGap);
 
     /// <summary>Bouton « Annuler » AU-DESSUS des cartes (n'empiète pas sur les mots-clés sous les cartes).</summary>
     private Rectangle FusionCancelRect()
     {
         var vp = VirtualViewport;
-        var card = DraftCardRect(0, 2, vp.Width, vp.Height);
-        const int w = 180, h = 34;
-        return new Rectangle((vp.Width - w) / 2, card.Y - 18 - h, w, h);
+        return new Rectangle((vp.Width - FusionCancelW) / 2, FusionCardsY(vp.Height) - FusionCancelGap - FusionCancelH,
+            FusionCancelW, FusionCancelH);
+    }
+
+    /// <summary>Carte de fusion SOULEVÉE (relief + reflet) : celle sous la souris, ou le focus à la manette.</summary>
+    private int FusionHoveredIndex(int count)
+    {
+        if (Context.Input.UsingGamepad)
+            return System.Math.Clamp(_fusionFocus, 0, count - 1);
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < count; i++)
+            if (FusionCardRect(i, count).Contains(mouse))
+                return i;
+        return -1;
     }
 
     private void UpdateBattle(GameTime gameTime)
@@ -5017,6 +5048,7 @@ public sealed class GameplayScene : Scene
         UpdateGrenadeBlast(dt);          // souffle de grenade en cours (DUO)
         ConsumeUltimateRevive();         // « Renaissance ultime » déclenchée : consommée pour TOUTE la partie
         UpdateEquipDissolves(dt);  // dissolution de l'équipement des unités équipées qui viennent de mourir
+        UpdateChainCorpses(dt);    // victimes de la « Réaction en chaîne » (tranchées pendant que la chaîne continue)
 
         // Paysans (tuiles recrue) :
         //   • « protéger » : seuls les ENNEMIS agissent (capture) — le joueur défend, il ne ramasse pas.
@@ -5223,14 +5255,18 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // « Transpercement » qui a TUÉ le pion derrière la cible : l'anim d'attaque finie, on joue sa dissolution
-        // (il était dessiné solide jusque-là). Gèle le tour comme une riposte (via _fx.Active).
+        // « Transpercement » qui a TUÉ le pion derrière la cible : l'anim d'attaque finie, il meurt comme sous une
+        // FLÈCHE, dans le sens du coup (il était dessiné solide jusque-là) : recul, bascule (ou clouage sur un gros
+        // coup), flèche plantée, puis dissolution. Gèle le tour comme une riposte (via _fx.Active).
         if (_pendingPierceDissolve is { } pd)
         {
             _pendingPierceDissolve = null;
             _victimMove = null;
             _shieldJump = null;   // le saut du « Bouclier humain » ne vaut que pour l'attaque qui l'a lancé
-            _fx.BeginDissolve(pd.Cell, pd.Sprite);
+            _fx.BeginDissolve(pd.Cell, pd.Sprite, shotFrom: pd.ShotFrom);
+            _arrowPinned = _fx.ArrowKill && pd.Damage >= ArrowPinDamage;   // même règle qu'à l'impact d'un tir
+            _arrowLandBlood = false;
+            _arrowThudPlayed = false;
             _impactHandled = true;
             return;
         }
@@ -5398,7 +5434,7 @@ public sealed class GameplayScene : Scene
     /// combat comme aux découvertes de terrain (coffres, tuiles recrue).
     /// </summary>
     private bool BattleSettled =>
-        !_fx.Active && !_storm.Active && !_bounce.Active && !_chain.Active
+        !_fx.Active && !_storm.Active && !_bounce.Active && !_chain.Active && _chainCorpseCount == 0
         && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active
         && _pendingSlide is null && _pendingRiposte is null && _pendingInterceptions.Count == 0
         && _pendingSlamDissolve is null && _pendingPierceDissolve is null;
@@ -7287,6 +7323,7 @@ public sealed class GameplayScene : Scene
         _carryPile = false;
         _fusionReserveSlot = 0;
         _evoPhase = EvoPhase.None;
+        _evoHiddenSpec = null;
         _dragSpec = null;
         _dragFrom = null;
         _gpInventory = false;   // manette : on arrive sur les cartes, RB entre dans la réserve
@@ -8704,8 +8741,8 @@ public sealed class GameplayScene : Scene
         _pendingPierce = _match.LastPierce;
         // Transpercement qui TUE : le pion derrière a été touché (LastPierce) et n'est plus sur sa case → il est mort.
         // On le dessine solide pendant l'anim puis on DIFFÈRE sa dissolution (sinon il disparaîtrait sans se dissoudre).
-        _pendingPierceDissolve = pierceCell is { } pcell && _pendingPierce != null && _match.UnitAt(pcell) is null
-            ? (pcell, pierceSprite)
+        _pendingPierceDissolve = pierceCell is { } pcell && _pendingPierce is { } pp && _match.UnitAt(pcell) is null
+            ? (pcell, pierceSprite, new Cell(pcell.Column - pp.Dc, pcell.Row - pp.Dr), pp.Damage)
             : null;
 
         // Riposte : contre-attaque DÉJÀ résolue par le moteur → on la rejoue en animation APRÈS l'anim d'attaque.
@@ -9327,6 +9364,7 @@ public sealed class GameplayScene : Scene
                 _sparks.Draw(sb, Context.Pixel);   // étincelles d'impact, au-dessus de tout le plateau
                 if (_storm.Active)
                     DrawStormFx(sb, board);        // éclairs d'orage sur les ennemis foudroyés (sous les chiffres)
+                DrawChainCorpses(sb, board);       // victimes de la « Réaction en chaîne », tranchées (DUO)
                 DrawBounceFx(sb, board);           // balle rebondissante en vol (DUO)
                 DrawTrousseToss(sb, board);        // petites trousses de soin en vol (DUO)
                 DrawGrenadeBlast(sb, board);       // souffle de la grenade (DUO)
@@ -9483,6 +9521,7 @@ public sealed class GameplayScene : Scene
             DrawEquipDissolves(sb, nb);
             _sparks.Draw(sb, Context.Pixel);
             if (_storm.Active) DrawStormFx(sb, nb);
+            DrawChainCorpses(sb, nb);
             DrawBounceFx(sb, nb);
             DrawTrousseToss(sb, nb);
             DrawGrenadeBlast(sb, nb);
@@ -11926,6 +11965,8 @@ public sealed class GameplayScene : Scene
     private const float SliceDrop = 0.18f;       // ...et retombe au sol
     private const float SliceSpread = 0.06f;     // écart perpendiculaire entre les deux moitiés
     private const float SliceTilt = 0.35f;       // bascule de la moitié haute (radians) : seul pas non pixel-perfect, bref
+    private const float VSliceSpread = 0.10f;    // coupe VERTICALE (pion lancé) : écart des deux moitiés (fraction de case)
+    private const float VSliceTilt = 1.1f;       // coupe VERTICALE : bascule de chaque moitié vers l'extérieur (radians, ~63°)
     private const float SliceFlashEnd = 0.25f;   // le trait de lame reste visible sur ce début de coupe
 
     // DÉCAPITATION (attaque horizontale) : coupe au cou, la tête s'envole en arc dans le sens du coup.
@@ -11949,6 +11990,11 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private (Vector2 Line, Vector2 Normal, Vector2 Push, bool Head) SliceGeometry()
     {
+        // Pion lancé : coupe VERTICALE. Normal = côté GAUCHE (texture « haute » = moitié gauche) ; Push vers le
+        // haut (les plaies giclent vers le ciel, cf. EmitCutSpurts / EmitSliceBlood).
+        if (_fx.VerticalSlice)
+            return (new Vector2(0f, 1f), new Vector2(-1f, 0f), new Vector2(0f, -1f), false);
+
         var d = new Vector2(_fx.To.Column - _fx.From.Column, _fx.To.Row - _fx.From.Row);
         if (d.LengthSquared() < 0.0001f)
             d = Vector2.UnitX;
@@ -12041,6 +12087,9 @@ public sealed class GameplayScene : Scene
         float fxPixel)
     {
         var (line, normal, push, head) = SliceGeometry();
+        var vertical = _fx.VerticalSlice;
+        // Pieds mesurés AVANT le découpage : SpriteFeet réutilise le tampon de découpe (et invalide son cache).
+        var feetTex = vertical ? SpriteFeet(sprite) + 1f : 0f;
         EnsureSliceTextures(sprite, normal, head);
 
         var s = _fx.SliceProgress;
@@ -12051,8 +12100,26 @@ public sealed class GameplayScene : Scene
 
         Vector2 upper, lower;
         float tilt;
+        var lowerTilt = 0f;
         var pivot = new Vector2(sprite.Width / 2f, sprite.Height / 2f);   // point du morceau haut posé sur « upper »
-        if (head)
+        var lowerPivot = pivot;                                           // idem pour le morceau bas
+        Vector2 upperWound, lowerWound;                                   // d'où giclent les plaies
+        if (vertical)
+        {
+            // Coupe VERTICALE : les moitiés gauche (« upper ») et droite s'écartent puis BASCULENT chacune de son
+            // côté, en pivotant sur leurs pieds (chute qui accélère).
+            pivot = lowerPivot = new Vector2(sprite.Width / 2f, feetTex);
+            var feet = new Vector2(center.X, victimRect.Y + feetTex * scale);
+            var spread = normal * (VSliceSpread * size * e);
+            upper = feet + spread;
+            lower = feet - spread;
+            var fall = VSliceTilt * s * s;
+            tilt = -fall;        // moitié gauche : bascule vers la gauche
+            lowerTilt = fall;    // moitié droite : vers la droite
+            upperWound = center + spread;
+            lowerWound = center - spread;
+        }
+        else if (head)
         {
             // Vol de la tête : avance à vitesse constante, arc (monte puis retombe) et descente vers le sol. Elle
             // tourne sur ELLE-MÊME (pivot = centre de la tête, pas du sprite, sinon elle décrirait un grand cercle).
@@ -12063,6 +12130,8 @@ public sealed class GameplayScene : Scene
             tilt = side * HeadSpin * e;
             lower = center + new Vector2(0f, 0.02f * size * e);   // le corps reste, à peine tassé
             EmitHeadTrail(layout, upper, side, s);
+            upperWound = upper;
+            lowerWound = lower;
         }
         else
         {
@@ -12071,8 +12140,10 @@ public sealed class GameplayScene : Scene
             tilt = SliceTilt * e * side;   // bascule du côté où elle glisse
             lower = center - push * (0.05f * size * e) - normal * (0.03f * size * e)
                     + new Vector2(0f, 0.04f * size * e);
+            upperWound = upper;
+            lowerWound = lower;
         }
-        EmitCutSpurts(layout, head, upper, lower, normal, push, scale, sprite.Height, s);   // giclées continues des plaies
+        EmitCutSpurts(layout, head, upperWound, lowerWound, normal, push, scale, sprite.Height, s);   // giclées continues des plaies
         upper = new Vector2(MathF.Round(upper.X), MathF.Round(upper.Y));
         lower = new Vector2(MathF.Round(lower.X), MathF.Round(lower.Y));
 
@@ -12080,20 +12151,21 @@ public sealed class GameplayScene : Scene
         if (dissolve <= 0f)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            var origin = new Vector2(sprite.Width / 2f, sprite.Height / 2f);
-            sb.Draw(_sliceLower!, lower, null, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
+            sb.Draw(_sliceLower!, lower, null, Color.White, lowerTilt, lowerPivot, scale, SpriteEffects.None, 0f);
             sb.Draw(_sliceUpper!, upper, null, Color.White, tilt, pivot, scale, SpriteEffects.None, 0f);
             sb.End();
         }
         else
         {
-            _combatFx.DrawDissolve(sb, _sliceLower!, lower, 0f, scale, dissolve, Palette.Purple5, _fx.Seed);
+            _combatFx.DrawDissolve(sb, _sliceLower!, lower, lowerTilt, scale, dissolve, Palette.Purple5, _fx.Seed, lowerPivot);
             _combatFx.DrawDissolve(sb, _sliceUpper!, upper, tilt, scale, dissolve, Palette.Purple5,
                 _fx.Seed + new Vector2(17f, 5f), pivot);
         }
 
         // Trait de lame : blocs blancs alignés sur la coupe (au cou en décapitation), qui s'éteignent vite.
-        if (s < SliceFlashEnd)
+        // SEULEMENT après le contact : avant, s vaut 0 et le trait apparaissait pendant toute l'approche
+        // (invisible sur une fente de 0,14 s, flagrant sur le long vol d'un pion lancé).
+        if (_fx.HasImpacted && s < SliceFlashEnd)
         {
             var a = 1f - s / SliceFlashEnd;
             var block = (int)fxPixel;
@@ -12292,8 +12364,10 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        // Le pied se pose : C'EST MAINTENANT que la victime encaisse.
+        // Le pied se pose : C'EST MAINTENANT que la victime encaisse. Sprite figé AVANT : si elle meurt, le
+        // moteur la retire, et c'est ce sprite qui sera tranché (cf. SpawnChainCorpse).
         var killed = false;
+        var victimSprite = _match.UnitAt(landed) is { } victim ? UnitSprite(victim) : null;
         if (_match.ResolveNextChainLink() is { } hit)
         {
             if (hit.Damage > 0)
@@ -12304,6 +12378,8 @@ public sealed class GameplayScene : Scene
             _sparks.EmitFirework(center, 8, 1);
             Context.Sounds.Play("unit_attack");
             killed = hit.Killed;
+            if (killed && victimSprite != null)
+                SpawnChainCorpse(hit.Cell, victimSprite);   // il lui tombe dessus : tranchée VERTICALEMENT
         }
 
         // Maillon suivant : un ennemi à portée de la victime qu'il vient d'abattre. Sinon, retour à sa case.
@@ -12332,6 +12408,127 @@ public sealed class GameplayScene : Scene
         var x = (_chain.From.Column - cell.Column + (_chain.To.Column - _chain.From.Column) * t) * size;
         var y = (_chain.From.Row - cell.Row + (_chain.To.Row - _chain.From.Row) * t) * size;
         return new Point((int)x, (int)(y - _chain.Height * size));   // …moins l'arc du bond
+    }
+
+    // ── Victimes de la « Réaction en chaîne » ──
+    // Chaque maillon abattu pendant les bonds de l'artisan meurt SANS bloquer la chaîne (qui continue de sauter) :
+    // un « cadavre » autonome, tranché VERTICALEMENT (il lui tombe dessus, comme un pion lancé), puis dissous.
+    // Les deux moitiés = moitiés gauche/droite du sprite par rectangle SOURCE : aucune texture découpée, donc
+    // plusieurs victimes s'animent en même temps. Tableau fixe : aucune allocation par frame.
+    private const int ChainCorpseMax = 8;
+    private const float ChainCorpseSlice = 0.50f;      // séparation + bascule des deux moitiés
+    private const float ChainCorpseDissolve = 0.45f;   // puis dissolution dans leur pose finale
+    private const float ChainCorpseFlash = 0.10f;      // trait de lame blanc, juste au contact
+    private struct ChainCorpse
+    {
+        public Cell Cell;
+        public Texture2D Sprite;
+        public float T;
+        public Vector2 Seed;
+    }
+    private readonly ChainCorpse[] _chainCorpses = new ChainCorpse[ChainCorpseMax];
+    private int _chainCorpseCount;
+
+    /// <summary>Maillon de chaîne abattu : lance son animation de mort (coupe verticale, sauf option SANG coupée).</summary>
+    private void SpawnChainCorpse(Cell cell, Texture2D sprite)
+    {
+        if (_chainCorpseCount >= ChainCorpseMax)
+            return;   // garde-fou : jamais atteint en pratique (une chaîne s'arrête bien avant)
+        _chainCorpses[_chainCorpseCount++] = new ChainCorpse
+        {
+            Cell = cell, Sprite = sprite, T = 0f,
+            Seed = new Vector2(cell.Column * 37 % 251, (cell.Row * 101 + _chainCorpseCount * 13) % 241),
+        };
+        if (!MeleeStrikeFx.GoreEnabled)
+            return;   // sans sang : simple dissolution, ni coupe ni giclée
+        Context.Sounds.Play("unit_sliced");
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var top = layout.CellToScreen(cell.Column, cell.Row);
+        var cut = new Vector2(top.X + tile / 2f, top.Y - tile * SpriteLiftFraction + tile * 0.45f);
+        var pixel = MathF.Max(3f, tile / 21f);
+        for (var k = -2; k <= 2; k++)   // le long de la coupe, ça gicle vers le haut et les côtés
+            _sparks.EmitBlood(cut + new Vector2(0f, k * tile * 0.1f), 5, pixel, new Vector2(k * 0.2f, -1f), 0.7f,
+                top.Y + tile * 0.55f, top.Y + tile * 0.95f, layout.Origin, tile, persistent: false);   // sang de coupe : ne reste pas au sol
+    }
+
+    /// <summary>Fait vieillir les victimes de chaîne et retire celles dont la dissolution est finie.</summary>
+    private void UpdateChainCorpses(float dt)
+    {
+        for (var i = _chainCorpseCount - 1; i >= 0; i--)
+        {
+            _chainCorpses[i].T += dt;
+            if (_chainCorpses[i].T < ChainCorpseSlice + ChainCorpseDissolve)
+                continue;
+            _chainCorpses[i] = _chainCorpses[--_chainCorpseCount];   // retrait par échange : l'ordre n'importe pas
+            _chainCorpses[_chainCorpseCount] = default;              // ne retient plus la texture
+        }
+    }
+
+    /// <summary>
+    /// Victimes de chaîne : moitiés gauche/droite qui s'écartent et basculent vers l'extérieur en pivotant sur
+    /// leurs pieds, puis se dissolvent. Option SANG coupée : le pion entier se dissout simplement.
+    /// </summary>
+    private void DrawChainCorpses(SpriteBatch sb, GridLayout layout)
+    {
+        if (_chainCorpseCount == 0)
+            return;
+        var size = layout.TileSize;
+        var spriteLift = (int)(size * SpriteLiftFraction);
+        for (var i = 0; i < _chainCorpseCount; i++)
+        {
+            ref var c = ref _chainCorpses[i];
+            var sprite = c.Sprite;
+            var top = layout.CellToScreen(c.Cell.Column, c.Cell.Row) - new Vector2(0, spriteLift);
+            var scale = size / (float)sprite.Width;
+            var dissolve = MathHelper.Clamp((c.T - ChainCorpseSlice) / ChainCorpseDissolve, 0f, 1f);
+
+            if (!MeleeStrikeFx.GoreEnabled)
+            {
+                _combatFx.DrawDissolve(sb, sprite, new Rectangle((int)top.X, (int)top.Y, size, size),
+                    MathHelper.Clamp(c.T / (ChainCorpseSlice + ChainCorpseDissolve), 0f, 1f), Palette.Purple5, c.Seed);
+                continue;
+            }
+
+            int w = sprite.Width, h = sprite.Height, half = w / 2;
+            var feetTex = SpriteFeet(sprite) + 1f;
+            var s = MathHelper.Clamp(c.T / ChainCorpseSlice, 0f, 1f);
+            var e = 1f - (1f - s) * (1f - s);
+            var fall = VSliceTilt * s * s;
+            var spread = VSliceSpread * size * e;
+            var feet = new Vector2(top.X + size / 2f, top.Y + feetTex * scale);
+            var leftPos = new Vector2(MathF.Round(feet.X - spread), MathF.Round(feet.Y));
+            var rightPos = new Vector2(MathF.Round(feet.X + spread), MathF.Round(feet.Y));
+            var leftSrc = new Rectangle(0, 0, half, h);
+            var rightSrc = new Rectangle(half, 0, w - half, h);
+            var leftPivot = new Vector2(half, feetTex);   // bord de coupe, aux pieds (relatif à la zone source)
+            var rightPivot = new Vector2(0f, feetTex);
+
+            if (dissolve <= 0f)
+            {
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                sb.Draw(sprite, leftPos, leftSrc, Color.White, -fall, leftPivot, scale, SpriteEffects.None, 0f);
+                sb.Draw(sprite, rightPos, rightSrc, Color.White, fall, rightPivot, scale, SpriteEffects.None, 0f);
+                sb.End();
+            }
+            else
+            {
+                _combatFx.DrawDissolve(sb, sprite, leftPos, -fall, scale, dissolve, Palette.Purple5, c.Seed, leftPivot, leftSrc);
+                _combatFx.DrawDissolve(sb, sprite, rightPos, fall, scale, dissolve, Palette.Purple5,
+                    c.Seed + new Vector2(17f, 5f), rightPivot, rightSrc);
+            }
+
+            // Trait de lame vertical, juste au contact.
+            if (c.T < ChainCorpseFlash)
+            {
+                var a = 1f - c.T / ChainCorpseFlash;
+                var block = System.Math.Max(2, size / 32);
+                sb.Begin(samplerState: SamplerState.PointClamp);
+                for (var k = size * 0.05f; k <= size * 0.95f; k += block)
+                    DrawBlockSnapped(sb, new Vector2(top.X + size / 2f, top.Y + k), block, Palette.White * a);
+                sb.End();
+            }
+        }
     }
 
     private void UpdateBounceFx(float dt)
@@ -13121,7 +13318,6 @@ public sealed class GameplayScene : Scene
             return;
         // Nœud d'arbre à CHOIX : la même popup, titrée du nom du nœud (ARMEMENT, PROTECTION) au lieu de FUSION.
         var treeNode = _treeEvolveNode;
-        var domaine = treeNode != null ? _run.ExclusiveSpec?.Domaine ?? Domaine.Dame : _fusionGroup[0].Domaine;
         var title = treeNode != null ? Loc.T(treeNode.NameKey) : Loc.T("fusion.title");
 
         sb.Begin(samplerState: SamplerState.PointClamp);
@@ -13134,8 +13330,8 @@ public sealed class GameplayScene : Scene
         var titleW = Context.Font.Measure(title, 3);
         var subW = Context.Font.Measure(Loc.T("fusion.subtitle"), 1);
         var boxW = System.Math.Max(titleW, subW) + 56;
-        const int boxH = 64;
-        var boxY = cancel.Y - 14 - boxH;
+        const int boxH = FusionTitleH;
+        var boxY = cancel.Y - FusionTitleGap - boxH;
         Context.Style.DrawPanel(sb, new Rectangle((vpW - boxW) / 2, boxY, boxW, boxH));
         Context.Font.DrawCentered(sb, title, new Rectangle(0, boxY + 12, vpW, 24), 3, Palette.Yellow2);
         Context.Font.DrawCentered(sb, Loc.T("fusion.subtitle"), new Rectangle(0, boxY + 42, vpW, 12), 1, Palette.Blue1);
@@ -13147,39 +13343,56 @@ public sealed class GameplayScene : Scene
             new Rectangle(cancel.X, cancel.Y + dyCancel, cancel.Width, cancel.Height), 2,
             hovered ? Palette.Yellow2 : Palette.White);
 
-        // Cartes d'évolution. Le sprite reste en SILHOUETTE tant que le joueur n'a jamais obtenu cette
-        // évolution (méta-progression) — et son détail de traits reste masqué (entrée nulle dans la rangée).
-        var kwRow = new List<UnitClass?>(count);
+        // Cartes d'évolution, « vivantes » comme celles du draft : relief + reflet + inclinaison au survol. Le
+        // cadre de focus est passé à la carte pour pencher avec elle.
+        var vpF = VirtualViewport;
+        var cardsY = FusionCardsY(vpF.Height);
+        TickCardFx(count, FusionHoveredIndex(count), vpF.Width, vpF.Height, fusion: true, topY: cardsY);
+        var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
+        _fusionKwRow.Clear();
         for (var i = 0; i < count; i++)
         {
-            var rect = FusionCardRect(i, count);
-            // Nœud d'arbre : c'est un CHOIX, pas une découverte — le joueur doit voir les deux formes pour
-            // trancher. Elles sont donc toujours en clair, traits compris (la silhouette ne vaut que pour la fusion).
-            var revealed = treeNode != null || Context.Saves.IsUnitDiscovered(options[i].Asset);
-            if (treeNode != null && _run.ExclusiveSpec is { } paysanne)
-            {
-                // La carte annonce la paysanne TELLE QU'ELLE SERAIT sous cette forme : stats de la forme, mais
-                // avec ses paliers de « Survivant », son équipement et les bonus d'arbre qui la visent — les
-                // chiffres qu'elle aura vraiment en jeu, pas ceux d'une recrue neuve.
-                var preview = PreviewAs(paysanne, options[i]);
-                var buffs = BuffsFor(preview);
-                var maxHp = options[i].MaxHp + preview.Equipments.BonusFor(EquipStat.Hp) + buffs.BonusFor(EquipStat.Hp);
-                DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, maxHp, maxHp, revealed,
-                    preview.Equipments, buffs: buffs, treeNodes: _run.ActiveNodesFor(preview), kills: preview.Kills);
-            }
-            else
-                DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
-            kwRow.Add(revealed ? options[i] : null);
+            DrawFxDraftCard(sb, FusionFxBase + i, null, FusionCardRect(i, count), i == fi ? Palette.Yellow2 : null);
+            _fusionKwRow.Add(FusionOptionRevealed(i) ? options[i] : null);
         }
         // Détail des traits : sous les cartes si tout y tient (le cas en 1440p), sinon au survol seulement —
         // deux évolutions à 3-4 traits ne rentrent pas sous les cartes en 1080p.
-        var vpF = VirtualViewport;
-        DrawRowKeywords(sb, kwRow, _fusionFocus, vpF.Width, vpF.Height, vpF.Height - KwScreenMargin);
-
-        // Surbrillance de la carte focus.
-        var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
-        DrawRectBorder(sb, Inflate(FusionCardRect(fi, count), 3), Palette.Yellow2, 3);
+        DrawRowKeywords(sb, _fusionKwRow, _fusionFocus, vpF.Width, vpF.Height, vpF.Height - KwScreenMargin, cardsY);
         sb.End();
+    }
+
+    private readonly List<UnitClass?> _fusionKwRow = new(4);   // rangée de traits de la popup (réutilisée)
+
+    /// <summary>
+    /// Le sprite d'une évolution reste en SILHOUETTE tant que le joueur ne l'a jamais obtenue (méta-progression),
+    /// détail de traits compris. Nœud d'arbre : c'est un CHOIX, pas une découverte, le joueur doit voir les deux
+    /// formes pour trancher ; elles sont donc toujours en clair.
+    /// </summary>
+    private bool FusionOptionRevealed(int i) =>
+        _treeEvolveNode != null || Context.Saves.IsUnitDiscovered(FusionOptions[i].Asset);
+
+    /// <summary>Carte d'évolution n° <paramref name="i"/> de la popup de fusion, à plat dans <paramref name="rect"/>.</summary>
+    private void DrawFusionOptionCard(SpriteBatch sb, int i, Rectangle rect)
+    {
+        var options = FusionOptions;
+        if (i < 0 || i >= options.Count)
+            return;
+        var treeNode = _treeEvolveNode;
+        var domaine = treeNode != null ? _run.ExclusiveSpec?.Domaine ?? Domaine.Dame : _fusionGroup[0].Domaine;
+        var revealed = FusionOptionRevealed(i);
+        if (treeNode != null && _run.ExclusiveSpec is { } paysanne)
+        {
+            // La carte annonce la paysanne TELLE QU'ELLE SERAIT sous cette forme : stats de la forme, mais
+            // avec ses paliers de « Survivant », son équipement et les bonus d'arbre qui la visent — les
+            // chiffres qu'elle aura vraiment en jeu, pas ceux d'une recrue neuve.
+            var preview = PreviewAs(paysanne, options[i]);
+            var buffs = BuffsFor(preview);
+            var maxHp = options[i].MaxHp + preview.Equipments.BonusFor(EquipStat.Hp) + buffs.BonusFor(EquipStat.Hp);
+            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, maxHp, maxHp, revealed,
+                preview.Equipments, buffs: buffs, treeNodes: _run.ActiveNodesFor(preview), kills: preview.Kills);
+        }
+        else
+            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
     }
 
     /// <summary>
@@ -13573,6 +13786,10 @@ public sealed class GameplayScene : Scene
 
     private void DrawInventoryCard(SpriteBatch sb, UnitSpec spec, Rectangle icon, float alpha = 1f)
     {
+        // Pièce en cours de RÉVÉLATION (1re découverte par fusion) : son slot reste vide jusqu'à ce qu'elle y
+        // revienne en fin d'animation, sinon on la voit déjà en réserve avant d'avoir été dévoilée.
+        if (ReferenceEquals(spec, _evoHiddenSpec))
+            return;
         // Portrait 64×64 à taille native (jamais redimensionné), de FACE (présentation), nom dessous.
         DrawChip(sb, spec.UnitClass, Faction.Player, icon, front: true, alpha);
         DrawPortraitName(sb, UnitName(spec.UnitClass).ToUpperInvariant(),
@@ -16653,7 +16870,11 @@ public sealed class GameplayScene : Scene
     // est en décalages de pixels ENTIERS. La carte glisse un peu vers la souris (pion compris, d'un bloc),
     // l'ombre part à l'opposé, et un reflet diagonal en escalier suit la souris.
     // État lissé par carte dans des tableaux fixes : aucune allocation par frame.
-    private const int CardFxMax = 8;              // plus de cartes que n'en affiche aucune rangée (4 max en 1080p)
+    // Deux plages d'état : les rangées (draft / récompense / recrues) et la popup de FUSION, qui s'ouvre PAR-DESSUS
+    // une rangée (récompense, recrue) : chacune lisse ses cartes sans écraser l'autre.
+    private const int RowFxSlots = 8;             // plus de cartes que n'en affiche aucune rangée (4 max en 1080p)
+    private const int FusionFxBase = RowFxSlots;  // cartes de fusion : emplacements FusionFxBase + i
+    private const int CardFxMax = RowFxSlots + 4;
     private const float CardFxResponse = 14f;     // vitesse de lissage (1/s) : réactif sans saccade
     private const float CardFxLift = 5f;          // px : la carte survolée monte
     private const float CardFxShift = 3f;         // px : la carte suit la souris
@@ -16662,26 +16883,31 @@ public sealed class GameplayScene : Scene
     private readonly float[] _cardHover = new float[CardFxMax];      // 0 = posée, 1 = soulevée
     private readonly Vector2[] _cardTilt = new Vector2[CardFxMax];   // souris rapportée au centre, -1..1
     private readonly float[] _cardShineT = new float[CardFxMax];     // temps de survol continu (balayage du reflet)
-    private float _cardFxStamp = -1f;
+    private float _cardFxStamp = -1f, _fusionFxStamp = -1f;
 
     /// <summary>
     /// Fait avancer l'état lissé des cartes d'une rangée. À appeler UNE fois par frame, avant de dessiner la
     /// rangée. <paramref name="hovered"/> = carte survolée / focus manette (-1 : aucune, tout retombe).
+    /// <paramref name="fusion"/> : la rangée de la popup de fusion (sa propre plage d'état, cartes à <paramref name="topY"/>).
     /// </summary>
-    private void TickCardFx(int count, int hovered, int rowW, int vpH)
+    private void TickCardFx(int count, int hovered, int rowW, int vpH, bool fusion = false, int topY = -1)
     {
-        var dt = _cardFxStamp < 0f ? 0f : MathHelper.Clamp(_time - _cardFxStamp, 0f, 0.1f);
-        _cardFxStamp = _time;
+        ref var stamp = ref fusion ? ref _fusionFxStamp : ref _cardFxStamp;
+        var dt = stamp < 0f ? 0f : MathHelper.Clamp(_time - stamp, 0f, 0.1f);
+        stamp = _time;
         var k = 1f - MathF.Exp(-CardFxResponse * dt);
         var mouse = Context.Input.MousePosition;
-        for (var i = 0; i < CardFxMax; i++)
+        var first = fusion ? FusionFxBase : 0;
+        var end = fusion ? CardFxMax : RowFxSlots;
+        for (var i = first; i < end; i++)
         {
-            var on = i == hovered && i < count;
+            var local = i - first;
+            var on = local == hovered && local < count;
             var target = Vector2.Zero;
             // Manette : pas de souris → pas d'inclinaison ; la carte reste posée et seul le reflet balaie (cf. CardLift).
             if (on && !Context.Input.UsingGamepad)
             {
-                var r = DraftCardRect(i, count, rowW, vpH);
+                var r = DraftCardRect(local, count, rowW, vpH, topY);
                 target = new Vector2(
                     MathHelper.Clamp((mouse.X - r.Center.X) / (r.Width * 0.5f), -1f, 1f),
                     MathHelper.Clamp((mouse.Y - r.Center.Y) / (r.Height * 0.5f), -1f, 1f));
@@ -16770,7 +16996,8 @@ public sealed class GameplayScene : Scene
     // est fondue sur ~½ px d'écran, sans doublon ni saut. L'étirement léger pendant le survol est un effet
     // DÉLIBÉRÉ, validé par le dev ; carte posée = chemin plat normal, strictement pixel-perfect.
     // Conséquence assumée : la carte penchée passe par-dessus ce que le canvas dessine après elle (popups de
-    // traits, réserve) ; elle repasse à plat dès qu'une modale (fusion, évolution) s'ouvre.
+    // traits, réserve) ; une carte de rangée repasse à plat dès qu'une modale (fusion, évolution) s'ouvre.
+    // Les cartes de la popup de fusion se penchent, elles (c'est la modale du dessus).
     private const float CardTiltMax = 0.07f;        // rad (~4°) d'inclinaison max, souris au bord de la carte (0.26 puis 0.13 jugés trop forts)
     private const float CardTiltCamera = 800f;      // px du canvas : distance de la « caméra » (plus petit = perspective plus forte)
     private const int CardTiltPad = 4;              // marge du rendu à plat : le cadre de focus déborde de 3 px
@@ -16815,14 +17042,19 @@ public sealed class GameplayScene : Scene
     /// 0 décochée, 1 cochée), dessinées AVEC la carte pour pencher avec elle. Le batch appelant est actif
     /// (PointClamp) et le reste en sortie. Rend le rect réel (non penché) de la carte.
     /// </summary>
-    private Rectangle DrawFxDraftCard(SpriteBatch sb, int i, UnitSpec spec, Rectangle baseRect,
+    /// <param name="spec">Pion de la carte ; <c>null</c> = carte d'évolution de la popup de fusion (emplacement
+    /// <paramref name="i"/> ≥ <see cref="FusionFxBase"/>, dessinée par <see cref="DrawFusionOptionCard"/>).</param>
+    private Rectangle DrawFxDraftCard(SpriteBatch sb, int i, UnitSpec? spec, Rectangle baseRect,
         Color? border = null, float dim = 0f, int checkbox = -1)
     {
         var r = CardFxRect(i, baseRect);
         DrawCardFxShadow(sb, i, r);
 
+        // Une rangée repasse à plat sous une modale (sa carte penchée passerait PAR-DESSUS) ; les cartes de la
+        // popup de fusion, elles, sont la modale.
+        var underModal = spec != null && FusionOpen || EvoPlaying;
         var lift = CardLift(i);
-        if (lift < 0.02f || _tiltCount >= TiltSlots || FusionOpen || EvoPlaying)
+        if (lift < 0.02f || _tiltCount >= TiltSlots || underModal)
         {
             DrawFxCardFlat(sb, i, spec, r, border, dim, checkbox);   // posée : chemin plat, pixel-perfect
             return r;
@@ -16880,9 +17112,12 @@ public sealed class GameplayScene : Scene
                 DrawTiltedTexture(device, tex, _tiltRequests[s], new Vector2(virtualDest.X, virtualDest.Y), scale);
     }
 
-    private void DrawFxCardFlat(SpriteBatch sb, int i, UnitSpec spec, Rectangle r, Color? border, float dim, int checkbox)
+    private void DrawFxCardFlat(SpriteBatch sb, int i, UnitSpec? spec, Rectangle r, Color? border, float dim, int checkbox)
     {
-        DrawDraftCard(sb, spec, r);
+        if (spec != null)
+            DrawDraftCard(sb, spec, r);
+        else
+            DrawFusionOptionCard(sb, i - FusionFxBase, r);
         DrawCardShine(sb, i, r);
         if (dim > 0f)
             DrawRect(sb, r, Palette.Black1 * dim);
@@ -16962,7 +17197,9 @@ public sealed class GameplayScene : Scene
     /// 1080p. Le draft (3 cartes) tient partout et garde donc sa taille. Le contenu suit : tout
     /// <see cref="DrawCardLayout"/> se cale sur le rectangle reçu.
     /// </summary>
-    private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH)
+    /// <param name="topY">Haut imposé de la rangée (-1 : <see cref="DraftCardsY"/>). Sert à la popup de fusion,
+    /// qui doit loger son cadre titre ET son bouton Annuler au-dessus des cartes.</param>
+    private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH, int topY = -1)
     {
         const int fullW = 200, fullGap = 28, minGap = 12, minW = 150, sideMargin = 16;
         var avail = vpW - 2 * sideMargin;
@@ -16976,14 +17213,14 @@ public sealed class GameplayScene : Scene
         }
         var total = count * w + (count - 1) * gap;     // centré sur le NOMBRE réel de cartes (peut être < 3)
         var x0 = (vpW - total) / 2;
-        return new Rectangle(x0 + index * (w + gap), DraftCardsY(vpH), w, DraftCardH);
+        return new Rectangle(x0 + index * (w + gap), topY >= 0 ? topY : DraftCardsY(vpH), w, DraftCardH);
     }
 
     /// <summary>
     /// Indice de la carte SURVOLÉE d'une rangée de <paramref name="count"/> cartes : celle sous la souris,
     /// ou celle qui a le focus <paramref name="gamepadFocus"/> à la manette. -1 si aucune.
     /// </summary>
-    private int HoveredCardIndex(int count, int gamepadFocus, int rowW, int vpH)
+    private int HoveredCardIndex(int count, int gamepadFocus, int rowW, int vpH, int topY = -1)
     {
         if (count <= 0)
             return -1;
@@ -16991,7 +17228,7 @@ public sealed class GameplayScene : Scene
             return System.Math.Clamp(gamepadFocus, 0, count - 1);
         var mouse = Context.Input.MousePosition;
         for (var i = 0; i < count; i++)
-            if (DraftCardRect(i, count, rowW, vpH).Contains(mouse))
+            if (DraftCardRect(i, count, rowW, vpH, topY).Contains(mouse))
                 return i;
         return -1;
     }
@@ -17013,11 +17250,11 @@ public sealed class GameplayScene : Scene
     /// <param name="rowW">Largeur de la zone de la rangée (borne le repli à droite/gauche).</param>
     /// <param name="bottomLimit">Ordonnée à ne pas dépasser : bas du canvas, ou haut d'un bouton posé sous les cartes.</param>
     private void DrawRowKeywords(SpriteBatch sb, IReadOnlyList<UnitClass?> cards, int gamepadFocus,
-        int rowW, int vpH, int bottomLimit)
+        int rowW, int vpH, int bottomLimit, int topY = -1)
     {
         if (cards.Count == 0)
             return;
-        var first = DraftCardRect(0, cards.Count, rowW, vpH);
+        var first = DraftCardRect(0, cards.Count, rowW, vpH, topY);
         var below = first.Bottom + 10;
 
         var allFit = true;
@@ -17029,14 +17266,14 @@ public sealed class GameplayScene : Scene
         {
             for (var i = 0; i < cards.Count; i++)
                 if (cards[i] is { } c)
-                    DrawKeywordPopupsBelow(sb, c, DraftCardRect(i, cards.Count, rowW, vpH));
+                    DrawKeywordPopupsBelow(sb, c, DraftCardRect(i, cards.Count, rowW, vpH, topY));
             return;
         }
 
-        var hi = HoveredCardIndex(cards.Count, gamepadFocus, rowW, vpH);
+        var hi = HoveredCardIndex(cards.Count, gamepadFocus, rowW, vpH, topY);
         if (hi < 0 || cards[hi] is not { } hovered)
             return;
-        var card = DraftCardRect(hi, cards.Count, rowW, vpH);
+        var card = DraftCardRect(hi, cards.Count, rowW, vpH, topY);
         const int sideGap = 10;
         var x = card.Right + sideGap;
         if (x + card.Width > rowW)
@@ -18214,9 +18451,14 @@ public sealed class GameplayScene : Scene
         return _match.CellOf(unit) is { } c ? c.Row < Rows / 2 : unit.Faction == Faction.Enemy;
     }
 
-    /// <summary>Vrai si l'unité regarde vers le bas (face caméra) — état suivi (action), ou défaut positionnel.</summary>
+    /// <summary>
+    /// Vrai si l'unité regarde vers le bas (face caméra) — état suivi (action), ou défaut positionnel. Un BOSS
+    /// (meneur ennemi, et son second s'il en a un) regarde TOUJOURS vers le bas, quoi qu'il fasse : il fait face
+    /// au joueur, son sprite de dos n'apparaît jamais.
+    /// </summary>
     private bool FacesDown(Unit unit) =>
-        _facesDown.TryGetValue(unit, out var f) ? f : DefaultFacesDown(unit);
+        unit.Faction == Faction.Enemy && (unit.IsEssential || unit.IsCompanion)
+        || (_facesDown.TryGetValue(unit, out var f) ? f : DefaultFacesDown(unit));
 
     /// <summary>
     /// Oriente l'unité d'après une action <paramref name="from"/> → <paramref name="to"/>.

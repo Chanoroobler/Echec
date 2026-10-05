@@ -101,6 +101,10 @@ public sealed class CommandBuffs
     /// Nombre d'équipements que porte la CIBLE elle-même : échelle <see cref="CommandScale.PerOwnEquippedItem"/>.
     /// 0 par défaut → ces bonus valent 0 (cas de tous les pions et des commandants sans emplacement).
     /// </param>
+    /// <param name="distinctClasses">
+    /// Nombre de classes distinctes du roster (hors commandant) : échelle <see cref="CommandScale.PerDistinctClass"/>.
+    /// 0 par défaut → ces bonus valent 0.
+    /// </param>
     /// <param name="targetTier">
     /// Tier du pion visé, pour les effets d'unité restreints à un tier (cf. <see cref="CommandEffect.Tier"/> :
     /// « Révolte » ne relève que le tier 1). 0 = inconnu → ces effets sont écartés.
@@ -108,7 +112,7 @@ public sealed class CommandBuffs
     public static CommandBuffs From(IEnumerable<CommandEffect> effects, BuffTarget target, int distinctPairs,
         Domaine? targetDomaine = null, Func<Domaine, int>? domaineCount = null,
         Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0,
-        int targetTier = 0)
+        int targetTier = 0, int distinctClasses = 0)
     {
         var stats = new Dictionary<EquipStat, int>();
         var traits = new List<string>();
@@ -141,7 +145,8 @@ public sealed class CommandBuffs
                 continue;
             }
 
-            var amount = e.AmountFor(distinctPairs, domaineCount, deployedCount, equippedItems, ownEquippedItems);
+            var amount = e.AmountFor(distinctPairs, domaineCount, deployedCount, equippedItems, ownEquippedItems,
+                distinctClasses);
             if (amount != 0)
                 stats[e.Stat] = stats.GetValueOrDefault(e.Stat, 0) + amount;
         }

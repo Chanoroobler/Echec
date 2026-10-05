@@ -321,8 +321,14 @@ public sealed class Run
     /// vers le bas) : c'est le multiplicateur des bonus « par paire » (<see cref="CommandScale.PerDistinctPair"/>).
     /// Compte la réserve ET les pions déployés — le roster est le même objet dans les deux cas.
     /// </summary>
-    public int DistinctPairs =>
-        _roster.Where(IsTroop).Select(u => u.UnitClass).Distinct().Count() / 2;
+    public int DistinctPairs => DistinctClasses / 2;
+
+    /// <summary>
+    /// Nombre de CLASSES DISTINCTES du roster hors commandant (réserve ET pions déployés) : multiplicateur des
+    /// bonus « par unité différente » (<see cref="CommandScale.PerDistinctClass"/>).
+    /// </summary>
+    public int DistinctClasses =>
+        _roster.Where(IsTroop).Select(u => u.UnitClass).Distinct().Count();
 
     /// <summary>
     /// Nombre d'unités du <paramref name="domaine"/> dans le roster HORS commandant (réserve ET pions
@@ -869,7 +875,7 @@ public sealed class Run
 
     private CommandBuffs BaseBuffsFor(UnitSpec spec, System.Func<Domaine, int>? deployedCount) =>
         CommandBuffs.From(BuffEffects, TargetOf(spec), DistinctPairs, spec.Domaine, DomaineUnitCount,
-                deployedCount, EquippedItemCount, spec.Equipments.Count, spec.UnitClass.Tier)
+                deployedCount, EquippedItemCount, spec.Equipments.Count, spec.UnitClass.Tier, DistinctClasses)
             // DUO : les PV max ramassés sur le terrain (trousses, sacoches) profitent aux DEUX meneurs, et
             // « Continue sans moi » lègue au survivant la moitié des stats du meneur tombé.
             .Plus(EquipStat.Hp, spec.Essential ? LeaderBonusHp + InheritedLeaderHp : 0)

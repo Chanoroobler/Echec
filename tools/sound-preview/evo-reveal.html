@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sons de révélation</title>
+<style>
+  :root { --bg:#14201f; --panel:#1d2c2b; --line:#33504d; --text:#e8e2cf; --muted:#9fb3ae; --accent:#f2c45a; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { color:var(--muted); margin:0 0 20px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:16px; }
+  h2 { font-size:15px; margin:0 0 10px; color:var(--accent); }
+  .grid { display:flex; flex-wrap:wrap; gap:8px; }
+  label { display:flex; align-items:center; gap:6px; background:#243634; border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  label:has(input:checked) { border-color:var(--accent); }
+  button { font:inherit; border-radius:6px; border:1px solid var(--line); background:#243634; color:var(--text); padding:4px 8px; cursor:pointer; }
+  .play { background:var(--accent); color:#14201f; border:0; font-weight:600; padding:10px 18px; font-size:16px; }
+  .bar { position:sticky; bottom:0; background:var(--bg); padding:12px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  code { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Révélation d'une unité (fusion)</h1>
+  <p>Rejoue la séquence avec le rythme exact du jeu : son de départ, clignotement (24 tics qui accélèrent sur ~5,7 s, gain 0,7), puis le son de révélation au flash. Choisis une combinaison et dis-moi les noms.</p>
+
+  <section><h2>1. Départ (la silhouette apparaît) : <code>evo_start</code></h2><div class="grid" id="start"></div></section>
+  <section><h2>2a. Clignotement, son A (bascules impaires) : <code>evo_flicker</code></h2><div class="grid" id="tickA"></div></section>
+  <section><h2>2b. Clignotement, son B (bascules paires, en alternance avec A)</h2><div class="grid" id="tickB"></div></section>
+  <section><h2>3. Flash (révélation) : <code>unit_discover</code></h2><div class="grid" id="reveal"></div></section>
+
+  <div class="bar">
+    <button class="play" id="play">▶ Jouer la séquence</button>
+    <button id="stop">■ Stop</button>
+    <span id="status"></span>
+  </div>
+</main>
+<script>
+const ROOT = "../../src/ChessArmy.Game/Assets/Sounds/Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/";
+const NONE = "(aucun)";
+const START = [NONE, "Abstracts/Misc Magic B.wav", "Abstracts/Misc Magic A.wav", "Abstracts/Misc Magic C.wav",
+  "Abstracts/Misc Magic D.wav", "Abstracts/Misc Magic E.wav", "Abstracts/Misc Magic F.wav",
+  "Hits and Swings/Magic Item Swing A.wav", "Hits and Swings/Magic Item Swing C.wav",
+  "Weapons and Combat/Weapon Magic A.wav", "Weapons and Combat/Weapon Magic F.wav", "UI/Cozy UI P.wav", "UI/Cozy UI Q.wav"];
+// Tics : sons COURTS (≤ ~0,35 s) pour suivre l'accélération. A et B alternent (dans le jeu : liste de 2 sons,
+// jamais le même deux fois de suite = alternance stricte).
+const TICK = [NONE,
+  "Weapons and Combat/Action Whoosh A.wav", "Weapons and Combat/Action Whoosh B.wav",
+  "Weapons and Combat/Action Whoosh C.wav", "Weapons and Combat/Action Whoosh D.wav",
+  "Inventory/Inventory Sort A.wav", "Inventory/Inventory Sort B.wav", "Inventory/Inventory Sort C.wav", "Inventory/Inventory Sort D.wav",
+  "Inventory/Inventory Gather Plop Lower A.wav", "Inventory/Inventory Gather Plop Lower B.wav", "Inventory/Inventory Gather Plop Lower C.wav",
+  "Buttons/Pick Button B.wav", "Buttons/Pick Button E.wav", "Buttons/Pick Button J.wav", "Buttons/Pick Button O.wav",
+  "UI/Cozy UI C.wav", "UI/Cozy UI D.wav", "UI/Cozy UI G.wav", "UI/Cozy UI K.wav",
+  "Hits and Swings/Heavy Swing A.wav", "Hits and Swings/Heavy Swing B.wav", "Hits and Swings/Heavy Swing C.wav",
+  "Hits and Swings/Heavy Swing D.wav", "Hits and Swings/Heavy Swing E.wav",
+  "Hits and Swings/Hit D.wav", "Weapons and Combat/Weapon Fire B.wav"];
+const REVEAL = [NONE, "Notification/Warm Season Transition.wav", "Notification/Cold Season Transition.wav", "Abstracts/Level Up B.wav"];
+
+function radios(id, names, def) {
+  const box = document.getElementById(id);
+  names.forEach((n, i) => {
+    const l = document.createElement("label");
+    const r = document.createElement("input");
+    r.type = "radio"; r.name = id; r.value = n; r.checked = n === def;
+    const b = document.createElement("button");
+    b.textContent = "♪"; b.title = "Écouter seul";
+    b.onclick = e => { e.preventDefault(); if (n !== NONE) play(n, 1); };
+    l.append(r, document.createTextNode(n.replace(/\.wav$/, "")), b);
+    box.append(l);
+  });
+}
+radios("start", START, "Abstracts/Misc Magic B.wav");
+radios("tickA", TICK, "Weapons and Combat/Action Whoosh A.wav");
+radios("tickB", TICK, "Weapons and Combat/Action Whoosh B.wav");
+radios("reveal", REVEAL, "Notification/Warm Season Transition.wav");
+
+let timers = [], playing = [];
+function play(file, gain) {
+  const a = new Audio(ROOT + file);
+  a.volume = gain; a.play(); playing.push(a);
+}
+function stopAll() { timers.forEach(clearTimeout); timers = []; playing.forEach(a => a.pause()); playing = []; }
+const sel = id => document.querySelector(`input[name=${id}]:checked`).value;
+
+// Rythme du jeu (GameplayScene) : durée 8,4 s ; clignotement de p=0,10 à p=0,78 ;
+// bascule n° (int)(phase*6 + phase²*18), phase = (p-0,10)/(0,78-0,10) ; un tic à chaque nouvelle bascule.
+const DUR = 8.4, ZOOM = 0.10, END = 0.78;
+document.getElementById("play").onclick = () => {
+  stopAll();
+  const start = sel("start"), reveal = sel("reveal");
+  // Un seul des deux choisi : il sonne à chaque bascule. Les deux : alternance A, B, A, B…
+  const ticks = [sel("tickA"), sel("tickB")].filter(f => f !== NONE);
+  if (start !== NONE) play(start, 1);
+  let last = -1, n = 0;
+  for (let ms = 0; ms <= DUR * 1000; ms += 1000 / 60) {
+    const p = ms / 1000 / DUR;
+    if (p >= ZOOM && p < END && ticks.length) {
+      const ph = (p - ZOOM) / (END - ZOOM);
+      const t = Math.floor(ph * 6 + ph * ph * 18);
+      if (t !== last) {
+        last = t;
+        const f = ticks[n++ % ticks.length];
+        timers.push(setTimeout(() => play(f, 0.7), ms));
+      }
+    }
+  }
+  if (reveal !== NONE) timers.push(setTimeout(() => play(reveal, 1), END * DUR * 1000));
+  const s = document.getElementById("status");
+  s.textContent = "Lecture…";
+  timers.push(setTimeout(() => s.textContent = "", DUR * 1000));
+};
+document.getElementById("stop").onclick = stopAll;
+</script>
+</body>
+</html>

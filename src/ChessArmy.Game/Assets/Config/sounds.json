@@ -74,15 +74,15 @@
   // ── Fin de combat / campagne ─────────────────────────────────
   "combat_won": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up A.wav",
   // DÉCOUVERTE d'un nouveau pion par fusion (version longue de l'évolution, 1re obtention seulement) : joué
-  // au flash, quand la silhouette noire prend ses couleurs, EN PLUS de « recruit ». Cf. UpdateEvolutionAnimation.
+  // au flash, quand la silhouette noire prend ses couleurs, SEUL (plus de « recruit » par-dessus). Cf. UpdateEvolutionAnimation.
   // Même révélation, AVANT le flash : « evo_start » quand la silhouette apparaît et zoome au centre, puis
   // « evo_flicker » à CHAQUE bascule de silhouette (≈24 tics qui accélèrent sur ~5,7 s, joués à gain 0,7).
-  "evo_start":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic B.wav",
+  "evo_start":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Misc Magic E.wav",
+  // Tics du clignotement : DEUX sons courts qui ALTERNENT (liste de 2 = jamais le même deux fois de suite).
+  // Choisis à l'oreille via tools/sound-preview/evo-reveal.html.
   "evo_flicker": [
-    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort A.wav",
-    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort B.wav",
-    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort C.wav",
-    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort D.wav"
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Buttons/Pick Button B.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Buttons/Pick Button J.wav"
   ],
   "unit_discover": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Level Up B.wav",
   "recruit":    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Money A.wav",

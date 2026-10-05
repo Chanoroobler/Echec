@@ -55,16 +55,16 @@ public static class CommandTrees
         {
             // ── Branche 0 : le COMMANDANT lui-même ──────────────────────────────────────────────
             Node("cmd_Duelliste",  0, 1, CommandEffect.CommanderTrait(Trait.Duelliste)),
-            Node("cmd_puissance",  0, 2, CommandEffect.CommanderStat(EquipStat.Damage, 1, CommandScale.PerDistinctPair)),
-            Node("cmd_vie",        0, 2, CommandEffect.CommanderStat(EquipStat.Hp, 2, CommandScale.PerDistinctPair)),
+            Node("cmd_puissance",  0, 2, CommandEffect.CommanderStat(EquipStat.Damage, 1, CommandScale.PerDistinctClass)),
+            Node("cmd_vie",        0, 2, CommandEffect.CommanderStat(EquipStat.Hp, 2, CommandScale.PerDistinctClass)),
             Node("cmd_mouvement",  0, 3, CommandEffect.CommanderStat(EquipStat.MoveRange, 1)),
             Node("cmd_Orage",      0, 3, CommandEffect.CommanderTrait(Trait.Orage)),
             Node("cmd_portee",     0, 4, CommandEffect.CommanderStat(EquipStat.AttackRange, 1)),
 
             // ── Branche 1 : les TROUPES (tout le roster hors commandant) ────────────────────────
             Node("troupe_vie",       1, 1, CommandEffect.UnitStat(EquipStat.Hp, 2)),
-            Node("troupe_puissance", 1, 2, CommandEffect.UnitStat(EquipStat.Damage, 1, CommandScale.PerDistinctPair)),
-            Node("troupe_vie_paire", 1, 2, CommandEffect.UnitStat(EquipStat.Hp, 1, CommandScale.PerDistinctPair)),
+            Node("troupe_puissance", 1, 2, CommandEffect.UnitStat(EquipStat.Damage, 1, CommandScale.PerDistinctClass)),
+            Node("troupe_vie_paire", 1, 2, CommandEffect.UnitStat(EquipStat.Hp, 1, CommandScale.PerDistinctClass)),
             Node("troupe_releve",    1, 3, CommandEffect.EliteDeathRecruit()),
             Node("troupe_mouvement", 1, 4, CommandEffect.UnitStat(EquipStat.MoveRange, 1)),
 

@@ -204,6 +204,13 @@ public enum CommandScale
     PerDistinctPair,
 
     /// <summary>
+    /// Bonus × le nombre de CLASSES DISTINCTES du roster (hors commandant, réserve ET pions déployés) : chaque
+    /// unité différente compte, sans division. Recalculé à chaque phase de placement. Cf.
+    /// <see cref="Campaign.Run.DistinctClasses"/>. (Arbre du Foudroyeur, qui comptait auparavant par paire.)
+    /// </summary>
+    PerDistinctClass,
+
+    /// <summary>
     /// Bonus × le nombre d'unités du <see cref="CommandEffect.Domaine"/> visé dans le roster (hors
     /// commandant, réserve ET pions déployés). Recalculé à chaque phase de placement. Cf.
     /// <see cref="Campaign.Run.DomaineUnitCount"/>.
@@ -326,10 +333,12 @@ public sealed class CommandEffect
     /// (<paramref name="domaineCount"/> évalué sur <see cref="Domaine"/>). Absent → l'échelle par domaine vaut 0.
     /// </summary>
     public int AmountFor(int distinctPairs, System.Func<Domaine, int>? domaineCount = null,
-        System.Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0) =>
+        System.Func<Domaine, int>? deployedCount = null, int equippedItems = 0, int ownEquippedItems = 0,
+        int distinctClasses = 0) =>
         Scale switch
         {
             CommandScale.PerDistinctPair => Amount * distinctPairs,
+            CommandScale.PerDistinctClass => Amount * distinctClasses,
             CommandScale.PerEquippedItem => Amount * equippedItems,
             CommandScale.PerOwnEquippedItem => Amount * ownEquippedItems,
             CommandScale.PerDomaineUnit => Domaine is { } d ? Amount * (domaineCount?.Invoke(d) ?? 0) : Amount,

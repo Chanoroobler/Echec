@@ -66,13 +66,14 @@ public sealed class CombatFxRenderer
     /// dessine le sprite intact (le shader ne retire encore rien).
     /// </summary>
     public void DrawDissolve(SpriteBatch sb, Texture2D sprite, Vector2 center, float rotation, float scale,
-        float progress, Color edge, Vector2 seed, Vector2? pivot = null)
+        float progress, Color edge, Vector2 seed, Vector2? pivot = null, Rectangle? source = null)
     {
-        var origin = pivot ?? new Vector2(sprite.Width / 2f, sprite.Height / 2f);   // point du sprite posé sur center
+        // Point du sprite posé sur center (relatif à la zone source si elle est donnée, comme SpriteBatch).
+        var origin = pivot ?? new Vector2(sprite.Width / 2f, sprite.Height / 2f);
         if (_effect == null)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(sprite, center, null, Color.White * (1f - progress), rotation, origin, scale, SpriteEffects.None, 0f);
+            sb.Draw(sprite, center, source, Color.White * (1f - progress), rotation, origin, scale, SpriteEffects.None, 0f);
             sb.End();
             return;
         }
@@ -85,7 +86,7 @@ public sealed class CombatFxRenderer
         _effect.CurrentTechnique = _effect.Techniques["Dissolve"];
 
         sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, center, null, Color.White, rotation, origin, scale, SpriteEffects.None, 0f);
+        sb.Draw(sprite, center, source, Color.White, rotation, origin, scale, SpriteEffects.None, 0f);
         sb.End();
     }
 
