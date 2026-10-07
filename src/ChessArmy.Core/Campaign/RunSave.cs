@@ -215,6 +215,9 @@ public sealed class RunStatsSave
     /// <summary>Chronomètre de la run, en secondes. Absent (save v4 ou antérieur) → 0.</summary>
     public double PlayTime { get; set; }
 
+    /// <summary>Renards écrasés sur la run (succès « Ami des bêtes »). Absent (vieux save) → 0.</summary>
+    public int Foxes { get; set; }
+
     public List<string> UnlockedCommanders { get; set; } = new();
     public List<string> DiscoveredClasses { get; set; } = new();
     public List<string> DiscoveredEquipment { get; set; } = new();
@@ -225,6 +228,7 @@ public sealed class RunStatsSave
         Kills = s.TotalKills, Lost = s.UnitsLost, Fusions = s.Fusions,
         Paysans = s.PaysansSaved, Equipment = s.EquipmentFound,
         PlayTime = s.PlayTimeSeconds,
+        Foxes = s.FoxesCrushed,
         UnlockedCommanders = s.UnlockedCommanders.ToList(),
         DiscoveredClasses = s.DiscoveredClasses.ToList(),
         DiscoveredEquipment = s.DiscoveredEquipment.ToList(),
@@ -238,7 +242,7 @@ public sealed class RunStatsSave
         s.Restore(damage: Damage, totalKills: Kills, unitsLost: Lost, fusions: Fusions,
             paysansSaved: Paysans, equipmentFound: Equipment,
             unlockedCommanders: UnlockedCommanders, discoveredClasses: DiscoveredClasses,
-            discoveredEquipment: DiscoveredEquipment, playTimeSeconds: PlayTime);
+            discoveredEquipment: DiscoveredEquipment, playTimeSeconds: PlayTime, foxesCrushed: Foxes);
         return s;
     }
 }

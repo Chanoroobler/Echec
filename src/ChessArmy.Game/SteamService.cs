@@ -144,4 +144,7 @@ public static class Achievements
 
     /// <summary>Première fusion donnant une unité de tier 3.</summary>
     public const string FusionT3 = "ACH_FUSION_T3";
+
+    /// <summary>« Ami des bêtes » : gagner une partie sans avoir écrasé un seul renard d'ambiance.</summary>
+    public const string AnimalFriend = "ACH_ANIMAL_FRIEND";
 }

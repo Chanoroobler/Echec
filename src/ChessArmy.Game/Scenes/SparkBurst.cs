@@ -200,6 +200,33 @@ internal sealed class SparkBurst
         }
     }
 
+    /// <summary>
+    /// ÉCLABOUSSURE radiale (papillon écrasé au clic) : gerbe tout autour, plus lente qu'un feu d'artifice, aux
+    /// couleurs données (celles du sprite), qui retombe sous la gravité. Carrés de <paramref name="size"/> px.
+    /// </summary>
+    public void EmitSplash(Vector2 origin, int count, int size, Color[] colors)
+    {
+        if (colors.Length == 0)
+            return;
+        for (var i = 0; i < count; i++)
+        {
+            var s = _pool.Get();
+            s.GravityScale = 1f;   // recyclé : une braise avait pu le mettre en négatif (cf. EmitEmbers)
+            var ang = (float)(_rng.NextDouble() * Math.PI * 2);
+            var speed = 50f + (float)_rng.NextDouble() * 130f;
+            s.Position = origin;
+            s.Velocity = new Vector2(MathF.Cos(ang), MathF.Sin(ang) - 0.4f) * speed;   // un peu vers le haut
+            s.MaxLife = 0.4f + (float)_rng.NextDouble() * 0.35f;
+            s.Life = s.MaxLife;
+            s.Size = Math.Max(1, size);
+            s.Outline = false;
+            s.FloorY = float.NaN;   // recyclé du pool : ne se pose pas comme une goutte de sang
+            s.Persistent = true;
+            s.Color = colors[_rng.Next(colors.Length)];
+            _active.Add(s);
+        }
+    }
+
     // Teintes BRAISE (jaune, orange, rouge brique, gris cendre) d'un pion qui brûle.
     private static readonly Color[] EmberColors =
     {

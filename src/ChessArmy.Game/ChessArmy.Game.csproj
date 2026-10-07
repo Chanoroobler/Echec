@@ -56,8 +56,7 @@
   <!-- N'embarque QUE les .wav cités dans sounds.json / music.json (SFX + musique). Auto-dérivé des deux
        JSON : éditer un chemin dans un JSON suffit, aucune liste à maintenir ici, et rien d'inutilisé
        (autres sons du pack, dossier __MACOSX, variantes de pistes…) ne part dans la build. -->
-  <UsingTask TaskName="CollectReferencedWavs" TaskFactory="RoslynCodeTaskFactory"
-             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+  <UsingTask TaskName="CollectReferencedWavs" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <ConfigFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
       <SoundsDir ParameterType="System.String" Required="true" />
@@ -93,14 +92,13 @@
   </UsingTask>
 
   <Target Name="CollectUsedAudio" BeforeTargets="AssignTargetPaths">
-    <CollectReferencedWavs ConfigFiles="Assets\Config\sounds.json;Assets\Config\music.json"
-                           SoundsDir="$(MSBuildProjectDirectory)\Assets\Sounds">
+    <CollectReferencedWavs ConfigFiles="Assets\Config\sounds.json;Assets\Config\music.json" SoundsDir="$(MSBuildProjectDirectory)\Assets\Sounds">
       <Output TaskParameter="Wavs" ItemName="_UsedAudio" />
     </CollectReferencedWavs>
     <ItemGroup>
       <None Include="@(_UsedAudio)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
-    <Message Importance="high" Text="Audio embarqué : @(_UsedAudio->Count()) fichier(s) .wav référencés par sounds.json/music.json." />
+    <Message Importance="high" Text="Audio embarqué : @(_UsedAudio-&gt;Count()) fichier(s) .wav référencés par sounds.json/music.json." />
   </Target>
   <ItemGroup>
     <!-- Shaders : compilés via le content pipeline MonoGame (HLSL -> .xnb), chargés au
@@ -120,8 +118,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Absente => le jeu tourne sans Steam (SteamService échoue en silence). -->
-    <None Include="Native\steam_api64.dll" Condition="Exists('Native\steam_api64.dll')"
-          Link="steam_api64.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Native\steam_api64.dll" Condition="Exists('Native\steam_api64.dll')" Link="steam_api64.dll" CopyToOutputDirectory="PreserveNewest" />
     <!-- steam_appid.txt : permet de lancer HORS Steam (Visual Studio) avec l'AppID. Debug uniquement :
          la build livrée est lancée par Steam, qui fournit l'AppID lui-même. -->
     <None Include="steam_appid.txt" Condition="'$(Configuration)'=='Debug'" CopyToOutputDirectory="PreserveNewest" />

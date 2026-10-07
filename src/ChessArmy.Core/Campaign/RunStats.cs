@@ -76,6 +76,10 @@ public sealed class RunStats
     public void AddPaysansSaved(int n) => PaysansSaved += Math.Max(0, n);
     public void AddEquipmentFound(int n = 1) => EquipmentFound += Math.Max(0, n);
 
+    /// <summary>Renards d'ambiance écrasés par un pion sur la run (succès « Ami des bêtes » si 0 à la victoire).</summary>
+    public int FoxesCrushed { get; private set; }
+    public void AddFoxCrushed() => FoxesCrushed++;
+
     /// <summary>Ajoute le temps écoulé d'une frame au chronomètre (valeur négative ou non finie ignorée).</summary>
     public void AddPlayTime(double seconds)
     {
@@ -112,8 +116,9 @@ public sealed class RunStats
     public void Restore(IReadOnlyDictionary<string, int>? damage, int totalKills, int unitsLost, int fusions,
         int paysansSaved, int equipmentFound, IReadOnlyList<string>? unlockedCommanders,
         IReadOnlyList<string>? discoveredClasses, IReadOnlyList<string>? discoveredEquipment,
-        double playTimeSeconds = 0)
+        double playTimeSeconds = 0, int foxesCrushed = 0)
     {
+        FoxesCrushed = Math.Max(0, foxesCrushed);
         _damageByClass.Clear();
         if (damage != null)
             foreach (var kv in damage)

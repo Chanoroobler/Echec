@@ -231,6 +231,32 @@ public sealed class GameplayScene : Scene
     private readonly List<Cell> _bushCells = new();
     private Texture2D? _bushSprite;                          // PNG du buisson (placeholder dessiné si absent)
 
+    // Renard d'ambiance (cosmétique) : posé sur l'herbe au 1er update du placement (pions déjà là).
+    // Un renard PAR TERRAIN : [0] = renard roux sur l'HERBE (fox.png), [1] = renard des neiges sur la NEIGE
+    // (foxRed.png). Chacun ne marche que sur son terrain ; une map qui a les deux peut avoir les deux renards.
+    // Jusqu'à DEUX renards par terrain : [0,1] herbe, [2,3] neige. Le second n'apparaît que si son terrain est
+    // vaste (cf. SecondFoxMinCells) et se pose LOIN du premier, sur une autre rangée (ils ne se croisent jamais).
+    private readonly FoxCritter[] _foxes = { new(), new(), new(), new() };
+    private const int SecondFoxMinCells = 25;   // cases libres du terrain requises pour un 2e renard
+    private const int SecondFoxMinGap = 3;      // écart mini entre les deux (en cases, Chebyshev)
+    private Func<Cell, bool>[]? _foxFree;   // délégués mis en cache, un par renard (pas d'alloc par frame)
+    private bool _foxPending;
+    private readonly ButterflyCritter _butterfly = new();   // papillon d'ambiance : traverse l'écran de temps en temps
+    private readonly HeartBurst _hearts = new();             // cœurs du renard caressé (clic)
+    private readonly List<(Vector2 Point, Cell Cell)> _perchBuffer = new();   // perchoirs du combat (tampon réutilisé)
+    // Points de pose sur le buisson (buisson.png 64×64, dessiné au coin de la case) : le haut de la touffe du
+    // dessus, la touffe de gauche, la touffe de droite.
+    private static readonly (int X, int Y)[] BushPerchSpots = { (31, 15), (17, 32), (48, 28) };
+
+    private void AddPerches(Cell c, (int X, int Y)[] spots)
+    {
+        foreach (var (px, py) in spots)
+            _perchBuffer.Add((new Vector2(c.Column + px / 64f, c.Row + py / 64f), c));
+    }
+    // Points de pose sur les tuiles rocher « pierre » / « neige_04 » (même dessin ; pixels de la tuile 64×80, depuis son coin haut-gauche) : le
+    // dessus PLAT et clair de chacun des trois gros rochers dessinés (fond, droite, petit de gauche).
+    private static readonly (int X, int Y)[] RockPerchSpots = { (24, 11), (44, 28), (14, 23) };
+
     // Objets « chute » (calque "objects") : tuile-piège marchable UNE fois. En combat, quand le pion qui
     // l'occupait la QUITTE, elle s'effondre en trou infranchissable (BuiltInTiles.Hole, le tir passe). Elle
     // TREMBLE légèrement tant qu'un pion est dessus (placement compris). Cf. UpdateChuteTiles / DrawTerrain.
@@ -765,6 +791,15 @@ public sealed class GameplayScene : Scene
         // Objets recrue (pion « ? ») et buisson : PNG optionnels, repli sur un placeholder dessiné.
         LoadRecrueSprites();   // tous les looks recrue (Assets/Objects/*_front.png) : une variante par case
         _bushSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/buisson.png"));
+        _foxes[0].Load(Context.GraphicsDevice, AssetPath("Assets/Anim/fox.png"));
+        _foxes[1].ShareSheet(_foxes[0]);
+        _foxes[2].Load(Context.GraphicsDevice, AssetPath("Assets/Anim/foxRed.png"));
+        _foxes[3].ShareSheet(_foxes[2]);
+        _butterfly.Load(Context.GraphicsDevice, AssetPath("Assets/Anim"));   // toutes les couleurs Butterfly*.png
+        _hearts.Load(Context.GraphicsDevice, AssetPath("Assets/Anim/CoeurFox.png"));
+        _butterfly.PerchFree = c => _match?.UnitAt(c) == null;   // pas sur un buisson où se cache un pion
+        Func<Cell, bool> onGrass = c => FoxCellFree(c, snow: false), onSnow = c => FoxCellFree(c, snow: true);
+        _foxFree = new[] { onGrass, onGrass, onSnow, onSnow };
         // Commandant DUO : trousse de soin (remplace la tuile recrue) et sacoche (remplace le coffre).
         // PNG 64×64 OPTIONNELS — sans eux, un placeholder est dessiné (croix verte / besace brune).
         _trousseSprite = Textures.LoadPngOrNull(Context.GraphicsDevice, AssetPath("Assets/Objects/trousse.png"));
@@ -831,6 +866,9 @@ public sealed class GameplayScene : Scene
         _recrueLooks.Clear();
         _bushSprite?.Dispose();
         _bushSprite = null;
+        foreach (var fox in _foxes) fox.Unload();
+        _butterfly.Unload();
+        _hearts.Unload();
         _chuteSprite?.Dispose();
         _chuteSprite = null;
         _equipSlotBg?.Dispose();
@@ -1730,6 +1768,10 @@ public sealed class GameplayScene : Scene
         _chuteArmed.Clear();
         _fallenCells.Clear();
         _chuteFall.Clear();
+        foreach (var fox in _foxes) fox.Reset();
+        _foxPending = true;  // posé au 1er update du placement, une fois les pions ennemis en place
+        _butterfly.Reset();
+        _hearts.Clear();
         if (_map is { } cm)
             foreach (var o in cm.Objects)
                 switch (o.Kind)
@@ -1737,6 +1779,17 @@ public sealed class GameplayScene : Scene
                     case MapObjectKind.Bush: _bushCells.Add(o.Cell); break;
                     case MapObjectKind.Chute: _chuteCells.Add(o.Cell); break;
                 }
+        // Perchoirs des papillons, au pixel près : le DESSUS des rochers dessinés (tuiles « pierre » et
+        // « neige_04 », le même amas de rochers, enneigé pour la seconde) et les touffes des buissons (si leur
+        // PNG existe : le placeholder dessiné n'a pas ces touffes).
+        _perchBuffer.Clear();
+        foreach (var c in _battlefield.Cells())
+            if (_battlefield[c].Id is "pierre" or "neige_04")
+                AddPerches(c, RockPerchSpots);
+        if (_bushSprite != null)
+            foreach (var c in _bushCells)
+                AddPerches(c, BushPerchSpots);
+        _butterfly.SetPerches(_perchBuffer);
         RefreshLootObjects();   // recrues + coffres (ou trousses + sacoches du DUO, selon les nœuds achetés)
 
         // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
@@ -2014,6 +2067,8 @@ public sealed class GameplayScene : Scene
         _chuteArmed.Clear();
         _fallenCells.Clear();
         _chuteFall.Clear();
+        foreach (var fox in _foxes) fox.Reset();   // pas de renard en tutoriel : rien ne doit distraire de la leçon
+        _foxPending = false;
         // Le seul objet de la map du tuto : le coffre de la leçon « équipement ».
         if (_map is { } withObjects)
             foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
@@ -3194,6 +3249,11 @@ public sealed class GameplayScene : Scene
         // Sous-phase Équipement (après placement+fusion) : on pose/retire les équipements sur les pions.
         if (_equipPhase)
         {
+            var edt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            if (_sparks.HasActive)
+                _sparks.Update(edt);   // éclaboussure d'un papillon écrasé
+            if (UpdateFox(edt))
+                return;                // clic consommé par un papillon écrasé
             UpdateEquipPhase(gameTime);
             return;
         }
@@ -3225,6 +3285,8 @@ public sealed class GameplayScene : Scene
         // Fin du feu d'artifice de fusion : les particules continuent de vivre après l'animation.
         if (_sparks.HasActive)
             _sparks.Update((float)gameTime.ElapsedGameTime.TotalSeconds);
+        if (UpdateFox((float)gameTime.ElapsedGameTime.TotalSeconds))
+            return;   // clic consommé : papillon écrasé (ne sélectionne pas le pion dessous)
 
         // Bascule MINIATURE ↔ DÉTAILLÉE de la carte d'aperçu, comme en combat. À la manette c'est LT : X est
         // déjà pris au placement (relance du pion porté, fusion dans le panneau de réserve) et la bascule doit
@@ -5423,6 +5485,8 @@ public sealed class GameplayScene : Scene
         }
 
         _sparks.Update(dt);        // les particules vivent leur vie même pendant le gel de l'animation
+        if (UpdateFox(dt))         // renard / papillons d'ambiance
+            return;                // clic consommé : papillon écrasé (ne sélectionne pas le pion dessous)
         _tremor.Update(dt);        // les tuiles de l'AoE (Séisme/Impact) finissent de trembler (cf. DrawTerrain)
         _slideGlide.Update(dt);    // le pion qui a dérapé sur la glace rejoint sa case de repos (cf. DrawUnit)
         _chuteFall.Update(dt, _chuteJustLanded);   // tuiles « chute » en cours d'effondrement (cf. DrawTerrain)
@@ -7699,6 +7763,8 @@ public sealed class GameplayScene : Scene
             SteamService.Unlock(Achievements.WinWith(_run.CommanderDef.Id));
             if (_run.Difficulty == Difficulty.Difficile)
                 SteamService.Unlock(Achievements.WinHardWith(_run.CommanderDef.Id));
+            if (_run.Stats.FoxesCrushed == 0)
+                SteamService.Unlock(Achievements.AnimalFriend);   // « Ami des bêtes » : aucun renard écrasé
         }
 
         // Fin de run (boss vaincu ou commandant tombé) : la sauvegarde n'a plus lieu d'être.
@@ -9661,6 +9727,8 @@ public sealed class GameplayScene : Scene
                 DrawChests(sb, board);                   // coffres (sous les unités : un allié peut être dessus)
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
+                if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, board.Origin, board.TileSize);   // renard écrasé au placement
+                DrawFox(sb, board);                      // renard d'ambiance : DERRIÈRE les buissons et les unités
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
@@ -9701,6 +9769,7 @@ public sealed class GameplayScene : Scene
                     }
                 }
                 sb.End();
+                DrawAmbientAir(sb, board);   // papillons d'ambiance : au-dessus du plateau ET du panneau (traversent l'écran)
 
                 // Transition après le choix de mission spéciale : le panneau de droite arrive en glissant.
                 if (ChoiceTransitionActive)
@@ -9748,6 +9817,7 @@ public sealed class GameplayScene : Scene
                 DrawChuteMarkers(sb, board);             // marqueurs des tuiles « chute » (sous les unités)
                 DrawRecrueObjects(sb, board);            // pions « ? » de recrutement (sous les unités)
                 if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, board.Origin, board.TileSize);   // sang au sol (tout le combat), sous les unités
+                DrawFox(sb, board);                      // renard d'ambiance : DERRIÈRE les buissons et les unités
                 DrawBushes(sb, board, occupied: false);  // buissons SANS pion dessus : DERRIÈRE les unités
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
@@ -9775,6 +9845,7 @@ public sealed class GameplayScene : Scene
                 DrawBounceFx(sb, board);           // balle rebondissante en vol (DUO)
                 DrawTrousseToss(sb, board);        // petites trousses de soin en vol (DUO)
                 DrawGrenadeBlast(sb, board);       // souffle de la grenade (DUO)
+                DrawAmbientAir(sb, board);        // papillon d'ambiance : vole au-dessus des pions
                 _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
 
                 if (_battleIntroTimer > 0)
@@ -9898,7 +9969,8 @@ public sealed class GameplayScene : Scene
             if (BoardAssembled) DrawThreatZones(sb, nb);
             if (BoardAssembled) DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
-            DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
+            if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // renard écrasé au placement
+            DrawFox(sb, nb); DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
             else DrawFusionBoardStack(sb, nb);   // le pion attrapé passe par la couche curseur (par-dessus tout)
@@ -9916,7 +9988,7 @@ public sealed class GameplayScene : Scene
             DrawHighlights(sb, nb); DrawThreatZones(sb, nb); DrawAuraHalos(sb, nb);
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // sang au sol (tout le combat)
-            DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
+            DrawFox(sb, nb); DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
             DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb);
             DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             DrawAllyThreatIcons(sb, nb);
@@ -9957,6 +10029,7 @@ public sealed class GameplayScene : Scene
             if (_equipPhase) { DrawEquipPanel(sb); DrawDraggedEquip(sb); }
             else { DrawPlacementPanel(sb); DrawInventoryFocusHighlight(sb); DrawPlacementPreview(sb); }   // pion attrapé = couche curseur (par-dessus tout), cf. RenderGhostLayer
             sb.End();
+            DrawAmbientAir(sb, hit);   // papillons sur la couche UI : la couche plateau natif est rognée au plateau
             if (_equipPhase) { sb.Begin(samplerState: SamplerState.PointClamp); DrawCombatCards(sb, hit); sb.End(); }
             DrawPhaseTimeline(sb, viewport);
             if (!_equipPhase)
@@ -9981,6 +10054,7 @@ public sealed class GameplayScene : Scene
         }
         else   // Battle
         {
+            DrawAmbientAir(sb, hit);   // papillons sur la couche UI : la couche plateau natif est rognée au plateau
             sb.Begin(samplerState: SamplerState.PointClamp);
             DrawCombatCards(sb, hit);
             sb.End();
@@ -11962,6 +12036,24 @@ public sealed class GameplayScene : Scene
         if (!SacocheMode)
             DrawObjectCastShadows(sb, layout, _chestCells, _chestSprite, _chestConsumed, ChestShadowShear);
         DrawObjectCastShadows(sb, layout, _bushCells, _bushSprite, consumed: null);
+
+        // Papillons : tache au sol sous eux. En DÉZOOM, ils sont dessinés sur la couche UI (1 pixel d'art = 1 px
+        // canvas = _virtualScaleHint px écran) alors que cette passe est sur le plateau natif (px écran) : même taille.
+        var artPx = Math.Max(1, (int)MathF.Round(layout.TileSize / 64f));
+        if (Dezoomed)
+            artPx = _virtualScaleHint * Math.Max(1, (int)MathF.Round(BuildLayout().TileSize / 64f));
+        _butterfly.DrawShadows(sb, Context.Pixel, layout, ShadowAlpha, artPx);
+
+        // Renards d'ambiance : silhouette de leur frame courante, ancrée sous leurs pattes.
+        foreach (var fox in _foxes)
+        {
+            if (!fox.Active)
+                continue;
+            var (foxY, foxA) = BoardIntroAnim(fox.Cell, layout);
+            if (fox.TryGetFrame(layout, foxY, out var sheet, out var dest, out var src, out var fx, withHop: false))
+                DrawSilhouetteShadow(sb, sheet, dest, new Vector2(dest.Center.X, dest.Bottom), ShadowAlpha * foxA,
+                    ShadowShear, src, fx);
+        }
     }
 
     /// <summary>
@@ -12019,7 +12111,7 @@ public sealed class GameplayScene : Scene
     /// (<see cref="ShadowFlatten"/> &lt; 0 → l'ombre tombe vers l'avant). Teinte sombre semi-transparente.
     /// </summary>
     private void DrawSilhouetteShadow(SpriteBatch sb, Texture2D sprite, Rectangle dest, Vector2 anchor,
-        float alpha, float shear = ShadowShear)
+        float alpha, float shear = ShadowShear, Rectangle? source = null, SpriteEffects effects = SpriteEffects.None)
     {
         var transform =
             Matrix.CreateTranslation(-anchor.X, -anchor.Y, 0f)
@@ -12034,7 +12126,7 @@ public sealed class GameplayScene : Scene
         sb.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform,
             rasterizerState: RasterizerState.CullNone);
         // Silhouette TRAMÉE (demi-teinte Bayer de pixels pleins) plutôt qu'un aplat lissé → pixel-art.
-        sb.Draw(ShadowStipple(sprite), dest, Palette.Black1 * alpha);
+        sb.Draw(ShadowStipple(sprite), dest, source, Palette.Black1 * alpha, 0f, Vector2.Zero, effects, 0f);
         sb.End();
     }
 
@@ -14402,6 +14494,147 @@ public sealed class GameplayScene : Scene
             DrawRect(sb, new Rectangle(rect.X, rect.Y, rect.Width, rect.Height / 3), Palette.Blue1 * introA);
             DrawRectBorder(sb, rect, Palette.Black1 * introA, 2);
             Context.Font.DrawCentered(sb, "?", rect, System.Math.Max(2, size / 16), Palette.Yellow2 * introA);
+        }
+    }
+
+    /// <summary>
+    /// Case où un renard d'ambiance peut se tenir / passer : SON terrain (HERBE pour le renard roux, NEIGE
+    /// praticable pour le renard des neiges), sans objet de map ni pion. Tout le reste est un obstacle.
+    /// </summary>
+    private bool FoxCellFree(Cell c, bool snow)
+    {
+        if (!_battlefield.Contains(c))
+            return false;
+        var tile = _battlefield[c];
+        var onTerrain = snow
+            ? tile.Id.StartsWith("neige_", StringComparison.Ordinal) && !tile.BlocksMovement
+            : tile.Id == "herbe" || tile.Id == BuiltInTiles.Grass.Id;
+        if (!onTerrain)
+            return false;
+        // Les buissons NE bloquent PAS : il passe derrière (dessiné avant eux, cf. DrawFox).
+        if (_fallenCells.Contains(c) || _chestCells.Contains(c)
+            || _recrueCells.Contains(c) || _chuteCells.Contains(c) || _petiteTrousseCells.Contains(c))
+            return false;
+        return _match == null || _match.UnitAt(c) == null;
+    }
+
+    /// <summary>
+    /// Ambiance du plateau : papillons (vol + écrasement au clic) et renard. Vrai si le clic de cette frame a
+    /// écrasé un papillon : l'appelant l'ignore alors (pas de sélection du pion dessous).
+    /// </summary>
+    private bool UpdateFox(float dt)
+    {
+        // Papillon : traverse tout l'écran de jeu (bords exprimés en cases depuis l'origine du plateau).
+        var bl = BuildLayout();
+        float bt = bl.TileSize;
+        _butterfly.Update(dt, -bl.Origin.X / bt, (VirtualViewport.Width - bl.Origin.X) / bt, Rows);
+        var artPx = Math.Max(1, (int)MathF.Round(bt / 64f));
+        var consumed = false;
+        var click = Context.Input.WasLeftClicked && !Context.Input.UsingGamepad;
+        // Option « Sang » désactivée : on ne tue pas les papillons (le clic passe au jeu normalement).
+        if (click && Context.Settings.Blood
+            && _butterfly.TrySquash(Context.Input.MousePosition, bl, out var at, out var px, out var colors))
+        {
+            consumed = true;
+            Context.Sounds.Play("butterfly_splash");
+            _sparks.EmitSplash(at, 16, px, colors);   // gerbe aux couleurs de ses ailes
+        }
+        // Caresse du renard : seulement les mains libres (aucun pion porté / sélectionné, aucun équipement
+        // traîné), sinon le clic est un ordre de jeu sur sa case. Pas quand un pion le recouvre.
+        // Une caresse à la fois : bonds ET cœurs (jusqu'au dernier éclatement) doivent être finis avant d'en
+        // relancer une — d'ici là, le clic sur le renard passe au jeu comme si de rien n'était.
+        else if (click && _dragSpec == null && _dragEquip == null && _selected == null && _combatDragFrom == null
+                 && !_hearts.HasActive && !AnyFoxPetted())
+        {
+            foreach (var fox in _foxes)
+            {
+                if (!fox.Active || _match?.UnitAt(fox.Cell) != null || !fox.Hit(Context.Input.MousePosition, bl))
+                    continue;
+                consumed = true;
+                fox.Pet();
+                Context.Sounds.Play("fox_pet");
+                _hearts.Spawn(fox.HeadPosition(bl), 3 + Random.Shared.Next(3), artPx);
+                break;
+            }
+        }
+        _hearts.Update(dt, _sparks, artPx);
+        UpdateFoxCritter(dt);
+        return consumed;
+    }
+
+    private void UpdateFoxCritter(float dt)
+    {
+        if (_foxFree == null)
+            return;
+        if (_foxPending)
+        {
+            _foxPending = false;
+            for (var i = 0; i < _foxes.Length; i += 2)   // chacun sur son terrain, s'il y en a assez
+            {
+                var first = _foxes[i];
+                first.Place(Columns, Rows, _foxFree[i], c => !_bushCells.Contains(c));   // pas caché dans un buisson au départ
+                // Terrain VASTE : un second renard, loin du premier et sur une autre rangée (ils marchent à
+                // l'horizontale, donc ne se croisent jamais).
+                if (!first.Active || CountCells(_foxFree[i]) < SecondFoxMinCells)
+                    continue;
+                var home = first.Cell;
+                _foxes[i + 1].Place(Columns, Rows, _foxFree[i + 1], c => !_bushCells.Contains(c) && c.Row != home.Row
+                    && Math.Max(Math.Abs(c.Column - home.Column), Math.Abs(c.Row - home.Row)) >= SecondFoxMinGap);
+            }
+        }
+        for (var i = 0; i < _foxes.Length; i++)
+            if (_foxes[i].Update(dt, Columns, _foxFree[i]))
+                OnFoxCrushed(_foxes[i]);
+    }
+
+    private bool AnyFoxPetted()
+    {
+        foreach (var fox in _foxes)
+            if (fox.IsPetted)
+                return true;
+        return false;
+    }
+
+    /// <summary>Nombre de cases du plateau qui satisfont <paramref name="free"/> (taille du terrain d'un renard).</summary>
+    private int CountCells(Func<Cell, bool> free)
+    {
+        var n = 0;
+        for (var r = 0; r < Rows; r++)
+            for (var c = 0; c < Columns; c++)
+                if (free(new Cell(c, r)))
+                    n++;
+        return n;
+    }
+
+    /// <summary>Renard écrasé par un pion (aucune case pour fuir) : couinement + petite giclée sous le pion.</summary>
+    private void OnFoxCrushed(FoxCritter fox)
+    {
+        _run.Stats.AddFoxCrushed();   // perd le succès « Ami des bêtes » pour cette run
+        Context.Sounds.Play("fox_squash");
+        if (!Context.Settings.Blood)
+            return;
+        var layout = BuildLayout();
+        var tile = layout.TileSize;
+        var feet = fox.FootPosition(layout);
+        _sparks.EmitBlood(feet - new Vector2(0f, tile * 0.05f), 10, MathF.Max(3f, tile / 21f), Vector2.Zero, 0.35f,
+            feet.Y - tile * 0.1f, feet.Y + tile * 0.15f, layout.Origin, tile);
+    }
+
+    /// <summary>Ambiance « dans les airs », au-dessus du plateau et des pions : papillons + cœurs du renard.</summary>
+    private void DrawAmbientAir(SpriteBatch sb, GridLayout layout)
+    {
+        _butterfly.Draw(sb, layout);
+        _hearts.Draw(sb, Math.Max(1, (int)MathF.Round(layout.TileSize / 64f)));
+    }
+
+    private void DrawFox(SpriteBatch sb, GridLayout layout)
+    {
+        foreach (var fox in _foxes)
+        {
+            if (!fox.Active)
+                continue;
+            var (introY, introA) = BoardIntroAnim(fox.Cell, layout);
+            fox.Draw(sb, layout, introY, introA);
         }
     }
 

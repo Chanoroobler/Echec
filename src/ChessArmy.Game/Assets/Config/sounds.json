@@ -49,6 +49,23 @@
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit D.wav",
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit E.wav"
   ],
+  // Papillon d'ambiance écrasé d'un CLIC en plein vol (éclaboussure). Cf. GameplayScene.UpdateFox.
+  "butterfly_splash":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Wet Item A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Wet Item B.wav"
+  ],
+  // Renard d'ambiance CARESSÉ (clic) : petit cri content pendant qu'il bondit et que les cœurs s'envolent.
+  "fox_pet":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Growl A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Growl B.wav"
+  ],
+  // Renard d'ambiance ÉCRASÉ : un pion s'est posé sur lui alors qu'il n'avait aucune case pour fuir.
+  // Cf. GameplayScene.UpdateFox.
+  "fox_squash":  [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit C.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Hit E.wav"
+  ],
   // Mort par FLÈCHE : bruit sourd quand le pion basculé (ou cloué) touche le sol. Cf. GameplayScene.UpdateBattle.
   "unit_fall":    [
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Player Actions/Interact Dirt A.wav",
