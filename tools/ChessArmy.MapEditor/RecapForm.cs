@@ -184,24 +184,25 @@ internal sealed class RecapForm : Form
     }
 
     /// <summary>
-    /// ESCARMOUCHES : groupées par taille (carrées seulement — le jeu ne tire que des maps carrées). Renvoie la
-    /// liste des tailles requises par <c>campaign.json</c> sans aucune map (manque bloquant).
+    /// ESCARMOUCHES : groupées par taille de tirage = leur PLUS PETIT côté (<see cref="MapData.PoolSize"/>, une
+    /// 8×12 est rangée avec les 8×8, comme dans le jeu). Renvoie la liste des tailles requises par
+    /// <c>campaign.json</c> sans aucune map (manque bloquant).
     /// </summary>
     private List<(int phase, int size)> RenderEscarmouches(List<Row> live)
     {
-        WL("ESCARMOUCHES (tirées par TAILLE, carrées uniquement)", Head, bold: true);
+        WL("ESCARMOUCHES (tirées par TAILLE = plus petit côté)", Head, bold: true);
 
         var esc = live.Where(r => r.Data.Type == CombatType.Escarmouche).ToList();
-        var square = esc.Where(r => r.Data.Width == r.Data.Height).ToList();
 
         // Tailles requises par phase : union des mapSize des missions Escarmouche du plan de campagne.
         var reqByPhase = RequiredEscarmoucheSizes();
-        var haveSizes = square.Select(r => r.Data.Width).ToHashSet();
+        var haveSizes = esc.Select(r => r.Data.PoolSize).ToHashSet();
 
         WL($"  {"Taille",-9}{"Nb",-5}{"Requise en",-14}Maps", Dim);
-        foreach (var size in square.Select(r => r.Data.Width).Distinct().OrderBy(s => s))
+        foreach (var size in esc.Select(r => r.Data.PoolSize).Distinct().OrderBy(s => s))
         {
-            var maps = square.Where(r => r.Data.Width == size).ToList();
+            // Les rectangulaires gardent leurs dimensions dans la liste (le plateau en jeu aura cette taille).
+            var maps = esc.Where(r => r.Data.PoolSize == size).ToList();
             var phases = reqByPhase.Where(kv => kv.Value.Contains(size)).Select(kv => kv.Key).ToList();
             var req = phases.Count > 0 ? "phase " + string.Join(",", phases)
                     : size is 9 or 10 ? "variété ph.3"
@@ -209,10 +210,10 @@ internal sealed class RecapForm : Form
             var reqColor = phases.Count > 0 ? Fg : size is 9 or 10 ? Dim : Warn;
             W($"  {size + "×" + size,-9}{maps.Count,-5}");
             W($"{req,-14}", reqColor);
-            WL(string.Join(", ", maps.Select(MapName)), Dim);
+            WL(string.Join(", ", maps.Select(r => r.Data.Width == r.Data.Height ? MapName(r) : NameSize(r))), Dim);
         }
 
-        // Manques : une taille requise par une phase sans aucune map carrée.
+        // Manques : une taille requise par une phase sans aucune map (plus petit côté).
         var gaps = new List<(int phase, int size)>();
         foreach (var (phase, sizes) in reqByPhase)
             foreach (var size in sizes)
@@ -327,16 +328,6 @@ internal sealed class RecapForm : Form
             WL("  Erreurs de format (maps NON chargées par le jeu) :", Bad, bold: true);
             foreach (var (file, error) in errors)
                 WL($"    ✗ {file} : {error}", Bad);
-        }
-
-        // Escarmouches non carrées : le jeu ne les tirera jamais (pool restreint aux carrées).
-        var nonSquare = live.Where(r => r.Data.Type == CombatType.Escarmouche && r.Data.Width != r.Data.Height).ToList();
-        if (nonSquare.Count > 0)
-        {
-            clean = false;
-            WL("  Escarmouches NON carrées (jamais tirées, le pool exige width == height) :", Bad);
-            foreach (var r in nonSquare)
-                WL($"    ✗ {NameSize(r)}", Bad);
         }
 
         if (escGaps.Count > 0)

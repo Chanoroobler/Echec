@@ -1,0 +1,46 @@
+{
+  "name": "escarmouche_8_08",
+  "type": "Escarmouche",
+  "width": 8,
+  "height": 8,
+  "tiles": [
+    "YjYjYjYj",
+    "jYjYjYjY",
+    "YjYjYjYj",
+    "jYjYjYjY",
+    "YjYjYjYj",
+    "jYjYjYjY",
+    "YjYjYjYj",
+    "jYjYjYjY"
+  ],
+  "spawns": [
+    "EEEEEEEE",
+    "EEEEEEEE",
+    "........",
+    "........",
+    "........",
+    "........",
+    "PPPPPPPP",
+    "PPPPPPPP"
+  ],
+  "tiers": [
+    "11111111",
+    "11111111",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........",
+    "........"
+  ],
+  "objects": [
+    "........",
+    "........",
+    ".F.F.F.F",
+    "F.FCFRF.",
+    ".F.F.F.F",
+    "F.F.F.F.",
+    "........",
+    "........"
+  ]
+}

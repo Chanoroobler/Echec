@@ -42,7 +42,7 @@ public sealed class RunStats
     /// </summary>
     public double PlayTimeSeconds { get; private set; }
 
-    /// <summary>Noms des commandants DÉBLOQUÉS pendant cette run (nouveaux uniquement), prêts à afficher.</summary>
+    /// <summary>Ids des commandants DÉBLOQUÉS pendant cette run (nouveaux uniquement), traduits à l'affichage.</summary>
     public IReadOnlyList<string> UnlockedCommanders => _unlockedCommanders;
 
     /// <summary>Noms des classes DÉCOUVERTES pendant cette run (évolutions obtenues à la fusion).</summary>

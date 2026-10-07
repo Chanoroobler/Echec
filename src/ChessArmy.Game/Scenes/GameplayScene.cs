@@ -962,7 +962,7 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Map d'un combat ESCARMOUCHE. Pool = maps carrées de type <see cref="CombatType.Escarmouche"/> à la
+    /// Map d'un combat ESCARMOUCHE. Pool = maps (rangées par leur plus petit côté, cf. MapData.PoolSize) de type <see cref="CombatType.Escarmouche"/> à la
     /// TAILLE attendue par la mission (cf. <see cref="MapSizeFor"/>), ÉLARGI aux 9×9 et 10×10 dès la PHASE 3.
     /// On évite AU MAXIMUM de retomber sur une map déjà sortie dans la run : le tirage est REJOUÉ depuis le
     /// 1er combat en accumulant les maps utilisées et en les sautant ; pool éligible épuisé → on autorise la
@@ -991,14 +991,16 @@ public sealed class GameplayScene : Scene
 
     /// <summary>
     /// Pool d'escarmouches éligibles pour un combat, mélangé de façon DÉTERMINISTE (graine de run) : maps
-    /// carrées de type <see cref="CombatType.Escarmouche"/> à la taille de la mission (cf.
-    /// <see cref="MapSizeFor"/>), plus 9×9 et 10×10 dès la phase 3.
+    /// <see cref="CombatType.Escarmouche"/> dont le PLUS PETIT côté (<see cref="MapData.PoolSize"/>) vaut la taille
+    /// de la mission (cf. <see cref="MapSizeFor"/>), plus 9 et 10 dès la phase 3. Une rectangulaire compte donc
+    /// comme le carré de son petit côté (8×12 sort là où le jeu attend du 8×8) ; le plateau, lui, garde la vraie
+    /// taille de la map.
     /// </summary>
     private List<MapData> ShuffledEscarmouchePool(int phaseIndex, int missionInPhase)
     {
         var size = MapSizeFor(phaseIndex, missionInPhase);
-        var pool = _maps.Where(m => m.Type == CombatType.Escarmouche && m.Width == m.Height
-            && (m.Width == size || (phaseIndex >= 3 && (m.Width == 9 || m.Width == 10)))).ToList();
+        var pool = _maps.Where(m => m.Type == CombatType.Escarmouche
+            && (m.PoolSize == size || (phaseIndex >= 3 && m.PoolSize is 9 or 10))).ToList();
         var rng = new System.Random(unchecked(_run.Seed * 6151 + 4243));
         for (var i = pool.Count - 1; i > 0; i--)
         {
@@ -1041,6 +1043,10 @@ public sealed class GameplayScene : Scene
     private MapData? SpecialMapFor(int phaseIndex, int missionInPhase)
     {
         var combatNumber = Run.CombatNumberOf(phaseIndex, missionInPhase);
+        // Mission COURANTE dont le joueur a choisi (ou survole, pendant le choix) la map : elle prime sur le tirage,
+        // pour le combat comme pour la frise.
+        if (_specialChoiceMap is { } chosen && _specialChoiceCombat == combatNumber)
+            return chosen;
         var size = MapSizeFor(phaseIndex, missionInPhase);
         var specials = MapsOfType(CombatType.Speciale)
             .Where(m => m.Phase == phaseIndex || m.Phase == 0)   // réservées à cette phase, ou « toutes phases »
@@ -1049,9 +1055,371 @@ public sealed class GameplayScene : Scene
             ?? PickMap(MatchingMaps(CombatType.Escarmouche, size), size, combatNumber);
     }
 
-    /// <summary>Maps chargées du type et de la taille (côté carré) demandés.</summary>
+    // ── Choix de la mission spéciale ──────────────────────────────────────────────────────────────────
+    // En arrivant sur une mission spéciale, le joueur choisit entre DEUX maps d'objectifs DIFFÉRENTS. Pendant le
+    // choix, la mise en place du placement est faite POUR DE VRAI sur la map survolée (terrain, objets, vague
+    // ennemie posée, commandant) et montrée en dézoom : c'est exactement ce qu'il trouvera en validant. Changer
+    // de carte refait la mise en place sur l'autre map. Le choix n'est pas sauvegardé : une reprise le repropose.
+    private readonly List<MapData> _specialChoices = new(2);
+    private bool _specialChoiceOpen;
+    private int _specialChoiceFocus;
+    private MapData? _specialChoiceMap;      // map choisie (ou survolée pendant le choix) pour le combat ci-dessous
+    private int _specialChoiceCombat;        // CombatNumber auquel _specialChoiceMap s'applique (0 = aucun)
+    private List<UnitSpec>? _specialChoiceWave;   // vague posée sur la map survolée : découverte reportée au choix
+
+    /// <summary>
+    /// Les deux maps proposées pour la mission spéciale (<paramref name="phaseIndex"/>, <paramref name="missionInPhase"/>) :
+    /// maps <see cref="CombatType.Speciale"/> éligibles à la phase (comme <see cref="SpecialMapFor"/>), mélangées
+    /// de façon DÉTERMINISTE (graine de run + rang du combat), puis la première de chaque OBJECTIF jusqu'à deux.
+    /// Moins de deux objectifs disponibles → moins de deux maps (pas d'écran de choix).
+    /// </summary>
+    private List<MapData> SpecialChoicesFor(int phaseIndex, int missionInPhase)
+    {
+        var combatNumber = Run.CombatNumberOf(phaseIndex, missionInPhase);
+        var pool = MapsOfType(CombatType.Speciale)
+            .Where(m => m.Objective != SpecialObjective.Aucun && (m.Phase == phaseIndex || m.Phase == 0))
+            .OrderBy(m => m.Name, System.StringComparer.Ordinal)   // ordre stable, indépendant du disque
+            .ToList();
+        var rng = new System.Random(unchecked(_run.Seed * 7919 + combatNumber * 131 + 5));
+        for (var i = pool.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+        }
+        var picked = new List<MapData>(2);
+        foreach (var m in pool)
+            if (picked.TrueForAll(p => p.Objective != m.Objective))
+            {
+                picked.Add(m);
+                if (picked.Count == 2)
+                    break;
+            }
+        return picked;
+    }
+
+    /// <summary>
+    /// À l'entrée d'un nouveau combat : ouvre le choix si c'est une mission spéciale avec deux objectifs
+    /// disponibles. Un choix déjà fait pour CE combat est conservé (le placement peut être reconstruit).
+    /// </summary>
+    private void PrepareSpecialChoice()
+    {
+        _specialChoiceOpen = false;
+        if (_specialChoiceMap != null && _specialChoiceCombat == _run.CombatNumber)
+            return;
+        _specialChoiceMap = null;
+        _specialChoiceCombat = 0;
+        _specialChoiceWave = null;
+        _specialChoices.Clear();
+        if (_run.CurrentMission != CombatType.Speciale || !string.IsNullOrWhiteSpace(_run.ForcedMapName))
+            return;
+        _specialChoices.AddRange(SpecialChoicesFor(_run.PhaseIndex, _run.MissionInPhase));
+        if (_specialChoices.Count < 2)
+        {
+            _specialChoices.Clear();
+            return;
+        }
+        RefreshSpecialChoiceTexts();
+        _specialChoiceOpen = true;
+        _specialChoiceFocus = 0;
+        _specialChoiceMap = _specialChoices[0];
+        _specialChoiceCombat = _run.CombatNumber;
+    }
+
+    /// <summary>Survol / navigation : la mise en place est refaite sur la map de la carte <paramref name="index"/>.</summary>
+    private void SwitchSpecialChoice(int index)
+    {
+        if (index == _specialChoiceFocus || index < 0 || index >= _specialChoices.Count)
+            return;
+        _specialChoiceFocus = index;
+        _specialChoiceMap = _specialChoices[index];
+        Context.Sounds.Play("unit_pick");
+        BeginPlacement(previewSwitch: true);
+    }
+
+    /// <summary>
+    /// Valide la map survolée et lance la TRANSITION vers la préparation : la map zoome jusqu'à sa place (cf.
+    /// <see cref="UpdateChoiceTransition"/>), puis le panneau de droite et la frise arrivent en glissant, puis le
+    /// briefing de la mission s'ouvre. Le joueur n'a la main qu'après.
+    /// </summary>
+    private void ConfirmSpecialChoice()
+    {
+        // Découverte À L'APPARITION, reportée jusqu'ici : seuls les pions de la mission RETENUE passent au codex.
+        if (_specialChoiceWave != null)
+            foreach (var spec in _specialChoiceWave)
+                DiscoverUnit(spec.UnitClass.Asset);
+        _specialChoiceWave = null;
+
+        // Départ du zoom : le plateau tel qu'il est affiché (dézoomé, centré sur tout l'écran).
+        var from = BuildLayout();
+        _specialChoiceOpen = false;
+        // Arrivée : le cadrage normal de la préparation (panneau présent).
+        _dezoomedOut = false;
+        _camera = Vector2.Zero;
+        MarkLayoutDirty();
+        var to = BuildLayout();
+        _choiceZoomFrom = (from.Origin, from.TileSize);
+        _choiceZoomTo = (to.Origin, to.TileSize);
+        // Le zoom est rendu par la couche plateau NATIVE (net), agrandie progressivement : on reste en dézoom le temps
+        // du zoom (cf. DrawDezoomLayers / ChoiceZoomDest).
+        _dezoomedOut = true;
+        MarkLayoutDirty();
+        _choiceTransT = 0f;
+        Context.Sounds.Play("menu_click");
+    }
+
+    // ── Transition choix → préparation ──
+    private const float ChoiceZoomDur = 0.55f;    // la map zoome jusqu'à sa place
+    private const float ChoicePanelDur = 0.4f;    // le panneau de droite se déplie
+    private const float ChoiceTimelineDelay = 0.12f, ChoiceTimelineDur = 0.4f;   // puis la frise descend
+    private const float ChoiceSettleDur = 0.5f;    // pause, panneau et frise en place, avant le briefing
+    private const float ChoiceTransTotal = ChoiceZoomDur + ChoiceTimelineDelay + ChoiceTimelineDur + ChoiceSettleDur;
+    private float _choiceTransT = -1f;            // temps écoulé depuis la validation (-1 = pas de transition)
+    private (Vector2 Origin, int Tile) _choiceZoomFrom, _choiceZoomTo;
+
+    private bool ChoiceTransitionActive => _choiceTransT >= 0f;
+
+    /// <summary>Avance la transition ; à la fin, le briefing de la mission s'ouvre (puis le joueur a la main).</summary>
+    private void UpdateChoiceTransition(float dt)
+    {
+        _choiceTransT += dt;
+        if (_dezoomedOut && _choiceTransT >= ChoiceZoomDur)
+        {
+            _dezoomedOut = false;   // zoom fini : la couche native ×2 = le rendu normal, au pixel près
+            MarkLayoutDirty();
+        }
+        if (_choiceTransT >= ChoiceTransTotal)
+        {
+            _choiceTransT = -1f;
+            _specialBriefOpen = _specialMission;
+        }
+    }
+
+    /// <summary>Avancement lissé [0,1] d'une étape de la transition qui commence à <paramref name="start"/> s.</summary>
+    private float ChoiceStep(float start, float duration) =>
+        !ChoiceTransitionActive ? 1f : Smoothstep((_choiceTransT - start) / duration);
+
+    /// <summary>Décalage (px) du panneau de droite qui se déplie : sa largeur au départ, 0 une fois en place.</summary>
+    private float ChoicePanelDx() => (1f - ChoiceStep(ChoiceZoomDur, ChoicePanelDur)) * RightPanelWidth;
+
+    /// <summary>Décalage vertical (px, négatif) de la frise qui descend depuis le haut ; 0 hors transition.</summary>
+    private int ChoiceTimelineDy() => !ChoiceTransitionActive ? 0
+        : (int)MathF.Round(-(1f - ChoiceStep(ChoiceZoomDur + ChoiceTimelineDelay, ChoiceTimelineDur))
+                           * (TimelineTopY + TimelineNodeSize + 12));
+
+    /// <summary>
+    /// Pendant le zoom : où recomposer la couche plateau NATIVE (cases de 64 px, <paramref name="margin"/> de débord)
+    /// à l'écran — origine et taille de case interpolées du cadrage dézoomé au cadrage final. L'agrandissement est
+    /// fractionnaire le temps du mouvement, puis retombe EXACTEMENT sur le rendu normal (×2 entier).
+    /// </summary>
+    private Rectangle ChoiceZoomDest(Rectangle target, int margin)
+    {
+        var p = ChoiceStep(0f, ChoiceZoomDur);
+        var k = System.Math.Max(1, _virtualScaleHint);
+        var tile = MathHelper.Lerp(_choiceZoomFrom.Tile, _choiceZoomTo.Tile, p);   // px canvas par case
+        var origin = Vector2.Lerp(_choiceZoomFrom.Origin, _choiceZoomTo.Origin, p);
+        var f = tile * k / 64f;                                                     // natif → écran
+        return new Rectangle((int)MathF.Round(origin.X * k - margin * f), (int)MathF.Round(origin.Y * k - margin * f),
+            (int)MathF.Round(target.Width * f), (int)MathF.Round(target.Height * f));
+    }
+
+    /// <summary>Choix ouvert : survol/clic à la souris, ←/→ + A (ou Entrée) au clavier et à la manette.</summary>
+    private void UpdateSpecialChoice()
+    {
+        var count = _specialChoices.Count;
+        if (Context.Input.Nav(NavDir.Left)) SwitchSpecialChoice((_specialChoiceFocus - 1 + count) % count);
+        else if (Context.Input.Nav(NavDir.Right)) SwitchSpecialChoice((_specialChoiceFocus + 1) % count);
+        if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter))
+        {
+            ConfirmSpecialChoice();
+            return;
+        }
+        if (Context.Input.UsingGamepad)
+            return;   // le pointeur laissé sur une carte ne doit pas reprendre le focus à la manette
+        var mouse = Context.Input.MousePosition;
+        for (var i = 0; i < count; i++)
+        {
+            if (!SpecialChoiceCardRect(i).Contains(mouse))
+                continue;
+            SwitchSpecialChoice(i);
+            if (Context.Input.WasLeftClicked)
+                ConfirmSpecialChoice();
+            return;
+        }
+    }
+
+    private const int SpecialChoiceCardW = 220, SpecialChoiceCardH = 204, SpecialChoiceMargin = 16;
+
+    /// <summary>Carte n° <paramref name="index"/> : ancrée au bord GAUCHE (0) ou DROIT (1) du canvas, centrée en
+    /// hauteur. Fixe : elle ne bouge pas quand la map survolée (donc la largeur du plateau) change.</summary>
+    private Rectangle SpecialChoiceCardRect(int index)
+    {
+        var vp = VirtualViewport;
+        var x = index == 0 ? SpecialChoiceMargin : vp.Width - SpecialChoiceMargin - SpecialChoiceCardW;
+        return new Rectangle(x, (vp.Height - SpecialChoiceCardH) / 2, SpecialChoiceCardW, SpecialChoiceCardH);
+    }
+
+    private static string SpecialTitleKey(SpecialObjective objective) => objective switch
+    {
+        SpecialObjective.ProtegerPaysans => "special.title_protect",
+        SpecialObjective.SauverPaysans => "special.title_save",
+        _ => "special.title_liberate",
+    };
+
+    private const int SpecialChoiceTitleY = 4, SpecialChoiceTitleH = 30;
+
+    /// <summary>Écran de choix (couche UI du dézoom) : titre encadré, les deux cartes « vivantes », l'aide de commande.</summary>
+    private void DrawSpecialChoice(SpriteBatch sb, Viewport viewport)
+    {
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        // Cadre COMPACT autour du titre : la rangée du haut d'une grande map (14×14) commence juste en dessous.
+        var title = Loc.T("special.choice_title");
+        var boxW = Context.Font.Measure(title, 2) + 40;
+        Context.Style.DrawPanel(sb, new Rectangle((viewport.Width - boxW) / 2, SpecialChoiceTitleY, boxW, SpecialChoiceTitleH));
+        Context.Font.DrawCentered(sb, title, new Rectangle(0, SpecialChoiceTitleY, viewport.Width, SpecialChoiceTitleH), 2,
+            Palette.Yellow2);
+
+        // Cartes : même relief, reflet et inclinaison que celles du recrutement (cf. DrawFxDraftCard).
+        var count = _specialChoices.Count;
+        var hovered = Context.Input.UsingGamepad ? _specialChoiceFocus : -1;
+        if (!Context.Input.UsingGamepad)
+            for (var i = 0; i < count; i++)
+                if (SpecialChoiceCardRect(i).Contains(Context.Input.MousePosition))
+                    hovered = i;
+        TickCardFx(count, hovered, viewport.Width, viewport.Height, CardFxRow.Special);
+        for (var i = 0; i < count; i++)
+            DrawFxDraftCard(sb, SpecialFxBase + i, null, SpecialChoiceCardRect(i),
+                i == _specialChoiceFocus ? Palette.Yellow2 : null);
+
+        Context.Font.DrawCentered(sb,
+            Loc.T(Context.Input.UsingGamepad ? "special.choice_hint_gp" : "special.choice_hint"),
+            new Rectangle(0, viewport.Height - 20, viewport.Width, 10), 1, Palette.Cyan1);
+        sb.End();
+    }
+
+    /// <summary>Contenu d'une carte de choix, à plat dans <paramref name="r"/> (cadre de focus et relief : l'appelant).</summary>
+    private void DrawSpecialChoiceCard(SpriteBatch sb, int index, Rectangle r)
+    {
+        if (index < 0 || index >= _specialChoices.Count)
+            return;
+        var map = _specialChoices[index];
+        var focused = index == _specialChoiceFocus;
+        Context.Style.DrawPanel(sb, r);
+
+        var x = r.X + SpecialChoicePad;
+        var y = r.Y + SpecialChoicePad;
+        Context.Font.Draw(sb, Loc.T(SpecialTitleKey(map.Objective)), new Vector2(x, y), 1,
+            focused ? Palette.Yellow2 : Palette.White);
+        y += 16;
+        // Description puis quota : des PHRASES, donc en casse normale (preserveCase), pas des libellés en capitales.
+        var stats = _specialChoiceStats[index];
+        foreach (var line in stats.Desc)
+        {
+            Context.Font.Draw(sb, line, new Vector2(x, y), 1, Palette.Grey, preserveCase: true);
+            y += 11;
+        }
+        y += 4;
+        // Quota imposé par la difficulté : en dessous, la run est PERDUE (cf. PaysansRequired) — en rouge.
+        foreach (var line in stats.Quota)
+        {
+            Context.Font.Draw(sb, line, new Vector2(x, y), 1, stats.HasQuota ? Palette.Purple5 : Palette.Grey,
+                preserveCase: true);
+            y += 11;
+        }
+        y += 6;
+        DrawRect(sb, new Rectangle(x, y, r.Width - 2 * SpecialChoicePad, 1), Palette.Black1);
+        DrawRect(sb, new Rectangle(x, y + 1, r.Width - 2 * SpecialChoicePad, 1), Palette.Black5);
+        y += 12;
+
+        DrawSpecialChoiceStat(sb, r, y, Loc.T("special.choice_enemies"), stats.Enemies, Palette.Purple5);
+        DrawSpecialChoiceStat(sb, r, y + 20, Loc.T("special.choice_recruits"), stats.Recruits, Palette.Cyan1);
+        DrawSpecialChoiceStat(sb, r, y + 40, Loc.T("special.choice_chests"), stats.Chests, Palette.Yellow1);
+        DrawSpecialChoiceStat(sb, r, y + 60, Loc.T("special.choice_turns"), _specialChoiceTurns[index], Palette.White);
+    }
+
+    /// <summary>
+    /// (Re)prépare les textes localisés des cartes de choix : à l'ouverture, et à chaque changement de langue
+    /// (sinon description, quota et « sans limite » restent dans la langue d'ouverture).
+    /// </summary>
+    private void RefreshSpecialChoiceTexts()
+    {
+        if (_specialChoices.Count < 2)
+            return;
+        for (var i = 0; i < 2; i++)
+        {
+            _specialChoiceStats[i] = SpecialChoiceStats(_specialChoices[i]);
+            _specialChoiceTurns[i] = SpecialChoiceTurns(_specialChoices[i]);
+        }
+    }
+
+    // Limite de tours de chaque carte, en texte (préparée à l'ouverture du choix).
+    private readonly string[] _specialChoiceTurns = new string[2];
+
+    /// <summary>
+    /// Tours de la mission, même règle que <see cref="SpecialTurnBudget"/> : la limite de la map, sinon le défaut.
+    /// « Sauver » est une course SANS limite (cf. HasSpecialTurnLimit) : la valeur de la map n'y compte pas.
+    /// </summary>
+    private static string SpecialChoiceTurns(MapData map) =>
+        map.Objective == SpecialObjective.SauverPaysans
+            ? Loc.T("special.choice_turns_none")
+            : (map.TurnLimit > 0 ? map.TurnLimit : SpecialTurnLimit).ToString();
+
+    private const int SpecialChoicePad = 14;
+    private const float SpecialChoiceIntroSpeed = 4f;   // émergence des tuiles 4× plus rapide pendant le choix
+
+    // Textes des cartes, préparés UNE fois à l'ouverture du choix (aucune allocation par frame).
+    private readonly (string Enemies, string Recruits, string Chests, List<string> Quota, bool HasQuota, List<string> Desc)[]
+        _specialChoiceStats = new (string, string, string, List<string>, bool, List<string>)[2];
+
+    /// <summary>
+    /// Ennemis (= cases de spawn : la vague en pose exactement un par case), tuiles recrue, coffres, quota de
+    /// paysans à sauver selon la difficulté de la run (plafonné aux paysans de la map, comme <see cref="PaysansRequired"/>)
+    /// et description courte repliée à la largeur de la carte.
+    /// </summary>
+    private (string Enemies, string Recruits, string Chests, List<string> Quota, bool HasQuota, List<string> Desc)
+        SpecialChoiceStats(MapData map)
+    {
+        var recruits = 0;
+        var chests = 0;
+        foreach (var o in map.Objects)
+        {
+            if (o.Kind == MapObjectKind.Recruit) recruits++;
+            else if (o.Kind is MapObjectKind.ChestCommon or MapObjectKind.ChestRare) chests++;
+        }
+        var s = DifficultySettings.For(_run.Difficulty);
+        var quota = map.Objective switch
+        {
+            SpecialObjective.ProtegerPaysans => s.PaysansRequiredProtect,
+            SpecialObjective.SauverPaysans => s.PaysansRequiredSave,
+            _ => s.PaysansRequired,
+        };
+        var descKey = map.Objective switch
+        {
+            SpecialObjective.ProtegerPaysans => "special.choice_desc_protect",
+            SpecialObjective.SauverPaysans => "special.choice_desc_save",
+            _ => "special.choice_desc_liberate",
+        };
+        const int wrapW = SpecialChoiceCardW - 2 * SpecialChoicePad;
+        var desc = WrapText(Loc.T(descKey), wrapW, 1);
+        quota = System.Math.Min(quota, recruits);
+        var quotaText = quota switch
+        {
+            0 => Loc.T("special.choice_quota_none"),
+            1 => Loc.T("special.choice_quota_one"),
+            _ => Loc.T("special.choice_quota_many", quota),
+        };
+        return (map.EnemySpawns.Count.ToString(), recruits.ToString(), chests.ToString(),
+            WrapText(quotaText, wrapW, 1), quota > 0, desc);
+    }
+
+    private void DrawSpecialChoiceStat(SpriteBatch sb, Rectangle r, int y, string label, string value, Color color)
+    {
+        Context.Font.Draw(sb, label, new Vector2(r.X + SpecialChoicePad, y), 1, Palette.White);
+        Context.Font.Draw(sb, value, new Vector2(r.Right - SpecialChoicePad - Context.Font.Measure(value, 1), y), 1, color);
+    }
+
+    /// <summary>Maps chargées du type demandé dont le plus petit côté vaut <paramref name="size"/> (cf. <see cref="MapData.PoolSize"/>).</summary>
     private List<MapData> MatchingMaps(CombatType type, int size) =>
-        _maps.Where(m => m.Type == type && m.Width == size && m.Height == size).ToList();
+        _maps.Where(m => m.Type == type && m.PoolSize == size).ToList();
 
     /// <summary>Toutes les maps chargées d'un type (toutes tailles confondues).</summary>
     private List<MapData> MapsOfType(CombatType type) =>
@@ -1317,8 +1685,12 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Prépare la phase de placement : nouveau terrain, commandant posé d'office.</summary>
-    private void BeginPlacement()
+    /// <param name="previewSwitch">Choix de mission spéciale : le joueur passe à l'autre map. On refait la mise
+    /// en place sur elle, sans rouvrir le choix ni resauvegarder (cf. <see cref="SwitchSpecialChoice"/>).</param>
+    private void BeginPlacement(bool previewSwitch = false)
     {
+        if (!previewSwitch)
+            PrepareSpecialChoice();   // mission spéciale : choix entre deux maps (avant MapForCombat, qui le lit)
         _protectReward = null;   // écran de récompense « protéger » du combat précédent : soldé
         _protectRewardFlight = 0f;
         _specialRecap = null;    // bilan de la mission précédente : soldé
@@ -1384,8 +1756,9 @@ public sealed class GameplayScene : Scene
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
         ApplyTreeTuningToMatch();
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
-        // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing).
-        _specialBriefOpen = _specialMission;
+        // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing). Pendant le
+        // choix de la mission, il attend la validation (cf. ConfirmSpecialChoice).
+        _specialBriefOpen = _specialMission && !_specialChoiceOpen;
 
         // Teinte de la zone de déploiement, choisie d'après le terrain de CETTE map (cf. ComputeDeployTint).
         // Ici et pas au rendu : GetData ne doit pas viser une texture liée au device pendant un batch.
@@ -1483,6 +1856,8 @@ public sealed class GameplayScene : Scene
         _sparks.Clear();
         ClearSelection();
         ResetCamera();
+        if (_specialChoiceOpen)
+            _dezoomedOut = true;   // choix de mission : la map entière, dézoomée, au centre (cf. AvailableWidth)
         _aiTimer = 0;
         _recruitChoice = null;   // fin d'un éventuel vol de recrutement
         _recruitHold = 0;
@@ -1543,8 +1918,17 @@ public sealed class GameplayScene : Scene
         // Découverte À L'APPARITION (méta-progression) : tout pion ennemi RÉELLEMENT placé — vague, escortes
         // ET boss — passe au codex. C'est la SEULE voie de découverte des T2/T3 côté IA : une classe rendue
         // éligible « nouveauté » mais jamais alignée reste inconnue. Idempotent (écrit sur disque à la 1re fois).
-        foreach (var spec in wave)
-            DiscoverUnit(spec.UnitClass.Asset);
+        // Pendant le choix de la mission spéciale, la découverte attend la validation : seule la map RETENUE compte.
+        if (_specialChoiceOpen)
+            _specialChoiceWave = wave;
+        else
+            foreach (var spec in wave)
+                DiscoverUnit(spec.UnitClass.Asset);
+
+        // Changement de map pendant le choix : la sauvegarde d'entrée de mission est déjà faite (elle ne dépend
+        // pas de la map, qui n'est pas sauvegardée).
+        if (previewSwitch)
+            return;
 
         // Les tier 1 débloqués (même absents de CETTE vague) restent « vus » pour que la tuile recrue puisse
         // les proposer à tout moment, y compris dans les runs suivantes (cf. RollSeenTier1). Idempotent.
@@ -2559,8 +2943,10 @@ public sealed class GameplayScene : Scene
     {
         // Le courant d'eau avance en continu (même en pause / menus).
         _time += (float)gameTime.ElapsedGameTime.TotalSeconds;
+        // Choix de mission spéciale : l'émergence des tuiles est rejouée à chaque changement de map → accélérée.
         if (_boardIntro < _boardIntroTotal)
-            _boardIntro += (float)gameTime.ElapsedGameTime.TotalSeconds;
+            _boardIntro += (float)gameTime.ElapsedGameTime.TotalSeconds
+                           * (_specialChoiceOpen ? SpecialChoiceIntroSpeed : 1f);
 
         // Musique pilotée par la phase (appel idempotent : ne relance pas le contexte déjà en cours).
         UpdateMusic();
@@ -2634,7 +3020,7 @@ public sealed class GameplayScene : Scene
         // le glissement d'entrée en combat (l'animation pilote seule le cadrage à ce moment-là).
         // Caméra gelée derrière un modal de placement (briefing / popup de fusion / animation d'évolution).
         if (_run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0
-            && !FusionOpen && !EvoPlaying && !_specialBriefOpen)
+            && !FusionOpen && !EvoPlaying && !_specialBriefOpen && !_specialChoiceOpen && !ChoiceTransitionActive)
             UpdateCamera(gameTime);
 
         // Le dézoom ne vaut que pendant le combat : hors phases plateau (recrutement, récap de fin), on
@@ -2711,6 +3097,19 @@ public sealed class GameplayScene : Scene
 
     private void UpdatePlacement(GameTime gameTime)
     {
+        // Choix de la mission spéciale : rien d'autre ne bouge tant qu'une des deux maps n'est pas retenue.
+        if (_specialChoiceOpen)
+        {
+            UpdateSpecialChoice();
+            return;
+        }
+        // …puis la transition vers la préparation (zoom, panneau, frise) : toujours sans la main.
+        if (ChoiceTransitionActive)
+        {
+            UpdateChoiceTransition((float)gameTime.ElapsedGameTime.TotalSeconds);
+            return;
+        }
+
         // Briefing de mission spéciale : modale d'ouverture qui gèle toute la préparation jusqu'au clic / A.
         if (_specialBriefOpen)
         {
@@ -6375,7 +6774,7 @@ public sealed class GameplayScene : Scene
         if (!_run.IsFinalBoss)
             return;
         if (_run.BossOfPhase(_run.PhaseIndex).UnlocksCommander is { } id && Context.Saves.UnlockCommander(id))
-            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + id, id));   // NOUVEAU déblocage → récap
+            _run.Stats.AddUnlockedCommander(id);   // NOUVEAU déblocage → récap (id : traduit à l'affichage)
     }
 
     /// <summary>
@@ -6389,7 +6788,7 @@ public sealed class GameplayScene : Scene
         if (Context.Saves.ChestsOpened() < SaveService.ChestUnlockThreshold)
             return;
         if (Context.Saves.UnlockCommander(MerchantCommanderId))
-            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + MerchantCommanderId, MerchantCommanderId));
+            _run.Stats.AddUnlockedCommander(MerchantCommanderId);
     }
 
     /// <summary>Id du commandant Marchand (units.json), débloqué au compteur de coffres.</summary>
@@ -6409,7 +6808,7 @@ public sealed class GameplayScene : Scene
         if (Context.Saves.EnemiesKilled() < SaveService.KillUnlockThreshold)
             return;
         if (Context.Saves.UnlockCommander(DuoCommanderId))
-            _run.Stats.AddUnlockedCommander(Loc.TOr("commander." + DuoCommanderId, DuoCommanderId));
+            _run.Stats.AddUnlockedCommander(DuoCommanderId);
     }
 
     /// <summary>Gabarits du roster morts pendant le combat (permadeath : retirés à la complétion).</summary>
@@ -9290,25 +9689,33 @@ public sealed class GameplayScene : Scene
                         DrawGamepadPlacementCursor(sb, board);   // curseur (coins) AU-DESSUS, toujours visible
                     // Objets du plateau (coffre, recrue, buisson, chute…) : la même infobulle qu'en combat.
                     // Sous la sous-phase Équipement elle vient déjà de DrawCombatCards (cf. branche ci-dessus).
-                    DrawHoveredEnvironmentTooltip(sb, board);
-                    DrawPanelBackground(sb);
-                    DrawPlacementPanel(sb);
-                    DrawInventoryFocusHighlight(sb);
-                    DrawPlacementPreview(sb);
-                    DrawDragGhost(sb);
-                    DrawCarriedPile(sb, board);              // pile portée, suit la souris/curseur
+                    if (!ChoiceTransitionActive)   // pendant la transition, le panneau se déplie à part (plus bas)
+                    {
+                        DrawHoveredEnvironmentTooltip(sb, board);
+                        DrawPanelBackground(sb);
+                        DrawPlacementPanel(sb);
+                        DrawInventoryFocusHighlight(sb);
+                        DrawPlacementPreview(sb);
+                        DrawDragGhost(sb);
+                        DrawCarriedPile(sb, board);              // pile portée, suit la souris/curseur
+                    }
                 }
                 sb.End();
 
+                // Transition après le choix de mission spéciale : le panneau de droite arrive en glissant.
+                if (ChoiceTransitionActive)
+                    DrawSlidingPanel(sb, ChoicePanelDx());
+
                 DrawPhaseTimeline(sb, viewport);   // frise des missions de la phase (HUD haut)
-                if (!_equipPhase)
+                if (!_equipPhase && !ChoiceTransitionActive)   // l'encart attend la fin de la transition
                 {
                     if (_specialMission)
                         DrawSpecialBriefing(sb, viewport);       // rappel de l'objectif sous la frise (placement)
                     else if (_run.IsBossCombat)
                         DrawBossBriefing(sb, viewport);          // rappel de la condition de victoire (vaincre le boss)
                 }
-                DrawPhaseTimelineTooltip(sb);      // infobulle de la frise : PAR-DESSUS l'encart de briefing
+                if (!ChoiceTransitionActive)
+                    DrawPhaseTimelineTooltip(sb);  // infobulle de la frise : PAR-DESSUS l'encart de briefing
                 QueueEnemyEquipTooltip();          // équipement ennemi : tooltip du badge SURVOLÉ
                 // Cartes flottantes + popups : PAR-DESSUS tout le chrome, mais SOUS les modales (tuto, arbre
                 // de commandement, fusion, briefing modal) dessinées juste après.
@@ -9468,6 +9875,8 @@ public sealed class GameplayScene : Scene
         var mainRT = device.GetRenderTargets();   // = canvas (eau déjà peinte)
 
         var nb = NativeBoardLayout(hit, out var targetRect, out var screenDest);
+        if (ChoiceTransitionActive)
+            screenDest = ChoiceZoomDest(targetRect, (int)nb.Origin.X);   // zoom de la map vers sa place (marge = origine native)
         EnsureTarget(device, ref _boardTarget, targetRect.Width, targetRect.Height);
         EnsureTarget(device, ref _uiTarget, viewport.Width, viewport.Height);
 
@@ -9535,7 +9944,13 @@ public sealed class GameplayScene : Scene
         _deferredKeywordPopups.Clear();
         _deferredHoverCards.Clear();
         _deferredHoverKeywordPopups.Clear();
-        if (_run.Phase == RunPhase.Placement)
+        if (_run.Phase == RunPhase.Placement && _specialChoiceOpen)
+            DrawSpecialChoice(sb, viewport);   // choix de mission spéciale : ni panneau, ni frise, ni briefing
+        else if (_run.Phase == RunPhase.Placement && ChoiceTransitionActive)
+        {
+            // Zoom de la map après le choix : rien d'autre à l'écran (panneau et frise arrivent ensuite).
+        }
+        else if (_run.Phase == RunPhase.Placement)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
             DrawPanelBackground(sb);
@@ -9791,7 +10206,8 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private bool BoardOverlayActive =>
         _pauseMenu.IsOpen || _codex.IsOpen || CommandTreeOpen || FusionOpen || EvoPlaying
-        || _recrueReveals.Count > 0 || ChestRevealActive || _specialBriefOpen || _bossIntroCell != null;
+        || _recrueReveals.Count > 0 || ChestRevealActive || _specialBriefOpen || _bossIntroCell != null
+        || _specialChoiceOpen || ChoiceTransitionActive;
 
     /// <summary>Vrai quand l'animation d'assemblage du plateau est finie (toutes les tuiles en place).</summary>
     private bool BoardAssembled => _boardIntro >= _boardIntroTotal;
@@ -9999,14 +10415,14 @@ public sealed class GameplayScene : Scene
         var lines = new List<string>
         {
             $"{(gp ? "SELECT" : "F1")} : {Loc.T("hud.toggle_grid")}",
-            $"{(gp ? "RT" : "ESPACE")} : {Loc.T("hud.danger_zones")}",
-            $"{(gp ? "LB" : "ALT")} : {Loc.T("hud.ally_zones")}",
+            $"{(gp ? "RT" : Loc.T("tuto.key_space"))} : {Loc.T("hud.danger_zones")}",
+            $"{(gp ? "LB" : Loc.T("hud.key_alt"))} : {Loc.T("hud.ally_zones")}",
         };
         // Le damier n'a pas de raccourci manette : la ligne n'apparaît qu'au clavier (jamais de touche affichée
         // qui ne correspond pas au périphérique actif).
         if (!gp)
             lines.Insert(1, $"F2 : {Loc.T("hud.toggle_checker")}");
-        lines.Add($"{(gp ? "L3 / R3" : "MOLETTE")} : {Loc.T("hud.zoom")}");
+        lines.Add($"{(gp ? "L3 / R3" : Loc.T("hud.key_wheel"))} : {Loc.T("hud.zoom")}");
         // « Revoir action IA » n'a de sens qu'en combat (l'IA n'a pas joué au placement) : ligne ajoutée alors.
         if (_run.Phase == RunPhase.Battle)
             lines.Add($"{(gp ? "RB" : "R")} : {Loc.T("hud.replay_ai")}");
@@ -13347,7 +13763,7 @@ public sealed class GameplayScene : Scene
         // cadre de focus est passé à la carte pour pencher avec elle.
         var vpF = VirtualViewport;
         var cardsY = FusionCardsY(vpF.Height);
-        TickCardFx(count, FusionHoveredIndex(count), vpF.Width, vpF.Height, fusion: true, topY: cardsY);
+        TickCardFx(count, FusionHoveredIndex(count), vpF.Width, vpF.Height, CardFxRow.Fusion, topY: cardsY);
         var fi = System.Math.Clamp(_fusionFocus, 0, count - 1);
         _fusionKwRow.Clear();
         for (var i = 0; i < count; i++)
@@ -16296,9 +16712,11 @@ public sealed class GameplayScene : Scene
     /// Pendant l'entrée en combat : redessine le panneau de placement décalé vers la droite (il sort
     /// de l'écran), via une translation du batch. Synchronisé avec le recentrage du plateau.
     /// </summary>
-    private void DrawSlidingPanel(SpriteBatch sb)
+    private void DrawSlidingPanel(SpriteBatch sb) => DrawSlidingPanel(sb, BattleIntroProgress() * RightPanelWidth);
+
+    /// <summary>Panneau de placement décalé de <paramref name="dx"/> px vers la droite (0 = à sa place).</summary>
+    private void DrawSlidingPanel(SpriteBatch sb, float dx)
     {
-        var dx = BattleIntroProgress() * RightPanelWidth;
         sb.Begin(samplerState: SamplerState.PointClamp,
             transformMatrix: Matrix.CreateTranslation(dx, 0f, 0f));
         _panelSlideDx = dx;
@@ -16870,11 +17288,14 @@ public sealed class GameplayScene : Scene
     // est en décalages de pixels ENTIERS. La carte glisse un peu vers la souris (pion compris, d'un bloc),
     // l'ombre part à l'opposé, et un reflet diagonal en escalier suit la souris.
     // État lissé par carte dans des tableaux fixes : aucune allocation par frame.
-    // Deux plages d'état : les rangées (draft / récompense / recrues) et la popup de FUSION, qui s'ouvre PAR-DESSUS
-    // une rangée (récompense, recrue) : chacune lisse ses cartes sans écraser l'autre.
+    // Trois plages d'état : les rangées (draft / récompense / recrues), la popup de FUSION, qui s'ouvre PAR-DESSUS
+    // une rangée (récompense, recrue), et les deux cartes du CHOIX de mission spéciale : chacune lisse ses cartes
+    // sans écraser les autres.
+    private enum CardFxRow { Draft, Fusion, Special }
     private const int RowFxSlots = 8;             // plus de cartes que n'en affiche aucune rangée (4 max en 1080p)
     private const int FusionFxBase = RowFxSlots;  // cartes de fusion : emplacements FusionFxBase + i
-    private const int CardFxMax = RowFxSlots + 4;
+    private const int SpecialFxBase = FusionFxBase + 4;   // cartes du choix de mission : SpecialFxBase + i
+    private const int CardFxMax = SpecialFxBase + 2;
     private const float CardFxResponse = 14f;     // vitesse de lissage (1/s) : réactif sans saccade
     private const float CardFxLift = 5f;          // px : la carte survolée monte
     private const float CardFxShift = 3f;         // px : la carte suit la souris
@@ -16883,22 +17304,26 @@ public sealed class GameplayScene : Scene
     private readonly float[] _cardHover = new float[CardFxMax];      // 0 = posée, 1 = soulevée
     private readonly Vector2[] _cardTilt = new Vector2[CardFxMax];   // souris rapportée au centre, -1..1
     private readonly float[] _cardShineT = new float[CardFxMax];     // temps de survol continu (balayage du reflet)
-    private float _cardFxStamp = -1f, _fusionFxStamp = -1f;
+    private readonly float[] _cardFxStamps = { -1f, -1f, -1f };   // dernier tick, par CardFxRow
 
     /// <summary>
     /// Fait avancer l'état lissé des cartes d'une rangée. À appeler UNE fois par frame, avant de dessiner la
     /// rangée. <paramref name="hovered"/> = carte survolée / focus manette (-1 : aucune, tout retombe).
-    /// <paramref name="fusion"/> : la rangée de la popup de fusion (sa propre plage d'état, cartes à <paramref name="topY"/>).
+    /// <paramref name="row"/> : quelle rangée (sa propre plage d'état) ; la fusion a ses cartes à <paramref name="topY"/>.
     /// </summary>
-    private void TickCardFx(int count, int hovered, int rowW, int vpH, bool fusion = false, int topY = -1)
+    private void TickCardFx(int count, int hovered, int rowW, int vpH, CardFxRow row = CardFxRow.Draft, int topY = -1)
     {
-        ref var stamp = ref fusion ? ref _fusionFxStamp : ref _cardFxStamp;
+        ref var stamp = ref _cardFxStamps[(int)row];
         var dt = stamp < 0f ? 0f : MathHelper.Clamp(_time - stamp, 0f, 0.1f);
         stamp = _time;
         var k = 1f - MathF.Exp(-CardFxResponse * dt);
         var mouse = Context.Input.MousePosition;
-        var first = fusion ? FusionFxBase : 0;
-        var end = fusion ? CardFxMax : RowFxSlots;
+        var (first, end) = row switch
+        {
+            CardFxRow.Fusion => (FusionFxBase, SpecialFxBase),
+            CardFxRow.Special => (SpecialFxBase, CardFxMax),
+            _ => (0, RowFxSlots),
+        };
         for (var i = first; i < end; i++)
         {
             var local = i - first;
@@ -16907,7 +17332,9 @@ public sealed class GameplayScene : Scene
             // Manette : pas de souris → pas d'inclinaison ; la carte reste posée et seul le reflet balaie (cf. CardLift).
             if (on && !Context.Input.UsingGamepad)
             {
-                var r = DraftCardRect(local, count, rowW, vpH, topY);
+                var r = row == CardFxRow.Special
+                    ? SpecialChoiceCardRect(local)
+                    : DraftCardRect(local, count, rowW, vpH, topY);
                 target = new Vector2(
                     MathHelper.Clamp((mouse.X - r.Center.X) / (r.Width * 0.5f), -1f, 1f),
                     MathHelper.Clamp((mouse.Y - r.Center.Y) / (r.Height * 0.5f), -1f, 1f));
@@ -17116,6 +17543,8 @@ public sealed class GameplayScene : Scene
     {
         if (spec != null)
             DrawDraftCard(sb, spec, r);
+        else if (i >= SpecialFxBase)
+            DrawSpecialChoiceCard(sb, i - SpecialFxBase, r);
         else
             DrawFusionOptionCard(sb, i - FusionFxBase, r);
         DrawCardShine(sb, i, r);
@@ -17346,11 +17775,13 @@ public sealed class GameplayScene : Scene
         string? mvp = null;
         var best = _run.Roster.Where(u => u.Kills > 0).OrderByDescending(u => u.Kills).FirstOrDefault();
         if (best != null)
-            mvp = Loc.T("recap.run_mvp", best.UnitClass.Name, best.Kills);
+            mvp = Loc.T("recap.run_mvp", UnitName(best.UnitClass), best.Kills);
 
         // DÉBLOCAGES : pour l'instant seuls les COMMANDANTS débloqués y figurent (les classes/équipements
         // découverts restent collectés dans RunStats mais ne s'affichent pas ici).
-        var unlocks = _run.Stats.UnlockedCommanders.ToList();
+        // Ids traduits ICI (langue courante) ; une ancienne sauvegarde qui stockait le nom déjà traduit retombe
+        // sur ce nom via TOr.
+        var unlocks = _run.Stats.UnlockedCommanders.Select(id => Loc.TOr("commander." + id, id)).ToList();
 
         // Deux BOUTONS pour clore la run (plus d'invite « clic pour revenir au menu ») : « recommencer la
         // mission » — seulement sur une défaite rattrapable — et « menu principal ». À la manette chacun
@@ -18050,7 +18481,10 @@ public sealed class GameplayScene : Scene
         var centerY = TimelineTopY + TimelineNodeSize / 2;
         var current = _run.MissionInPhase;                          // 1..count
 
-        sb.Begin(samplerState: SamplerState.PointClamp);
+        // Après le choix de mission spéciale, la frise DESCEND depuis le haut de l'écran (cf. ChoiceTimelineDy).
+        var dy = ChoiceTimelineDy();
+        sb.Begin(samplerState: SamplerState.PointClamp,
+            transformMatrix: dy != 0 ? Matrix.CreateTranslation(0f, dy, 0f) : null);
 
         // Fond tramé pixel-art (style maison des panneaux) pour détacher la frise du plateau.
         var bg = new Rectangle(startX - 14, 6, contentW + 28, TimelineTopY + TimelineNodeSize + 2);
@@ -18159,9 +18593,15 @@ public sealed class GameplayScene : Scene
     private int TimelineEnemyCount(int phaseIndex, int missionInPhase)
     {
         var kind = _run.MissionKindFor(phaseIndex, missionInPhase);
-        if (kind == CombatType.Speciale
-            && SpecialMapFor(phaseIndex, missionInPhase) is { Type: CombatType.Speciale } sp)
-            return sp.EnemySpawns.Count;
+        if (kind == CombatType.Speciale)
+        {
+            // La map d'une mission spéciale n'est connue qu'une fois CHOISIE (à son arrivée, cf. SpecialChoicesFor) :
+            // ailleurs que sur la mission en cours, aucune précision (-1 = pas de ligne « N ENNEMIS »).
+            if (Run.CombatNumberOf(phaseIndex, missionInPhase) != _run.CombatNumber)
+                return -1;
+            if (SpecialMapFor(phaseIndex, missionInPhase) is { Type: CombatType.Speciale } sp)
+                return sp.EnemySpawns.Count;
+        }
         if (kind == CombatType.Boss
             && BossMapFor(phaseIndex, missionInPhase) is { } bm)
             return bm.BossSpawns.Count + bm.EnemySpawns.Count;
@@ -18180,10 +18620,11 @@ public sealed class GameplayScene : Scene
             CombatType.Speciale => Loc.T("mission.speciale"),
             _ => Loc.T("mission.escarmouche"),
         };
-        var sub = Loc.T("hud.enemies", enemies);
+        // enemies < 0 : mission sans précision (spéciale pas encore choisie) → le titre seul.
+        var sub = enemies >= 0 ? Loc.T("hud.enemies", enemies) : null;
 
-        var w = System.Math.Max(Context.Font.Measure(title, 1), Context.Font.Measure(sub, 1)) + 16;
-        const int h = 32;
+        var w = System.Math.Max(Context.Font.Measure(title, 1), sub != null ? Context.Font.Measure(sub, 1) : 0) + 16;
+        var h = sub != null ? 32 : 20;
         var railRight = VirtualViewport.Width - RightPanelWidth;
         var x = System.Math.Clamp(node.Center.X - w / 2, 4, railRight - w - 4);
         var box = new Rectangle(x, node.Bottom + 8, w, h);
@@ -18191,7 +18632,8 @@ public sealed class GameplayScene : Scene
         Context.Style.FillDither(sb, box);
         DrawRectBorder(sb, box, Palette.Yellow1, 2);
         Context.Font.DrawCentered(sb, title, new Rectangle(box.X, box.Y + 6, box.Width, 8), 1, Palette.Yellow2);
-        Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, box.Y + 18, box.Width, 8), 1, Palette.White);
+        if (sub != null)
+            Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, box.Y + 18, box.Width, 8), 1, Palette.White);
     }
 
     /// <summary>
@@ -18268,7 +18710,9 @@ public sealed class GameplayScene : Scene
     /// côté pour les cartes d'unité (sélection à droite, ennemi survolé à gauche).
     /// </summary>
     private int AvailableWidth() =>
-        _run.Phase == RunPhase.Placement ? VirtualViewport.Width - RightPanelWidth : VirtualViewport.Width;
+        _run.Phase == RunPhase.Placement && !_specialChoiceOpen   // choix de mission : pas de panneau, map centrée
+            ? VirtualViewport.Width - RightPanelWidth
+            : VirtualViewport.Width;
 
     /// <summary>Progression 0→1 (lissée) du glissement d'entrée en combat ; 1 quand il est terminé.</summary>
     private float BattleIntroProgress() =>
@@ -18535,6 +18979,7 @@ public sealed class GameplayScene : Scene
                 break;
             case MenuAction.LanguageChanged:
                 Context.Saves.SaveSettings(Context.Settings);
+                RefreshSpecialChoiceTexts();   // textes des cartes de mission figés à l'ouverture : on les refait
                 break;
             case MenuAction.BloodChanged:
                 Context.Saves.SaveSettings(Context.Settings);

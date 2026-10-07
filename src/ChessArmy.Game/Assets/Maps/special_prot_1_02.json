@@ -1,5 +1,5 @@
 {
-  "name": "special_prot_01",
+  "name": "Prot_1_02",
   "type": "Speciale",
   "objective": "ProtegerPaysans",
   "phase": 1,
@@ -7,28 +7,28 @@
   "width": 8,
   "height": 8,
   "tiles": [
-    "7hhhh644",
-    "94u440hh",
-    "hh8hhhhZ",
-    "ph8hhhp+",
-    "**~**~*%",
-    "h60hhv3h",
-    "40hhh8hh",
-    "hhhhh8hh"
+    "8ehhh8eh",
+    "94476z44",
+    "AAA11AAA",
+    "KKQklPJJ",
+    "qsoYjsor",
+    "gjYjYjYi",
+    "kYjYjYjY",
+    "gbfbfbfa"
   ],
   "spawns": [
-    "O......O",
-    ".OOOOOO.",
+    "O.OOOO.O",
+    ".O....O.",
     "........",
     "........",
     "........",
     "........",
-    ".PP..PP.",
-    ".PPPPPP."
+    "PPPPPPPP",
+    "PP.PP.PP"
   ],
   "tiers": [
-    "1......1",
-    ".111111.",
+    "1.1111.1",
+    ".1....1.",
     "........",
     "........",
     "........",
@@ -42,8 +42,8 @@
     "........",
     "........",
     "........",
+    "R......R",
     "........",
-    "...RR...",
-    "R......R"
+    "..R..R.."
   ]
 }

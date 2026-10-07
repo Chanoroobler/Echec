@@ -66,6 +66,13 @@ public sealed class MapData
     public int Width { get; }
     public int Height { get; }
 
+    /// <summary>
+    /// Taille sous laquelle une ESCARMOUCHE est tirée : son PLUS PETIT côté. Une map carrée N×N vaut N ; une
+    /// rectangulaire compte comme le carré de son petit côté (8×12 est proposée là où le jeu attend du 8×8).
+    /// Seule règle de tri des escarmouches, partagée par le jeu et l'éditeur de maps.
+    /// </summary>
+    public int PoolSize => System.Math.Min(Width, Height);
+
     /// <summary>Cases où le joueur peut déployer ses unités.</summary>
     public IReadOnlyList<Cell> PlayerSpawns { get; }
 

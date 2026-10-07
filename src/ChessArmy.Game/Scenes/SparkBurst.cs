@@ -128,7 +128,8 @@ internal sealed class SparkBurst
     public void EmitBlood(Vector2 origin, int count, float pixel, Vector2 direction, float strength,
         float floorMin, float floorMax, Vector2 boardOrigin, float tile, bool persistent = true)
     {
-        var size = Math.Max(2, (int)pixel);
+        var spread = Math.Max(2, (int)pixel);
+        var size = 2 * Math.Max(1, (int)MathF.Round(tile / 64f));   // 2×2 pixels d'art (sprite 64 px = une case) : sang pixel-art
         var baseAng = direction == Vector2.Zero
             ? -MathF.PI / 2f
             : MathF.Atan2(direction.Y - 0.6f, direction.X);   // biaisé vers le haut : ça gicle avant de retomber
@@ -143,14 +144,14 @@ internal sealed class SparkBurst
             s.GravityScale = 1f;   // recyclé : une braise avait pu le mettre en négatif (cf. EmitEmbers)
             var ang = baseAng + (float)(_rng.NextDouble() - 0.5) * 1.9f;   // cône ±~55°
             var speed = (60f + (float)_rng.NextDouble() * 140f) * (0.7f + strength * 1.3f);
-            s.Position = origin + new Vector2((float)(_rng.NextDouble() - 0.5) * size * 4, 0f);
+            s.Position = origin + new Vector2((float)(_rng.NextDouble() - 0.5) * spread * 4, 0f);
             s.Velocity = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * speed;
             s.Velocity.X *= lateral;
             s.MaxLife = 3f;         // filet : la goutte se pose bien avant (cf. Update)
             s.Life = s.MaxLife;
-            s.Size = _rng.Next(3) == 0 ? size * 2 : size;   // un tiers de grosses gouttes
+            s.Size = size;
             s.Color = BloodColors[_rng.Next(BloodColors.Length)];
-            s.Outline = true;
+            s.Outline = false;   // pixel nu, sans contour ni arrondi
             s.FloorY = MathHelper.Lerp(floorMin, floorMax, (float)_rng.NextDouble())
                        + reachY * (float)_rng.NextDouble();
             s.BoardOrigin = boardOrigin;

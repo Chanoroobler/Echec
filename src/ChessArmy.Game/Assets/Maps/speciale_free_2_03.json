@@ -3,7 +3,7 @@
   "type": "Speciale",
   "objective": "LibererPaysans",
   "phase": 2,
-  "turnLimit": 15,
+  "turnLimit": 40,
   "width": 10,
   "height": 10,
   "tiles": [
@@ -43,7 +43,7 @@
     ".........."
   ],
   "objects": [
-    ".R..RR..R.",
+    ".R......R.",
     "..........",
     "..........",
     "..R....R..",

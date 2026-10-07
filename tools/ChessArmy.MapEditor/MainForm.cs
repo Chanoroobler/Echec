@@ -82,6 +82,9 @@ internal sealed class MainForm : Form
     // rafraîchie après chaque enregistrement. Null tant qu'elle n'a pas été ouverte (ou après fermeture).
     private RecapForm? _recap;
 
+    // Tableau des maps escarmouche/spéciales (colonne de droite) : clic = ouvrir. Null sans catalogue de tuiles.
+    private MapListPanel? _mapList;
+
     public MainForm()
     {
         Text = "Éditeur de maps — Chess Army";
@@ -178,12 +181,35 @@ internal sealed class MainForm : Form
         _split.Panel1.Controls.Add(left);
         _split.Panel2.Controls.Add(_canvas);
 
+        // Colonne de droite : tableau des maps (haut) au-dessus de l'inspecteur de tuile (bas), séparés par un
+        // splitter horizontal qu'on peut faire glisser.
+        Control right = BuildInspector();
+        if (_catalog != null)
+        {
+            _mapList = new MapListPanel(_catalog);
+            _mapList.OpenRequested += path => OpenPath(path);
+            var rightSplit = new SplitContainer
+            {
+                Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 6,
+                BackColor = Color.FromArgb(30, 32, 38),
+            };
+            rightSplit.Panel1.Controls.Add(_mapList);
+            rightSplit.Panel2.Controls.Add(right);
+            // Distance posée une fois la fenêtre dimensionnée (même raison que _split, cf. le constructeur).
+            Load += (_, _) =>
+            {
+                try { rightSplit.SplitterDistance = System.Math.Max(200, rightSplit.Height - 330); }
+                catch { /* fenêtre trop basse : valeur par défaut du contrôle */ }
+            };
+            right = rightSplit;
+        }
+
         var middle = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         middle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        middle.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
+        middle.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 880));
         middle.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         middle.Controls.Add(_split, 0, 0);
-        middle.Controls.Add(BuildInspector(), 1, 0);
+        middle.Controls.Add(right, 1, 0);
 
         var strip = new StatusStrip { BackColor = Color.FromArgb(30, 32, 38), Dock = DockStyle.Fill };
         _status.ForeColor = Color.Gainsboro;
@@ -821,6 +847,7 @@ internal sealed class MainForm : Form
         _dirty = false;
         UpdateTitle();
         _status.Text = $"Nouvelle map {w}×{h}.";
+        _mapList?.SetCurrent(null);
     }
 
     private void Open()
@@ -832,10 +859,40 @@ internal sealed class MainForm : Form
             InitialDirectory = Directory.Exists(AssetPaths.MapsDir) ? AssetPaths.MapsDir : "",
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        OpenPath(dlg.FileName);
+    }
+
+    /// <summary>
+    /// Modifications non enregistrées : propose de les enregistrer avant de changer de map. Faux = on annule
+    /// le changement (Annuler, ou enregistrement refusé/échoué).
+    /// </summary>
+    private bool ConfirmLeaveCurrent()
+    {
+        if (!_dirty) return true;
+        var answer = MessageBox.Show(
+            $"La map « {_nameBox.Text} » a des modifications non enregistrées.\n\nLes enregistrer avant d'ouvrir l'autre map ?",
+            "Modifications non enregistrées", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+        if (answer == DialogResult.Cancel) return false;
+        if (answer == DialogResult.Yes)
+        {
+            Save(false);
+            return !_dirty;   // validation échouée ou « Enregistrer sous » annulé : on reste sur la map
+        }
+        return true;
+    }
+
+    /// <summary>Ouvre la map <paramref name="path"/> (bouton « Ouvrir… » ou clic dans le tableau des maps).</summary>
+    private void OpenPath(string path)
+    {
         if (_catalog is null) return;
+        if (!ConfirmLeaveCurrent())
+        {
+            _mapList?.SetCurrent(_doc?.FilePath);   // remet la sélection du tableau sur la map restée ouverte
+            return;
+        }
         try
         {
-            _doc = MapDocument.Load(dlg.FileName, _catalog.KeyLeads);
+            _doc = MapDocument.Load(path, _catalog.KeyLeads);
             // On charge TOUS les champs sous _loading : les handlers sont neutralisés, donc régler le type
             // n'écrase plus l'objectif/la phase avant qu'on les lise. On synchronise (grisé/actif) à la fin,
             // une fois les vraies valeurs en place.
@@ -857,7 +914,8 @@ internal sealed class MainForm : Form
             RebuildPalette();                       // reflète la sélection « main » dans la palette
             _dirty = false;
             UpdateTitle();
-            _status.Text = $"Ouvert : {dlg.FileName}";
+            _status.Text = $"Ouvert : {path}";
+            _mapList?.SetCurrent(path);
         }
         catch (Exception ex)
         {
@@ -912,6 +970,11 @@ internal sealed class MainForm : Form
             _status.Text = $"Enregistré : {path}";
             // Le récap reflète l'état du dossier : le tenir à jour dès qu'une map change sur le disque.
             if (_recap is { IsDisposed: false }) _recap.RefreshReport();
+            if (_mapList != null)
+            {
+                _mapList.RefreshList();     // effectifs, type, objectif… peuvent avoir changé
+                _mapList.SetCurrent(path);
+            }
         }
         catch (Exception ex)
         {
