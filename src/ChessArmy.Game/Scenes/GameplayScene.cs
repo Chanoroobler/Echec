@@ -243,6 +243,11 @@ public sealed class GameplayScene : Scene
     private bool _foxPending;
     private readonly ButterflyCritter _butterfly = new();   // papillon d'ambiance : traverse l'écran de temps en temps
     private readonly HeartBurst _hearts = new();             // cœurs du renard caressé (clic)
+    private WaterFoam? _waterFoam;                           // ressac au bord des rochers sur les tuiles d'eau
+    private SurfaceProps? _grassProps;                       // champignons / tronc / fleurs posés sur l'herbe des tuiles
+    private SurfaceProps? _groundProps;                      // pierres posées sur la terre (chemins, haut des murs)
+    private SurfaceProps? _snowProps;                        // décor posé sur la neige (hors chemins) des tuiles de neige
+    private SurfaceProps? _snowPathProps;                    // pierres posées sur les chemins des tuiles de neige
     private readonly List<(Vector2 Point, Cell Cell)> _perchBuffer = new();   // perchoirs du combat (tampon réutilisé)
     // Points de pose sur le buisson (buisson.png 64×64, dessiné au coin de la case) : le haut de la touffe du
     // dessus, la touffe de gauche, la touffe de droite.
@@ -797,6 +802,16 @@ public sealed class GameplayScene : Scene
         _foxes[3].ShareSheet(_foxes[2]);
         _butterfly.Load(Context.GraphicsDevice, AssetPath("Assets/Anim"));   // toutes les couleurs Butterfly*.png
         _hearts.Load(Context.GraphicsDevice, AssetPath("Assets/Anim/CoeurFox.png"));
+        _waterFoam = new WaterFoam(Context.GraphicsDevice);   // masques calculés à la demande, par tuile d'eau
+        _waterFoam.LoadProps(AssetPath("Assets/Props/Water"));   // feuilles / fleurs posées au hasard sur l'eau
+        _grassProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 1.3f, smallPerTile: 4f, minRegion: 0);
+        _grassProps.Load(AssetPath("Assets/Props/Herb"));        // posés au hasard sur l'herbe de toutes les tuiles
+        _groundProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.8f, smallPerTile: 4f, minRegion: 300);
+        _groundProps.Load(AssetPath("Assets/Props/Ground"));     // sur la terre : chemins et haut des murs
+        _snowProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 1.3f, smallPerTile: 4f, minRegion: 300);   // 300 : pas dans les fentes entre blocs de glace
+        _snowProps.Load(AssetPath("Assets/Props/Snow"));         // sur la neige (tuiles neige_*, hors chemins)
+        _snowPathProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.8f, smallPerTile: 4f, minRegion: 300);
+        _snowPathProps.Load(AssetPath("Assets/Props/SnowPath")); // sur les chemins de neige (pas la glace)
         _butterfly.PerchFree = c => _match?.UnitAt(c) == null;   // pas sur un buisson où se cache un pion
         Func<Cell, bool> onGrass = c => FoxCellFree(c, snow: false), onSnow = c => FoxCellFree(c, snow: true);
         _foxFree = new[] { onGrass, onGrass, onSnow, onSnow };
@@ -869,6 +884,11 @@ public sealed class GameplayScene : Scene
         foreach (var fox in _foxes) fox.Unload();
         _butterfly.Unload();
         _hearts.Unload();
+        _waterFoam?.Unload();
+        _grassProps?.Unload();
+        _groundProps?.Unload();
+        _snowProps?.Unload();
+        _snowPathProps?.Unload();
         _chuteSprite?.Dispose();
         _chuteSprite = null;
         _equipSlotBg?.Dispose();
@@ -1790,6 +1810,53 @@ public sealed class GameplayScene : Scene
             foreach (var c in _bushCells)
                 AddPerches(c, BushPerchSpots);
         _butterfly.SetPerches(_perchBuffer);
+        // Ressac : déclare les cases d'eau du plateau (étendues pour le ressac, eau libre pour les poissons).
+        if (_waterFoam != null)
+        {
+            _waterFoam.ResetBoard();
+            foreach (var c in _battlefield.Cells())
+                if (_battlefield[c].Id is var id && (id.StartsWith("eau", StringComparison.Ordinal) || id == "water"))   // eau*, + la mare de tiles_herb
+                {
+                    var (tex, src) = TileSprite(_battlefield[c].Id, c);
+                    _waterFoam.AddCell(c, tex, src);
+                }
+            _waterFoam.FinishBoard();   // une étendue d'eau = un rythme ; deux étendues séparées = deux rythmes
+        }
+        // Props de décor sur TOUTES les tuiles : herbe = couleur dominante de la tuile « herbe » ; neige = celle de « neige_13 » ;
+        // terre = couleur
+        // dominante du chemin « chemin_v » hors herbe (la même que le haut des murs). Jamais sur un pan vertical.
+        if (_grassProps != null && _groundProps != null && _snowProps != null && _snowPathProps != null)
+        {
+            var (herbTex, herbSrc) = TileSprite("herbe", new Cell(0, 0));
+            _grassProps.ResetBoard(herbTex, herbSrc);
+            var (pathTex, pathSrc) = TileSprite("chemin_v", new Cell(0, 0));
+            _groundProps.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
+            var (snowTex, snowSrc) = TileSprite("neige_13", new Cell(0, 0));   // neige unie (le bleu foncé hors chemins)
+            _snowProps.ResetBoard(snowTex, snowSrc);
+            var (snowPathTex, snowPathSrc) = TileSprite("neige_23", new Cell(0, 0));   // chemin de neige (bleu clair)
+            _snowPathProps.ResetBoard(snowPathTex, snowPathSrc, exclude: _snowProps.Surface);
+            foreach (var c in _battlefield.Cells())
+            {
+                var (tex, src) = TileSprite(_battlefield[c].Id, c);
+                var cell = c;
+                Func<int, int, bool> isFace = (x, y) => IsFacePixel(cell, x, y);   // placement seulement
+                // Le vert uni du tileset des murs est un SOL, pas de l'herbe (même couleur) : pas de props d'herbe.
+                if (!(_tileSheet.TryGetValue(_battlefield[c].Id, out var sheetName) && sheetName == "murs"))
+                    _grassProps.AddCell(c, tex, src, isFace);
+                _groundProps.AddCell(c, tex, src, isFace);
+                // Neige : seulement les tuiles du tileset neige (le même bleu foncé est aussi de l'eau ailleurs).
+                if (sheetName == "neige")
+                {
+                    _snowProps.AddCell(c, tex, src, isFace);
+                    if (!_battlefield[c].Slippery)   // la glace a le même bleu clair que les chemins : rien dessus
+                        _snowPathProps.AddCell(c, tex, src, isFace);
+                }
+            }
+            _grassProps.FinishBoard();
+            _groundProps.FinishBoard();
+            _snowProps.FinishBoard();
+            _snowPathProps.FinishBoard();
+        }
         RefreshLootObjects();   // recrues + coffres (ou trousses + sacoches du DUO, selon les nœuds achetés)
 
         // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
@@ -9702,6 +9769,8 @@ public sealed class GameplayScene : Scene
 
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, board);
+        DrawDecorProps(sb, board);  // pierres sur la terre, champignons / fleurs sur l'herbe
+        DrawWaterFoam(sb, board);   // ressac au bord des rochers (tuiles d'eau)
         if (_showChecker && _run.Phase is RunPhase.Placement or RunPhase.Battle)
             DrawBoardCheckerboard(sb, board);   // damier échiquier (bascule F2) — sous le quadrillage
         if (_showGrid && BoardAssembled && _run.Phase is RunPhase.Placement or RunPhase.Battle)
@@ -9957,6 +10026,8 @@ public sealed class GameplayScene : Scene
         device.Clear(Microsoft.Xna.Framework.Color.Transparent);
         sb.Begin(samplerState: SamplerState.PointClamp);
         DrawTerrain(sb, nb);
+        DrawDecorProps(sb, nb);
+        DrawWaterFoam(sb, nb);
         if (_showChecker) DrawBoardCheckerboard(sb, nb);
         if (_showGrid && BoardAssembled) DrawBoardGrid(sb, nb, Palette.Green4);
         sb.End();
@@ -10302,35 +10373,97 @@ public sealed class GameplayScene : Scene
         return ((int)((1f - eased) * layout.SpriteHeight * BoardIntroDrop), eased);
     }
 
+    /// <summary>
+    /// Ressac sur les tuiles d'eau dessinées (<c>eau*</c>) : une petite vague claire part du bord des rochers /
+    /// berges et s'éloigne de 1 à 3 pixels (cf. <see cref="WaterFoam"/>). Dans le batch du terrain, juste après lui.
+    /// </summary>
+    private void DrawWaterFoam(SpriteBatch sb, GridLayout layout)
+    {
+        // Rien qui bouge (ni vague ni poisson) : on ne parcourt même pas les cases. Sinon, uniquement les cases d'eau
+        // résolues au placement (pas de Cells() énuméré, pas de recherche de tuile par frame).
+        if (_waterFoam is not { } foam)
+            return;
+        // Props flottants d'abord, pour TOUTES les cases (une seule planche : un seul lot GPU), puis l'écume par-dessus.
+        if (foam.HasProps)
+            for (var i = 0; i < foam.Count; i++)
+                foam.DrawCellProps(sb, i, WaterFace(foam.CellAt(i), layout, out var a), a);
+        if (!foam.Active)
+            return;
+        for (var i = 0; i < foam.Count; i++)
+        {
+            // Rivage : vagues par ÉTENDUE d'eau, à intervalles aléatoires. Eau libre : « bloops » de poissons.
+            foam.DrawCell(sb, i, WaterFace(foam.CellAt(i), layout, out var a), a);
+        }
+    }
+
+    /// <summary>Face du dessus (carrée) d'une case d'eau à l'écran, animation d'arrivée et tremblement compris.</summary>
+    private Rectangle WaterFace(Cell cell, GridLayout layout, out float alpha)
+    {
+        var (oy, a) = BoardIntroAnim(cell, layout);
+        alpha = a;
+        var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
+        return new Rectangle(rect.X, rect.Y + oy + _tremor.OffsetY(cell), rect.Width, rect.Width);
+    }
+
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
     {
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
         {
-            var (oy, a) = BoardIntroAnim(cell, layout);
-
             // Tuile « chute » effondrée : on ne dessine RIEN — la case reste vide et laisse voir l'eau
             // animée derrière le plateau (le tir passe, on ne marche plus).
             if (_fallenCells.Contains(cell))
                 continue;
 
             var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
-            var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
-            rect.Y += oy + _tremor.OffsetY(cell);   // secousse locale de l'AoE (Séisme/Impact)
+            sb.Draw(tex, TerrainRect(cell, layout, out var fade), src, Color.White * fade);
+        }
+    }
 
-            // Tuile « chute » : descend + s'estompe si elle tombe ; sinon tremble légèrement si un pion est dessus.
-            var fade = a;
-            if (_chuteFall.IsFalling(cell))
-            {
-                var p = _chuteFall.Progress(cell);            // 0 → 1
-                rect.Y += (int)(p * p * ChuteFallDrop);        // chute qui accélère
-                fade = a * (1f - p);
-            }
-            else
-            {
-                rect.Y += ChuteTrembleY(cell);
-            }
-            sb.Draw(tex, rect, src, Color.White * fade);
+    /// <summary>Rectangle à l'écran de la tuile d'une case (cellule entière, épaisseur comprise) : animation d'arrivée,
+    /// secousse locale, chute / tremblement des tuiles « chute ». <paramref name="fade"/> = opacité.</summary>
+    private Rectangle TerrainRect(Cell cell, GridLayout layout, out float fade)
+    {
+        var (oy, a) = BoardIntroAnim(cell, layout);
+        var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
+        rect.Y += oy + _tremor.OffsetY(cell);   // secousse locale de l'AoE (Séisme/Impact)
+
+        // Tuile « chute » : descend + s'estompe si elle tombe ; sinon tremble légèrement si un pion est dessus.
+        fade = a;
+        if (_chuteFall.IsFalling(cell))
+        {
+            var p = _chuteFall.Progress(cell);            // 0 → 1
+            rect.Y += (int)(p * p * ChuteFallDrop);        // chute qui accélère
+            fade = a * (1f - p);
+        }
+        else
+        {
+            rect.Y += ChuteTrembleY(cell);
+        }
+        return rect;
+    }
+
+    /// <summary>Props de décor (terre puis herbe), juste après le terrain (une planche par sorte : un lot GPU chacune),
+    /// avec leur tuile (chute, secousse, arrivée).</summary>
+    private void DrawDecorProps(SpriteBatch sb, GridLayout layout)
+    {
+        DrawSurfaceProps(sb, layout, _groundProps);
+        DrawSurfaceProps(sb, layout, _snowPathProps);
+        DrawSurfaceProps(sb, layout, _grassProps);
+        DrawSurfaceProps(sb, layout, _snowProps);
+    }
+
+    private void DrawSurfaceProps(SpriteBatch sb, GridLayout layout, SurfaceProps? surface)
+    {
+        if (surface is not { Count: > 0 } props)
+            return;
+        for (var i = 0; i < props.Count; i++)
+        {
+            var cell = props.CellAt(i);
+            if (_fallenCells.Contains(cell))
+                continue;
+            var rect = TerrainRect(cell, layout, out var fade);
+            props.DrawCell(sb, i, new Rectangle(rect.X, rect.Y, rect.Width, rect.Width), fade);
         }
     }
 
@@ -14515,6 +14648,9 @@ public sealed class GameplayScene : Scene
         if (_fallenCells.Contains(c) || _chestCells.Contains(c)
             || _recrueCells.Contains(c) || _chuteCells.Contains(c) || _petiteTrousseCells.Contains(c))
             return false;
+        // Pas sur un tronc posé en décor (herbe ou neige) : il ne lui marche pas dessus.
+        if (_grassProps?.BlocksCritters(c) == true || _snowProps?.BlocksCritters(c) == true)
+            return false;
         return _match == null || _match.UnitAt(c) == null;
     }
 
@@ -14558,6 +14694,7 @@ public sealed class GameplayScene : Scene
             }
         }
         _hearts.Update(dt, _sparks, artPx);
+        _waterFoam?.Update(dt);   // vagues des berges + « bloops » de poissons
         UpdateFoxCritter(dt);
         return consumed;
     }
