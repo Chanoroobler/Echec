@@ -78,7 +78,8 @@ float4 DissolvePS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
 
     // Liseré incandescent juste au-dessus du seuil (le front qui se consume, en montant).
     float edge = 1.0 - smoothstep(th, th + EdgeWidth, field);
-    float3 rgb = lerp(tex.rgb, DissolveEdge.rgb, edge);
+    // color = teinte du sprite (blanc ; bleu de lune la nuit) : le pion seul, pas le liseré qui brille.
+    float3 rgb = lerp(tex.rgb * color.rgb, DissolveEdge.rgb, edge);
 
     // Sortie PRÉMULTIPLIÉE (rgb * a) : sur un pixel transparent (a=0) la couleur du liseré ne
     // peut pas baver sur le fond (le blend prémultiplié ajoute sinon la couleur source telle quelle).
@@ -106,7 +107,7 @@ float4 BurnPS(float4 color : COLOR0, float2 uv : TEXCOORD0) : COLOR0
     float burnt = (1.0 - step(0.22, d)) - hot - warm;   // zone calcinée au-dessus
 
     // Noircissement global progressif (le pion « cuit ») puis bandes de feu par-dessus.
-    float3 rgb = tex.rgb * (1.0 - 0.45 * saturate(Progress * 1.6));
+    float3 rgb = tex.rgb * color.rgb * (1.0 - 0.45 * saturate(Progress * 1.6));   // color = teinte (nuit), pas les flammes
     rgb = lerp(rgb, BurnChar.rgb, burnt * 0.85);
     rgb = lerp(rgb, DissolveEdge.rgb, warm);
     rgb = lerp(rgb, BurnHot.rgb, hot);

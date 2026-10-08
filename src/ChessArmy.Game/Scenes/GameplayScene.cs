@@ -237,6 +237,8 @@ public sealed class GameplayScene : Scene
     // Jusqu'à DEUX renards par terrain : [0,1] herbe, [2,3] neige. Le second n'apparaît que si son terrain est
     // vaste (cf. SecondFoxMinCells) et se pose LOIN du premier, sur une autre rangée (ils ne se croisent jamais).
     private readonly FoxCritter[] _foxes = { new(), new(), new(), new() };
+    private static readonly Cell NoCell = new(-1, -1);
+    private readonly Cell[] _foxLastCell = { NoCell, NoCell, NoCell, NoCell };   // case de chaque renard à la frame d'avant (entrée dans un buisson)
     private const int SecondFoxMinCells = 25;   // cases libres du terrain requises pour un 2e renard
     private const int SecondFoxMinGap = 3;      // écart mini entre les deux (en cases, Chebyshev)
     private Func<Cell, bool>[]? _foxFree;   // délégués mis en cache, un par renard (pas d'alloc par frame)
@@ -248,6 +250,94 @@ public sealed class GameplayScene : Scene
     private SurfaceProps? _groundProps;                      // pierres posées sur la terre (chemins, haut des murs)
     private SurfaceProps? _snowProps;                        // décor posé sur la neige (hors chemins) des tuiles de neige
     private SurfaceProps? _snowPathProps;                    // pierres posées sur les chemins des tuiles de neige
+    private SurfaceProps? _puddlesDirt, _puddlesGrass;        // flaques de pluie (générées) : sur la terre surtout, un peu sur l'herbe
+    private readonly CloudShadows _clouds = new();            // ambiance « jour » : ombres de nuages qui glissent sur le plateau
+    private readonly SunRays _sunRays = new();                // ambiance « jour » : rayons de soleil en diagonale
+    private readonly NightLight _nightLight = new();          // ambiance « nuit » : pleine lune + lucioles
+    // Ambiance lumineuse du combat (cosmétique), choisie à chaque mission (cf. ApplyWeather) : jour → couchant → nuit,
+    // et la pluie (indépendante de l'heure). Entre deux missions, FONDU ENCHAÎNÉ de l'une à l'autre (cf.
+    // StartWeatherTransition) : toutes les valeurs ci-dessous mélangent la météo de DÉPART et celle d'ARRIVÉE.
+    private enum Ambience { Day, Sunset, Night }
+    private Ambience _fromAmbience = Ambience.Day, _toAmbience = Ambience.Day;
+    private bool _fromRain, _toRain;
+    private float _weatherBlendStart = float.NegativeInfinity;   // horloge de scène au début du fondu
+    private int _weatherNextMission;                             // mission dont le fondu vers la météo est lancé
+    private const float WeatherBlendTime = 10f;                  // durée du fondu (s)
+    /// <summary>Teinte de coucher de soleil, MULTIPLIÉE sur la scène : chaude, légèrement assombrie.</summary>
+    private static readonly Color SunsetTint = new(255, 206, 168);
+    /// <summary>Ciel couvert de pluie : teinte gris-bleu multipliée EN PLUS de celle de l'heure.</summary>
+    private static readonly Color RainTint = new(204, 212, 226);
+    private readonly RainFx _rain = new();
+
+    /// <summary>Météo affichée à un instant : tout ce que le rendu en lit, calculé UNE fois par valeur de l'horloge
+    /// (cf. <see cref="Wx"/>) au lieu de refaire fondu + mélanges de couleurs à chaque lecture.</summary>
+    private struct WeatherFrame
+    {
+        public float Day, Sunset, Night, Rain;   // parts (0..1) de chaque heure et intensité de la pluie
+        public Color Tint, Ray, Cloud;
+    }
+
+    private WeatherFrame _wx;
+    private float _wxAt = float.NaN;   // horloge du dernier calcul (NaN : à refaire)
+
+    /// <summary>Météo de l'instant (cache par valeur de <c>_time</c> ; invalidé quand la météo change).</summary>
+    private ref readonly WeatherFrame Wx
+    {
+        get
+        {
+            if (_wxAt != _time)   // NaN ≠ tout : premier calcul ou cache invalidé
+            {
+                var k = Math.Clamp((_time - _weatherBlendStart) / WeatherBlendTime, 0f, 1f);
+                var b = k * k * (3f - 2f * k);   // fondu lissé
+                _wx.Day = Part(Ambience.Day, b);
+                _wx.Sunset = Part(Ambience.Sunset, b);
+                _wx.Night = Part(Ambience.Night, b);
+                _wx.Rain = (_fromRain ? 1f - b : 0f) + (_toRain ? b : 0f);
+                _wx.Tint = Color.Lerp(TintOf(_fromAmbience, _fromRain), TintOf(_toAmbience, _toRain), b);
+                _wx.Ray = Color.Lerp(RayOf(_fromAmbience, _fromRain), RayOf(_toAmbience, _toRain), b);
+                _wx.Cloud = Color.Lerp(CloudShadows.DayTint, CloudShadows.SunsetTint,
+                    _wx.Sunset / MathF.Max(0.001f, 1f - _wx.Night));
+                _wxAt = _time;
+            }
+            return ref _wx;
+        }
+    }
+
+    private float Part(Ambience a, float b) => (_fromAmbience == a ? 1f - b : 0f) + (_toAmbience == a ? b : 0f);
+
+    /// <summary>Part (0..1) de l'heure <paramref name="a"/> dans la météo affichée.</summary>
+    private float Weight(Ambience a) => a switch { Ambience.Night => Wx.Night, Ambience.Sunset => Wx.Sunset, _ => Wx.Day };
+
+    private float Nightness => Wx.Night;
+    private float Sunsetness => Wx.Sunset;
+    /// <summary>Intensité de la pluie (0..1) : gouttes, flaques, ronds dans l'eau apparaissent / s'effacent en fondu.</summary>
+    private float Rainness => Wx.Rain;
+    private bool _raining => Wx.Rain > 0.001f;
+    private bool _night => Wx.Night > 0.001f;
+
+    private static Color TintOf(Ambience a, bool rain)
+    {
+        var tint = a switch { Ambience.Night => NightLight.Ambient, Ambience.Sunset => SunsetTint, _ => Color.White };
+        return rain ? new Color(tint.R * RainTint.R / 255, tint.G * RainTint.G / 255, tint.B * RainTint.B / 255) : tint;
+    }
+
+    private static Color RayOf(Ambience a, bool rain) =>
+        (a switch { Ambience.Night => SunRays.MoonLight, Ambience.Sunset => SunRays.SunsetLight, _ => SunRays.DayLight })
+        * (rain ? 0.35f : 1f);   // sous la pluie, la lumière perce à peine
+
+    /// <summary>Teinte multipliée sur la scène (heure × pluie, en fondu ; blanc = aucune).</summary>
+    private Color AmbientTint => Wx.Tint;
+
+    /// <summary>Couleur des rayons (soleil / couchant / lune, atténués sous la pluie), en fondu.</summary>
+    private Color RayLight => Wx.Ray;
+
+    /// <summary>Ombres de nuages : bleu nuit le jour, violettes au couchant (absentes la nuit : cf. Nightness).</summary>
+    private Color CloudTint => Wx.Cloud;
+    private readonly RenderTargetBinding[] _nightRestore = new RenderTargetBinding[1];   // cible du canvas à restaurer (tampon)
+
+    /// <summary>Teinte des pions dessinés HORS de la passe principale (pion porté, attaquant / victime animés,
+    /// dissolutions) : la nuit, le même bleu de lune que la scène assombrie (sinon ils paraîtraient éclairés).</summary>
+    private Color PawnTint => AmbienceVisible ? AmbientTint : Color.White;
     private readonly List<(Vector2 Point, Cell Cell)> _perchBuffer = new();   // perchoirs du combat (tampon réutilisé)
     // Points de pose sur le buisson (buisson.png 64×64, dessiné au coin de la case) : le haut de la touffe du
     // dessus, la touffe de gauche, la touffe de droite.
@@ -804,7 +894,10 @@ public sealed class GameplayScene : Scene
         _hearts.Load(Context.GraphicsDevice, AssetPath("Assets/Anim/CoeurFox.png"));
         _waterFoam = new WaterFoam(Context.GraphicsDevice);   // masques calculés à la demande, par tuile d'eau
         _waterFoam.LoadProps(AssetPath("Assets/Props/Water"));   // feuilles / fleurs posées au hasard sur l'eau
-        _grassProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 1.3f, smallPerTile: 4f, minRegion: 0);
+        _grassProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 1.5f, smallPerTile: 4.5f, minRegion: 0);
+        _grassProps.Limit("Branch", 1, 2);      // 1 à 2 branches par plateau
+        _grassProps.Limit("Feuillage2", 2, 3);  // 2 à 3 Feuillage2 par plateau
+        _grassProps.Balance("Feuille", "Tronc", "Feuillage");   // autant de feuilles, de troncs et de Feuillage (à un près)
         _grassProps.Load(AssetPath("Assets/Props/Herb"));        // posés au hasard sur l'herbe de toutes les tuiles
         _groundProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.8f, smallPerTile: 4f, minRegion: 300);
         _groundProps.Load(AssetPath("Assets/Props/Ground"));     // sur la terre : chemins et haut des murs
@@ -812,7 +905,16 @@ public sealed class GameplayScene : Scene
         _snowProps.Load(AssetPath("Assets/Props/Snow"));         // sur la neige (tuiles neige_*, hors chemins)
         _snowPathProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.8f, smallPerTile: 4f, minRegion: 300);
         _snowPathProps.Load(AssetPath("Assets/Props/SnowPath")); // sur les chemins de neige (pas la glace)
+        _puddlesDirt = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.55f, smallPerTile: 0f, minRegion: 300);
+        _puddlesDirt.Load(Puddles.Build(seed: 1));                // flaques : visibles seulement quand il pleut
+        _puddlesGrass = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 0.12f, smallPerTile: 0f, minRegion: 0);
+        _puddlesGrass.Load(Puddles.Build(seed: 2));
+        _clouds.Load(Context.GraphicsDevice);
+        _sunRays.Load(Context.GraphicsDevice);
+        _nightLight.Load(Context.GraphicsDevice);
+        _rain.Load(Context.GraphicsDevice);
         _butterfly.PerchFree = c => _match?.UnitAt(c) == null;   // pas sur un buisson où se cache un pion
+        _butterfly.Landed = OnButterflyLanded;                   // la nuit, un papillon posé sur un buisson en fait sortir des lucioles
         Func<Cell, bool> onGrass = c => FoxCellFree(c, snow: false), onSnow = c => FoxCellFree(c, snow: true);
         _foxFree = new[] { onGrass, onGrass, onSnow, onSnow };
         // Commandant DUO : trousse de soin (remplace la tuile recrue) et sacoche (remplace le coffre).
@@ -889,6 +991,12 @@ public sealed class GameplayScene : Scene
         _groundProps?.Unload();
         _snowProps?.Unload();
         _snowPathProps?.Unload();
+        _puddlesDirt?.Unload();
+        _puddlesGrass?.Unload();
+        _clouds.Unload();
+        _sunRays.Unload();
+        _nightLight.Unload();
+        _rain.Unload();
         _chuteSprite?.Dispose();
         _chuteSprite = null;
         _equipSlotBg?.Dispose();
@@ -1822,10 +1930,12 @@ public sealed class GameplayScene : Scene
                 }
             _waterFoam.FinishBoard();   // une étendue d'eau = un rythme ; deux étendues séparées = deux rythmes
         }
+        ApplyWeather();   // heure (jour / couchant / nuit) + pluie de cette mission
         // Props de décor sur TOUTES les tuiles : herbe = couleur dominante de la tuile « herbe » ; neige = celle de « neige_13 » ;
         // terre = couleur
         // dominante du chemin « chemin_v » hors herbe (la même que le haut des murs). Jamais sur un pan vertical.
-        if (_grassProps != null && _groundProps != null && _snowProps != null && _snowPathProps != null)
+        if (_grassProps != null && _groundProps != null && _snowProps != null && _snowPathProps != null
+            && _puddlesDirt != null && _puddlesGrass != null)
         {
             var (herbTex, herbSrc) = TileSprite("herbe", new Cell(0, 0));
             _grassProps.ResetBoard(herbTex, herbSrc);
@@ -1835,6 +1945,8 @@ public sealed class GameplayScene : Scene
             _snowProps.ResetBoard(snowTex, snowSrc);
             var (snowPathTex, snowPathSrc) = TileSprite("neige_23", new Cell(0, 0));   // chemin de neige (bleu clair)
             _snowPathProps.ResetBoard(snowPathTex, snowPathSrc, exclude: _snowProps.Surface);
+            _puddlesGrass.ResetBoard(herbTex, herbSrc);                                       // flaques : mêmes surfaces
+            _puddlesDirt.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
             foreach (var c in _battlefield.Cells())
             {
                 var (tex, src) = TileSprite(_battlefield[c].Id, c);
@@ -1842,8 +1954,12 @@ public sealed class GameplayScene : Scene
                 Func<int, int, bool> isFace = (x, y) => IsFacePixel(cell, x, y);   // placement seulement
                 // Le vert uni du tileset des murs est un SOL, pas de l'herbe (même couleur) : pas de props d'herbe.
                 if (!(_tileSheet.TryGetValue(_battlefield[c].Id, out var sheetName) && sheetName == "murs"))
+                {
                     _grassProps.AddCell(c, tex, src, isFace);
+                    _puddlesGrass.AddCell(c, tex, src, isFace);
+                }
                 _groundProps.AddCell(c, tex, src, isFace);
+                _puddlesDirt.AddCell(c, tex, src, isFace);
                 // Neige : seulement les tuiles du tileset neige (le même bleu foncé est aussi de l'eau ailleurs).
                 if (sheetName == "neige")
                 {
@@ -1856,6 +1972,9 @@ public sealed class GameplayScene : Scene
             _groundProps.FinishBoard();
             _snowProps.FinishBoard();
             _snowPathProps.FinishBoard();
+            _puddlesDirt.FinishBoard();
+            _puddlesGrass.FinishBoard();
+            _nightLight.ResetBoard(Columns * GridLayout.DefaultTileSize, Rows * GridLayout.DefaultTileSize);   // lucioles
         }
         RefreshLootObjects();   // recrues + coffres (ou trousses + sacoches du DUO, selon les nœuds achetés)
 
@@ -8321,6 +8440,7 @@ public sealed class GameplayScene : Scene
 
     private void UpdateRecruitment(GameTime gameTime)
     {
+        StartWeatherTransition();   // le temps passe : fondu vers la météo de la mission suivante (une fois)
         // Bilan de mission spéciale : modale à valider AVANT la récupération des pions (draft / récompense).
         if (_specialRecap != null)
         {
@@ -9751,6 +9871,11 @@ public sealed class GameplayScene : Scene
 
         // Fond : eau animée pixel-art derrière le plateau (passes shader dédiées, hors du
         // batch principal car elles changent d'état SpriteBatch et de render target).
+        _combatFx.Tint = PawnTint;   // dissolutions / brûlures / flashs des pions : teintés comme la scène (nuit)
+        // Nuit : la carte de lumière se calcule AVANT la scène (on quitte un instant la cible du canvas, encore vide).
+        if (_night && SkyVisible)
+            BuildNightLights(sb, layout, viewport);
+
         DrawWaterBackground(sb, layout, viewport);
 
         // Le plateau (terrain + ombres + unités + FX) est secoué d'un cran à l'impact d'une attaque ;
@@ -9761,8 +9886,23 @@ public sealed class GameplayScene : Scene
         // DÉZOOM : le plateau part sur une couche NATIVE nette (recomposée plus petit ×1 par la couche Game),
         // l'UI sur sa couche à taille normale — l'eau reste dans ce canvas. Le rendu NORMAL ci-dessous est
         // strictement inchangé (ce branchement n'existe qu'en dézoom).
-        if (Dezoomed && _run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0)
+        if (DezoomLayersActive)
         {
+            // Dézoom : le canvas ne porte que la mer → teinte (heure × pluie), rayons (sauf le jour : ses nuages et
+            // rayons ne couvrent que le plateau) et pluie dessus ; le plateau natif reçoit les siens dans sa couche (cf.
+            // DrawClouds boardOnly).
+            if (AmbientTint != Color.White)
+                MultiplyTint(sb, viewport.Bounds);
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            var seaRays = 1f - Weight(Ambience.Day);
+            if (seaRays > 0f)
+                _sunRays.Draw(sb, _time, Point.Zero, viewport.Bounds, 1, seaRays, RayLight);   // rayons sur la mer
+            if (Rainness > 0f)
+            {
+                _rain.DrawDrops(sb, _time, Point.Zero, 1, viewport.Bounds, Rectangle.Empty, Rainness);
+                _rain.DrawSplashes(sb, _time, 1, viewport.Bounds, Rainness);
+            }
+            sb.End();
             DrawDezoomLayers(sb, layout, viewport);
             return;
         }
@@ -9802,6 +9942,7 @@ public sealed class GameplayScene : Scene
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
+                DrawClouds(sb, board);                   // ombres de nuages (jour) : PAR-DESSUS les pions (ils sont à l'ombre aussi)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // objets ennemis visibles DÈS le placement : ça se prépare
                 DrawSatchelBadges(sb, board);            // DUO : objet à lancer porté par un meneur
@@ -9891,6 +10032,7 @@ public sealed class GameplayScene : Scene
                 DrawUnits(sb, board);
                 DrawBushes(sb, board, occupied: true);   // buisson AVEC un pion dessus : DEVANT (« caché dans le feuillage »)
                 DrawUnitsBelowOccupiedBushes(sb, board);  // pion de la case du dessous : pas masqué (il n'est pas sur le buisson)
+                DrawClouds(sb, board);                   // ombres de nuages (jour) : PAR-DESSUS les pions (ils sont à l'ombre aussi)
                 DrawUnitHpBars(sb, board);               // barres de vie TOUJOURS au-dessus (même du buisson)
                 DrawEnemyEquipBadges(sb, board);         // icône de l'objet porté par un ennemi
                 DrawSatchelBadges(sb, board);            // DUO : objet à lancer porté par un meneur
@@ -9944,6 +10086,7 @@ public sealed class GameplayScene : Scene
             case RunPhase.Recruitment:
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawUnits(sb, board);
+                DrawClouds(sb, board);                   // même météo qu'en combat (pas de coupure), sous le voile
                 DrawDim(sb, viewport);
                 sb.End();
                 // Mission spéciale : le BILAN passe d'abord (plateau figé derrière), la récupération des
@@ -9957,6 +10100,7 @@ public sealed class GameplayScene : Scene
             case RunPhase.Defeat:
                 sb.Begin(samplerState: SamplerState.PointClamp);
                 DrawUnits(sb, board);
+                DrawClouds(sb, board);                   // même météo qu'en combat, sous le voile du récap
                 DrawDim(sb, viewport);
                 if (_run.Phase == RunPhase.Victory && Context.Settings.IsDemo && _demoEndShown)
                     DrawDemoEndPopup(sb, viewport);
@@ -10042,7 +10186,7 @@ public sealed class GameplayScene : Scene
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // renard écrasé au placement
             DrawFox(sb, nb); DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawClouds(sb, nb, boardOnly: true); DrawUnitHpBars(sb, nb); DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             if (_equipPhase) { DrawEquipBadgesPlacement(sb, nb); DrawEquipDropSlots(sb, nb); }
             else DrawFusionBoardStack(sb, nb);   // le pion attrapé passe par la couche curseur (par-dessus tout)
             // MANETTE : la couche curseur (RenderGhostLayer) ne sert qu'à la souris — pion porté ET curseur
@@ -10060,7 +10204,7 @@ public sealed class GameplayScene : Scene
             DrawChests(sb, nb); DrawChuteMarkers(sb, nb); DrawRecrueObjects(sb, nb);
             if (Context.Settings.Blood) _sparks.DrawGround(sb, Context.Pixel, nb.Origin, nb.TileSize);   // sang au sol (tout le combat)
             DrawFox(sb, nb); DrawBushes(sb, nb, occupied: false); DrawUnits(sb, nb); DrawBushes(sb, nb, occupied: true);
-            DrawUnitsBelowOccupiedBushes(sb, nb); DrawUnitHpBars(sb, nb);
+            DrawUnitsBelowOccupiedBushes(sb, nb); DrawClouds(sb, nb, boardOnly: true); DrawUnitHpBars(sb, nb);
             DrawEnemyEquipBadges(sb, nb); DrawSatchelBadges(sb, nb); DrawBossSkulls(sb, nb);
             DrawAllyThreatIcons(sb, nb);
             DrawPairKillMarks(sb, nb);       // DUO : qui des deux commandants a déjà frappé cet ennemi
@@ -10204,7 +10348,7 @@ public sealed class GameplayScene : Scene
             int lift = (int)(s * CarriedLiftFraction);
             var rect = new Rectangle(cx - s / 2, cy - s / 2 - lift, s, s);
             var sprite = UnitSprite(unit);
-            if (sprite != null) sb.Draw(sprite, rect, Color.White);
+            if (sprite != null) sb.Draw(sprite, rect, PawnTint);
             else DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, s - 18, s - 26));
         }
         sb.End();
@@ -10273,6 +10417,36 @@ public sealed class GameplayScene : Scene
             var worldMin = new Vector2(-canvasOffset.X / (float)canvasScale, -canvasOffset.Y / (float)canvasScale);
             var worldSize = new Vector2(realScreen.X / (float)canvasScale, realScreen.Y / (float)canvasScale);
             _water.DrawWaterRect(sb, _time, fullScreen, worldMin, worldSize);
+        }
+
+        // Ambiance jour prolongée dans les bandes (ultrawide…) : même repère que le canvas (pixel écran = décalage +
+        // canvas × échelle), donc nuages et rayons se raccordent au bord du canvas, blitté ensuite par-dessus.
+        if (AmbienceVisible)   // dézoom compris : la mer des bandes est la même
+        {
+            // Teinte de l'heure × pluie sur la mer des bandes, puis nuages (sauf la nuit, hors dézoom), rayons et pluie.
+            if (AmbientTint != Color.White)
+                MultiplyTint(sb, fullScreen);
+            var px = Math.Max(1, BuildLayout().TileSize / GridLayout.DefaultTileSize) * canvasScale;
+            sb.Begin(samplerState: SamplerState.PointClamp);
+            var night = Nightness;
+            if (SkyVisible && night < 1f)
+            {
+                var sky = SkyCorner();
+                _clouds.Draw(sb, _time, new Point(canvasOffset.X + sky.X * canvasScale, canvasOffset.Y + sky.Y * canvasScale),
+                    px, fullScreen, 1f - night, CloudTint);
+            }
+            // Rayons : partout hors dézoom ; en dézoom, seulement la part couchant / nuit (le jour ne couvre que le plateau).
+            var rayAlpha = SkyVisible ? 1f : 1f - Weight(Ambience.Day);
+            if (rayAlpha > 0f)
+                _sunRays.Draw(sb, _time, canvasOffset, fullScreen, px, rayAlpha, RayLight);   // rayons jusque dans les bandes
+            if (Rainness > 0f)
+            {
+                // Gouttes seulement HORS du canvas (blitté par-dessus) : le même motif, donc raccord sans couture.
+                var canvas = new Rectangle(canvasOffset.X, canvasOffset.Y,
+                    VirtualViewport.Width * canvasScale, VirtualViewport.Height * canvasScale);
+                _rain.DrawDrops(sb, _time, canvasOffset, px, fullScreen, canvas, Rainness);
+            }
+            sb.End();
         }
 
         // Le voile d'assombrissement (pause / recrutement / fin) est dessiné DANS le canvas et ne
@@ -10383,6 +10557,10 @@ public sealed class GameplayScene : Scene
         // résolues au placement (pas de Cells() énuméré, pas de recherche de tuile par frame).
         if (_waterFoam is not { } foam)
             return;
+        // Pluie : ronds des gouttes sur l'eau dégagée, SOUS les feuilles flottantes et l'écume.
+        if (_raining)
+            for (var i = 0; i < foam.Count; i++)
+                foam.DrawRain(sb, i, WaterFace(foam.CellAt(i), layout, out var a), a * Rainness, _time);
         // Props flottants d'abord, pour TOUTES les cases (une seule planche : un seul lot GPU), puis l'écume par-dessus.
         if (foam.HasProps)
             for (var i = 0; i < foam.Count; i++)
@@ -10399,14 +10577,18 @@ public sealed class GameplayScene : Scene
     /// <summary>Face du dessus (carrée) d'une case d'eau à l'écran, animation d'arrivée et tremblement compris.</summary>
     private Rectangle WaterFace(Cell cell, GridLayout layout, out float alpha)
     {
-        var (oy, a) = BoardIntroAnim(cell, layout);
-        alpha = a;
-        var rect = layout.CellToSpriteRect(cell.Column, cell.Row);
-        return new Rectangle(rect.X, rect.Y + oy + _tremor.OffsetY(cell), rect.Width, rect.Width);
+        var rect = CellRect(cell, layout, out alpha);   // cache de DrawTerrain (pas de « chute » sur l'eau)
+        return new Rectangle(rect.X, rect.Y, rect.Width, rect.Width);
     }
 
     private void DrawTerrain(SpriteBatch sb, GridLayout layout)
     {
+        if (_cellRects.Length != Columns * Rows)   // taille du plateau : (ré)alloué seulement quand elle change
+        {
+            _cellRects = new Rectangle[Columns * Rows];
+            _cellFades = new float[Columns * Rows];
+        }
+        _cellRectsFor = null;   // en cours de remplissage
         // Arrière → avant (Cells() parcourt rangée 0 → N) pour que l'épaisseur se recouvre bien.
         foreach (var cell in _battlefield.Cells())
         {
@@ -10416,8 +10598,38 @@ public sealed class GameplayScene : Scene
                 continue;
 
             var (tex, src) = TileSprite(_battlefield[cell].Id, cell);
-            sb.Draw(tex, TerrainRect(cell, layout, out var fade), src, Color.White * fade);
+            var rect = TerrainRect(cell, layout, out var fade);
+            sb.Draw(tex, rect, src, Color.White * fade);
+            if (cell.Column < Columns && cell.Row < Rows)
+            {
+                var i = cell.Row * Columns + cell.Column;
+                _cellRects[i] = rect;
+                _cellFades[i] = fade;
+            }
         }
+        _cellRectsFor = layout;   // les couches suivantes de la frame (props, flaques, eau) relisent ces rectangles
+        _cellRectsAt = _time;
+    }
+
+    // Rectangles des tuiles calculés par DrawTerrain pour CETTE frame et CE layout : props, flaques, eau les relisent
+    // au lieu de refaire animation d'arrivée / secousse / chute pour chaque couche (cf. CellRect).
+    private Rectangle[] _cellRects = Array.Empty<Rectangle>();
+    private float[] _cellFades = Array.Empty<float>();
+    private GridLayout? _cellRectsFor;
+    private float _cellRectsAt = float.NaN;
+
+    /// <summary>Rectangle à l'écran de la tuile de <paramref name="cell"/> (cf. <see cref="TerrainRect"/>), relu du
+    /// cache de <see cref="DrawTerrain"/> s'il vaut pour ce layout à cet instant, sinon recalculé.</summary>
+    private Rectangle CellRect(Cell cell, GridLayout layout, out float fade)
+    {
+        if (ReferenceEquals(_cellRectsFor, layout) && _cellRectsAt == _time
+            && cell.Column >= 0 && cell.Row >= 0 && cell.Column < Columns && cell.Row < Rows)
+        {
+            var i = cell.Row * Columns + cell.Column;
+            fade = _cellFades[i];
+            return _cellRects[i];
+        }
+        return TerrainRect(cell, layout, out fade);
     }
 
     /// <summary>Rectangle à l'écran de la tuile d'une case (cellule entière, épaisseur comprise) : animation d'arrivée,
@@ -10447,13 +10659,186 @@ public sealed class GameplayScene : Scene
     /// avec leur tuile (chute, secousse, arrivée).</summary>
     private void DrawDecorProps(SpriteBatch sb, GridLayout layout)
     {
+        if (_raining)
+        {
+            // Flaques SOUS les autres props (un caillou peut tremper dedans), puis les ronds des gouttes qui y tombent.
+            DrawSurfaceProps(sb, layout, _puddlesDirt, Rainness);   // en fondu avec la pluie
+            DrawSurfaceProps(sb, layout, _puddlesGrass, Rainness);
+            DrawPuddleRipples(sb, layout, _puddlesDirt);
+            DrawPuddleRipples(sb, layout, _puddlesGrass);
+        }
         DrawSurfaceProps(sb, layout, _groundProps);
         DrawSurfaceProps(sb, layout, _snowPathProps);
         DrawSurfaceProps(sb, layout, _grassProps);
         DrawSurfaceProps(sb, layout, _snowProps);
     }
 
-    private void DrawSurfaceProps(SpriteBatch sb, GridLayout layout, SurfaceProps? surface)
+    /// <summary>
+    /// Ambiance jour : ombres de nuages puis rayons de soleil, sur TOUT l'écran de jeu (plateau et mer de fond),
+    /// par-dessus les pions. Nuages ancrés au coin du plateau (les ombres portées s'y réfèrent). En dézoom, le plateau
+    /// est rendu dans sa propre couche : seulement sa face (la mer, dans une autre couche, n'est pas couverte).
+    /// </summary>
+    private void DrawClouds(SpriteBatch sb, GridLayout layout, bool boardOnly = false)
+    {
+        var px = Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
+        // Zone couverte (écran) et coin du repère : la couche du plateau natif en dézoom, sinon tout le canvas avec le
+        // ciel ancré au plateau NON secoué (même repère que les bandes du letterbox) : un impact secoue le plateau, pas
+        // le ciel.
+        Point corner;
+        Rectangle area;
+        if (boardOnly)
+        {
+            var origin = layout.CellToScreen(0, 0);
+            corner = new Point((int)origin.X, (int)origin.Y);
+            area = new Rectangle(corner.X, corner.Y, Columns * layout.TileSize, Rows * layout.TileSize);
+        }
+        else
+        {
+            corner = SkyCorner();
+            area = VirtualViewport.Bounds;
+        }
+        var rayAnchor = boardOnly ? corner : Point.Zero;   // rayons : depuis le haut du canvas (ou du plateau natif)
+
+        // Teinte MULTIPLIÉE (heure × pluie, en fondu) sur la scène, pions compris. S'il y a de la nuit dans la météo
+        // (hors dézoom), c'est la carte de lumière (même teinte + halos des lucioles, cf. BuildNightLights). Le batch
+        // ouvert (PointClamp) est refermé puis rouvert à l'identique.
+        var night = Nightness;
+        if (AmbientTint != Color.White || night > 0f)
+        {
+            sb.End();
+            if (night > 0f && !boardOnly && _nightLight.Map != null)
+                _nightLight.Apply(sb, VirtualViewport.Bounds);
+            else
+                MultiplyTint(sb, boardOnly ? Context.GraphicsDevice.Viewport.Bounds : VirtualViewport.Bounds);
+            sb.Begin(samplerState: SamplerState.PointClamp);
+        }
+        // Nuages (bleu nuit le jour, violets au couchant, effacés la nuit), rayons (soleil → couchant → lune), lucioles.
+        if (night < 1f)
+            _clouds.Draw(sb, _time, corner, px, area, 1f - night, CloudTint);
+        _sunRays.Draw(sb, _time, rayAnchor, area, px, 1f, RayLight);
+        if (night > 0f)
+        {
+            _nightLight.Time = _time;
+            _nightLight.DrawFireflies(sb, corner, px, night);
+        }
+
+        // Pluie (indépendante de l'heure, en fondu) : gouttes puis éclaboussures, par-dessus tout le plateau et la mer.
+        var rain = Rainness;
+        if (rain > 0f)
+        {
+            _rain.DrawDrops(sb, _time, boardOnly ? corner : Point.Zero, px, area, Rectangle.Empty, rain);
+            _rain.DrawSplashes(sb, _time, px, area, rain);
+        }
+    }
+
+    /// <summary>Multiplie la teinte d'ambiance (heure × pluie) sur <paramref name="dest"/> : batch fermé avant/après.</summary>
+    private void MultiplyTint(SpriteBatch sb, Rectangle dest)
+    {
+        sb.Begin(blendState: NightLight.Multiply, samplerState: SamplerState.PointClamp);
+        sb.Draw(Context.Pixel, dest, AmbientTint);
+        sb.End();
+    }
+
+    /// <summary>
+    /// Carte de lumière de la nuit : pleine lune (on y voit bien, pas de halo autour des pions) + les lucioles.
+    /// Dessinée dans sa propre cible, puis la cible du canvas est restaurée et vidée.
+    /// </summary>
+    private void BuildNightLights(SpriteBatch sb, GridLayout layout, Viewport viewport)
+    {
+        var device = Context.GraphicsDevice;
+        _nightRestore[0] = default;
+        device.GetRenderTargets(_nightRestore);   // tampon réutilisé : pas de tableau alloué par frame
+        var restore = _nightRestore[0].RenderTarget as RenderTarget2D;
+        var px = Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
+        _nightLight.Time = _time;
+        _nightLight.BeginLights(sb, viewport.Width, viewport.Height, AmbientTint);
+        _nightLight.AddFireflyLights(sb, SkyCorner(), px, Nightness);   // en fondu avec la nuit
+        _nightLight.EndLights(sb, restore);
+        device.Clear(Color.Black);   // la cible du canvas a pu être invalidée par le changement de cible
+    }
+
+    /// <summary>Coin haut-gauche du plateau (layout de base, sans secousse) en coordonnées canvas : ancre des nuages.</summary>
+    private Point SkyCorner()
+    {
+        var origin = BuildLayout().CellToScreen(0, 0);
+        return new Point((int)origin.X, (int)origin.Y);
+    }
+
+    /// <summary>Le rendu passe par les couches du dézoom (plateau natif à part) : même condition que dans Draw.</summary>
+    private bool DezoomLayersActive => Dezoomed && _run.Phase is RunPhase.Placement or RunPhase.Battle && _battleIntroTimer <= 0;
+
+    /// <summary>Ambiance (heure + pluie) partout où le plateau est montré : placement, combat, et les écrans de fin de
+    /// mission par-dessus (recrutement, récap) — même météo, sans coupure.</summary>
+    private bool AmbienceVisible => _run.Phase is RunPhase.Placement or RunPhase.Battle or RunPhase.Recruitment
+        or RunPhase.Victory or RunPhase.Defeat;
+
+    /// <summary>Ambiance au canvas (rendu normal, hors dézoom : le plateau y a sa propre couche).</summary>
+    private bool SkyVisible => AmbienceVisible && !DezoomLayersActive;
+
+    /// <summary>Opacité de l'ombre portée d'un pion de <paramref name="cell"/> : elle s'efface sous un nuage (plus de
+    /// soleil direct), en douceur quand un bord de nuage passe (moyenne sur la case).</summary>
+    private float CastShadowSun(Cell cell)
+    {
+        var night = Nightness;   // nuit : ombres de lune, plus discrètes (0,5) ; en fondu avec le jour / couchant
+        var day = night >= 1f ? 0f : 1f - 0.85f * _clouds.Coverage(_time, new Rectangle(cell.Column * GridLayout.DefaultTileSize,
+            cell.Row * GridLayout.DefaultTileSize, GridLayout.DefaultTileSize, GridLayout.DefaultTileSize));
+        return MathHelper.Lerp(day, 0.5f, night);
+    }
+
+    private static readonly Color RippleColor = new Color(210, 226, 240) * 0.55f;
+
+    /// <summary>
+    /// Ronds de pluie dans les flaques : chaque flaque, à son rythme (haché), reçoit une goutte → un point, puis un petit
+    /// rond aplati de 5 × 3 pixels, à un endroit tiré dans la flaque à chaque cycle. Rien d'alloué.
+    /// </summary>
+    private void DrawPuddleRipples(SpriteBatch sb, GridLayout layout, SurfaceProps? puddles)
+    {
+        if (puddles is not { PropCount: > 0 })
+            return;
+        var px = Math.Max(1, layout.TileSize / GridLayout.DefaultTileSize);
+        for (var i = 0; i < puddles.PropCount; i++)
+        {
+            var (cell, r) = puddles.PropAt(i);
+            if (_fallenCells.Contains(cell))
+                continue;
+            var h0 = RippleHash((uint)i * 2654435761u + 17u);
+            var period = 0.7f + (h0 % 1000) / 1000f * 0.9f;
+            var t = (_time + (h0 >> 10) % 1000 / 100f) / period;
+            var k = t - MathF.Floor(t);
+            if (k > 0.35f)
+                continue;
+            var h = RippleHash(h0 ^ (uint)(int)MathF.Floor(t) * 0x9E3779B9u);
+            // Centre à 3 pixels des bords en x et 2 en y : le rond (5 × 3) reste dans la flaque.
+            var spanX = Math.Max(1, r.Width - 6);
+            var spanY = Math.Max(1, r.Height - 4);
+            var cx = r.X + 3 + (int)(h % (uint)spanX);
+            var cy = r.Y + 2 + (int)((h >> 16) % (uint)spanY);
+            var face = CellRect(cell, layout, out var fade);
+            var color = RippleColor * (fade * Rainness);   // en fondu avec la pluie
+            void Dot(int dx, int dy) =>
+                sb.Draw(Context.Pixel, new Rectangle(face.X + (cx + dx) * px, face.Y + (cy + dy) * px, px, px), color);
+            if (k < 0.12f)
+                Dot(0, 0);   // la goutte touche l'eau
+            else
+            {
+                Dot(-2, 0); Dot(2, 0);
+                Dot(-1, -1); Dot(0, -1); Dot(1, -1);
+                Dot(-1, 1); Dot(0, 1); Dot(1, 1);
+            }
+        }
+    }
+
+    private static uint RippleHash(uint v)
+    {
+        v ^= v >> 16;
+        v *= 0x7FEB352Du;
+        v ^= v >> 15;
+        v *= 0x846CA68Bu;
+        v ^= v >> 16;
+        return v;
+    }
+
+    private void DrawSurfaceProps(SpriteBatch sb, GridLayout layout, SurfaceProps? surface, float alpha = 1f)
     {
         if (surface is not { Count: > 0 } props)
             return;
@@ -10462,8 +10847,8 @@ public sealed class GameplayScene : Scene
             var cell = props.CellAt(i);
             if (_fallenCells.Contains(cell))
                 continue;
-            var rect = TerrainRect(cell, layout, out var fade);
-            props.DrawCell(sb, i, new Rectangle(rect.X, rect.Y, rect.Width, rect.Width), fade);
+            var rect = CellRect(cell, layout, out var fade);
+            props.DrawCell(sb, i, new Rectangle(rect.X, rect.Y, rect.Width, rect.Width), fade * alpha);
         }
     }
 
@@ -12145,7 +12530,7 @@ public sealed class GameplayScene : Scene
             var (introY, introA) = BoardIntroAnim(cell, layout);
             var tile = TileOccupantOffset(cell, layout);   // l'ombre part du pion : elle suit son calage de tuile
             DrawPieceCastShadow(sb, sprite, (int)top.X + tile.X, (int)top.Y - spriteLift + introY + tile.Y,
-                size, UnitLift(cell, size), introA);
+                size, UnitLift(cell, size), introA * CastShadowSun(cell));
         }
 
         // Pion porté à la souris : son ombre au sol, à l'aplomb du curseur (position « au repos »). En DÉZOOM,
@@ -12291,7 +12676,7 @@ public sealed class GameplayScene : Scene
         var rect = new Rectangle(m.X - size / 2, m.Y - size / 2 - lift, size, size);
         var sprite = UnitSprite(unit);
         if (sprite != null)
-            sb.Draw(sprite, rect, Color.White);
+            sb.Draw(sprite, rect, PawnTint);
         else
             DrawChip(sb, unit.Class, unit.Faction, new Rectangle(rect.X + 9, rect.Y + 8, size - 18, size - 26));
     }
@@ -12382,7 +12767,7 @@ public sealed class GameplayScene : Scene
             // L'ombre reste AU SOL et glisse/s'éclaircit avec le bond (cf. DrawPieceCastShadow).
             DrawPieceCastShadow(sb, attackerSprite, (int)ground.X, (int)ground.Y, size, jump);
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(attackerSprite, rect, Color.White);
+            sb.Draw(attackerSprite, rect, PawnTint);
             sb.End();
         }
 
@@ -12394,7 +12779,7 @@ public sealed class GameplayScene : Scene
             if (_fx.VictimDoomed)
             {
                 sb.Begin(samplerState: SamplerState.PointClamp);
-                sb.Draw(hitSprite, victimRect, Color.White);
+                sb.Draw(hitSprite, victimRect, PawnTint);
                 sb.End();
             }
             else
@@ -12413,7 +12798,7 @@ public sealed class GameplayScene : Scene
             var top = layout.CellToScreen(pierce.Cell.Column, pierce.Cell.Row) - new Vector2(0, spriteLift);
             var off = _pierceRecoil.Offset(pierce.Cell, size);
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(pierceSprite, new Rectangle((int)top.X + off.X, (int)top.Y + off.Y, size, size), Color.White);
+            sb.Draw(pierceSprite, new Rectangle((int)top.X + off.X, (int)top.Y + off.Y, size, size), PawnTint);
             sb.End();
         }
 
@@ -12544,7 +12929,7 @@ public sealed class GameplayScene : Scene
         if (dissolve <= 0f)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(sprite, pivot, null, Color.White, angle, pivotTex, scale, SpriteEffects.None, 0f);
+            sb.Draw(sprite, pivot, null, PawnTint, angle, pivotTex, scale, SpriteEffects.None, 0f);
             sb.End();
         }
         else
@@ -12792,8 +13177,8 @@ public sealed class GameplayScene : Scene
         if (dissolve <= 0f)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(_sliceLower!, lower, null, Color.White, lowerTilt, lowerPivot, scale, SpriteEffects.None, 0f);
-            sb.Draw(_sliceUpper!, upper, null, Color.White, tilt, pivot, scale, SpriteEffects.None, 0f);
+            sb.Draw(_sliceLower!, lower, null, PawnTint, lowerTilt, lowerPivot, scale, SpriteEffects.None, 0f);
+            sb.Draw(_sliceUpper!, upper, null, PawnTint, tilt, pivot, scale, SpriteEffects.None, 0f);
             sb.End();
         }
         else
@@ -13148,8 +13533,8 @@ public sealed class GameplayScene : Scene
             if (dissolve <= 0f)
             {
                 sb.Begin(samplerState: SamplerState.PointClamp);
-                sb.Draw(sprite, leftPos, leftSrc, Color.White, -fall, leftPivot, scale, SpriteEffects.None, 0f);
-                sb.Draw(sprite, rightPos, rightSrc, Color.White, fall, rightPivot, scale, SpriteEffects.None, 0f);
+                sb.Draw(sprite, leftPos, leftSrc, PawnTint, -fall, leftPivot, scale, SpriteEffects.None, 0f);
+                sb.Draw(sprite, rightPos, rightSrc, PawnTint, fall, rightPivot, scale, SpriteEffects.None, 0f);
                 sb.End();
             }
             else
@@ -13387,7 +13772,7 @@ public sealed class GameplayScene : Scene
             if (!_fx.HasImpacted)
             {
                 sb.Begin(samplerState: SamplerState.PointClamp);
-                sb.Draw(sprite, rect, Color.White);
+                sb.Draw(sprite, rect, PawnTint);
                 sb.End();
             }
             else
@@ -13405,7 +13790,7 @@ public sealed class GameplayScene : Scene
         var body = new Rectangle((int)ground.X, (int)(ground.Y - lift), size, size);
         DrawPieceCastShadow(sb, sprite, (int)ground.X, (int)ground.Y, size, (int)lift);
         sb.Begin(samplerState: SamplerState.PointClamp);
-        sb.Draw(sprite, body, Color.White);
+        sb.Draw(sprite, body, PawnTint);
         sb.End();
         if (_fx.HasImpacted)
             _combatFx.DrawFlash(sb, sprite, body, _fx.FlashIntensity, Palette.White, fxPixel);
@@ -14630,6 +15015,69 @@ public sealed class GameplayScene : Scene
         }
     }
 
+    private const int RainChancePercent = 20;
+
+    /// <summary>
+    /// Météo d'une mission (cosmétique) : l'heure suit le numéro de mission de la run — 1re JOUR, 2e COUCHER DE SOLEIL,
+    /// 3e NUIT, puis ça boucle — et il pleut une mission sur cinq environ (20 %). Le tirage de la pluie dépend de la
+    /// graine de la run et du numéro de mission : stable si on quitte puis reprend (« Continuer »).
+    /// </summary>
+    private (Ambience Ambience, bool Rain) WeatherFor(int mission)
+    {
+        mission = Math.Max(1, mission);
+        var ambience = ((mission - 1) % 3) switch { 0 => Ambience.Day, 1 => Ambience.Sunset, _ => Ambience.Night };
+        var h = RippleHash((uint)_run.Seed * 2654435761u ^ (uint)mission * 0x9E3779B9u);
+        return (ambience, h % 100 < RainChancePercent);
+    }
+
+    /// <summary>
+    /// Début d'une mission (placement) : sa météo. Si le fondu du recrutement y menait déjà, il continue (pas de saut si
+    /// on a recruté avant la fin) ; sinon (1re mission, « Continuer », recommencer) elle s'applique d'un coup.
+    /// </summary>
+    private void ApplyWeather()
+    {
+        var (ambience, rain) = WeatherFor(_run.CombatNumber);
+        if (ambience == _toAmbience && rain == _toRain && _weatherNextMission == _run.CombatNumber)
+            return;
+        _fromAmbience = _toAmbience = ambience;
+        _fromRain = _toRain = rain;
+        _weatherBlendStart = float.NegativeInfinity;
+        _weatherNextMission = _run.CombatNumber;
+        _wxAt = float.NaN;   // météo changée : cache à refaire
+    }
+
+    /// <summary>
+    /// Recrutement ouvert : le temps passe — FONDU ENCHAÎNÉ (<see cref="WeatherBlendTime"/>) de la météo affichée vers
+    /// celle de la mission suivante, derrière le voile. Une seule fois par recrutement.
+    /// </summary>
+    private void StartWeatherTransition()
+    {
+        var next = _run.CombatNumber + 1;
+        if (_weatherNextMission == next)
+            return;
+        // Départ = ce qui est affiché maintenant (le fondu précédent est forcément terminé : un combat a eu lieu).
+        _fromAmbience = _toAmbience;
+        _fromRain = _toRain;
+        (_toAmbience, _toRain) = WeatherFor(next);
+        _weatherBlendStart = _time;
+        _weatherNextMission = next;
+        _wxAt = float.NaN;   // météo changée : cache à refaire
+    }
+
+    /// <summary>Un papillon se pose : s'il se pose sur un buisson, des lucioles en sortent (cf. <see cref="BushFireflies"/>).</summary>
+    private void OnButterflyLanded(Cell cell) => BushFireflies(cell);
+
+    /// <summary>La NUIT, si <paramref name="cell"/> est un buisson, 3 ou 4 lucioles s'en échappent (papillon qui s'y pose,
+    /// renard qui y entre).</summary>
+    private void BushFireflies(Cell cell)
+    {
+        if (Nightness < 0.5f || !_bushCells.Contains(cell))
+            return;
+        _nightLight.Time = _time;
+        const int tile = GridLayout.DefaultTileSize;
+        _nightLight.BurstFrom(new Vector2(cell.Column * tile + 32, cell.Row * tile + 28));   // cœur du feuillage
+    }
+
     /// <summary>
     /// Case où un renard d'ambiance peut se tenir / passer : SON terrain (HERBE pour le renard roux, NEIGE
     /// praticable pour le renard des neiges), sans objet de map ni pion. Tout le reste est un obstacle.
@@ -14648,7 +15096,7 @@ public sealed class GameplayScene : Scene
         if (_fallenCells.Contains(c) || _chestCells.Contains(c)
             || _recrueCells.Contains(c) || _chuteCells.Contains(c) || _petiteTrousseCells.Contains(c))
             return false;
-        // Pas sur un tronc posé en décor (herbe ou neige) : il ne lui marche pas dessus.
+        // Pas sur un tronc ni une branche posés en décor (herbe ou neige) : il ne leur marche pas dessus.
         if (_grassProps?.BlocksCritters(c) == true || _snowProps?.BlocksCritters(c) == true)
             return false;
         return _match == null || _match.UnitAt(c) == null;
@@ -14720,8 +15168,18 @@ public sealed class GameplayScene : Scene
             }
         }
         for (var i = 0; i < _foxes.Length; i++)
+        {
             if (_foxes[i].Update(dt, Columns, _foxFree[i]))
                 OnFoxCrushed(_foxes[i]);
+            // La nuit, un renard qui ENTRE dans un buisson (il passe derrière) en fait sortir des lucioles.
+            var at = _foxes[i].Active ? _foxes[i].Cell : NoCell;
+            if (at != _foxLastCell[i])
+            {
+                if (at != NoCell)
+                    BushFireflies(at);
+                _foxLastCell[i] = at;
+            }
+        }
     }
 
     private bool AnyFoxPetted()
@@ -17113,14 +17571,14 @@ public sealed class GameplayScene : Scene
     /// uniquement par un facteur ENTIER (1/2, 1/3…) — jamais fractionnaire — pour ne pas déborder
     /// ni déformer. Avec des boîtes de 64, le sprite 64×64 reste donc strictement intact.
     /// </summary>
-    private static void DrawSpriteFit(SpriteBatch sb, Texture2D sprite, Rectangle area, float alpha = 1f)
+    private static void DrawSpriteFit(SpriteBatch sb, Texture2D sprite, Rectangle area, float alpha = 1f, Color? tint = null)
     {
         var src = sprite.Width;                       // sprites d'unité carrés (64×64)
         var box = Math.Min(area.Width, area.Height);
         var size = box >= src ? src : src / ((src + box - 1) / box);
         var x = area.X + (area.Width - size) / 2;
         var y = area.Y + (area.Height - size) / 2;
-        sb.Draw(sprite, new Rectangle(x, y, size, size), Color.White * alpha);
+        sb.Draw(sprite, new Rectangle(x, y, size, size), (tint ?? Color.White) * alpha);
     }
 
     /// <summary>
@@ -17128,12 +17586,12 @@ public sealed class GameplayScene : Scene
     /// <paramref name="front"/> = montrer la face du joueur (présentation), sinon le dos.
     /// </summary>
     private void DrawChip(SpriteBatch sb, UnitClass cls, Faction faction, Rectangle area, bool front = false,
-        float alpha = 1f)
+        float alpha = 1f, Color? tint = null)
     {
         var sprite = SpriteFor(cls, faction, front);
         if (sprite != null)
         {
-            DrawSpriteFit(sb, sprite, area, alpha);
+            DrawSpriteFit(sb, sprite, area, alpha, tint);
             return;
         }
 
@@ -17164,7 +17622,9 @@ public sealed class GameplayScene : Scene
 
         var m = Context.Input.MousePosition;
         const int s = 64; // taille native du sprite → fantôme net, identique aux unités posées
-        DrawChip(sb, _dragSpec.UnitClass, Faction.Player, new Rectangle(m.X - s / 2, m.Y - s / 2, s, s));
+        // Au-dessus du plateau, il est dans la nuit comme les pions posés ; au-dessus du panneau (UI), non.
+        var tint = CellUnderMouse() != null ? PawnTint : Color.White;
+        DrawChip(sb, _dragSpec.UnitClass, Faction.Player, new Rectangle(m.X - s / 2, m.Y - s / 2, s, s), tint: tint);
     }
 
     /// <summary>Curseur de case (manette) au placement — coins AU-DESSUS des pièces (toujours visible).</summary>
@@ -17207,7 +17667,7 @@ public sealed class GameplayScene : Scene
             return;
         var top = board.CellToScreen(_cursor.Column, _cursor.Row);
         DrawChip(sb, _dragSpec.UnitClass, Faction.Player,
-            new Rectangle((int)top.X, (int)top.Y, board.TileSize, board.TileSize));
+            new Rectangle((int)top.X, (int)top.Y, board.TileSize, board.TileSize), tint: PawnTint);   // sur le plateau : dans la nuit
     }
 
     /// <summary>Surbrillance du slot d'inventaire sous le focus manette (sous-mode inventaire).</summary>

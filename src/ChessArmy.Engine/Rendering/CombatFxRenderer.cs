@@ -27,6 +27,10 @@ public sealed class CombatFxRenderer
     /// <summary>Vrai si le shader est disponible (sinon repli fondu pour la dissolution).</summary>
     public bool Enabled => _effect != null;
 
+    /// <summary>Teinte des sprites dessinés (blanc par défaut ; la scène la passe au bleu de lune la nuit). Le liseré
+    /// incandescent, les flammes et le flash restent, eux, à pleine lumière.</summary>
+    public Color Tint { get; set; } = Color.White;
+
     private void Set(string name, float value) => _effect!.Parameters[name]?.SetValue(value);
     private void Set(string name, Vector2 value) => _effect!.Parameters[name]?.SetValue(value);
     private void Set(string name, Vector4 value) => _effect!.Parameters[name]?.SetValue(value);
@@ -42,7 +46,7 @@ public sealed class CombatFxRenderer
         if (_effect == null)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(sprite, rect, Color.White * (1f - progress));
+            sb.Draw(sprite, rect, Tint * (1f - progress));
             sb.End();
             return;
         }
@@ -55,7 +59,7 @@ public sealed class CombatFxRenderer
         _effect.CurrentTechnique = _effect.Techniques["Dissolve"];
 
         sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, rect, Color.White);
+        sb.Draw(sprite, rect, Tint);
         sb.End();
     }
 
@@ -73,7 +77,7 @@ public sealed class CombatFxRenderer
         if (_effect == null)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(sprite, center, source, Color.White * (1f - progress), rotation, origin, scale, SpriteEffects.None, 0f);
+            sb.Draw(sprite, center, source, Tint * (1f - progress), rotation, origin, scale, SpriteEffects.None, 0f);
             sb.End();
             return;
         }
@@ -86,7 +90,7 @@ public sealed class CombatFxRenderer
         _effect.CurrentTechnique = _effect.Techniques["Dissolve"];
 
         sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, center, source, Color.White, rotation, origin, scale, SpriteEffects.None, 0f);
+        sb.Draw(sprite, center, source, Tint, rotation, origin, scale, SpriteEffects.None, 0f);
         sb.End();
     }
 
@@ -102,7 +106,7 @@ public sealed class CombatFxRenderer
         if (_effect == null)
         {
             sb.Begin(samplerState: SamplerState.PointClamp);
-            sb.Draw(sprite, rect, Color.White * (1f - progress));
+            sb.Draw(sprite, rect, Tint * (1f - progress));
             sb.End();
             return;
         }
@@ -116,7 +120,7 @@ public sealed class CombatFxRenderer
         _effect.CurrentTechnique = _effect.Techniques["Burn"];
 
         sb.Begin(samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, rect, Color.White);
+        sb.Draw(sprite, rect, Tint);
         sb.End();
     }
 
@@ -136,7 +140,7 @@ public sealed class CombatFxRenderer
         _effect.CurrentTechnique = _effect.Techniques["Flash"];
 
         sb.Begin(blendState: BlendState.Additive, samplerState: SamplerState.PointClamp, effect: _effect);
-        sb.Draw(sprite, rect, Color.White);
+        sb.Draw(sprite, rect, Tint);
         sb.End();
     }
 

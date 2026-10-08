@@ -42,6 +42,13 @@ internal sealed class PropAtlas : IDisposable
             }
             tex.Dispose();
         }
+        return FromSprites(gd, sprites);
+    }
+
+    /// <summary>Planche à partir de sprites déjà en mémoire (ex. générés par le code : flaques).</summary>
+    public static PropAtlas FromSprites(GraphicsDevice gd, List<(Color[] Data, int W, int H, string Name)> sprites)
+    {
+        var result = new PropAtlas();
         if (sprites.Count == 0)
             return result;
 

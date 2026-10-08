@@ -30,6 +30,7 @@ internal sealed class SurfaceProps
     {
         public int Kind;
         public int Board;  // indice de sa case (placement)
+        public Cell Cell;  // sa case (le tableau des cases de placement est vidé ensuite)
         public Point At;   // coin haut-gauche, en pixels de la tuile
     }
 
@@ -68,15 +69,31 @@ internal sealed class SurfaceProps
     /// <summary>Couleur de surface retenue au dernier <see cref="ResetBoard"/> (null si aucune).</summary>
     public Color? Surface => _hasSurface ? _surface : null;
 
-    /// <summary>Case où un gros obstacle (<c>Tronc*</c>) est posé : les bêtes d'ambiance (renards) l'évitent.</summary>
+    /// <summary>Case où un gros obstacle (<c>Tronc*</c>, <c>Branch*</c>) est posé : les bêtes d'ambiance (renards) l'évitent.</summary>
     public bool BlocksCritters(Cell cell) => _blockers.Contains(cell);
+
+    /// <summary>Nombre total de props posés sur le plateau (cf. <see cref="PropAt"/>).</summary>
+    public int PropCount => _props.Count;
+
+    /// <summary>Case et emprise (pixels de la tuile) du prop n° <paramref name="i"/> (ex. ronds de pluie dans les flaques).</summary>
+    public (Cell Cell, Rectangle Rect) PropAt(int i)
+    {
+        var p = _props[i];
+        var s = _atlas!.Src[p.Kind];
+        return (p.Cell, new Rectangle(p.At.X, p.At.Y, s.Width, s.Height));
+    }
 
     public int Count => _cells.Count;
     public Cell CellAt(int i) => _cells[i].Cell;
 
-    public void Load(string dir)
+    public void Load(string dir) => Classify(PropAtlas.Load(_gd, dir, Face - 2 * Clearance));
+
+    /// <summary>Sprites générés par le code (ex. flaques de pluie) au lieu d'un dossier.</summary>
+    public void Load(List<(Color[] Data, int W, int H, string Name)> sprites) => Classify(PropAtlas.FromSprites(_gd, sprites));
+
+    private void Classify(PropAtlas atlas)
     {
-        _atlas = PropAtlas.Load(_gd, dir, Face - 2 * Clearance);
+        _atlas = atlas;
         for (var k = 0; k < _atlas.Count; k++)
             (Math.Max(_atlas.Src[k].Width, _atlas.Src[k].Height) <= SmallSize ? _flowerKinds : _bigKinds).Add(k);
     }
@@ -109,6 +126,7 @@ internal sealed class SurfaceProps
                 if (c.A == 255 && c != exclude)
                     counts[c] = counts.TryGetValue(c, out var n) ? n + 1 : 1;
             }
+        var previous = _hasSurface ? _surface : (Color?)null;
         _hasSurface = false;
         var best = 0;
         foreach (var (c, n) in counts)
@@ -118,7 +136,8 @@ internal sealed class SurfaceProps
                 _surface = c;
                 _hasSurface = true;
             }
-        _clear.Clear();   // la couleur de référence a pu changer
+        if (previous != Surface)
+            _clear.Clear();   // couleur de référence changée : les zones calculées ne valent plus (sinon : cache gardé)
     }
 
     /// <summary>Case du plateau (sa face de tuile) : retenue si elle montre assez de surface (placement dans
@@ -163,7 +182,7 @@ internal sealed class SurfaceProps
 
     private readonly List<BoardCell> _board = new();   // placement seulement
     private readonly List<int> _areaSum = new();        // sommes cumulées des aires (tirage d'une case pondéré)
-    private readonly HashSet<Cell> _blockers = new();    // cases avec un tronc : les renards n'y marchent pas
+    private readonly HashSet<Cell> _blockers = new();    // cases avec un tronc ou une branche : les renards n'y marchent pas
 
     /// <summary>
     /// Pose les props sur TOUT le plateau en « meilleur candidat » (Mitchell) : pour chaque prop, on tire
@@ -183,12 +202,15 @@ internal sealed class SurfaceProps
         if (total == 0)
             return;
         var tiles = total / (float)FullArea;
+        RollLimits();
         if (_bigKinds.Count > 0)
             for (int n = 0, count = (int)MathF.Round(tiles * _bigPerTile); n < count; n++)
-                PlaceBest(_bigKinds[_rng.Next(_bigKinds.Count)], total);
+                if (PickKind(_bigKinds) is var big and >= 0 && PlaceBest(big, total))
+                    CountLimit(big);
         if (_flowerKinds.Count > 0)
             for (int n = 0, count = (int)MathF.Round(tiles * _smallPerTile); n < count; n++)
-                PlaceBest(_flowerKinds[_rng.Next(_flowerKinds.Count)], total);
+                if (PickKind(_flowerKinds) is var small and >= 0 && PlaceBest(small, total))
+                    CountLimit(small);
 
         // Rangement par case (dessin case par case), de haut en bas dans la case.
         _props.Sort((a, b) => a.Board != b.Board ? a.Board.CompareTo(b.Board) : a.At.Y.CompareTo(b.At.Y));
@@ -200,18 +222,18 @@ internal sealed class SurfaceProps
                 i++;
             _cells.Add(new GrassCell { Cell = _board[board].Cell, PropStart = start, PropCount = i - start });
             for (var j = start; j < i; j++)
-                if (_atlas!.NameStarts(_props[j].Kind, "Tronc"))
+                if (_atlas!.NameStarts(_props[j].Kind, "Tronc") || _atlas.NameStarts(_props[j].Kind, "Branch"))
                     _blockers.Add(_board[board].Cell);
         }
     }
 
-    private void PlaceBest(int kind, int totalArea)
+    private bool PlaceBest(int kind, int totalArea)
     {
         var size = _atlas!.Src[kind];
         var spanX = Face - 2 * Clearance - size.Width;
         var spanY = Face - 2 * Clearance - size.Height;
         if (spanX < 0 || spanY < 0)
-            return;
+            return false;
         var radius = Math.Max(size.Width, size.Height) * 0.5f;
         var found = 0;
         var bestScore = float.MinValue;
@@ -242,11 +264,104 @@ internal sealed class SurfaceProps
             if (score > bestScore)
             {
                 bestScore = score;
-                best = new Prop { Kind = kind, Board = board, At = spot.Location };
+                best = new Prop { Kind = kind, Board = board, Cell = cell, At = spot.Location };
             }
         }
-        if (found > 0)
-            _props.Add(best);
+        if (found == 0)
+            return false;
+        _props.Add(best);
+        return true;
+    }
+
+    // ── Plafonds par plateau (ex. 1 à 2 branches, 3 feuillages au plus) ──
+    private readonly List<(string Prefix, int Min, int Max)> _limits = new();
+    private readonly List<int> _limitCap = new(), _limitUsed = new();
+
+    /// <summary>
+    /// Au plus <paramref name="min"/> à <paramref name="max"/> (tiré à chaque plateau) props dont le nom commence par
+    /// <paramref name="prefix"/> (toutes variantes confondues, ex. « Feuillage » = Feuillage + Feuillage2).
+    /// </summary>
+    public void Limit(string prefix, int min, int max) => _limits.Add((prefix, min, max));
+
+    // Groupes ÉQUILIBRÉS : plusieurs sortes (noms de fichier EXACTS) posées à peu près autant les unes que les autres
+    // (écart d'1 au plus), ex. Feuille = Tronc = Feuillage. Les sortes hors groupe ne sont pas concernées.
+    private readonly List<string[]> _groups = new();
+    private readonly List<int[]> _groupCount = new();
+
+    /// <summary>Autant de chacune des sortes <paramref name="names"/> (noms de fichier exacts, sans extension) à un
+    /// près : une sorte ne peut prendre plus d'une longueur d'avance sur la moins posée du groupe.</summary>
+    public void Balance(params string[] names) => _groups.Add(names);
+
+    private bool NameIs(int kind, string name) => string.Equals(_atlas!.Names[kind], name, StringComparison.OrdinalIgnoreCase);
+
+    private void RollLimits()
+    {
+        _limitCap.Clear();
+        _limitUsed.Clear();
+        foreach (var l in _limits)
+        {
+            _limitCap.Add(_rng.Next(l.Min, l.Max + 1));
+            _limitUsed.Add(0);
+        }
+        _groupCount.Clear();
+        foreach (var g in _groups)
+            _groupCount.Add(new int[g.Length]);   // placement seulement (une fois par plateau)
+    }
+
+    /// <summary>Plafond qui concerne la sorte <paramref name="kind"/> (-1 : aucun).</summary>
+    private int LimitOf(int kind)
+    {
+        for (var i = 0; i < _limits.Count; i++)
+            if (_atlas!.NameStarts(kind, _limits[i].Prefix))
+                return i;
+        return -1;
+    }
+
+    private bool Capped(int kind)
+    {
+        if (LimitOf(kind) is var l and >= 0 && _limitUsed[l] >= _limitCap[l])
+            return true;
+        for (var g = 0; g < _groups.Count; g++)
+        {
+            var names = _groups[g];
+            var counts = _groupCount[g];
+            for (var m = 0; m < names.Length; m++)
+            {
+                if (!NameIs(kind, names[m]))
+                    continue;
+                var least = int.MaxValue;
+                foreach (var c in counts)
+                    least = Math.Min(least, c);
+                if (counts[m] > least)
+                    return true;   // déjà une longueur d'avance : on attend les autres
+            }
+        }
+        return false;
+    }
+
+    private void CountLimit(int kind)
+    {
+        if (LimitOf(kind) is var l and >= 0)
+            _limitUsed[l]++;
+        for (var g = 0; g < _groups.Count; g++)
+            for (var m = 0; m < _groups[g].Length; m++)
+                if (NameIs(kind, _groups[g][m]))
+                    _groupCount[g][m]++;
+    }
+
+    /// <summary>Sorte au hasard parmi <paramref name="kinds"/> qui n'a pas atteint son plafond (-1 : toutes plafonnées).</summary>
+    private int PickKind(List<int> kinds)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var k = kinds[_rng.Next(kinds.Count)];
+            if (!Capped(k))
+                return k;
+        }
+        foreach (var k in kinds)
+            if (!Capped(k))
+                return k;
+        return -1;
     }
 
     /// <summary>Case tirée au prorata de son herbe disponible.</summary>

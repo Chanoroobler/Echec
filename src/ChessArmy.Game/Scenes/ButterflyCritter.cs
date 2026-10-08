@@ -106,6 +106,10 @@ internal sealed class ButterflyCritter
     /// </summary>
     public Func<Cell, bool>? PerchFree { get; set; }
 
+    /// <summary>Un papillon vient de se POSER sur la case de perchoir donnée (la scène y réagit : lucioles d'un buisson
+    /// la nuit…). Appelé depuis <see cref="Update"/>, une fois par pose.</summary>
+    public Action<Cell>? Landed { get; set; }
+
     /// <summary>
     /// Points où un papillon peut se poser pour le combat courant (dessus des rochers, des buissons…), en cases
     /// depuis l'origine du plateau, au pixel d'art près (1/64 de case), avec leur case. Vide = jamais de pose.
@@ -151,6 +155,11 @@ internal sealed class ButterflyCritter
             if (f.Active)
             {
                 f.Update(dt, rows, _rng, PerchFree);
+                if (f.JustLanded)
+                {
+                    f.JustLanded = false;
+                    Landed?.Invoke(f.PerchCell);
+                }
                 if (f.Active)
                     _activeCount++;
             }
@@ -294,6 +303,8 @@ internal sealed class ButterflyCritter
         }
 
         public bool IsPerched => _mode == Mode.Perched;
+        public bool JustLanded;                 // posé à cette frame (relevé puis remis à faux par le gestionnaire)
+        public Cell PerchCell => _perchCell;
 
         public void Update(float dt, int rows, Random rng, Func<Cell, bool>? perchFree)
         {
@@ -413,6 +424,7 @@ internal sealed class ButterflyCritter
                 _mode = Mode.Perched;
                 _frame = FramePerched;
                 _perchTimer = 3f + (float)rng.NextDouble() * 5f;   // pause de 3 à 8 s
+                JustLanded = true;
             }
         }
 
