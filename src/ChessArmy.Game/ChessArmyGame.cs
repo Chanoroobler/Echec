@@ -298,6 +298,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         //    besoin du facteur d'agrandissement canvas→écran pour placer le plateau natif.
         if (_scenes.Current is Scenes.GameplayScene gsPre)
             gsPre.SetVirtualScaleHint(_virtualScale);
+        // Sprites « nets » (pion des plateaux de carte) : file remplie pendant le dessin des scènes, posée en 2d.
+        UI.NativeSprites.Scale = _virtualScale;
+        UI.NativeSprites.Clear();
         GraphicsDevice.SetRenderTarget(_virtualTarget);
         GraphicsDevice.Clear(Color.Black);
         _scenes.Draw(gameTime);
@@ -346,6 +349,15 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         }
 
+        // 2d. Sprites NETS de toutes les scènes (pion des plateaux de carte) : réduits ÷2 dans le canvas mais posés
+        //     ici à la résolution de l'écran, chaque pixel du sprite reste un vrai pixel (cf. UI.NativeSprites).
+        if (UI.NativeSprites.HasAny)
+        {
+            _spriteBatch.End();
+            UI.NativeSprites.Flush(_spriteBatch, _virtualDest, _virtualScale);
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+
         if (!_input.UsingGamepad)   // à la manette, le pointeur n'a plus de rôle : il ne doit pas traîner à l'écran
             DrawCursor(_spriteBatch);
         if (_showFps)
@@ -387,6 +399,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         sb.Draw(_cursor, new Rectangle(p.X, p.Y, _cursor.Width * scale, _cursor.Height * scale), Color.White);
     }
 
+    // Hauteur réservée en fenêtré (barre de titre + barre des tâches Windows, mise à l'échelle comprise).
+    private const int WindowedHeightMargin = 100;
+
     /// <summary>Applique résolution + plein écran (IDisplayService).</summary>
     public void Apply(DisplaySettings settings)
     {
@@ -420,8 +435,21 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         }
         else
         {
-            _graphics.PreferredBackBufferWidth = settings.Width;
-            _graphics.PreferredBackBufferHeight = settings.Height;
+            // La fenêtre doit TENIR dans l'écran : une résolution choisie (ou par défaut) plus grande que le
+            // bureau la ferait déborder, le joueur ne verrait que le coin haut-gauche sans pouvoir atteindre
+            // les Options. On réduit alors en 16:9 à ce qui rentre, sans toucher au réglage enregistré.
+            // En Windowed, marge pour la barre de titre et la barre des tâches.
+            int maxW = screen.Width;
+            int maxH = screen.Height - (settings.Mode == WindowMode.Windowed ? WindowedHeightMargin : 0);
+            int w = settings.Width, h = settings.Height;
+            if (w > maxW || h > maxH)
+            {
+                w = System.Math.Min(maxW, maxH * 16 / 9);
+                h = w * 9 / 16;
+            }
+
+            _graphics.PreferredBackBufferWidth = w;
+            _graphics.PreferredBackBufferHeight = h;
             _graphics.ApplyChanges();
             // Fenêtré : la bordure (titre/cadre) n'apparaît qu'en mode Windowed (pas Borderless).
             Window.IsBorderless = settings.Mode == WindowMode.Borderless;
@@ -429,8 +457,8 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             // à la taille de l'écran), elle y resterait collée et paraîtrait encore en plein écran
             // alors que le mode est fenêtré. On la recentre donc à chaque application.
             Window.Position = new Point(
-                System.Math.Max(0, (screen.Width  - settings.Width)  / 2),
-                System.Math.Max(0, (screen.Height - settings.Height) / 2));
+                System.Math.Max(0, (screen.Width  - w) / 2),
+                System.Math.Max(0, (maxH - h) / 2));
         }
 
         ConfigureVirtualScreen();

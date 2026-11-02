@@ -84,6 +84,9 @@ public sealed class PauseMenuRenderer
             Label(sb, l.BloodRow, Loc.T("options.blood"));
             Stepper(sb, l.BloodLeft, l.BloodValue, l.BloodRight, menu.BloodText, p, pointerDown, focus);
 
+            Label(sb, l.TutoRow, Loc.T("options.skip_tutorial"));
+            Stepper(sb, l.TutoLeft, l.TutoValue, l.TutoRight, menu.SkipTutorialText, p, pointerDown, focus);
+
             Button(sb, l.Back, Loc.T("options.back"), p, pointerDown, focus);
         }
     }

@@ -131,6 +131,24 @@ public sealed class Unit
     public void RecordDamage(int amount) => DamageDealt += System.Math.Max(0, amount);
 
     /// <summary>
+    /// Total des dégâts RÉELLEMENT encaissés par cette unité durant le combat courant. Amorcé à 0 au spawn et
+    /// NON persisté. Incrémenté par <see cref="Match"/>. Sert au bilan de boss vaincu (dégâts au boss).
+    /// </summary>
+    public int DamageTaken { get; private set; }
+
+    /// <summary>Comptabilise des dégâts ENCAISSÉS. Appelé par le moteur de combat.</summary>
+    public void RecordDamageTaken(int amount) => DamageTaken += System.Math.Max(0, amount);
+
+    /// <summary>
+    /// Unité du camp adverse qui a porté le coup FATAL (null tant que vivante, ou mort sans tueur identifié :
+    /// effet de terrain, sacrifice…). Posé par <see cref="Match"/>. Sert au bilan de boss vaincu.
+    /// </summary>
+    public Unit? KilledBy { get; private set; }
+
+    /// <summary>Mémorise l'auteur du coup fatal. Appelé par le moteur de combat.</summary>
+    public void RecordKilledBy(Unit killer) => KilledBy = killer;
+
+    /// <summary>
     /// Unités qui ont RÉELLEMENT entamé celle-ci pendant le combat courant (0 dégât exclu), sans doublon.
     /// Amorcée vide au spawn et NON persistée : chaque combat repart d'une unité neuve. Renseignée par
     /// <see cref="Match"/> partout où des dégâts passent, relais compris (éclats, épines, rebonds).

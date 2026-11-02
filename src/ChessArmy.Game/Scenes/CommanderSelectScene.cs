@@ -78,7 +78,7 @@ public sealed class CommanderSelectScene : Scene
     private const int FramePadX = 16, FramePadY = 16;
     private const int BodyIndent = 8;           // retrait des lignes sous leur titre de section
     private const int StatLabelW = 84, StatValueW = 28;
-    private const int DomaineBadge = 39;
+    private const int StatRows = 6;             // PV, puissance, mouvement, portée, déploiements, réserve
     private const int TreeH = 36;
     private const int TileStep = 86;            // pas des vignettes de départ (cadre 76 + 10)
     private const int MinSectionGap = 3, MaxSectionGap = 20;
@@ -201,6 +201,8 @@ public sealed class CommanderSelectScene : Scene
 
     private int TextH => Context.Font.LineHeight(1);
     private int RowH => Math.Max(16, TextH + 6);             // lignes libellé/valeur (stats, historique)
+    // Bloc des stats sous son titre : la colonne de lignes OU le plateau 7×7 à sa droite, le plus haut des deux.
+    private int StatsBlockH => Math.Max(StatRows * RowH, MoveAttackGrid.BoardOuter);
     private int TitleStep => TextH + 9;                      // titre de section → première ligne
     private int PointStep => TextH + 5;                      // lignes de gain de points
     private int EffectStep => Context.Font.GlyphHeight + 6;  // liste des effets de difficulté
@@ -263,7 +265,7 @@ public sealed class CommanderSelectScene : Scene
         var unlocked = IsUnlocked(def);
         l.PointLines = unlocked ? PointLines(def, inner.Width - BodyIndent) : new List<string> { "???" };
 
-        var statsH = TitleStep + Math.Max(4 * RowH, 2 * RowH + DomaineBadge);
+        var statsH = TitleStep + StatsBlockH;
         var pointsH = TitleStep + l.PointLines.Count * PointStep;
         var unitsH = TitleStep + UnitCardRenderer.TileH;
         var historyH = TitleStep + 2 * RowH;
@@ -617,7 +619,7 @@ public sealed class CommanderSelectScene : Scene
 
         // Carte du pion de départ survolé/focus, par-dessus le reste.
         if (unlocked && TileUnderPointer(lay, hoverIndex) is { } tile)
-            _card.DrawCardNear(sb, tile.Cls, tile.Domaine, tile.Rect, vp.Bounds);
+            _card.DrawCardNear(sb, tile.Cls, tile.Domaine, tile.Rect, vp.Bounds, allowNative: !_tree.IsOpen);   // l'arbre se dessine par-dessus
         sb.End();
 
         if (_tree.IsOpen)
@@ -814,30 +816,33 @@ public sealed class CommanderSelectScene : Scene
         DrawDifficultyStars(sb, inner.Right, lay.StatsY, def.Difficulty);   // même ligne, calé à droite
         var rowsY = lay.StatsY + TitleStep;
         var c = def.BaseClass;
-        var leftLabels = new[] { Loc.T("stat.hp"), Loc.T("stat.power"), Loc.T("stat.movement"), Loc.T("stat.range") };
-        var leftValues = new[] { c.MaxHp.ToString(), c.Damage.ToString(), c.MoveRange.ToString(), c.AttackRange.ToString() };
-        var leftColors = new[] { Palette.White, Palette.Brown3, Palette.Cyan2, Palette.Yellow2 };
-        var labelW = LabelWidth(leftLabels);
-        for (var i = 0; i < 4; i++)
-            LabelValue(sb, body, rowsY + i * RowH, labelW, leftLabels[i], V(leftValues[i]), leftColors[i]);
+        // Colonne de gauche : les quatre stats du pion, puis déploiements et réserve.
+        var labels = new[]
+        {
+            Loc.T("stat.hp"), Loc.T("stat.power"), Loc.T("stat.movement"), Loc.T("stat.range"),
+            Loc.T("commander.deploy"), Loc.T("commander.reserve"),
+        };
+        var values = new[]
+        {
+            c.MaxHp.ToString(), c.Damage.ToString(), c.MoveRange.ToString(), c.AttackRange.ToString(),
+            def.Deployments.ToString(), def.ReserveSize.ToString(),
+        };
+        var colors = new[] { Palette.White, Palette.Brown3, Palette.Cyan2, Palette.Yellow2, Palette.White, Palette.White };
+        var labelW = LabelWidth(labels);
+        for (var i = 0; i < StatRows; i++)
+            LabelValue(sb, body, rowsY + i * RowH, labelW, labels[i], V(values[i]), colors[i]);
 
-        var statsBottom = rowsY + Math.Max(4 * RowH, 2 * RowH + DomaineBadge);
+        var statsBottom = rowsY + StatsBlockH;
         var vx = body + labelW + StatValueW + 12;
         Fill(sb, new Rectangle(vx, rowsY - 2, 1, statsBottom - rowsY), Palette.Black1);
         Fill(sb, new Rectangle(vx + 1, rowsY - 2, 1, statsBottom - rowsY), Palette.Black5);
 
-        var col2 = vx + 14;
-        var rightLabels = new[] { Loc.T("commander.deploy"), Loc.T("commander.reserve"), Loc.T("commander.movement_pattern") };
-        var rightW = LabelWidth(rightLabels);
-        LabelValue(sb, col2, rowsY, rightW, rightLabels[0], V(def.Deployments.ToString()), Palette.White);
-        LabelValue(sb, col2, rowsY + RowH, rightW, rightLabels[1], V(def.ReserveSize.ToString()), Palette.White);
-        var badge = new Rectangle(col2 + rightW, rowsY + 2 * RowH, DomaineBadge, DomaineBadge);
-        Context.Font.Draw(sb, rightLabels[2],
-            new Vector2(col2, badge.Center.Y - Context.Font.GlyphHeight / 2), 1, Palette.White);
-        if (unlocked)
-            _card.DrawDomaineBadge(sb, def.Movement, badge);   // le domaine RÉVÈLE une information : tu si verrouillé
-        else
-            Context.Font.DrawCentered(sb, "?", badge, 1, Palette.White);
+        // À droite du filet : le plateau 7×7 animé (déplacement + tir, le commandant parcourt ses cases), même
+        // rendu que les cartes de pion. Verrouillé : plateau vierge et silhouette, rien n'est révélé.
+        var boardX = vx + 2 + (inner.Right - (vx + 2) - MoveAttackGrid.BoardOuter) / 2;
+        _card.DrawMoveBoard(sb, c, def.Movement,
+            new Rectangle(boardX, rowsY, MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter), revealed: unlocked,
+            allowNative: unlocked && !_tree.IsOpen);   // voile du verrou et arbre : dessinés par-dessus la fiche
 
         HSeparator(sb, inner, lay.Sep1Y);
 

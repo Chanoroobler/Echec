@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using ChessArmy.Core.Battle;
 using ChessArmy.Engine;
 using ChessArmy.Engine.Localization;
@@ -23,12 +24,13 @@ namespace ChessArmy.Game.UI;
 /// </summary>
 public sealed class UnitCardRenderer
 {
-    public const int CardW = 168, CardH = 340;
+    // Même largeur que la carte de jeu ; hauteur = 340 d'origine + 6 : le plateau 7×7 (115 px) remplace la
+    // bande sprite + icône de domaine (64 + 6 + 39).
+    public const int CardW = 248, CardH = 346;
     public const int TileW = 96, TileH = 92;
 
     private const int CardPad = 12;
     private const int CardTierW = 23, CardTierH = 9;
-    private const int CardDomaine = 39;
     private const int TileFramePad = 6;
 
     private readonly GameContext _ctx;
@@ -56,8 +58,10 @@ public sealed class UnitCardRenderer
     public static int TitleScale(ITextFont font, string name, int cardWidth, int pad) =>
         font.Measure(name, 2) <= cardWidth - 2 * pad ? 2 : 1;
 
-    /// <summary>Carte complète : tier, nom, sprite, domaine, barre de PV, stats, mots-clés.</summary>
-    public void DrawCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect)
+    /// <summary>Carte complète : tier, nom, plateau de déplacement / tir, barre de PV, stats, mots-clés.
+    /// <paramref name="allowNative"/> faux si quelque chose sera dessiné PAR-DESSUS la carte cette frame : le pion
+    /// du plateau reste alors dans le canvas au lieu de passer par la couche écran (cf. NativeSprites).</summary>
+    public void DrawCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect, bool allowNative = true)
     {
         _ctx.Style.DrawPanel(sb, rect);
         var y = rect.Y + CardPad;
@@ -72,14 +76,12 @@ public sealed class UnitCardRenderer
         _ctx.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
         y += titleH + 8;
 
-        var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
-        if (Sprite(c) is { } front)
-            sb.Draw(front, sprite, Color.White);
-        y = sprite.Bottom + 6;
-
-        var dom = new Rectangle(rect.X + (rect.Width - CardDomaine) / 2, y, CardDomaine, CardDomaine);
-        DrawDomaine(sb, domaine, dom);
-        y = dom.Bottom + 10;
+        // Grand plateau 7×7 animé (même rendu que la carte de combat et le codex) : le pion y parcourt ses
+        // déplacements, aux stats de BASE de la classe (hors run, ni équipement ni arbre). Pion net : couche écran.
+        var board = new Rectangle(rect.X + (rect.Width - MoveAttackGrid.BoardOuter) / 2, y,
+            MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
+        DrawMoveBoard(sb, c, domaine, board, revealed: true, allowNative);
+        y = board.Bottom + 10;
 
         var bar = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
         DrawHpBar(sb, bar, c.MaxHp);
@@ -143,8 +145,17 @@ public sealed class UnitCardRenderer
         return dest;
     }
 
-    /// <summary>Icône 39×39 d'un domaine (motif de déplacement), avec repli dessiné si le PNG manque.</summary>
-    public void DrawDomaineBadge(SpriteBatch sb, Domaine domaine, Rectangle area) => DrawDomaine(sb, domaine, area);
+    /// <summary>
+    /// Plateau 7×7 animé de <paramref name="c"/> (déplacement + tir aux stats de BASE, pion de face qui parcourt
+    /// ses déplacements), ancré en haut à gauche de <paramref name="area"/>. Partagé par la carte et la fiche du
+    /// commandant. <paramref name="revealed"/> faux : plateau vierge et silhouette noire (commandant verrouillé).
+    /// </summary>
+    public void DrawMoveBoard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle area, bool revealed,
+        bool allowNative = true) =>
+        MoveAttackGrid.DrawBoardWithPawn(sb, _ctx.Pixel, area, Sprite(c), revealed, domaine, c.MoveRange,
+            c.Traits.Contains(Trait.RepositionnementStrategique),
+            c.Traits.Contains(Trait.AttaqueLibre) ? Domaine.Dame : c.AttackDomaine ?? domaine, c.AttackRange,
+            Math.Max(c.MinAttackRange, c.Traits.Contains(Trait.ZoneMorte) ? 2 : 1), allowNative);
 
     /// <summary>Barre de PV « 1 carré = 1 PV », comme sur la carte de jeu.</summary>
     public void DrawHp(SpriteBatch sb, Rectangle area, int maxHp) => DrawHpBar(sb, area, maxHp);
@@ -172,14 +183,15 @@ public sealed class UnitCardRenderer
     }
 
     /// <summary>Pose la carte à côté de <paramref name="anchor"/>, TOUJOURS rabattue dans <paramref name="bounds"/>.</summary>
-    public void DrawCardNear(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle anchor, Rectangle bounds)
+    public void DrawCardNear(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle anchor, Rectangle bounds,
+        bool allowNative = true)
     {
         var x = anchor.Right + 8;
         if (x + CardW > bounds.Right)
             x = anchor.X - CardW - 8;   // pas la place à droite : bascule à gauche
         x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - CardW));
         var y = Math.Clamp(anchor.Center.Y - CardH / 2, bounds.Y, Math.Max(bounds.Y, bounds.Bottom - CardH));
-        DrawCard(sb, c, domaine, new Rectangle(x, y, CardW, CardH));
+        DrawCard(sb, c, domaine, new Rectangle(x, y, CardW, CardH), allowNative);
     }
 
     // ── Morceaux de carte ────────────────────────────────────────────────────────
@@ -205,25 +217,6 @@ public sealed class UnitCardRenderer
         var startX = rect.X + (rect.Width - (CardTierW + gap + nameW)) / 2;
         DrawTier(sb, tier, new Rectangle(startX, rect.Y + 2, CardTierW, CardTierH));
         _ctx.Font.Draw(sb, name, new Vector2(startX + CardTierW + gap, rect.Y + 3), 1, Palette.Cyan1);
-    }
-
-    private void DrawDomaine(SpriteBatch sb, Domaine domaine, Rectangle area)
-    {
-        if (Tex($"Icons/domaine_{domaine}".ToLowerInvariant()) is { } png)
-        {
-            DrawFit(sb, png, area);
-            return;
-        }
-        var color = domaine switch
-        {
-            Domaine.Cavalier => Palette.Green1,
-            Domaine.Tour => Palette.Navy1,
-            Domaine.Dame => Palette.Yellow1,
-            _ => Palette.Grey,
-        };
-        Fill(sb, Inflate(area, 1), Palette.Black1);
-        Fill(sb, area, color);
-        _ctx.Font.DrawCentered(sb, domaine.ToString()[..1].ToUpperInvariant(), area, 2, Palette.Black1);
     }
 
     private int DrawStat(SpriteBatch sb, Rectangle card, int y, string iconKey, string label, string value, Color valueColor)

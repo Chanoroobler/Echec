@@ -27,7 +27,7 @@ internal sealed partial class WaterFoam
 
     private struct Prop
     {
-        public int Kind;          // indice dans _propSrc / _shadowSrc
+        public int Kind;          // indice dans _propSrc / _shadowSrc (−1 : retiré, cf. WaterFoam.Frog)
         public Point At;          // coin haut-gauche, en pixels de la tuile
         public Point Push;        // direction de la poussée (±1 sur un axe)
         public float Delay;       // retard de la poussée sur l'âge de la vague
@@ -44,7 +44,7 @@ internal sealed partial class WaterFoam
     private readonly List<Rectangle> _propSpots = new();       // placement : emprises déjà prises dans la case (tampon)
 
     /// <summary>Vrai si le plateau a des props : ils se dessinent à chaque frame, même sans vague.</summary>
-    public bool HasProps => _props.Count > 0;
+    public bool HasProps => _props.Count > 0 || _hasFrog;
 
     /// <summary>
     /// Charge tous les PNG du dossier de props d'eau (un nouveau prop = un PNG de plus ; <c>Fleur*</c> = fleur,
@@ -60,11 +60,14 @@ internal sealed partial class WaterFoam
         for (var k = 0; k < _atlas.Count; k++)
         {
             (_atlas.NameStarts(k, "Fleur") ? _flowerKinds : _bigKinds).Add(k);
+            if (_atlas.NameStarts(k, "Nenuphar") && _nenupharKind < 0)
+                _nenupharKind = k;   // le nénuphar de la grenouille (cf. WaterFoam.Frog)
             if (_atlas.NameStarts(k, "Feuille"))
                 _leafKinds.Add(k);
             _propSrc.Add(_atlas.Src[k]);
             _shadowSrc.Add(_atlas.ShadowSrc[k]);
         }
+        BuildWakes();   // sillages qui épousent la silhouette de chaque sorte
     }
 
     private void UnloadProps()
@@ -77,6 +80,7 @@ internal sealed partial class WaterFoam
         _bigKinds.Clear();
         _leafKinds.Clear();
         _flowerKinds.Clear();
+        _nenupharKind = -1;
         _props.Clear();
     }
 
@@ -166,7 +170,8 @@ internal sealed partial class WaterFoam
     public void DrawCellProps(SpriteBatch sb, int index, Rectangle dest, float alpha)
     {
         var entry = _cells[index];
-        if (entry.PropCount == 0 || _propAtlas == null)
+        var frogHere = _hasFrog && index == _frogCell;
+        if ((entry.PropCount == 0 && !frogHere) || _propAtlas == null)
             return;
         var px = Math.Max(1, dest.Width / Face);
         Wave current = default, previous = default;
@@ -185,6 +190,8 @@ internal sealed partial class WaterFoam
             for (var i = entry.PropStart; i < end; i++)
             {
                 var p = _props[i];
+                if (p.Kind < 0)
+                    continue;   // retiré pour faire la place à la grenouille
                 var step = Bob(current, p.Delay);
                 if (step == 0)
                     step = Bob(previous, p.Delay);
@@ -194,32 +201,80 @@ internal sealed partial class WaterFoam
                 var y = dest.Y + (at.Y + (pass == 0 ? 1 : 0)) * px;
                 sb.Draw(_propAtlas, new Rectangle(x, y, src.Width * px, src.Height * px), src, pass == 0 ? shadow : tint);
                 if (pass == 0 && step != 0)
-                    DrawWake(sb, entry.Foam!.Clear!, at, src.Width, src.Height,
+                    DrawWake(sb, entry.Foam!.Clear!, at, p.Kind,
                         new Point(p.Push.X * step, p.Push.Y * step), dest, px, alpha);
             }
+        if (frogHere)
+            DrawFrog(sb, dest, px, current, previous, alpha);   // au-dessus des props de la case
+    }
+
+    // Sillages précalculés par sorte et par sens de déplacement (indice kind × 4 + sens, cf. WakeDir) : ils SUIVENT la
+    // silhouette du prop (bord rond d'un nénuphar, pointe d'une feuille) au lieu d'un V droit sur son rectangle.
+    private Point[][] _wakeNear = Array.Empty<Point[]>(), _wakeFar = Array.Empty<Point[]>();
+
+    private static int WakeDir(Point move) => move.X > 0 ? 0 : move.X < 0 ? 1 : move.Y > 0 ? 2 : 3;
+    private static readonly Point[] WakeMoves = { new(1, 0), new(-1, 0), new(0, 1), new(0, -1) };
+
+    /// <summary>
+    /// Pour chaque sorte et chaque sens : NEAR = les pixels d'eau juste DERRIÈRE la silhouette (là où elle était un
+    /// pixel plus tôt) ; FAR = un pixel encore derrière, un sur deux (trame), plus pâle. Calculé une fois au chargement
+    /// à partir des pixels de la planche.
+    /// </summary>
+    private void BuildWakes()
+    {
+        var tex = _propAtlas!;
+        var all = new Color[tex.Width * tex.Height];
+        tex.GetData(all);
+        _wakeNear = new Point[_propSrc.Count * 4][];
+        _wakeFar = new Point[_propSrc.Count * 4][];
+        var near = new List<Point>();
+        var far = new List<Point>();
+        for (var k = 0; k < _propSrc.Count; k++)
+        {
+            var src = _propSrc[k];
+            bool Solid(int x, int y) => x >= 0 && y >= 0 && x < src.Width && y < src.Height
+                && all[(src.Y + y) * tex.Width + src.X + x].A > 0;
+            for (var d = 0; d < 4; d++)
+            {
+                var mv = WakeMoves[d];
+                near.Clear();
+                far.Clear();
+                for (var y = 0; y < src.Height; y++)
+                    for (var x = 0; x < src.Width; x++)
+                    {
+                        if (!Solid(x, y))
+                            continue;
+                        var q = new Point(x - mv.X, y - mv.Y);   // derrière ce pixel
+                        if (!Solid(q.X, q.Y) && !near.Contains(q))
+                            near.Add(q);
+                    }
+                foreach (var q in near)
+                {
+                    var r = new Point(q.X - mv.X, q.Y - mv.Y);
+                    if (!Solid(r.X, r.Y) && !near.Contains(r) && !far.Contains(r) && ((r.X + r.Y) & 1) == 0)
+                        far.Add(r);
+                }
+                _wakeNear[k * 4 + d] = near.ToArray();
+                _wakeFar[k * 4 + d] = far.ToArray();
+            }
+        }
     }
 
     /// <summary>
-    /// Petit sillage en V derrière un prop qui bouge (sens <paramref name="move"/>) : une ligne claire juste derrière,
-    /// un peu plus étroite que lui, puis ses deux bouts écartés un pixel plus loin. Jamais sur un rocher ni hors tuile.
+    /// Sillage derrière un prop qui bouge (sens <paramref name="move"/>), qui épouse sa silhouette : une ligne claire
+    /// collée à son bord arrière, une ligne tramée plus pâle un pixel plus loin. Jamais sur un rocher ni hors tuile.
     /// </summary>
-    private void DrawWake(SpriteBatch sb, byte[] clear, Point at, int w, int h, Point move, Rectangle dest, int px, float alpha)
+    private void DrawWake(SpriteBatch sb, byte[] clear, Point at, int kind, Point move, Rectangle dest, int px, float alpha)
     {
-        var back = new Point(-move.X, -move.Y);
-        var perp = new Point(Math.Abs(move.Y), Math.Abs(move.X));   // le long du bord arrière
-        var len = move.Y != 0 ? w : h;
-        // Premier pixel de la rangée juste derrière le bord arrière.
-        var start = new Point(back.X > 0 ? at.X + w : back.X < 0 ? at.X - 1 : at.X,
-                              back.Y > 0 ? at.Y + h : back.Y < 0 ? at.Y - 1 : at.Y);
-        var near = WakeColor * (0.6f * alpha);
-        var far = WakeColor * (0.32f * alpha);
-        if (len < 3)
-            Pixel(start.X + perp.X * (len / 2), start.Y + perp.Y * (len / 2), near);
-        else
-            for (var i = 1; i < len - 1; i++)
-                Pixel(start.X + perp.X * i, start.Y + perp.Y * i, near);
-        Pixel(start.X + back.X, start.Y + back.Y, far);
-        Pixel(start.X + back.X + perp.X * (len - 1), start.Y + back.Y + perp.Y * (len - 1), far);
+        var i = kind * 4 + WakeDir(move);
+        if (i >= _wakeNear.Length)
+            return;
+        var nearColor = WakeColor * (0.6f * alpha);
+        var farColor = WakeColor * (0.32f * alpha);
+        foreach (var p in _wakeNear[i])
+            Pixel(at.X + p.X, at.Y + p.Y, nearColor);
+        foreach (var p in _wakeFar[i])
+            Pixel(at.X + p.X, at.Y + p.Y, farColor);
 
         void Pixel(int x, int y, Color color)
         {

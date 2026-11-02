@@ -125,6 +125,7 @@ internal sealed partial class WaterFoam
         foreach (var t in _rings)
             t?.Dispose();
         UnloadProps();
+        UnloadFrog();
         _tiles.Clear();
         _sheetPixels.Clear();
         _cells.Clear();
@@ -137,6 +138,7 @@ internal sealed partial class WaterFoam
     public void ResetBoard()
     {
         _cells.Clear();
+        _hasFrog = false;
         _regionOf.Clear();
         _regions.Clear();
         _openCells.Clear();
@@ -260,10 +262,12 @@ internal sealed partial class WaterFoam
         // Masques du plateau calculés : la copie CPU des planches n'a plus d'usage (relue au besoin pour une autre
         // map) — on ne garde pas ~0,5-1 Mo de pixels en mémoire pour rien.
         _sheetPixels.Clear();
+        PlaceFrog();   // étendues connues (le nénuphar de la grenouille suit les vagues de la sienne)
     }
 
     public void Update(float dt)
     {
+        UpdateFrog(dt);   // avant le calcul d'Active : ses ronds dans l'eau comptent
         UpdateCore(dt);
         var active = _fishCount > 0;
         for (var i = 0; i < _regions.Count && !active; i++)

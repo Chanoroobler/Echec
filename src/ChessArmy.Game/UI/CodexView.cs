@@ -677,8 +677,10 @@ public sealed class CodexView
 
     private const int CardPad = 12;
     private const int CardTierW = 23, CardTierH = 9;
-    private const int CardDomaine = 39;
-    private const int CardW = 168, CardH = 340;
+    // Même largeur que la carte de jeu (CombatCardW) ; hauteur = 340 d'origine + 6 : le plateau 7×7 (115 px)
+    // remplace la bande sprite + icône de domaine (64 + 6 + 39).
+    private const int CardW = 248, CardH = 346;
+    private const int KwBoxW = 168;                // largeur des popups de traits (indépendante de la carte)
 
     /// <summary>Pose la carte du pion à côté de la tuile, TOUJOURS rabattue dans <paramref name="bounds"/>.</summary>
     private void DrawUnitCardTooltip(SpriteBatch sb, UnitClass c, Rectangle anchor, Rectangle bounds)
@@ -686,7 +688,7 @@ public sealed class CodexView
         // Carte + pile de traits forment UN bloc collé (pile côté extérieur) : on le pose du côté de la tuile
         // où il tient en entier, sinon la pile finissait de l'autre côté de la tuile (cf. retour « trop loin »).
         var boxes = KeywordBoxes(c);
-        var blockW = boxes.Count > 0 ? 2 * CardW + KwSideGap : CardW;
+        var blockW = boxes.Count > 0 ? CardW + KwSideGap + KwBoxW : CardW;
         bool onRight;
         if (anchor.Right + 8 + blockW <= bounds.Right) onRight = true;
         else if (anchor.X - 8 - blockW >= bounds.X) onRight = false;
@@ -715,7 +717,7 @@ public sealed class CodexView
         var boxes = new List<(string Label, List<string> Lines, int H)>();
         foreach (var kw in keywords)
         {
-            var lines = Wrap(SentenceCase(KeywordDescription(kw)), CardW - 2 * KwPad, 1);
+            var lines = Wrap(SentenceCase(KeywordDescription(kw)), KwBoxW - 2 * KwPad, 1);
             boxes.Add((kw.Label, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad));
         }
         return boxes;
@@ -729,13 +731,13 @@ public sealed class CodexView
         Rectangle card, bool outwardRight, Rectangle bounds)
     {
         var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
-        var x = outwardRight ? card.Right + KwSideGap : card.X - KwSideGap - CardW;
-        x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - CardW));
+        var x = outwardRight ? card.Right + KwSideGap : card.X - KwSideGap - KwBoxW;
+        x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - KwBoxW));
         var y = Math.Clamp(card.Y, bounds.Y, Math.Max(bounds.Y, bounds.Bottom - total));
 
         foreach (var (label, lines, h) in boxes)
         {
-            var box = new Rectangle(x, y, CardW, h);
+            var box = new Rectangle(x, y, KwBoxW, h);
             _ctx.Style.DrawPanel(sb, box);
             _ctx.Font.Draw(sb, label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, Palette.Cyan1);
             var ly = box.Y + KwPad + KwTitleH;
@@ -795,15 +797,15 @@ public sealed class CodexView
         _ctx.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
         y += titleH + 8;
 
-        var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
-        var front = Tex($"Units/{c.Asset}_front") ?? Tex($"Units/{c.Asset}");
-        if (front != null)
-            sb.Draw(front, sprite, Color.White);
-        y = sprite.Bottom + 6;
-
-        var dom = new Rectangle(rect.X + (rect.Width - CardDomaine) / 2, y, CardDomaine, CardDomaine);
-        DrawCardDomaine(sb, domaine, dom);
-        y = dom.Bottom + 10;
+        // Grand plateau 7×7 animé (même rendu que la carte de combat) : le pion y parcourt ses déplacements, aux
+        // stats de BASE de la classe (pas de run dans le codex, donc ni équipement ni arbre). Pion net : couche écran.
+        var board = new Rectangle(rect.X + (rect.Width - MoveAttackGrid.BoardOuter) / 2, y,
+            MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
+        MoveAttackGrid.DrawBoardWithPawn(sb, _ctx.Pixel, board, Tex($"Units/{c.Asset}_front") ?? Tex($"Units/{c.Asset}"),
+            revealed: true, domaine, c.MoveRange, c.Traits.Contains(Trait.RepositionnementStrategique),
+            c.Traits.Contains(Trait.AttaqueLibre) ? Domaine.Dame : c.AttackDomaine ?? domaine, c.AttackRange,
+            Math.Max(c.MinAttackRange, c.Traits.Contains(Trait.ZoneMorte) ? 2 : 1));
+        y = board.Bottom + 10;
 
         var bar = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
         DrawCardHpBar(sb, bar, c.MaxHp);
@@ -850,25 +852,6 @@ public sealed class CodexView
         Fill(sb, Inflate(area, 1), Palette.Black1);
         Fill(sb, area, Palette.Navy2);
         _ctx.Font.DrawCentered(sb, $"T{tier}", area, 1, Palette.White);
-    }
-
-    private void DrawCardDomaine(SpriteBatch sb, Domaine domaine, Rectangle area)
-    {
-        if (Tex($"Icons/domaine_{domaine}".ToLowerInvariant()) is { } png)
-        {
-            DrawFit(sb, png, area);
-            return;
-        }
-        var color = domaine switch
-        {
-            Domaine.Cavalier => Palette.Green1,
-            Domaine.Tour => Palette.Navy1,
-            Domaine.Dame => Palette.Yellow1,
-            _ => Palette.Grey,
-        };
-        Fill(sb, Inflate(area, 1), Palette.Black1);
-        Fill(sb, area, color);
-        _ctx.Font.DrawCentered(sb, domaine.ToString()[..1].ToUpperInvariant(), area, 2, Palette.Black1);
     }
 
     private int DrawCardStat(SpriteBatch sb, Rectangle card, int y, string iconKey, string label, string value, Color valueColor)
@@ -963,7 +946,7 @@ public sealed class CodexView
             keywords.Add(UnitKeywords.Ephemeral);
         var boxes = KeywordBoxes(keywords);
         if (boxes.Count > 0)
-            DrawKeywordPopups(sb, boxes, box, box.Right + KwSideGap + CardW <= bounds.Right, bounds);
+            DrawKeywordPopups(sb, boxes, box, box.Right + KwSideGap + KwBoxW <= bounds.Right, bounds);
     }
 
     private Rectangle DrawTooltipPanel(SpriteBatch sb, string title, Color titleColor,

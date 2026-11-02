@@ -80,9 +80,9 @@ const B = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/49
 const ss = id => B + id + '/ss_' + id + '.600x338.jpg';
 const IMG = {
   capsule: B + '7b012e6c617442f20b5814fcf5b0c25f6315faef/capsule_616x353.jpg',
-  board:   ss('ae62991ab1400bbe88be107ee5e30f210d6d469d'),
-  recrue:  ss('0f59ed86b052d4b193beabdfb1e45b3703e1d540'),
-  water:   ss('a792ad34620814e9f4e797779f10fd58b6b7e4a1'),
+  board:   ss('fe063525eb63e2f384c57927fd2a823f4392fe24'),
+  recrue:  ss('e6b9301c9adcba0a711d471efa72445fe85da0bb'),
+  cmd:     ss('ab0cd0bc2a6ca7d67d0b1c330d3a20f1478066fb'),
   trailer: 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/257380231/3ab47bdbf81286c71fdf118c26d88f38a237e1c1/movie_600x337.jpg'
 };
 
@@ -113,7 +113,7 @@ const T = {
     trailer: '▶ Voir la bande-annonce',
     end: `Aucune obligation bien sûr. Si ça ne te parle pas, pas de souci. Et si tu as des questions sur le jeu, je réponds avec plaisir.`,
     bye: 'Merci pour ton temps,',
-    caps: ['Le plateau', 'Le recrutement', 'Les maps']
+    caps: ['Le plateau', 'Le recrutement', 'Le choix du commandant']
   },
   en: {
     objet: c => `Chess Army × ${c}: a roguelike where your chess pieces die for real`,
@@ -141,7 +141,7 @@ const T = {
     trailer: '▶ Watch the trailer',
     end: `No pressure at all. If it's not for you, no worries. And if you have any questions about the game, I'm happy to answer.`,
     bye: 'Thanks for your time,',
-    caps: ['The board', 'Recruitment', 'The maps']
+    caps: ['The board', 'Recruitment', 'Choosing a commander']
   }
 };
 
@@ -184,6 +184,9 @@ function build() {
 
   $('mail').innerHTML = `
 <table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:10px;overflow:hidden;border-collapse:separate">
+  <tr><td style="background:#1d232d;padding:0">
+    <a href="${STEAM}" target="_blank"><img src="${IMG.capsule}" width="600" alt="Chess Army" style="display:block;width:100%;max-width:600px;height:auto;border:0"></a>
+  </td></tr>
   <tr><td style="padding:26px 28px 6px">
     <p style="${P}">${t.hello(p)}</p>
     <p style="${P}">${t.intro(s, pseudoHTML())}</p>
@@ -200,15 +203,14 @@ function build() {
   </td></tr>
   <tr><td style="padding:0 28px"><div style="border-top:1px solid #e3ded3;height:1px;line-height:1px;font-size:1px">&nbsp;</div></td></tr>
   <tr><td style="padding:22px 28px 14px">
-    <div style="${F}font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;color:#b07a1c;margin:0 0 12px">${t.about}</div>
-    <a href="${STEAM}" target="_blank"><img src="${IMG.capsule}" width="544" alt="Chess Army" style="display:block;width:100%;height:auto;border:0;border-radius:6px"></a>
+    <div style="${F}font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;color:#b07a1c;margin:0">${t.about}</div>
   </td></tr>
   <tr><td style="padding:0 28px 6px">
     <p style="${P}">${t.pitch}</p>
   </td></tr>
   ${feature(IMG.board, 'Chess Army', t.caps[0], t.f1t, t.f1)}
   ${feature(IMG.recrue, 'Chess Army', t.caps[1], t.f2t, t.f2)}
-  ${feature(IMG.water, 'Chess Army', t.caps[2], t.f3t, t.f3)}
+  ${feature(IMG.cmd, 'Chess Army', t.caps[2], t.f3t, t.f3)}
   <tr><td style="padding:0 28px 18px">
     <a href="${STEAM}" target="_blank" style="text-decoration:none">
       <img src="${IMG.trailer}" width="544" alt="Trailer" style="display:block;width:100%;height:auto;border:0;border-radius:6px">

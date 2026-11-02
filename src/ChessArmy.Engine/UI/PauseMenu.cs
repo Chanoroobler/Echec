@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework;
 namespace ChessArmy.Engine.UI;
 
 /// <summary>Action signalée à la scène de jeu après un clic dans le menu.</summary>
-public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged, ThemeChanged, BloodChanged }
+public enum MenuAction { None, Resume, Codex, RestartMission, MainMenu, Quit, GraphicsChanged, VolumeChanged, LanguageChanged, ThemeChanged, BloodChanged, SkipTutorialChanged }
 
 /// <summary>Quel panneau du menu est affiché.</summary>
 public enum MenuPanel { Root, Options }
@@ -28,6 +28,7 @@ public enum PauseElement
     LangLeft, LangRight,
     ThemeLeft, ThemeRight,
     BloodLeft, BloodRight,
+    TutoLeft, TutoRight,
     Back,
 }
 
@@ -50,6 +51,7 @@ public struct PauseLayout
     public Rectangle LangRow, LangLeft, LangValue, LangRight;
     public Rectangle ThemeRow, ThemeLeft, ThemeValue, ThemeRight;
     public Rectangle BloodRow, BloodLeft, BloodValue, BloodRight;
+    public Rectangle TutoRow, TutoLeft, TutoValue, TutoRight;
     public Rectangle Back;
 }
 
@@ -96,7 +98,10 @@ public sealed class PauseMenu
         _allowRestart = allowRestart;
 
         var set = new SortedSet<(int w, int h)>();
-        foreach (var r in BaseResolutions) set.Add((r.X, r.Y));
+        // Pas de résolution plus grande que l'écran : la fenêtre déborderait (et serait réduite à l'Apply).
+        foreach (var r in BaseResolutions)
+            if (r.X <= nativeRes.X && r.Y <= nativeRes.Y)
+                set.Add((r.X, r.Y));
         set.Add((nativeRes.X, nativeRes.Y));
         _resolutions = set.Select(t => new Point(t.w, t.h)).ToList();
 
@@ -123,7 +128,7 @@ public sealed class PauseMenu
     private int _focus;
 
     public int Focus => _focus;
-    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 9;
+    private int FocusCount => Panel == MenuPanel.Root ? RootItems.Count : 10;
     public void MoveFocus(int delta)
     {
         var n = FocusCount;
@@ -139,7 +144,7 @@ public sealed class PauseMenu
         return _focus switch
         {
             0 => l.ResRow, 1 => l.ModeRow,
-            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, 6 => l.ThemeRow, 7 => l.BloodRow,
+            2 => l.MasterRow, 3 => l.MusicRow, 4 => l.SfxRow, 5 => l.LangRow, 6 => l.ThemeRow, 7 => l.BloodRow, 8 => l.TutoRow,
             _ => l.Back,
         };
     }
@@ -170,8 +175,9 @@ public sealed class PauseMenu
             };
         return _focus switch
         {
-            7 => ToggleBlood(),   // A bascule aussi le sang (bascule à deux états)
-            8 => BackAction(),
+            7 => ToggleBlood(),   // A bascule aussi le sang / le tuto (bascules à deux états)
+            8 => ToggleSkipTutorial(),
+            9 => BackAction(),
             _ => MenuAction.None,   // les pas (résolution, mode, volumes, langue, thème) se règlent avec gauche/droite
         };
     }
@@ -191,6 +197,7 @@ public sealed class PauseMenu
             case 5: StepLanguage(dir); return MenuAction.LanguageChanged;
             case 6: StepTheme(dir); return MenuAction.ThemeChanged;
             case 7: return ToggleBlood();
+            case 8: return ToggleSkipTutorial();
             default: return MenuAction.None;
         }
     }
@@ -235,6 +242,15 @@ public sealed class PauseMenu
     {
         _s.Blood = !_s.Blood;
         return MenuAction.BloodChanged;
+    }
+
+    /// <summary>Tutoriel passé d'office au lancement d'une campagne : OUI / NON.</summary>
+    public string SkipTutorialText => Loc.T(_s.SkipTutorial ? "common.yes" : "common.no");
+
+    private MenuAction ToggleSkipTutorial()
+    {
+        _s.SkipTutorial = !_s.SkipTutorial;
+        return MenuAction.SkipTutorialChanged;
     }
 
     /// <summary>Nom du thème de couleur de l'UI courant.</summary>
@@ -300,7 +316,7 @@ public sealed class PauseMenu
 
     private PauseLayout OptionsLayout(int vpW, int vpH)
     {
-        int h = Pad + TitleH + Gap + (8 * BtnH + 7 * Gap) + Gap + BtnH + Pad;
+        int h = Pad + TitleH + Gap + (9 * BtnH + 8 * Gap) + Gap + BtnH + Pad;
         var panel = Centered(vpW, vpH, OptionsW, h);
 
         var l = new PauseLayout { Panel = panel };
@@ -339,6 +355,10 @@ public sealed class PauseMenu
 
         l.BloodRow = new Rectangle(panel.X, y, panel.Width, BtnH);
         (l.BloodLeft, l.BloodValue, l.BloodRight) = Stepper(ctrlX, y);
+        y += BtnH + Gap;
+
+        l.TutoRow = new Rectangle(panel.X, y, panel.Width, BtnH);
+        (l.TutoLeft, l.TutoValue, l.TutoRight) = Stepper(ctrlX, y);
         y += BtnH + Gap;
 
         int backW = 130;
@@ -393,6 +413,7 @@ public sealed class PauseMenu
         if (l.ThemeRight.Contains(p)) { StepTheme(+1); return MenuAction.ThemeChanged; }
 
         if (l.BloodLeft.Contains(p) || l.BloodRight.Contains(p)) return ToggleBlood();
+        if (l.TutoLeft.Contains(p) || l.TutoRight.Contains(p)) return ToggleSkipTutorial();
 
         if (l.Back.Contains(p)) { Back(); return MenuAction.None; }
         return MenuAction.None;
@@ -433,6 +454,8 @@ public sealed class PauseMenu
         if (l.ThemeRight.Contains(p)) return PauseElement.ThemeRight;
         if (l.BloodLeft.Contains(p)) return PauseElement.BloodLeft;
         if (l.BloodRight.Contains(p)) return PauseElement.BloodRight;
+        if (l.TutoLeft.Contains(p)) return PauseElement.TutoLeft;
+        if (l.TutoRight.Contains(p)) return PauseElement.TutoRight;
         if (l.Back.Contains(p)) return PauseElement.Back;
         return PauseElement.None;
     }

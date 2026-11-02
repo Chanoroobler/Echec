@@ -151,6 +151,18 @@ public sealed class GameplayScene : Scene
 
     private SpecialRecap? _specialRecap;       // bilan à valider ; non-null = modale ouverte (gèle le recrutement)
 
+    /// <summary>
+    /// Bilan d'un BOSS vaincu, FIGÉ à la clôture du combat avant la permadeath et la synchro des kills. Affiché
+    /// par <see cref="DrawBossRecap"/> avant le recrutement, ou avant le récap de fin de run pour le boss final.
+    /// </summary>
+    private readonly record struct BossRecap(
+        Unit Boss, int Turns, int Kills, int Losses, int BossDamage, Unit? FinalBlow,
+        UnitClass? MvpClass, int MvpKills, int Phase, int CombatNumber);
+
+    private BossRecap? _bossRecap;             // non-null = popup « boss vaincu » ouverte (gèle le recrutement)
+    private Rectangle _bossRecapBtnRect = Rectangle.Empty;   // bouton « continuer » (hit-test souris)
+    private int _battleRounds;                 // rounds complets (tour joueur + tour ennemi) du combat courant
+
     // Écran de récompense « protéger » (post-combat) : les pions gagnés (1 par paysan sauvé) sont affichés
     // en cartes ; un clic les envoie TOUS en réserve (pas de draft « choisir 1 parmi 3 »). Non-null = actif.
     private List<UnitSpec>? _protectReward;
@@ -267,6 +279,11 @@ public sealed class GameplayScene : Scene
     private static readonly Color SunsetTint = new(255, 206, 168);
     /// <summary>Ciel couvert de pluie : teinte gris-bleu multipliée EN PLUS de celle de l'heure.</summary>
     private static readonly Color RainTint = new(204, 212, 226);
+    /// <summary>Map de NEIGE : la pluie y tombe en flocons (cf. SnowFx), sans flaques ni ronds dans l'eau, sous un ciel
+    /// de neige plus clair. Décidé à chaque plateau (cf. DetectSnowMap).</summary>
+    private bool _snowMap;
+    private static readonly Color SnowTint = new(222, 228, 240);
+    private readonly SnowFx _snow = new();
     private readonly RainFx _rain = new();
 
     /// <summary>Météo affichée à un instant : tout ce que le rendu en lit, calculé UNE fois par valeur de l'horloge
@@ -315,10 +332,11 @@ public sealed class GameplayScene : Scene
     private bool _raining => Wx.Rain > 0.001f;
     private bool _night => Wx.Night > 0.001f;
 
-    private static Color TintOf(Ambience a, bool rain)
+    private Color TintOf(Ambience a, bool rain)
     {
         var tint = a switch { Ambience.Night => NightLight.Ambient, Ambience.Sunset => SunsetTint, _ => Color.White };
-        return rain ? new Color(tint.R * RainTint.R / 255, tint.G * RainTint.G / 255, tint.B * RainTint.B / 255) : tint;
+        var sky = _snowMap ? SnowTint : RainTint;   // ciel de neige ou de pluie
+        return rain ? new Color(tint.R * sky.R / 255, tint.G * sky.G / 255, tint.B * sky.B / 255) : tint;
     }
 
     private static Color RayOf(Ambience a, bool rain) =>
@@ -894,6 +912,7 @@ public sealed class GameplayScene : Scene
         _hearts.Load(Context.GraphicsDevice, AssetPath("Assets/Anim/CoeurFox.png"));
         _waterFoam = new WaterFoam(Context.GraphicsDevice);   // masques calculés à la demande, par tuile d'eau
         _waterFoam.LoadProps(AssetPath("Assets/Props/Water"));   // feuilles / fleurs posées au hasard sur l'eau
+        _waterFoam.LoadFrog(AssetPath("Assets/Anim/Grenouille.png"));   // une grenouille sur son nénuphar, s'il y a la place
         _grassProps = new SurfaceProps(Context.GraphicsDevice, bigPerTile: 1.5f, smallPerTile: 4.5f, minRegion: 0);
         _grassProps.Limit("Branch", 1, 2);      // 1 à 2 branches par plateau
         _grassProps.Limit("Feuillage2", 2, 3);  // 2 à 3 Feuillage2 par plateau
@@ -913,6 +932,7 @@ public sealed class GameplayScene : Scene
         _sunRays.Load(Context.GraphicsDevice);
         _nightLight.Load(Context.GraphicsDevice);
         _rain.Load(Context.GraphicsDevice);
+        _snow.Load(Context.GraphicsDevice);
         _butterfly.PerchFree = c => _match?.UnitAt(c) == null;   // pas sur un buisson où se cache un pion
         _butterfly.Landed = OnButterflyLanded;                   // la nuit, un papillon posé sur un buisson en fait sortir des lucioles
         Func<Cell, bool> onGrass = c => FoxCellFree(c, snow: false), onSnow = c => FoxCellFree(c, snow: true);
@@ -997,6 +1017,7 @@ public sealed class GameplayScene : Scene
         _sunRays.Unload();
         _nightLight.Unload();
         _rain.Unload();
+        _snow.Unload();
         _chuteSprite?.Dispose();
         _chuteSprite = null;
         _equipSlotBg?.Dispose();
@@ -1063,33 +1084,12 @@ public sealed class GameplayScene : Scene
                 var map = MapLoader.Parse(System.IO.File.ReadAllText(file), _catalog);
                 if (map.IsDraft)                  // BROUILLON : map WIP exclue du jeu (jamais tirée)
                     continue;
-                if (Context.Settings.IsDemo && IsIceMap(map))   // DÉMO : pas de maps de glace
+                if (Context.Settings.IsDemo && map.IsIceThemed)   // DÉMO : pas de maps de glace
                     continue;
                 _maps.Add(map);
             }
             catch { /* map mal formée : ignorée, les autres restent chargées */ }
         }
-    }
-
-    /// <summary>Préfixe des identifiants de tuiles du tileset hivernal (cf. Assets/Tiles/tiles.json).</summary>
-    private const string IceTilePrefix = "neige_";
-
-    /// <summary>
-    /// Map au thème GLACE ? Mesuré sur les TUILES (majorité de tuiles du tileset « neige ») et non sur le nom
-    /// du fichier : renommer une map ne doit pas changer ce qu'elle est, et une map d'un autre thème qui pose
-    /// quelques plaques de glace décoratives n'est pas concernée. Ces maps sont écartées de la DÉMO.
-    /// </summary>
-    private static bool IsIceMap(MapData map)
-    {
-        var ice = 0;
-        var total = map.Width * map.Height;
-        if (total <= 0)
-            return false;
-        for (var row = 0; row < map.Height; row++)
-            for (var col = 0; col < map.Width; col++)
-                if (map.TileAt(new Cell(col, row)).Id.StartsWith(IceTilePrefix, System.StringComparison.OrdinalIgnoreCase))
-                    ice++;
-        return ice * 2 > total;
     }
 
     /// <summary>
@@ -1843,9 +1843,12 @@ public sealed class GameplayScene : Scene
         // commandant encore verrouillé (cf. Bosses.AssignForRun). À poser AVANT tout combat de boss.
         _run.SetUnlockedCommanders(Context.Saves.UnlockedCommanders());
 
-        // Nouvelle campagne → tutoriel « combat zéro » (skippable). Reprise → direct au combat réel.
+        // Nouvelle campagne → tutoriel « combat zéro » (skippable), sauf option « Passer le tuto » qui enchaîne
+        // directement comme un skip (EndTutorial : commandant choisi + Reset + placement). Reprise → combat réel.
         if (resumed)
             BeginPlacement();
+        else if (Context.Settings.SkipTutorial)
+            EndTutorial();
         else
             BeginTutorial();
     }
@@ -1860,6 +1863,7 @@ public sealed class GameplayScene : Scene
         _protectReward = null;   // écran de récompense « protéger » du combat précédent : soldé
         _protectRewardFlight = 0f;
         _specialRecap = null;    // bilan de la mission précédente : soldé
+        _bossRecap = null;       // popup « boss vaincu » du combat précédent : soldée
         _reserveSel = null;
         _reserveFuseChoice = false;
         _reserveZone = false;
@@ -1878,6 +1882,7 @@ public sealed class GameplayScene : Scene
             Columns = map.Width;
             Rows = map.Height;
             _battlefield = Battlefield.FromMap(map);
+            PlaceSnowmen();   // map de neige : au moins un bonhomme de neige à la place d'un rocher
         }
         else
         {
@@ -1885,6 +1890,7 @@ public sealed class GameplayScene : Scene
             Rows = size;
             _battlefield = _run.BuildBattlefield(Columns, Rows);
         }
+        DetectSnowMap();   // neige : la pluie de cette mission tombera en flocons
         // Objets de la map (calque "objects") : buissons (couvert permanent), recrues (pion « ? »),
         // coffres communs. Les buissons doivent être recensés AVANT le Match (ils modifient les dégâts).
         _bushCells.Clear();
@@ -2422,6 +2428,7 @@ public sealed class GameplayScene : Scene
         // Mission spéciale : le compte à rebours de tours démarre au combat (le joueur joue le round 1 en
         // premier). La limite vient de la map (`turnLimit`) si elle en fixe une, sinon la valeur par défaut.
         _specialRoundsLeft = SpecialTurnBudget();
+        _battleRounds = 0;
 
         // Base de référence : un allié DÉJÀ posé sur une recrue (placement) ne déclenche pas — seule une
         // ENTRÉE pendant le combat compte.
@@ -3280,6 +3287,9 @@ public sealed class GameplayScene : Scene
             case RunPhase.Victory:
             case RunPhase.Defeat:
             {
+                // Boss final vaincu : sa popup de bilan d'abord, le récap de fin de run ensuite.
+                if (UpdateBossRecap())
+                    break;
                 var demoWin = _run.Phase == RunPhase.Victory && Context.Settings.IsDemo;
                 // Popup de fin de DÉMO (après le recap) : le bouton (souris) ou Y (manette) ouvre Steam sans quitter ;
                 // sinon clic / A / Entrée ramène au menu.
@@ -6667,7 +6677,7 @@ public sealed class GameplayScene : Scene
             (viewport.Height - CombatCardH) / 2, CombatCardW, CombatCardH);
         DrawCardLayout(sb, cardRect, soldier, Faction.Player, Domaine.Dame, soldier.MaxHp, soldier.MaxHp);
 
-        // Ordre haut→bas sur la carte : icône de DÉPLACEMENT (domaine), PV, Puissance, Mouvement, Portée.
+        // Ordre haut→bas sur la carte : plateau de DÉPLACEMENT / TIR, PV, Puissance, Mouvement, Portée.
         string[] keys = { "tuto.card_domaine", "tuto.card_hp", "tuto.card_power", "tuto.card_move", "tuto.card_range" };
         var idx = System.Math.Clamp(_tutorialCardIndex, 0, keys.Length - 1);
 
@@ -6697,8 +6707,8 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Rectangle d'une donnée de la carte (0=icône domaine/déplacement, 1=PV, 2=Puissance, 3=Mouvement, 4=Portée),
-    /// positions calquées sur <see cref="DrawCardLayout"/> (titre 22, sprite 64+6, domaine 39+10, barre PV 14+2, texte 14, 3 lignes de 36).
+    /// Rectangle d'une donnée de la carte (0=plateau de déplacement/tir, 1=PV, 2=Puissance, 3=Mouvement, 4=Portée),
+    /// positions calquées sur <see cref="DrawCardLayout"/> (titre 22, plateau 115+10, barre PV 14+2, texte 14, 3 lignes de 36 ; carte du Soldat : sans rangée d'icônes).
     /// </summary>
     private Rectangle TutorialCardStatRect(Rectangle card, int index)
     {
@@ -6706,11 +6716,12 @@ public sealed class GameplayScene : Scene
         var inner = card.Width - 2 * CardPad;
         return index switch
         {
-            0 => new Rectangle(card.X + (card.Width - 39) / 2, y0 + 92, 39, 39),  // icône domaine (déplacement)
-            1 => new Rectangle(card.X + CardPad, y0 + 141, inner, 30),            // PV (barre + texte pv/max)
-            2 => new Rectangle(card.X + CardPad, y0 + 171, inner, 32),            // Puissance
-            3 => new Rectangle(card.X + CardPad, y0 + 207, inner, 32),            // Mouvement
-            _ => new Rectangle(card.X + CardPad, y0 + 243, inner, 32),            // Portée
+            0 => new Rectangle(card.X + (card.Width - MoveAttackGrid.BoardOuter) / 2, y0 + 22,
+                MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter),          // plateau de déplacement / tir
+            1 => new Rectangle(card.X + CardPad, y0 + 147, inner, 30),            // PV (barre + texte pv/max)
+            2 => new Rectangle(card.X + CardPad, y0 + 177, inner, 32),            // Puissance
+            3 => new Rectangle(card.X + CardPad, y0 + 213, inner, 32),            // Mouvement
+            _ => new Rectangle(card.X + CardPad, y0 + 249, inner, 32),            // Portée
         };
     }
 
@@ -6941,10 +6952,11 @@ public sealed class GameplayScene : Scene
         if (_match.Winner == Faction.Player)
         {
             AccumulateCombatStats();   // récap : contribution du combat (AVANT sync/permadeath)
+            _bossRecap = _run.IsBossCombat && _tutorial == null ? CaptureBossRecap() : null;   // AVANT la synchro des kills
             SyncKillsToSpecs();   // fige les kills du combat sur les gabarits survivants AVANT permadeath
             var casualties = PlayerCasualties();
             UnlockBossCommanderIfFinal();   // battre le boss de dernière phase débloque son commandant lié
-            _run.CompleteCombat(casualties, _enemyKillOrder);
+            _run.CompleteCombat(casualties, _enemyKillOrder);   // boss final → Victory : popup puis récap de fin
             GrantEliteReplacements(casualties);
             GrantSurvivantStacks(casualties);
             GrantCommanderHitPoints();
@@ -7025,6 +7037,34 @@ public sealed class GameplayScene : Scene
             return;
         if (_run.BossOfPhase(_run.PhaseIndex).UnlocksCommander is { } id && Context.Saves.UnlockCommander(id))
             _run.Stats.AddUnlockedCommander(id);   // NOUVEAU déblocage → récap (id : traduit à l'affichage)
+    }
+
+    /// <summary>
+    /// Fige le bilan d'un combat de boss GAGNÉ (cf. <see cref="BossRecap"/>). À appeler AVANT
+    /// <see cref="SyncKillsToSpecs"/> : les kills du combat se lisent en écart au total du gabarit.
+    /// Null si le boss ne figure pas au journal des morts (ne devrait pas arriver).
+    /// </summary>
+    private BossRecap? CaptureBossRecap()
+    {
+        Unit? boss = null;
+        foreach (var (_, dead) in _match.DeathLog)
+            if (dead.Faction == Faction.Enemy && dead.IsEssential) { boss = dead; break; }
+        if (boss == null)
+            return null;
+
+        int kills = 0, losses = 0, mvpKills = 0;
+        UnitClass? mvp = null;
+        foreach (var (unit, spec) in _playerSpec)
+        {
+            var k = System.Math.Max(0, unit.Kills - spec.Kills);
+            kills += k;
+            if (!unit.IsAlive && !spec.Essential)
+                losses++;
+            if (k > mvpKills) { mvpKills = k; mvp = unit.Class; }
+        }
+        // Le boss tombe pendant le tour du joueur : le round entamé compte.
+        return new BossRecap(boss, _battleRounds + 1, kills, losses, boss.DamageTaken, boss.KilledBy,
+            mvp, mvpKills, _run.PhaseIndex, _run.CombatNumber);
     }
 
     /// <summary>
@@ -8407,6 +8447,7 @@ public sealed class GameplayScene : Scene
     /// puis déclenche les « Séismes » des pions joueur (trait <see cref="Trait.Seisme"/>).</summary>
     private void OnEnemyTurnResolved()
     {
+        _battleRounds++;
         if (HasSpecialTurnLimit && _specialRoundsLeft > 0)   // « sauver » est une course : pas de décompte
             _specialRoundsLeft--;
         TriggerSeismes();
@@ -8438,6 +8479,23 @@ public sealed class GameplayScene : Scene
         Context.Sounds.Play("seisme");
     }
 
+    /// <summary>
+    /// Popup « boss vaincu » ouverte : la ferme sur le bouton « continuer » (souris), A ou Entrée. Renvoie vrai
+    /// tant qu'elle était ouverte cette image (l'appelant gèle alors le reste : recrutement ou récap de fin).
+    /// </summary>
+    private bool UpdateBossRecap()
+    {
+        if (_bossRecap == null)
+            return false;
+        if ((Context.Input.WasLeftClicked && _bossRecapBtnRect.Contains(Context.Input.MousePosition))
+            || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasConfirmPressed)
+        {
+            _bossRecap = null;
+            Context.Sounds.Play("menu_close");
+        }
+        return true;
+    }
+
     private void UpdateRecruitment(GameTime gameTime)
     {
         StartWeatherTransition();   // le temps passe : fondu vers la météo de la mission suivante (une fois)
@@ -8451,6 +8509,9 @@ public sealed class GameplayScene : Scene
             }
             return;
         }
+        // Boss vaincu : popup de bilan à valider avant le recrutement.
+        if (UpdateBossRecap())
+            return;
 
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _sparks.Update(dt);
@@ -9899,8 +9960,7 @@ public sealed class GameplayScene : Scene
                 _sunRays.Draw(sb, _time, Point.Zero, viewport.Bounds, 1, seaRays, RayLight);   // rayons sur la mer
             if (Rainness > 0f)
             {
-                _rain.DrawDrops(sb, _time, Point.Zero, 1, viewport.Bounds, Rectangle.Empty, Rainness);
-                _rain.DrawSplashes(sb, _time, 1, viewport.Bounds, Rainness);
+                DrawPrecipitation(sb, Point.Zero, 1, viewport.Bounds, Rectangle.Empty, Rainness, splashes: true);
             }
             sb.End();
             DrawDezoomLayers(sb, layout, viewport);
@@ -10093,6 +10153,8 @@ public sealed class GameplayScene : Scene
                 // pions n'apparaît qu'une fois validé — les deux gèrent leur propre batch.
                 if (_specialRecap is { } recap)
                     DrawSpecialRecap(sb, viewport, recap);
+                else if (_bossRecap is { } bossRecap)
+                    DrawBossRecap(sb, viewport, bossRecap);
                 else
                     DrawRecruitment(sb, viewport);     // gère son propre batch (panneau + cartes + vol)
                 break;
@@ -10104,9 +10166,12 @@ public sealed class GameplayScene : Scene
                 DrawDim(sb, viewport);
                 if (_run.Phase == RunPhase.Victory && Context.Settings.IsDemo && _demoEndShown)
                     DrawDemoEndPopup(sb, viewport);
-                else
+                else if (_bossRecap == null)
                     DrawRunRecap(sb, viewport);
                 sb.End();
+                // Boss final : sa popup « boss vaincu » passe AVANT le récap de fin de run (gère son batch).
+                if (_bossRecap is { } finalBossRecap)
+                    DrawBossRecap(sb, viewport, finalBossRecap);
                 break;
         }
 
@@ -10444,7 +10509,7 @@ public sealed class GameplayScene : Scene
                 // Gouttes seulement HORS du canvas (blitté par-dessus) : le même motif, donc raccord sans couture.
                 var canvas = new Rectangle(canvasOffset.X, canvasOffset.Y,
                     VirtualViewport.Width * canvasScale, VirtualViewport.Height * canvasScale);
-                _rain.DrawDrops(sb, _time, canvasOffset, px, fullScreen, canvas, Rainness);
+                DrawPrecipitation(sb, canvasOffset, px, fullScreen, canvas, Rainness, splashes: false);
             }
             sb.End();
         }
@@ -10558,7 +10623,7 @@ public sealed class GameplayScene : Scene
         if (_waterFoam is not { } foam)
             return;
         // Pluie : ronds des gouttes sur l'eau dégagée, SOUS les feuilles flottantes et l'écume.
-        if (_raining)
+        if (_raining && !_snowMap)   // neige : les flocons ne font pas de ronds
             for (var i = 0; i < foam.Count; i++)
                 foam.DrawRain(sb, i, WaterFace(foam.CellAt(i), layout, out var a), a * Rainness, _time);
         // Props flottants d'abord, pour TOUTES les cases (une seule planche : un seul lot GPU), puis l'écume par-dessus.
@@ -10659,7 +10724,7 @@ public sealed class GameplayScene : Scene
     /// avec leur tuile (chute, secousse, arrivée).</summary>
     private void DrawDecorProps(SpriteBatch sb, GridLayout layout)
     {
-        if (_raining)
+        if (_raining && !_snowMap)   // neige : pas de flaques
         {
             // Flaques SOUS les autres props (un caillou peut tremper dedans), puis les ronds des gouttes qui y tombent.
             DrawSurfaceProps(sb, layout, _puddlesDirt, Rainness);   // en fondu avec la pluie
@@ -10726,8 +10791,7 @@ public sealed class GameplayScene : Scene
         var rain = Rainness;
         if (rain > 0f)
         {
-            _rain.DrawDrops(sb, _time, boardOnly ? corner : Point.Zero, px, area, Rectangle.Empty, rain);
-            _rain.DrawSplashes(sb, _time, px, area, rain);
+            DrawPrecipitation(sb, boardOnly ? corner : Point.Zero, px, area, Rectangle.Empty, rain, splashes: true);
         }
     }
 
@@ -13692,40 +13756,50 @@ public sealed class GameplayScene : Scene
         if (alpha <= 0.03f)
             return;
 
-        var cx = cellTop.X + size / 2f;
+        var cx = (int)(cellTop.X + size / 2f);
         var top = cellTop.Y - size * 0.9f;              // part au-dessus de la case
         var bottom = cellTop.Y + size * 0.3f;           // jusqu'au buste du pion
-        var block = System.Math.Max(2, size / 12);
+        var px = System.Math.Max(1, size / 64);         // trait fin : 1 px à la taille native (64)
 
-        var rng = new System.Random(seed);
-        const int segments = 5;
-        var prev = new Vector2(cx, top);
+        // Zigzag fin et nerveux : beaucoup de petits segments, faible écart latéral. Forme figée par le
+        // seed via un hachage entier (pas d'allocation de Random par frame).
+        const int segments = 9;
+        var prevX = (float)cx;
+        var prevY = top;
         for (var s = 1; s <= segments; s++)
         {
             var y = MathHelper.Lerp(top, bottom, s / (float)segments);
-            var jitter = (float)(rng.NextDouble() * 2 - 1) * size * 0.18f;
-            var next = new Vector2(cx + (s == segments ? 0f : jitter), y);   // pointe recentrée sur le pion
-            DrawBoltSegment(sb, prev, next, block, Palette.White * alpha, Palette.Yellow2 * alpha);
-            prev = next;
+            var h = (uint)(seed * 73856093) ^ (uint)(s * 19349663);
+            h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+            var jitter = ((h & 0xFFFF) / 32767.5f - 1f) * size * 0.10f;
+            var x = s == segments ? cx : cx + jitter;   // pointe recentrée sur le pion
+            DrawBoltSegment(sb, prevX, prevY, x, y, px, Palette.White * alpha, Palette.Yellow2 * (alpha * 0.6f));
+            prevX = x;
+            prevY = y;
         }
 
-        // Flash de la case au moment de la frappe (halo doux qui s'éteint avec l'éclair).
-        DrawRect(sb, new Rectangle((int)cellTop.X, (int)cellTop.Y, size, size), Palette.Yellow2 * (alpha * 0.45f));
+        // Flash discret de la case au moment de la frappe.
+        DrawRect(sb, new Rectangle((int)cellTop.X, (int)cellTop.Y, size, size), Palette.Yellow2 * (alpha * 0.18f));
     }
 
-    /// <summary>Segment d'éclair : blocs pixel-art le long de [a,b] — un halo large derrière, un cœur clair devant.</summary>
-    private void DrawBoltSegment(SpriteBatch sb, Vector2 a, Vector2 b, int block, Color core, Color halo)
+    /// <summary>Segment d'éclair tracé pixel par pixel le long de [a,b] : cœur blanc de <paramref name="px"/>
+    /// de large, liseré jaune d'1 px de chaque côté.</summary>
+    private void DrawBoltSegment(SpriteBatch sb, float ax, float ay, float bx, float by, int px, Color core, Color halo)
     {
-        var steps = System.Math.Max(1, (int)(Vector2.Distance(a, b) / block));
+        var steps = System.Math.Max(1, (int)(System.Math.Max(System.Math.Abs(bx - ax), System.Math.Abs(by - ay)) / px));
         for (var i = 0; i <= steps; i++)
         {
-            var p = Vector2.Lerp(a, b, i / (float)steps);
-            DrawRect(sb, new Rectangle((int)p.X - block, (int)p.Y - block / 2, block * 2, block), halo);
+            var f = i / (float)steps;
+            var x = (int)MathHelper.Lerp(ax, bx, f);
+            var y = (int)MathHelper.Lerp(ay, by, f);
+            DrawRect(sb, new Rectangle(x - px, y, px * 3, px), halo);
         }
         for (var i = 0; i <= steps; i++)
         {
-            var p = Vector2.Lerp(a, b, i / (float)steps);
-            DrawRect(sb, new Rectangle((int)p.X - block / 2, (int)p.Y - block / 2, block, block), core);
+            var f = i / (float)steps;
+            var x = (int)MathHelper.Lerp(ax, bx, f);
+            var y = (int)MathHelper.Lerp(ay, by, f);
+            DrawRect(sb, new Rectangle(x, y, px, px), core);
         }
     }
 
@@ -14415,10 +14489,10 @@ public sealed class GameplayScene : Scene
             var buffs = BuffsFor(preview);
             var maxHp = options[i].MaxHp + preview.Equipments.BonusFor(EquipStat.Hp) + buffs.BonusFor(EquipStat.Hp);
             DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, maxHp, maxHp, revealed,
-                preview.Equipments, buffs: buffs, treeNodes: _run.ActiveNodesFor(preview), kills: preview.Kills);
+                preview.Equipments, buffs: buffs, treeNodes: _run.ActiveNodesFor(preview), kills: preview.Kills, compact: true);
         }
         else
-            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed);
+            DrawCardLayout(sb, rect, options[i], Faction.Player, domaine, options[i].MaxHp, options[i].MaxHp, revealed, compact: true);
     }
 
     /// <summary>
@@ -14756,7 +14830,7 @@ public sealed class GameplayScene : Scene
         // la grande carte mangeait le plateau au moment même où l'on compose son armée.
         var condensed = PlacementCardsCondensed;
         var w = condensed ? CondensedCardW : CombatCardW;
-        var h = condensed ? CondensedCardHeight(c, equip, buffs, kills) : CombatCardH;
+        var h = condensed ? CondensedCardHeight(c, equip, buffs, kills) : DetailedCardH(equip, treeNodes);
         // Décrit une case du plateau (survol) → carte JUXTE le pion ; sinon (aperçu réserve) → à droite du plateau.
         var rect = subject is { } s ? CardRectNearCell(s, layout, w, h) : RightCardRect(board, w, h);
 
@@ -15064,6 +15138,67 @@ public sealed class GameplayScene : Scene
         _wxAt = float.NaN;   // météo changée : cache à refaire
     }
 
+    /// <summary>Map de NEIGE si la majorité de ses cases viennent du tileset neige (ou sont des tuiles de neige à part :
+    /// bonhomme, tour). Change la teinte du ciel couvert : le cache météo est invalidé.</summary>
+    private void DetectSnowMap()
+    {
+        int snow = 0, total = 0;
+        foreach (var c in _battlefield.Cells())
+        {
+            total++;
+            var id = _battlefield[c].Id;
+            if ((_tileSheet.TryGetValue(id, out var sheet) && sheet == "neige") || id == SnowmanId || id == "TourNeige")
+                snow++;
+        }
+        _snowMap = total > 0 && snow * 2 > total;
+        _wxAt = float.NaN;
+    }
+
+    /// <summary>
+    /// Précipitations de l'instant : flocons sur une map de neige, sinon gouttes de pluie (+ éclaboussures si
+    /// <paramref name="splashes"/>). Mêmes paramètres de repère que <see cref="RainFx.DrawDrops"/>.
+    /// </summary>
+    private void DrawPrecipitation(SpriteBatch sb, Point anchor, int px, Rectangle area, Rectangle skip, float alpha, bool splashes)
+    {
+        if (_snowMap)
+        {
+            _snow.Draw(sb, _time, anchor, px, area, skip, alpha);
+            return;
+        }
+        _rain.DrawDrops(sb, _time, anchor, px, area, skip, alpha);
+        if (splashes)
+            _rain.DrawSplashes(sb, _time, px, area, alpha);
+    }
+
+    private const string SnowRockId = "neige_04", SnowmanId = "bonhommeNeige";
+    private const int SnowmanExtraPercent = 30;   // chaque rocher en plus du 1er a cette chance de devenir un bonhomme
+
+    /// <summary>
+    /// Maps de neige : AU MOINS UN rocher des neiges (<see cref="SnowRockId"/>) devient un bonhomme de neige, et chacun
+    /// des autres a <see cref="SnowmanExtraPercent"/> % de chances de l'être aussi. Mêmes règles (obstacle, bloque le tir)
+    /// : seul le décor change. Tirage par la graine de la run et le numéro de mission (stable sur « Continuer »).
+    /// </summary>
+    private void PlaceSnowmen()
+    {
+        if (_catalog == null || !_catalog.TryGet(SnowmanId, out var snowman))
+            return;
+        var rocks = new List<Cell>();   // placement seulement (une fois par mission)
+        foreach (var c in _battlefield.Cells())
+            if (_battlefield[c].Id == SnowRockId)
+                rocks.Add(c);
+        if (rocks.Count == 0)
+            return;
+        var rng = new Random((int)RippleHash((uint)_run.Seed * 2246822519u ^ (uint)_run.CombatNumber * 3266489917u));
+        for (var i = rocks.Count - 1; i > 0; i--)   // mélange : le « premier » rocher est tiré au hasard
+        {
+            var j = rng.Next(i + 1);
+            (rocks[i], rocks[j]) = (rocks[j], rocks[i]);
+        }
+        for (var i = 0; i < rocks.Count; i++)
+            if (i == 0 || rng.Next(100) < SnowmanExtraPercent)
+                _battlefield[rocks[i]] = new Tile(snowman);
+    }
+
     /// <summary>Un papillon se pose : s'il se pose sur un buisson, des lucioles en sortent (cf. <see cref="BushFireflies"/>).</summary>
     private void OnButterflyLanded(Cell cell) => BushFireflies(cell);
 
@@ -15139,6 +15274,15 @@ public sealed class GameplayScene : Scene
                 Context.Sounds.Play("fox_pet");
                 _hearts.Spawn(fox.HeadPosition(bl), 3 + Random.Shared.Next(3), artPx);
                 break;
+            }
+            // Grenouille (tête hors de l'eau ou assise sur son nénuphar) : même caresse, petit bond + cœurs.
+            if (!consumed && _waterFoam is { FrogCellIndex: >= 0 } water
+                && water.TryPetFrog(Context.Input.MousePosition, WaterFace(water.CellAt(water.FrogCellIndex), bl, out _),
+                    out var frogHearts))
+            {
+                consumed = true;
+                Context.Sounds.Play("frog_pet");
+                _hearts.Spawn(frogHearts, 3 + Random.Shared.Next(3), artPx);
             }
         }
         _hearts.Update(dt, _sparks, artPx);
@@ -15980,7 +16124,7 @@ public sealed class GameplayScene : Scene
         var condensed = !_detailedTooltip;
         return CardRectNearCell(cell, layout,
             condensed ? CondensedCardW : CombatCardW,
-            condensed ? CondensedCardHeight(unit, cell) : CombatCardH);
+            condensed ? CondensedCardHeight(unit, cell) : DetailedCardH(unit.Equipments, TreeNodesFor(unit)));
     }
 
     /// <summary>
@@ -16161,7 +16305,9 @@ public sealed class GameplayScene : Scene
     // + leur écart, puis 10 px avant le sprite 64 centré. L'icône d'équipement, à droite du sprite,
     // vient alors buter exactement sur la marge droite.
     private const int CombatCardW = 248;
-    private const int CombatCardH = 330;
+    // 336 = les 330 d'origine + 6 : le grand plateau 7×7 (115 px) remplace la bande sprite + domaine. Hauteur
+    // SANS rangée d'icônes : la vraie hauteur d'une carte détaillée passe par DetailedCardH.
+    private const int CombatCardH = 336;
     private const int CombatCardGap = 24;
 
     // Carte CONDENSÉE de combat : icônes de stats (valeurs effectives, sans « +N »), PV en texte, traits
@@ -16247,6 +16393,7 @@ public sealed class GameplayScene : Scene
     {
         var hasContent = _deferredHoverCards.Count > 0 || _deferredHoverKeywordPopups.Count > 0;
         var alpha = TooltipHoverAlpha();
+        _nativePawnAlpha = alpha;   // le pion de la carte (couche écran) suit le même fondu ; remis à 1 plus bas
         if (alpha >= 1f && hasContent)
         {
             // Pleinement visible (état stable) : dessin DIRECT, sans round-trip render target — donc rendu
@@ -16269,6 +16416,7 @@ public sealed class GameplayScene : Scene
             sb.Draw(_hoverCardTarget, Vector2.Zero, Microsoft.Xna.Framework.Color.White * alpha);
             sb.End();
         }
+        _nativePawnAlpha = 1f;
         _deferredHoverCards.Clear();
         _deferredHoverKeywordPopups.Clear();
     }
@@ -16683,7 +16831,8 @@ public sealed class GameplayScene : Scene
     private const int CardPad = 12;
 
     /// <summary>
-    /// Corps d'une carte d'unité : sprite, icône de domaine (39×39), barre de PV (1 carré = 1 PV)
+    /// Corps d'une carte d'unité : plateau de déplacement / tir (avec le sprite à gauche si <paramref name="compact"/>),
+    /// barre de PV (1 carré = 1 PV)
     /// + « pv/max », puis les caractéristiques (icône 32×32 + libellé + valeur). Les mots-clés sont
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
@@ -16691,7 +16840,7 @@ public sealed class GameplayScene : Scene
         Domaine domaine, int hp, int maxHp, bool revealed = true, IReadOnlyList<Equipment>? equip = null, int hpPreviewDamage = 0,
         CommandBuffs? buffs = null, IReadOnlyList<CommandNode>? treeNodes = null, int kills = 0,
         IReadOnlyList<string>? granted = null, int contextualDmgBonus = 0, int contextualMoveBonus = 0,
-        int contextualRangeBonus = 0, string? nameOverride = null)
+        int contextualRangeBonus = 0, string? nameOverride = null, bool compact = false)
     {
         // Bonus affichés en « +N » à côté de la stat : ceux de l'ÉQUIPEMENT et ceux de l'ARBRE de
         // commandement, cumulés (la carte doit montrer ce que le pion vaut réellement au combat).
@@ -16730,47 +16879,48 @@ public sealed class GameplayScene : Scene
         Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, y, rect.Width, titleH), nameScale, Palette.White);
         y += titleH + 8;
 
-        // Sprite du pion (comme en jeu, de face). En SILHOUETTE si l'unité n'est pas encore découverte.
-        var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, y, 64, 64);
-        if (revealed)
-            DrawChip(sb, c, faction, sprite, front: true);
-        else
-            DrawHiddenChip(sb, c, faction, sprite);
-
-        // Les deux MARGES latérales du sprite, hautes de la bande « sprite + icône de domaine ». Tout ce
-        // qui s'y pose est centré sur les deux axes : la mosaïque d'améliorations à gauche, l'icône
-        // d'équipement à droite. Les deux blocs se répondent donc, quel que soit le nombre d'icônes.
-        var bandH = 64 + 6 + DomaineIconSize;
-        var left = new Rectangle(rect.X + CardPad, sprite.Y, sprite.X - SpriteMargin - (rect.X + CardPad), bandH);
-        var right = new Rectangle(sprite.Right + SpriteMargin, sprite.Y,
-            rect.Right - CardPad - (sprite.Right + SpriteMargin), bandH);
-
-        // Icônes des équipements portés : même cadre que les améliorations d'arbre, mais CERCLÉ D'OR. Un pion
-        // peut en porter plusieurs (arbre du Marchand) : la colonne reste CENTRÉE sur la bande, comme la
-        // mosaïque d'améliorations en face.
-        if (equip is { Count: > 0 })
+        // Carte DÉTAILLÉE de combat (cf. DetailedCardH) : grand plateau 7×7 où le pion parcourt ses déplacements,
+        // puis une rangée d'icônes (arbre + équipement). Carte COMPACTE (recrutement, draft, fusion) : le sprite à sa
+        // taille normale à GAUCHE et le même plateau à DROITE, sur une seule rangée.
+        if (!compact)
         {
-            var stackH = equip.Count * TreeIconBox + (equip.Count - 1) * TreeIconGap;
-            var ey = right.Y + (right.Height - stackH) / 2;
-            foreach (var worn in equip)
-            {
-                var eRect = new Rectangle(right.X + (right.Width - TreeIconBox) / 2, ey, TreeIconBox, TreeIconBox);
-                DrawRect(sb, eRect, Palette.Black1);
-                DrawRectBorder(sb, eRect, Palette.Yellow1, 1);
-                DrawEquipIcon(sb, worn, eRect);
-                ey += TreeIconBox + TreeIconGap;
-            }
+            var board = new Rectangle(rect.X + (rect.Width - MoveAttackGrid.BoardOuter) / 2, y,
+                MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
+            DrawMoveAttackBoard(sb, board, c, faction, domaine, revealed,
+                c.MoveRange + moveBonus, c.AttackRange + rangeBonus, equip, b);
+            y = board.Bottom + 6;
+            y = DrawCardIconRow(sb, rect, y, revealed ? treeNodes : null, equip) + 4;
         }
-
-        // Améliorations d'arbre ACTIVES sur ce pion, en mosaïque à GAUCHE du sprite (pendant de l'équipement).
-        if (revealed && treeNodes is { Count: > 0 })
-            DrawActiveTreeNodes(sb, treeNodes, left);
-        y = sprite.Bottom + 6;
-
-        // Icône de domaine (39×39), centrée sous le pion.
-        var dom = new Rectangle(rect.X + (rect.Width - DomaineIconSize) / 2, y, DomaineIconSize, DomaineIconSize);
-        DrawDomaineIcon(sb, domaine, dom);
-        y = dom.Bottom + 10;
+        else
+        {
+            // Sans le mouvement — sprite seul, centré — quand la rangée ne tient pas (4 cartes de front, cartes
+            // rétrécies), pour une unité non découverte (rien à révéler) ou un pion qui porte des icônes d'arbre /
+            // d'équipement (elles prennent alors la place, sous le sprite). La bande garde la hauteur du plateau :
+            // les stats restent alignées d'une carte à l'autre.
+            var hasIcons = revealed && (treeNodes is { Count: > 0 } || equip is { Count: > 0 });
+            const int rowW = 64 + RecruitSpriteGap + MoveAttackGrid.BoardOuter;
+            var bandTop = y;
+            if (revealed && !hasIcons && rowW <= rect.Width - 2 * CardPad)
+            {
+                var x0 = rect.X + (rect.Width - rowW) / 2;
+                var sprite = new Rectangle(x0, bandTop + (MoveAttackGrid.BoardOuter - 64) / 2, 64, 64);
+                DrawChip(sb, c, faction, sprite, front: true);
+                DrawMoveAttackBoard(sb, new Rectangle(sprite.Right + RecruitSpriteGap, bandTop,
+                        MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter), c, faction, domaine, revealed,
+                    c.MoveRange + moveBonus, c.AttackRange + rangeBonus, equip, b);
+            }
+            else
+            {
+                var sprite = new Rectangle(rect.X + (rect.Width - 64) / 2, bandTop, 64, 64);
+                if (revealed)
+                    DrawChip(sb, c, faction, sprite, front: true);
+                else
+                    DrawHiddenChip(sb, c, faction, sprite);
+                if (hasIcons)
+                    DrawCardIconRow(sb, rect, sprite.Bottom + 6, treeNodes, equip);
+            }
+            y = bandTop + MoveAttackGrid.BoardOuter + 10;
+        }
 
         // Barre de PV (une rangée, carrés ajustés à la largeur) + texte « pv/max » (+ bonus d'équipement).
         // Évolution NON DÉCOUVERTE (méta) : on masque tout l'effectif — barre neutre + « ??? » au lieu des PV,
@@ -16940,65 +17090,107 @@ public sealed class GameplayScene : Scene
         Context.Font.DrawCentered(sb, value, new Rectangle(col.X, icon.Bottom + 2, col.Width, 14), 2, color);
     }
 
-    // Grille d'améliorations d'arbre, à gauche du sprite : cadres 34 (icône 32×32 native centrée),
-    // 2 colonnes × 3 rangées. Six emplacements = le maximum de nœuds pouvant agir sur un même pion
-    // (branche complète du commandant). La grille tient exactement entre la marge gauche et le sprite,
-    // et sa hauteur s'arrête au-dessus de la barre de PV.
+    // Cadres des icônes d'arbre / d'équipement sur les cartes (34 px, icône 32×32 native centrée).
     private const int TreeIconBox = 34;
     private const int TreeIconGap = 4;
-    private const int TreeIconPitch = TreeIconBox + TreeIconGap - 2;   // 36 : rangées presque jointives
-    private const int TreeIconCols = 2;
-    private const int TreeIconRows = 3;
-    private const int TreeIconSlots = TreeIconCols * TreeIconRows;
 
-    /// <summary>Côté de l'icône de domaine, sous le sprite (elle ferme la bande de référence des cartes).</summary>
-    private const int DomaineIconSize = 39;
+    /// <summary>Écart entre le sprite et le plateau de déplacement sur une carte compacte (recrutement).</summary>
+    private const int RecruitSpriteGap = 4;
 
-    /// <summary>Respiration entre le sprite du pion et les blocs d'icônes qui l'encadrent.</summary>
-    private const int SpriteMargin = 8;
-
-    /// <summary>
-    /// Améliorations de l'arbre ACTIVES sur ce pion, en mosaïque dans <paramref name="area"/> (la marge à
-    /// gauche du sprite, pendant de l'icône d'équipement à droite). La mosaïque s'ADAPTE au nombre d'icônes :
-    /// elle est centrée dans l'aire sur les deux axes, et chaque rangée est centrée à son tour — une icône
-    /// seule tombe donc au milieu, deux se posent côte à côte, une rangée incomplète reste centrée.
-    /// Au-delà de <see cref="TreeIconSlots"/> (arbre futur plus large), le dernier cadre devient un « +N ».
-    /// </summary>
-    private void DrawActiveTreeNodes(SpriteBatch sb, IReadOnlyList<CommandNode> nodes, Rectangle area)
+    /// <summary>Grand plateau 7×7 animé de la carte détaillée (cf. <see cref="MoveAttackGrid.DrawBoard"/>) : le
+    /// sprite de face du pion y parcourt ses déplacements, avec les traits EFFECTIFS du pion (classe + équipement + arbre).</summary>
+    private void DrawMoveAttackBoard(SpriteBatch sb, Rectangle area, UnitClass c, Faction faction, Domaine domaine,
+        bool revealed, int moveRange, int attackRange, IReadOnlyList<Equipment>? equip, CommandBuffs b)
     {
-        var overflow = nodes.Count > TreeIconSlots;
-        var shown = overflow ? TreeIconSlots - 1 : nodes.Count;
-        var slots = overflow ? TreeIconSlots : nodes.Count;
-
-        var rows = (slots + TreeIconCols - 1) / TreeIconCols;
-        var top = area.Y + (area.Height - ((rows - 1) * TreeIconPitch + TreeIconBox)) / 2;
-
-        for (var i = 0; i < shown; i++)
-            _commandTree.DrawNodeIcon(sb, nodes[i], TreeIconSlot(sb, area, top, i, slots), Color.White);
-
-        if (overflow)
-            Context.Font.DrawCentered(sb, $"+{nodes.Count - shown}",
-                TreeIconSlot(sb, area, top, shown, slots), 1, Palette.Cyan1);
+        var attackDomaine = CardHasTrait(c, equip, b, Trait.AttaqueLibre) ? Domaine.Dame : c.AttackDomaine ?? domaine;
+        var minRange = System.Math.Max(c.MinAttackRange, CardHasTrait(c, equip, b, Trait.ZoneMorte) ? 2 : 1);
+        var reposition = CardHasTrait(c, equip, b, Trait.RepositionnementStrategique);
+        var tex = SpriteFor(c, faction, front: true);
+        if (_capturePawn && tex != null)
+        {
+            // Carte PENCHÉE (cf. DrawFxDraftCard) : le pion n'est pas dessiné dans sa texture à plat, il est mis
+            // de côté puis posé dans la texture agrandie, où il garde chaque pixel.
+            _capturedPawnRect = MoveAttackGrid.DrawBoard(sb, Context.Pixel, area, tex, drawPawn: false, revealed, domaine,
+                moveRange, reposition, attackDomaine, attackRange, minRange);
+            _capturedPawnTex = tex;
+            _capturedPawnTint = BoardPawnTint(revealed);
+            return;
+        }
+        // Pion net (couche écran, cf. NativeSprites) : chaque pixel du sprite est gardé malgré la réduction ÷2.
+        MoveAttackGrid.DrawBoardWithPawn(sb, Context.Pixel, area, tex, revealed, domaine, moveRange, reposition,
+            attackDomaine, attackRange, minRange, allowNative: _choiceCardNative ?? NativePawnsAllowed,
+            alpha: _nativePawnAlpha, pawnTint: BoardPawnTint(revealed));
     }
 
-    /// <summary>
-    /// Cadre du <paramref name="index"/>-ième emplacement d'une mosaïque de <paramref name="slots"/> cadres
-    /// (fond sombre + liseré cyan), dessiné puis renvoyé. La rangée est centrée horizontalement dans
-    /// <paramref name="area"/> selon le nombre de cadres qu'elle porte réellement.
-    /// </summary>
-    private Rectangle TreeIconSlot(SpriteBatch sb, Rectangle area, int top, int index, int slots)
-    {
-        var row = index / TreeIconCols;
-        var inRow = System.Math.Min(TreeIconCols, slots - row * TreeIconCols);   // dernière rangée : parfois 1 seul
-        var rowW = inRow * TreeIconBox + (inRow - 1) * TreeIconGap;
+    // Pion des plateaux de carte, cas particuliers des cartes de choix (cf. DrawFxDraftCard) :
+    private bool _capturePawn;            // carte penchée en cours de rendu à plat : le pion est mis de côté…
+    private Texture2D? _capturedPawnTex;  // …ici, puis posé dans la texture agrandie de la carte
+    private Rectangle _capturedPawnRect;
+    private Color _capturedPawnTint;
+    // Carte de CHOIX à plat (draft, récompense, révélation de recrue, fusion) : null hors de ces cartes. Elles sont
+    // elles-mêmes au premier plan (même pendant la révélation) ; seuls une modale par-dessus la rangée, la pause,
+    // le codex, l'arbre ou un encart du tuto renvoient le pion dans le canvas.
+    private bool? _choiceCardNative;
+    private float _pawnDim;               // voile sombre de la carte (non retenue) : le pion s'assombrit avec elle
 
-        var r = new Rectangle(
-            area.X + (area.Width - rowW) / 2 + index % TreeIconCols * (TreeIconBox + TreeIconGap),
-            top + row * TreeIconPitch,
-            TreeIconBox, TreeIconBox);
-        DrawRect(sb, r, Palette.Black1);
-        DrawRectBorder(sb, r, Palette.Cyan1, 1);   // cyan = arbre (l'équipement, lui, est cerclé d'or)
-        return r;
+    /// <summary>Teinte du pion d'un plateau : silhouette noire si non découvert, assombri du voile de la carte.</summary>
+    private Color BoardPawnTint(bool revealed)
+    {
+        if (!revealed)
+            return Color.Black;
+        var v = 1f - _pawnDim;
+        return new Color(v, v, v);
+    }
+
+    /// <summary>Hauteur de la rangée d'icônes sous le grand plateau (cadre 34 + respiration), 0 sans icône.</summary>
+    private const int CardIconRowH = TreeIconBox + 4;
+
+    /// <summary>
+    /// Hauteur de la carte DÉTAILLÉE : <see cref="CombatCardH"/>, + la rangée d'icônes si le pion porte des
+    /// améliorations d'arbre ou de l'équipement (même condition que <see cref="DrawCardIconRow"/>).
+    /// </summary>
+    private static int DetailedCardH(IReadOnlyList<Equipment>? equip, IReadOnlyList<CommandNode>? treeNodes) =>
+        CombatCardH + (equip is { Count: > 0 } || treeNodes is { Count: > 0 } ? CardIconRowH : 0);
+
+    /// <summary>
+    /// Rangée centrée sous le grand plateau : améliorations d'arbre (cerclées de cyan) puis équipements (cerclés
+    /// d'or). Si tout ne tient pas, le dernier cadre devient « +N ». Renvoie le Y sous la rangée (inchangé sans icône).
+    /// </summary>
+    private int DrawCardIconRow(SpriteBatch sb, Rectangle card, int y,
+        IReadOnlyList<CommandNode>? treeNodes, IReadOnlyList<Equipment>? equip)
+    {
+        var nodeCount = treeNodes?.Count ?? 0;
+        var equipCount = equip?.Count ?? 0;
+        var total = nodeCount + equipCount;
+        if (total == 0)
+            return y;
+
+        var maxSlots = System.Math.Max(1, (card.Width - 2 * CardPad + TreeIconGap) / (TreeIconBox + TreeIconGap));
+        var slots = System.Math.Min(total, maxSlots);
+        var shown = total > maxSlots ? maxSlots - 1 : total;
+        var rowW = slots * TreeIconBox + (slots - 1) * TreeIconGap;
+        var x = card.X + (card.Width - rowW) / 2;
+        for (var i = 0; i < slots; i++)
+        {
+            var r = new Rectangle(x + i * (TreeIconBox + TreeIconGap), y, TreeIconBox, TreeIconBox);
+            DrawRect(sb, r, Palette.Black1);
+            if (i >= shown)
+            {
+                DrawRectBorder(sb, r, Palette.Cyan1, 1);
+                Context.Font.DrawCentered(sb, $"+{total - shown}", r, 1, Palette.Cyan1);
+            }
+            else if (i < nodeCount)
+            {
+                DrawRectBorder(sb, r, Palette.Cyan1, 1);   // cyan = arbre
+                _commandTree.DrawNodeIcon(sb, treeNodes![i], r, Color.White);
+            }
+            else
+            {
+                DrawRectBorder(sb, r, Palette.Yellow1, 1);   // or = équipement
+                DrawEquipIcon(sb, equip![i - nodeCount], r);
+            }
+        }
+        return y + CardIconRowH;
     }
 
     /// <summary>
@@ -17116,28 +17308,6 @@ public sealed class GameplayScene : Scene
             _iconSprites[fileName] = sprite;
         }
         return sprite;
-    }
-
-    /// <summary>Icône de domaine 39×39. PNG <c>Assets/Icons/domaine_&lt;domaine&gt;.png</c> si présent, sinon placeholder.</summary>
-    private void DrawDomaineIcon(SpriteBatch sb, Domaine domaine, Rectangle area)
-    {
-        if (IconOrNull($"domaine_{domaine}".ToLowerInvariant()) is { } png)
-        {
-            DrawSpriteFit(sb, png, area);
-            return;
-        }
-        // Placeholder : pastille colorée + initiale du domaine.
-        var color = domaine switch
-        {
-            Domaine.Fou => Palette.Brown2,
-            Domaine.Cavalier => Palette.Green1,
-            Domaine.Tour => Palette.Navy1,
-            Domaine.Dame => Palette.Yellow1,
-            _ => Palette.Grey,
-        };
-        DrawRect(sb, Inflate(area, 1), Palette.Black1);
-        DrawRect(sb, area, color);
-        Context.Font.DrawCentered(sb, domaine.ToString()[..1].ToUpperInvariant(), area, 2, Palette.Black1);
     }
 
     /// <summary>Icône de stat 32×32. PNG <c>Assets/Icons/stat_&lt;key&gt;.png</c> si présent, sinon placeholder.</summary>
@@ -18110,7 +18280,7 @@ public sealed class GameplayScene : Scene
         var c = spec.UnitClass;
         // Recrutement : portrait de FACE, PV pleins (l'unité est neuve). Le DÉTAIL des traits n'est pas
         // dessiné ici : il n'apparaît que sous la carte survolée (cf. DrawHoveredCardKeywords).
-        DrawCardLayout(sb, rect, c, Faction.Player, spec.Domaine, c.MaxHp, c.MaxHp);
+        DrawCardLayout(sb, rect, c, Faction.Player, spec.Domaine, c.MaxHp, c.MaxHp, compact: true);
     }
 
     // ── Cartes de choix « vivantes » (draft / récompense / recrues) : relief + reflet ──────────────────
@@ -18311,9 +18481,13 @@ public sealed class GameplayScene : Scene
         // popup de fusion, elles, sont la modale.
         var underModal = spec != null && FusionOpen || EvoPlaying;
         var lift = CardLift(i);
+        _pawnDim = dim;   // le pion du plateau s'assombrit avec la carte (il est posé hors du canvas)
         if (lift < 0.02f || _tiltCount >= TiltSlots || underModal)
         {
+            _choiceCardNative = !underModal && !_pauseMenu.IsOpen && !_codex.IsOpen && !CommandTreeOpen && !TutorialModalShown;
             DrawFxCardFlat(sb, i, spec, r, border, dim, checkbox);   // posée : chemin plat, pixel-perfect
+            _choiceCardNative = null;
+            _pawnDim = 0f;
             return r;
         }
 
@@ -18328,7 +18502,11 @@ public sealed class GameplayScene : Scene
         device.SetRenderTarget(_tiltFlat[slot]);
         device.Clear(Color.Transparent);
         sb.Begin(samplerState: SamplerState.PointClamp);
+        _capturePawn = true;   // le pion du plateau est mis de côté (cf. DrawMoveAttackBoard)…
+        _capturedPawnTex = null;
         DrawFxCardFlat(sb, i, spec, new Rectangle(CardTiltPad, CardTiltPad, r.Width, r.Height), border, dim, checkbox);
+        _capturePawn = false;
+        _pawnDim = 0f;
         sb.End();
 
         var m = TiltSuperSample;
@@ -18337,6 +18515,14 @@ public sealed class GameplayScene : Scene
         device.Clear(Color.Transparent);
         sb.Begin(samplerState: SamplerState.PointClamp);   // agrandi ENTIER : chaque pixel devient un bloc m×m exact
         sb.Draw(_tiltFlat[slot], new Rectangle(0, 0, fw * m, fh * m), Color.White);
+        // …et posé ici, dans la texture agrandie : 32 px de carte deviennent 32×m px, soit m/2 px par pixel du
+        // sprite (m est pair) — il garde tous ses pixels, comme sur une carte posée.
+        if (_capturedPawnTex is { } pawnTex)
+        {
+            var pr = _capturedPawnRect;
+            sb.Draw(pawnTex, new Rectangle(pr.X * m, pr.Y * m, pr.Width * m, pr.Height * m), _capturedPawnTint);
+            _capturedPawnTex = null;
+        }
         sb.End();
         if (prev.Length > 0) device.SetRenderTargets(prev); else device.SetRenderTarget(null);
 
@@ -18356,6 +18542,26 @@ public sealed class GameplayScene : Scene
 
     /// <summary>Vrai si des cartes penchées attendent d'être composées à l'écran cette frame.</summary>
     public bool HasScreenOverlays => _tiltCount > 0;
+
+    private float _nativePawnAlpha = 1f;   // fondu d'entrée des cartes de survol (cf. DrawDeferredHoverCards)
+
+    /// <summary>
+    /// Vrai si le pion d'une carte peut passer par la couche écran (<see cref="NativeSprites"/>) : RIEN n'est
+    /// dessiné par-dessus les cartes dans le canvas cette frame (pause, codex, arbre, révélations, encart du
+    /// tutoriel), puisque la couche écran passe au-dessus de tout le canvas.
+    /// </summary>
+    private bool NativePawnsAllowed =>
+        !_pauseMenu.IsOpen && !_codex.IsOpen && !CommandTreeOpen && _recrueReveals.Count == 0 && !ChestRevealActive
+        && !TutorialModalShown;
+
+    /// <summary>
+    /// Vrai si le tutoriel affiche cette frame un de ses ENCARTS centrés (cf. DrawTutorialCard), qui recouvre
+    /// les cartes. Bandeaux, surbrillances et revue de carte, eux, ne passent pas sur le plateau d'une carte.
+    /// </summary>
+    private bool TutorialModalShown => _tutorial is { } t && (
+        t.Step is TutorialStep.Intro or TutorialStep.PadLesson or TutorialStep.FusionIntro
+            or TutorialStep.EquipIntro or TutorialStep.TreeIntro
+        || (t.Step is TutorialStep.Commander or TutorialStep.Done && !_fx.Active));
 
     /// <summary>
     /// Compose les cartes penchées à la résolution de l'ÉCRAN (backbuffer déjà lié, aucun batch actif), après
@@ -18440,7 +18646,8 @@ public sealed class GameplayScene : Scene
     private const int PostCombatTitleH = 72;                                   // titre (échelle 3) + sous-titre (échelle 1)
     private const int PostCombatGap = 8;
     private const int PostCombatBtnH = 30;
-    private const int DraftCardH = 330;
+    // 336 = 330 d'origine + 6 : la rangée sprite + plateau 7×7 (115 px) remplace la bande sprite + domaine.
+    private const int DraftCardH = 336;
 
     /// <summary>
     /// Haut de la rangée de cartes : centrée verticalement, mais JAMAIS sous le cadre de titre. En 1440p le
@@ -18460,7 +18667,9 @@ public sealed class GameplayScene : Scene
     /// qui doit loger son cadre titre ET son bouton Annuler au-dessus des cartes.</param>
     private static Rectangle DraftCardRect(int index, int count, int vpW, int vpH, int topY = -1)
     {
-        const int fullW = 200, fullGap = 28, minGap = 12, minW = 150, sideMargin = 16;
+        // fullW 208 : la rangée sprite 64 + plateau 115 (+ écart) tient dans la carte ; une carte plus étroite
+        // (4 de front en 1080p) n'affiche que le sprite, sans le mouvement (cf. DrawCardLayout, compact).
+        const int fullW = 208, fullGap = 28, minGap = 12, minW = 150, sideMargin = 16;
         var avail = vpW - 2 * sideMargin;
         int w = fullW, gap = fullGap;
         if (count > 1 && count * w + (count - 1) * gap > avail)
@@ -19275,6 +19484,162 @@ public sealed class GameplayScene : Scene
         sb.End();
     }
 
+    // Lignes du bilan de boss (libellé, valeur) : tampon réutilisé d'une image à l'autre.
+    private readonly (string Label, string Value)[] _bossRecapRows = new (string, string)[5];
+
+    /// <summary>
+    /// Popup « BOSS VAINCU » après chaque boss (le final compris, avant le récap de fin de run) : portrait et nom du
+    /// boss à gauche, BILAN DU COMBAT à droite (tours, tués, pertes, dégâts au boss, coup fatal, MVP), puis
+    /// l'avancement des phases (crânes) et le bouton « continuer ». Même habillage que le récap de fin de run.
+    /// Gèle le recrutement jusqu'à validation (cf. <see cref="UpdateRecruitment"/>). Gère son propre batch.
+    /// </summary>
+    private void DrawBossRecap(SpriteBatch sb, Viewport viewport, BossRecap recap)
+    {
+        const int SecGap = 12, ColGap = 24, MidGap = 44, RowH = 11, HeadH = 14, DashH = 2,
+                  PortraitPad = 4, PipSize = TimelineNodeSize, PipIcon = TimelineIconSize;
+        int Meas(string t, int s) => Context.Font.Measure(t, s);
+
+        var tag = Loc.T("combat.boss");
+        var title = Loc.T("end.boss_defeated");
+        var diff = Loc.T("difficulty." + _run.Difficulty.ToString().ToLowerInvariant());
+        var sub = $"{diff}  -  {Loc.T("hud.phase", recap.Phase, Run.PhaseCount)}  -  {Loc.T("recap.run_combat", recap.CombatNumber, Run.TotalCombats)}";
+        var bossName = UnitName(recap.Boss.Class).ToUpperInvariant();
+        var head = Loc.T("bossrecap.bilan");
+
+        var rows = _bossRecapRows;
+        var rowCount = 0;
+        rows[rowCount++] = (Loc.T("bossrecap.turns"), recap.Turns.ToString());
+        rows[rowCount++] = (Loc.T("recap.run_kills"), recap.Kills.ToString());
+        rows[rowCount++] = (Loc.T("recap.run_lost"), recap.Losses.ToString());
+        rows[rowCount++] = (Loc.T("bossrecap.boss_damage"), recap.BossDamage.ToString());
+        if (recap.FinalBlow is { } killer)   // tueur inconnu (effet sans auteur) : pas de ligne
+            rows[rowCount++] = (Loc.T("bossrecap.final_blow"), UnitName(killer.Class).ToUpperInvariant());
+        var mvp = recap.MvpClass is { } mc ? Loc.T("recap.run_mvp", UnitName(mc), recap.MvpKills) : null;
+
+        var phaseDone = Loc.T("bossrecap.phase_done", recap.Phase);
+        var btnLabel = (Context.Input.UsingGamepad ? "(A) " : "") + Loc.T("bossrecap.continue");
+
+        // ── Mesures ──────────────────────────────────────────────────────────
+        var tile = GridLayout.DefaultTileSize;                    // sprite natif, échelle 1 (jamais fractionnaire)
+        var portraitW = tile + 2 * PortraitPad;
+        var leftColW = System.Math.Max(portraitW, Meas(bossName, 2));
+        var leftH = portraitW + 8 + 14;
+
+        int rLabel = 0, rValue = 0;
+        for (var i = 0; i < rowCount; i++)
+        {
+            rLabel = System.Math.Max(rLabel, Meas(rows[i].Label, 1));
+            rValue = System.Math.Max(rValue, Meas(rows[i].Value, 1));
+        }
+        var rightColW = System.Math.Max(Meas(head, 2), rLabel + ColGap + rValue);
+        if (mvp != null) rightColW = System.Math.Max(rightColW, Meas(mvp, 1));
+        var rightH = HeadH + 6 + rowCount * RowH + (mvp != null ? 6 + 7 : 0);
+
+        var columnsW = leftColW + MidGap + rightColW;
+        var columnsH = System.Math.Max(leftH, rightH);
+
+        // Frise des phases : un crâne par phase, libellé dessous (« PHASE n : OK » / « PHASE n »).
+        var phases = Run.PhaseCount;
+        var pipLabelW = 0;
+        for (var p = 1; p <= phases; p++)
+            pipLabelW = System.Math.Max(pipLabelW,
+                Meas(Loc.T(p <= recap.Phase ? "bossrecap.phase_ok" : "bossrecap.phase_n", p), 1));
+        var pipPitch = System.Math.Max(PipSize + 30, pipLabelW + 12);
+        var pipsW = (phases - 1) * pipPitch + PipSize;
+
+        var btnW = Meas(btnLabel, 1) + 40;
+        var contentW = System.Math.Max(System.Math.Max(columnsW, Meas(title, 3)),
+            System.Math.Max(System.Math.Max(Meas(sub, 1), Meas(tag, 1)), System.Math.Max(pipsW + pipLabelW, btnW)));
+        var boxW = contentW + 2 * ModalPadH;
+        var boxH = ModalPadV + 7 + 8 + 21 + SecGap + 7            // tag + titre + sous-titre
+                   + SecGap + DashH + SecGap + columnsH            // filet + colonnes
+                   + SecGap + DashH + SecGap                       // filet
+                   + 7 + SecGap + PipSize + 4 + 7                  // « phase terminée » + frise + libellés
+                   + SecGap + RecapBtnH + ModalPadV;               // bouton
+        var box = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+        var innerX = box.X + ModalPadH;
+        var innerW = box.Width - 2 * ModalPadH;
+
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        Context.Style.DrawPanel(sb, box);
+
+        // En-tête.
+        var y = box.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, tag, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Purple5);
+        y += 7 + 8;
+        Context.Font.DrawCentered(sb, title, new Rectangle(box.X, y, box.Width, 21), 3, Palette.Yellow2);
+        y += 21 + SecGap;
+        Context.Font.DrawCentered(sb, sub, new Rectangle(box.X, y, box.Width, 7), 1, Palette.Blue1);
+        y += 7 + SecGap;
+        DrawDashedH(sb, innerX, y, innerW, DashColor);
+        y += DashH + SecGap;
+
+        // Colonne GAUCHE : portrait encadré + nom du boss.
+        var colsX = box.X + (box.Width - columnsW) / 2;
+        var rightX = colsX + leftColW + MidGap;
+        var frame = new Rectangle(colsX + (leftColW - portraitW) / 2, y, portraitW, portraitW);
+        DrawRect(sb, frame, Palette.Black1 * 0.5f);
+        DrawRectBorder(sb, frame, Palette.Yellow1, 2);
+        var art = new Rectangle(frame.X + PortraitPad, frame.Y + PortraitPad, tile, tile);
+        if (UnitSprite(recap.Boss) is { } sprite)
+            sb.Draw(sprite, art, Color.White);
+        else
+            DrawChip(sb, recap.Boss.Class, recap.Boss.Faction, art);
+        Context.Font.DrawCentered(sb, bossName, new Rectangle(colsX, frame.Bottom + 8, leftColW, 14), 2, Palette.White);
+
+        // Colonne DROITE : bilan (libellés à gauche, valeurs alignées à droite) + MVP.
+        Context.Font.DrawCentered(sb, head, new Rectangle(rightX, y, rightColW, HeadH), 2, Palette.Yellow2);
+        var ry = y + HeadH + 6;
+        for (var i = 0; i < rowCount; i++)
+        {
+            var (l, v) = rows[i];
+            Context.Font.Draw(sb, l, new Vector2(rightX, ry), 1, Palette.White);
+            Context.Font.Draw(sb, v, new Vector2(rightX + rightColW - Meas(v, 1), ry), 1, Palette.Yellow1);
+            ry += RowH;
+        }
+        if (mvp != null)
+            Context.Font.DrawCentered(sb, mvp, new Rectangle(rightX, ry + 6, rightColW, 7), 1, Palette.Cyan1);
+        DrawDashedV(sb, colsX + leftColW + MidGap / 2, y, columnsH, DashColor);
+        y += columnsH + SecGap;
+        DrawDashedH(sb, innerX, y, innerW, DashColor);
+        y += DashH + SecGap;
+
+        // Avancement des phases : faites = crâne voilé + liseré vert ; suivante = liseré doré pulsé ; à venir = sombre.
+        Context.Font.DrawCentered(sb, phaseDone, new Rectangle(box.X, y, box.Width, 7), 1, Palette.White);
+        y += 7 + SecGap;
+        var px = box.X + (box.Width - pipsW) / 2;
+        for (var p = 1; p <= phases; p++)
+        {
+            var area = new Rectangle(px + (p - 1) * pipPitch, y, PipSize, PipSize);
+            var done = p <= recap.Phase;
+            var next = p == recap.Phase + 1;
+            DrawRect(sb, Inflate(area, 1), Palette.Black1);
+            DrawRect(sb, area, Palette.Navy2);
+            DrawMissionIcon(sb, CombatType.Boss, CenteredSquare(area, PipIcon), dim: !next);
+            if (next)
+            {
+                var pulse = 1 + (int)System.Math.Round((System.Math.Sin(_time * 6) + 1) * 0.5);
+                DrawRectBorder(sb, Inflate(area, pulse), Palette.Yellow2, 2);
+            }
+            else if (done)
+                DrawRectBorder(sb, area, Palette.Green1, 2);
+            else
+                DrawRectBorder(sb, area, Palette.Navy1, 1);
+
+            if (done || next)
+            {
+                var label = Loc.T(done ? "bossrecap.phase_ok" : "bossrecap.phase_n", p);
+                Context.Font.DrawCentered(sb, label, new Rectangle(area.Center.X - pipPitch / 2, area.Bottom + 4, pipPitch, 7), 1,
+                    done ? Palette.Green1 : Palette.Yellow2);
+            }
+        }
+        y += PipSize + 4 + 7 + SecGap;
+
+        _bossRecapBtnRect = new Rectangle(box.X + (box.Width - btnW) / 2, y, btnW, RecapBtnH);
+        DrawRecapButton(sb, _bossRecapBtnRect, btnLabel);
+        sb.End();
+    }
+
     // ── Frise chronologique de la phase (HUD haut) ──────────────────────────────
     private const int TimelineIconSize = 32;   // icône de mission (PNG Assets/Icons/mission_*.png = 32×32)
     private const int TimelineNodeSize = 40;   // côté d'un nœud (icône 32 + marge)
@@ -19814,6 +20179,9 @@ public sealed class GameplayScene : Scene
             case MenuAction.BloodChanged:
                 Context.Saves.SaveSettings(Context.Settings);
                 MeleeStrikeFx.GoreEnabled = Context.Settings.Blood;   // prochaine mise à mort : coupée ou dissoute
+                break;
+            case MenuAction.SkipTutorialChanged:
+                Context.Saves.SaveSettings(Context.Settings);   // vaut pour la PROCHAINE campagne (pas de skip en cours de tuto)
                 break;
             case MenuAction.ThemeChanged:
                 Context.Style.SetTheme(Context.Settings.UiTheme);   // à chaud : la frame suivante est au nouveau thème

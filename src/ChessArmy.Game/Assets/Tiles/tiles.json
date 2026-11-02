@@ -1628,6 +1628,14 @@
       "occupantDx": 0,
       "occupantDy": -6,
       "trait": "Balistique"
+    },
+    {
+      "_comment": "Bonhomme de neige (PNG individuel Assets/Tiles/bonhommeNeige.png) : obstacle comme le rocher des neiges neige_04 (ni marche ni tir). Le jeu en substitue AU MOINS UN aux rochers neige_04 de chaque map qui en a (cf. GameplayScene.PlaceSnowmen) ; on peut aussi le poser à la main.",
+      "id": "bonhommeNeige",
+      "key": "^s",
+      "blocksMove": true,
+      "blocksFire": true,
+      "glisse": false
     }
   ]
 }

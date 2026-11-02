@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/sound-preview/serve.js"],
       "port": 8765
+    },
+    {
+      "name": "steam-publisher",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "../SteamPublisher/SteamPublisher.csproj", "--", "--no-open"],
+      "port": 5560
     }
   ]
 }

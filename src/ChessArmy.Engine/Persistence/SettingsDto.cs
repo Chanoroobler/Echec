@@ -14,7 +14,7 @@ public sealed class SettingsDto
 {
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;
-    public WindowMode Mode { get; set; } = WindowMode.Windowed;
+    public WindowMode Mode { get; set; } = WindowMode.Fullscreen;
 
     // Compat : anciens réglages booléens, d'avant la fusion en un seul « Mode d'affichage ».
     // Lus pour migrer vers Mode quand un vieux options.json les contient ; jamais réécrits
@@ -35,6 +35,9 @@ public sealed class SettingsDto
     /// <summary>Effets sanglants (sang, pions coupés). Absent d'un ancien options.json → activés.</summary>
     public bool Blood { get; set; } = true;
 
+    /// <summary>Tutoriel passé d'office. Absent d'un ancien options.json → tutoriel joué.</summary>
+    public bool SkipTutorial { get; set; }
+
     /// <summary>Mode démo persisté (toggle pratique en test ; l'argument -demo et demo.flag l'activent aussi).</summary>
     public bool IsDemo { get; set; }
 
@@ -49,6 +52,7 @@ public sealed class SettingsDto
         Language = s.Language,
         UiTheme = s.UiTheme,
         Blood = s.Blood,
+        SkipTutorial = s.SkipTutorial,
         IsDemo = s.IsDemo,
     };
 
@@ -69,6 +73,7 @@ public sealed class SettingsDto
         s.Language = Language;
         s.UiTheme = UiTheme;
         s.Blood = Blood;
+        s.SkipTutorial = SkipTutorial;
         s.IsDemo = IsDemo;
     }
 }

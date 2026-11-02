@@ -116,4 +116,29 @@ public sealed class MapData
 
     /// <summary>Tuile à une case (origine en haut à gauche, comme <see cref="Battlefield"/>).</summary>
     public TileDef TileAt(Cell cell) => _tiles[cell.Column, cell.Row];
+
+    /// <summary>Préfixe des identifiants de tuiles du tileset hivernal (cf. Assets/Tiles/tiles.json).</summary>
+    public const string IceTilePrefix = "neige_";
+
+    /// <summary>
+    /// Map au thème GLACE ? Mesuré sur les TUILES (majorité de tuiles du tileset « neige ») et non sur le nom
+    /// du fichier : renommer une map ne doit pas changer ce qu'elle est, et une map d'un autre thème qui pose
+    /// quelques plaques de glace décoratives n'est pas concernée. Ces maps sont écartées de la DÉMO (au
+    /// chargement côté jeu, et retirées du dépôt démo à la publication, cf. tools/ChessArmy.DemoStrip).
+    /// </summary>
+    public bool IsIceThemed
+    {
+        get
+        {
+            var ice = 0;
+            var total = Width * Height;
+            if (total <= 0)
+                return false;
+            for (var row = 0; row < Height; row++)
+                for (var col = 0; col < Width; col++)
+                    if (_tiles[col, row].Id.StartsWith(IceTilePrefix, System.StringComparison.OrdinalIgnoreCase))
+                        ice++;
+            return ice * 2 > total;
+        }
+    }
 }

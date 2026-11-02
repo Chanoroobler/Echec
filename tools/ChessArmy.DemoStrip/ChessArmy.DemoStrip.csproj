@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Outil de PUBLICATION : épure le dossier publié de la version DÉMO de tout le contenu hors démo
+    (stats des classes au-dessus du plafond de tier, phases au-delà de la fin de démo, commandants non
+    jouables en démo et leurs arbres, équipements "demo": false, maps hors démo). Lancé automatiquement
+    par la cible StripDemoContent de ChessArmy.Game (AfterTargets=Publish, gated DemoBuild).
+    N'EST PAS référencé par ChessArmy.Game -> ne fait jamais partie de l'exe du jeu.
+    Réutilise ChessArmy.Core (pur) pour lire les maps / le plan de campagne et pour VALIDER le résultat
+    avec les mêmes parseurs que le jeu.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ChessArmy.Tools.DemoStrip</RootNamespace>
+    <AssemblyName>ChessArmy.DemoStrip</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ChessArmy.Core\ChessArmy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

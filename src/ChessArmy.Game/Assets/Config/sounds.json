@@ -59,6 +59,11 @@
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Growl A.wav",
     "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Monster/Cute Monster Growl B.wav"
   ],
+  // Grenouille d'ambiance CARESSÉE (clic) : un petit « boing » pendant qu'elle sautille et que les cœurs s'envolent.
+  "frog_pet": [
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Boing A.wav",
+    "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Abstracts/Boing B.wav"
+  ],
   // Renard d'ambiance ÉCRASÉ : un pion s'est posé sur lui alors qu'il n'avait aucune case pour fuir.
   // Cf. GameplayScene.UpdateFox.
   "fox_squash":  [

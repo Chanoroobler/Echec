@@ -21,6 +21,9 @@ public sealed class GameSettings
     /// </summary>
     public bool Blood { get; set; } = true;
 
+    /// <summary>Passe automatiquement le tutoriel (combat zéro) au lancement d'une nouvelle campagne.</summary>
+    public bool SkipTutorial { get; set; }
+
     /// <summary>
     /// Mode DÉMO (version de démonstration). Restreint la partie : la run s'arrête plus tôt (cf.
     /// <c>Run.EndAtPhase</c>), seuls les commandants ouverts d'office sont jouables (les autres restent

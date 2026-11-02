@@ -1241,6 +1241,7 @@ public sealed class Match
             return;
         unit.TakeDamage(amount);
         unit.RecordHit();               // coup RÉELLEMENT encaissé (0 exclu) — points d'un commandant
+        unit.RecordDamageTaken(amount);  // bilan de boss vaincu (dégâts au boss)
         attacker?.RecordDamage(amount);  // dégâts RÉELLEMENT infligés — récap de fin de run (dégâts par type)
         // Qui a entamé cette unité : lu à sa mort par les règles de campagne (mise à mort « à deux » du DUO).
         // Posé ICI, le seul passage obligé des dégâts : éclats, épines et rebonds comptent comme un coup direct.
@@ -2301,7 +2302,10 @@ public sealed class Match
         if (TryReviveWithEquipment(dead))
             return;   // « Queue de phénix » : reste sur sa case, vivant à 1 PV, équipement brisé (pas de kill)
         if (killer != null && dead.Faction != killer.Faction)
+        {
             killer.RecordKill();
+            dead.RecordKilledBy(killer);   // coup fatal : bilan de boss vaincu
+        }
         _units[cell.Column, cell.Row] = null;
         OnUnitDied(dead, cell);   // « Rage » : les alliés survivants du mort gagnent de la puissance
     }

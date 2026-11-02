@@ -20,6 +20,8 @@ public sealed class DisplaySettings
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;
 
-    /// <summary>Mode de fenêtre. La résolution (Width/Height) est ignorée en <see cref="WindowMode.Fullscreen"/>.</summary>
-    public WindowMode Mode { get; set; } = WindowMode.Windowed;
+    /// <summary>Mode de fenêtre. La résolution (Width/Height) est ignorée en <see cref="WindowMode.Fullscreen"/>.
+    /// Plein écran par défaut : au premier lancement on ne connaît pas l'écran du joueur, et une fenêtre
+    /// 1920×1080 déborde d'un portable (surtout avec la mise à l'échelle Windows à 125/150 %).</summary>
+    public WindowMode Mode { get; set; } = WindowMode.Fullscreen;
 }

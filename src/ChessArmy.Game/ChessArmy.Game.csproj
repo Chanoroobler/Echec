@@ -25,6 +25,23 @@
     </PropertyGroup>
     <Message Importance="high" Text="Build DEMO : symbole DEMO grave (IsDemo force au compile, non desactivable par le joueur)." />
   </Target>
+  <!-- Publication DÉMO : le symbole DEMO bride l'accès, mais un DLL .NET se patche. On RETIRE donc du dossier
+       publié tout le contenu hors démo (stats T3, profils de boss phase 3, commandants/arbres non jouables,
+       équipements "demo": false, maps de phase 3 / 9×9 / 10×10 / glace) : un binaire patché n'a plus rien à
+       débloquer. Les PNG restent (vitrine du codex et du carrousel). L'outil revalide le résultat avec les
+       parseurs du Core et fait ÉCHOUER la publication si la démo épurée n'est plus jouable.
+       Ne s'applique qu'au PUBLISH (dotnet build -p:DemoBuild=true garde les données complètes pour le test). -->
+  <Target Name="StripDemoContent" AfterTargets="Publish" Condition="'$(DemoBuild)'=='true'">
+    <!-- Propriétés globales du publish retirées : l'outil se compile en simple exe net9.0 (pas en win-x64). -->
+    <MSBuild Projects="..\..\tools\ChessArmy.DemoStrip\ChessArmy.DemoStrip.csproj" Targets="Build"
+             Properties="Configuration=Release"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishDir;PublishProfile;PublishProtocol;_TargetId;Platform;DemoBuild;PlaytestBuild">
+      <Output TaskParameter="TargetOutputs" ItemName="_DemoStripTool" />
+    </MSBuild>
+    <!-- EnsureTrailingSlash + "." : évite qu'un "\" final n'échappe le guillemet fermant de l'argument. -->
+    <Exec Command="dotnet &quot;@(_DemoStripTool)&quot; &quot;$([MSBuild]::EnsureTrailingSlash('$(PublishDir)')).&quot;"
+          StdOutEncoding="utf-8" StdErrEncoding="utf-8" />
+  </Target>
   <!-- Build PLAYTEST : -p:PlaytestBuild=true (profil FolderProfile) grave le symbole PLAYTEST, qui active les
        particularités du playtest (tous les commandants débloqués, cf. CommanderSelectScene). Sans ce symbole
        (profil FolderProfileFull) : JEU COMPLET, méta-progression normale. Même mécanique de cible que DEMO. -->

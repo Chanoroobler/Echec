@@ -37,6 +37,7 @@ options.volume_sfx,VOLUME EFFETS,SFX VOLUME,VOLUME EFFETTI,EFFEKTLAUTSTARKE,VOLU
 options.language,LANGUE,LANGUAGE,LINGUA,SPRACHE,IDIOMA,JEZYK,DIL,语言
 options.ui_theme,COULEURS UI,UI COLORS,COLORI UI,UI FARBEN,COLORES UI,KOLORY UI,ARAYUZ RENKLERI,界面颜色
 options.blood,SANG,BLOOD,SANGUE,BLUT,SANGRE,KREW,KAN,血液
+options.skip_tutorial,PASSER LE TUTO,SKIP TUTORIAL,SALTA TUTORIAL,TUTORIAL AUSLASSEN,SALTAR TUTORIAL,POMIN SAMOUCZEK,EGITIMI ATLA,跳过教程
 theme.dark,SOMBRE,DARK,SCURO,DUNKEL,OSCURO,CIEMNY,KOYU,暗色
 theme.olive,OLIVE,OLIVE,OLIVA,OLIV,OLIVA,OLIWKOWY,ZEYTIN,橄榄
 theme.gold,DORE,GOLD,ORO,GOLD,DORADO,ZLOTY,ALTIN,金色
@@ -420,6 +421,15 @@ recap.run_unlocks,COMMANDANT DEBLOQUE,COMMANDER UNLOCKED,COMANDANTE SBLOCCATO,KO
 recap.run_unlock_sub,NOUVEAU COMMANDANT JOUABLE,NEW PLAYABLE COMMANDER,NUOVO COMANDANTE GIOCABILE,NEUER SPIELBARER KOMMANDANT,NUEVO COMANDANTE JUGABLE,NOWY GRYWALNY DOWODCA,YENI OYNANABILIR KOMUTAN,新的可玩指挥官
 recap.run_back,CLIC POUR REVENIR AU MENU,CLICK TO RETURN TO MENU,CLIC PER TORNARE AL MENU,KLICK ZURUCK ZUM MENU,CLIC PARA VOLVER AL MENU,KLIKNIJ ABY WROCIC DO MENU,MENUYE DONMEK ICIN TIKLA,点击返回菜单
 recap.run_back_gp,A : MENU,A: MENU,A: MENU,A: MENU,A: MENU,A: MENU,A: MENU,A：菜单
+# ── Popup de boss vaincu (chaque boss, final compris) ───────────────────────
+bossrecap.bilan,BILAN DU COMBAT,BATTLE REPORT,RESOCONTO BATTAGLIA,KAMPFBERICHT,INFORME DE BATALLA,RAPORT Z BITWY,SAVAS RAPORU,战斗总结
+bossrecap.turns,TOURS,TURNS,TURNI,RUNDEN,TURNOS,TURY,TUR,回合
+bossrecap.boss_damage,DEGATS AU BOSS,DAMAGE TO BOSS,DANNI AL BOSS,SCHADEN AM BOSS,DANO AL BOSS,OBRAZENIA BOSSA,BOSSA HASAR,对BOSS伤害
+bossrecap.final_blow,COUP FATAL,FINAL BLOW,COLPO FATALE,TODESSTOSS,GOLPE FINAL,CIOS KONCZACY,OLDURUCU DARBE,致命一击
+bossrecap.phase_done,PHASE {0} TERMINEE,PHASE {0} COMPLETE,FASE {0} COMPLETATA,PHASE {0} ABGESCHLOSSEN,FASE {0} COMPLETADA,FAZA {0} UKONCZONA,ASAMA {0} TAMAMLANDI,阶段 {0} 完成
+bossrecap.phase_ok,PHASE {0} : OK,PHASE {0}: OK,FASE {0}: OK,PHASE {0}: OK,FASE {0}: OK,FAZA {0}: OK,ASAMA {0}: OK,阶段 {0}：OK
+bossrecap.phase_n,PHASE {0},PHASE {0},FASE {0},PHASE {0},FASE {0},FAZA {0},ASAMA {0},阶段 {0}
+bossrecap.continue,CONTINUER,CONTINUE,CONTINUA,WEITER,CONTINUAR,KONTYNUUJ,DEVAM,继续
 # ── Mots-cles d'unite (label + description) ─────────────────────────────────
 kw.rempart.label,REMPART,BULWARK,BALUARDO,BOLLWERK,BALUARTE,SZANIEC,SIPER,壁垒
 kw.rempart.desc,RÉDUIT DE {0} LES DÉGÂTS SAUF AU CONTACT DIRECT,REDUCES DAMAGE BY {0} EXCEPT FROM DIRECT CONTACT,RIDUCE I DANNI DI {0} TRANNE AL CONTATTO DIRETTO,VERRINGERT SCHADEN UM {0} AUSSER BEI DIREKTEM KONTAKT,REDUCE EL DANO EN {0} SALVO EN CONTACTO DIRECTO,ZMNIEJSZA OBRAZENIA O {0} POZA BEZPOSREDNIM KONTAKTEM,DOGRUDAN TEMAS DISINDA HASARI {0} AZALTIR,除直接接触外将伤害减少 {0}
@@ -544,7 +554,7 @@ tuto.card_hp,Points de vie : l'unité meurt quand ils tombent à zéro.,Health: 
 tuto.card_power,Puissance : les dégâts qu'elle inflige à chaque attaque.,Power: the damage it deals on each attack.,Potenza: i danni che infligge a ogni attacco.,Stärke: der Schaden den sie pro Angriff verursacht.,Poder: el daño que causa en cada ataque.,Moc: obrażenia zadawane przy każdym ataku.,Güç: her saldırıda verdiği hasar.,力量：每次攻击造成的伤害。
 tuto.card_move,Mouvement : le nombre de cases franchies en un tour.,Movement: how many tiles it crosses in one turn.,Movimento: il numero di caselle percorse in un turno.,Bewegung: wie viele Felder sie pro Runde überquert.,Movimiento: cuántas casillas recorre en un turno.,Ruch: ile pól pokonuje w jednej turze.,Hareket: bir turda kaç kare geçtiği.,移动：一回合跨越的格子数。
 tuto.card_range,Portée : la distance max à laquelle elle peut attaquer.,Range: the max distance at which it can attack.,Gittata: la distanza massima a cui può attaccare.,Reichweite: die maximale Distanz auf die sie angreifen kann.,Alcance: la distancia máxima a la que puede atacar.,Zasięg: maksymalny dystans ataku.,Menzil: saldırabildiği en uzak mesafe.,射程：能够攻击的最大距离。
-tuto.card_domaine,Déplacement : cette icône montre dans quelles directions elle peut aller.,Movement pattern: this icon shows which directions it can go.,Movimento: questa icona mostra in quali direzioni può andare.,Bewegungsmuster: dieses Symbol zeigt in welche Richtungen sie gehen kann.,Movimiento: este icono muestra en qué direcciones puede ir.,Ruch: ta ikona pokazuje w jakich kierunkach może iść.,Hareket: bu simge hangi yönlere gidebildiğini gösterir.,移动方式：这个图标显示它能往哪些方向走。
+tuto.card_domaine,Déplacement et tir : le pion parcourt les cases où il peut aller (en jaune). Les zones rouges montrent où il peut tirer. En orange : il peut y aller ET y tirer.,Movement and range: the pawn walks the squares it can reach (in yellow). Red zones show where it can shoot. Orange: it can both move and shoot there.,Movimento e tiro: la pedina percorre le caselle che può raggiungere (in giallo). Le zone rosse mostrano dove può tirare. In arancione: può sia muoversi sia tirare lì.,Bewegung und Reichweite: Die Figur läuft die erreichbaren Felder ab (gelb). Rote Zonen zeigen ihre Schussweite. Orange: Sie kann dort hinziehen UND schießen.,Movimiento y tiro: el peón recorre las casillas a las que puede ir (en amarillo). Las zonas rojas muestran dónde puede disparar. En naranja: puede moverse Y disparar ahí.,Ruch i zasięg: pionek obchodzi pola na które może wejść (na żółto). Czerwone strefy pokazują gdzie może strzelać. Na pomarańczowo: może tam i wejść i strzelać.,Hareket ve atış: piyon gidebildiği kareleri dolaşır (sarı). Kırmızı bölgeler nereye ateş edebildiğini gösterir. Turuncu: oraya hem gidebilir hem ateş edebilir.,移动与射程：棋子会走过它能到达的格子。图中也显示它能射击的区域。能到达也能射击的格子是另一种色。
 tuto.card_continue,Clic pour la suite,Click for next,Clic per continuare,Klick für weiter,Clic para seguir,Kliknij dalej,Devam için tıkla,点击继续
 tuto.card_continue_gp,A pour la suite,A for next,A per continuare,A für weiter,A para seguir,A aby dalej,Devam için A,按A继续
 tuto.skip,PASSER LE TUTO,SKIP TUTORIAL,SALTA IL TUTORIAL,TUTORIAL UBERSPRINGEN,SALTAR TUTORIAL,POMIN SAMOUCZEK,OGRETICIYI GEC,跳过教程
