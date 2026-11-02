@@ -5038,10 +5038,26 @@ public sealed class GameplayScene : Scene
     private int InvGridBottom()
     {
         var panel = PanelRect();
-        var firstBtnTop = PanelHasBottomButtons && ShowCommandTreeButton ? CommandTreeButtonRect().Y
-            : PanelHasBottomButtons && ShowFightButton ? FightButtonRect().Y
+        if (!PanelHasBottomButtons)
+            return ReserveTrashRect().Y - TrashHintGap;   // écrans post-combat : la poubelle tient le bas
+        var firstBtnTop = ShowCommandTreeButton ? CommandTreeButtonRect().Y
+            : ShowFightButton ? FightButtonRect().Y
             : panel.Bottom - 24;
         return firstBtnTop - InvHintReserve;
+    }
+
+    private const int TrashHintGap = 24;   // entre la grille et la poubelle : une ligne d'aide
+
+    /// <summary>
+    /// POUBELLE en bas du panneau de réserve des écrans post-combat (recrutement, récompense, révélation
+    /// de recrue) : y lâcher un portrait glissé le SUPPRIME. La grille s'arrête au-dessus
+    /// (<see cref="InvGridBottom"/>) et défile, donc une grosse réserve ne la recouvre jamais.
+    /// </summary>
+    private Rectangle ReserveTrashRect()
+    {
+        var panel = PanelRect();
+        const int h = 36, margin = 12;
+        return new Rectangle(panel.X + PanelPad, panel.Bottom - margin - h, panel.Width - 2 * PanelPad, h);
     }
 
     /// <summary>Rangées affichables d'un coup ; au-delà, la réserve défile.</summary>
@@ -8674,12 +8690,15 @@ public sealed class GameplayScene : Scene
     {
         var mouse = Context.Input.MousePosition;
 
-        // Drag en cours : le relâchement empile sur un identique (fusion) ou remet le pion en réserve.
+        // Drag en cours : le relâchement supprime (poubelle), empile sur un identique (fusion) ou remet le
+        // pion en réserve.
         if (_dragSpec is { } dragged)
         {
             if (Context.Input.WasLeftReleased)
             {
-                if (!TryStackOnReserve(dragged, mouse))
+                if (ReserveTrashRect().Contains(mouse) && _run.DeleteUnit(dragged))
+                    Context.Sounds.Play("unit_deselect");
+                else if (!TryStackOnReserve(dragged, mouse))
                     AddToReserve(dragged);
                 _dragSpec = null;
                 _dragFrom = null;
@@ -8694,7 +8713,7 @@ public sealed class GameplayScene : Scene
                 CancelFusion();
                 return true;
             }
-            if (PanelCardAt(mouse) is { } i)   // prise d'un portrait pour l'empiler
+            if (PanelCardAt(mouse) is { } i)   // prise d'un portrait pour l'empiler ou le jeter
             {
                 _dragSpec = _pending[i];
                 _pending.RemoveAt(i);
@@ -8702,15 +8721,6 @@ public sealed class GameplayScene : Scene
                 Context.Sounds.Play("unit_pick");
                 return true;
             }
-        }
-
-        // Clic DROIT sur un portrait : suppression (faire de la place).
-        if (Context.Input.WasRightClicked && PanelCardAt(mouse) is { } d)
-        {
-            _run.DeleteUnit(_pending[d]);
-            _pending.RemoveAt(d);
-            Context.Sounds.Play("unit_deselect");
-            return true;
         }
         return false;
     }
@@ -8746,13 +8756,14 @@ public sealed class GameplayScene : Scene
             new Vector2(panel.Right - PanelPad - Context.Font.Measure(counter, 1), PanelListTop - 22),
             1, _run.IsReserveFull ? Palette.Purple5 : Palette.Cyan1);
 
+        var trash = ReserveTrashRect();
         var hx = panel.X + PanelPad;
-        var hy = panel.Bottom - 32;
+        var hy = trash.Y + 4;   // manette : ses 2 lignes d'aide prennent la place de la poubelle
         if (!Context.Input.UsingGamepad)
         {
-            // Rappel (souris) : fusion par empilement + suppression au clic droit.
-            Context.Font.Draw(sb, Loc.T("reserve.hint_fuse"), new Vector2(hx, hy), 1, Palette.Yellow2);
-            Context.Font.Draw(sb, Loc.T("reserve.hint_del"), new Vector2(hx, hy + 14), 1, Palette.Blue1);
+            // Souris : rappel de la fusion par empilement, puis la poubelle (lâcher un portrait = supprimer).
+            Context.Font.Draw(sb, Loc.T("reserve.hint_fuse"), new Vector2(hx, trash.Y - 16), 1, Palette.Yellow2);
+            DrawReserveTrash(sb, trash);
         }
         else if (_gpInventory && _pending.Count > 0)
         {
@@ -8766,6 +8777,31 @@ public sealed class GameplayScene : Scene
         {
             Context.Font.Draw(sb, Loc.T("reserve.hint_enter"), new Vector2(hx, hy), 1, Palette.Cyan1);
         }
+    }
+
+    /// <summary>
+    /// Poubelle de réserve : discrète au repos, rouge pendant qu'on porte un portrait, pleine au survol
+    /// (le lâcher supprime). Aplats unis : icône de corbeille + libellé centrés. Batch OUVERT requis.
+    /// </summary>
+    private void DrawReserveTrash(SpriteBatch sb, Rectangle r)
+    {
+        var dragging = _dragSpec != null;
+        var hot = dragging && r.Contains(Context.Input.MousePosition);
+        var fg = hot ? Palette.White : dragging ? Palette.Purple5 : Palette.Blue1;
+        if (hot)
+            DrawRect(sb, r, Palette.Purple2);
+        DrawRectBorder(sb, r, dragging ? Palette.Purple5 : Palette.Blue2, 2);
+
+        var label = Loc.T(dragging ? "reserve.delete" : "reserve.trash");
+        const int iconW = 10, iconGap = 6;
+        var textW = Context.Font.Measure(label, 1);
+        var x = r.X + (r.Width - iconW - iconGap - textW) / 2;
+        var cy = r.Y + r.Height / 2;
+        // Corbeille 10×12 : poignée, couvercle, cuve.
+        DrawRect(sb, new Rectangle(x + 3, cy - 6, 4, 1), fg);
+        DrawRect(sb, new Rectangle(x, cy - 5, iconW, 2), fg);
+        DrawRect(sb, new Rectangle(x + 1, cy - 2, iconW - 2, 8), fg);
+        Context.Font.Draw(sb, label, new Vector2(x + iconW + iconGap, cy - 3), 1, fg);
     }
 
     /// <summary>
