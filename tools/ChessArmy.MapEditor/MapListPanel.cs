@@ -61,9 +61,9 @@ internal sealed class MapListPanel : Panel
         _grid.RowTemplate.Height = 22;
 
         AddColumn("Map", "Nom de la map (gris = brouillon, exclu du jeu)", 150, left: true);
-        AddColumn("Type", "Esc = escarmouche, Spé = spéciale, Boss = boss", 50);
+        AddColumn("Type", "Esc = escarmouche, Spé = spéciale, Boss = boss, Multi = partie PvP", 50);
         AddColumn("Ph", "Phase(s) où la map peut sortir. Spéciale/boss : sa phase (T = toutes). Escarmouche : déduit de campaign.json (une mission escarmouche de la phase demande la taille de son plus petit côté, 8×12 = 8×8 ; 9 et 10 aussi en phase 3) ; « - » = jamais tirée", 54);
-        AddColumn("Obj", "Objectif des spéciales : Lib = libérer, Pro = protéger, Sau = sauver", 46);
+        AddColumn("Obj", "Objectif des spéciales : Lib = libérer, Pro = protéger, Sau = sauver. Multi : Sym = symétrique haut/bas (même rendu des deux côtés), Ret = l'invité la joue retournée", 46);
         AddColumn("Taille", "Largeur × hauteur", 56);
         AddColumn("Enn T/1/2/3", "Ennemis : Total / T1 / T2 / T3. Total = cases de spawn E/D/O (+ B pour un boss, compté dans le total mais pas dans les tiers). Tiers du calque « tiers » (spéciales et boss) ; « - » = pas de tier fixé, la vague suit campaign.json (toujours le cas des escarmouches)", 118);
         AddColumn("Rec", "Recrues (tuiles R)", 44);
@@ -94,7 +94,7 @@ internal sealed class MapListPanel : Panel
 
         var title = new Label
         {
-            Text = "Maps escarmouche, spéciales et boss", AutoSize = true, ForeColor = Color.Gainsboro,
+            Text = "Maps escarmouche, spéciales, boss et multi", AutoSize = true, ForeColor = Color.Gainsboro,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), Margin = new Padding(6, 7, 0, 0),
         };
         var header = new FlowLayoutPanel
@@ -141,7 +141,7 @@ internal sealed class MapListPanel : Panel
                 try
                 {
                     var data = MapLoader.Parse(File.ReadAllText(path), core);
-                    if (data.Type is CombatType.Escarmouche or CombatType.Speciale or CombatType.Boss)
+                    if (data.Type is CombatType.Escarmouche or CombatType.Speciale or CombatType.Boss or CombatType.Multi)
                         rows.Add((path, data));
                 }
                 catch { /* illisible : signalée par le Récap, absente d'ici */ }
@@ -160,7 +160,7 @@ internal sealed class MapListPanel : Panel
                     Path.GetFileNameWithoutExtension(path),
                     TypeLabel(d.Type),
                     PhaseText(d),
-                    ObjLabel(d.Objective),
+                    d.Type == CombatType.Multi ? (PvpSetup.IsMirrorSymmetric(d) ? "Sym" : "Ret") : ObjLabel(d.Objective),
                     $"{d.Width}×{d.Height}",
                     EnemyText(d), recruits, chests, TurnLimit(d), QuotaText(d, recruits, out var capped), TerrainText(d));   // entiers : le tri des colonnes est numérique
                 var row = _grid.Rows[i];
@@ -171,6 +171,11 @@ internal sealed class MapListPanel : Panel
                     row.Cells[6].Style.ForeColor = Color.FromArgb(240, 110, 100);   // spéciale sans paysan : ingagnable
                 if (capped)
                     row.Cells[9].Style.ForeColor = Color.FromArgb(240, 110, 100);   // quota plafonné : il faut TOUS les sauver
+                if (d.Type == CombatType.Multi && PvpSetup.Problem(d) is { } problem)
+                {
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(240, 110, 100);   // multi injouable : jamais tirée
+                    row.Cells[0].ToolTipText = "Injouable en multi : " + problem;
+                }
             }
             _count.Text = $"{rows.Count} maps";
         }
@@ -299,6 +304,8 @@ internal sealed class MapListPanel : Panel
     /// </summary>
     private static string PhaseText(MapData d)
     {
+        if (d.Type == CombatType.Multi)
+            return "-";   // multi : hors campagne, pas de phase
         if (d.Type != CombatType.Escarmouche)
             return d.Phase == 0 ? "T" : d.Phase.ToString();
         var size = d.PoolSize;   // plus petit côté : une 8×12 compte comme une 8×8
@@ -355,6 +362,7 @@ internal sealed class MapListPanel : Panel
     {
         CombatType.Speciale => 0,
         CombatType.Boss => 1,
+        CombatType.Multi => 3,   // section multi en fin de tableau
         _ => 2,
     };
 
@@ -362,6 +370,7 @@ internal sealed class MapListPanel : Panel
     {
         CombatType.Speciale => "Spé",
         CombatType.Boss => "Boss",
+        CombatType.Multi => "Multi",
         _ => "Esc",
     };
 

@@ -13,6 +13,7 @@ using ChessArmy.Engine.Persistence;
 using ChessArmy.Engine.Rendering;
 using ChessArmy.Engine.Scenes;
 using ChessArmy.Engine.UI;
+using ChessArmy.Game.Net;
 using ChessArmy.Game.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -896,6 +897,23 @@ public sealed class GameplayScene : Scene
         _chosenDifficulty = difficulty;
     }
 
+    /// <summary>
+    /// Partie PvP (POC) contre un joueur Steam : un seul combat sur un échiquier 8×8, même armée des deux côtés
+    /// (cf. <see cref="PvpSetup"/>), hors campagne (aucune sauvegarde, aucun succès, aucune méta-progression).
+    /// La scène prend possession de <paramref name="session"/> et la libère en sortant.
+    /// </summary>
+    public GameplayScene(GameContext context, PvpSession session) : base(context)
+    {
+        _saveSlot = -1;
+        _pvp = session;
+    }
+
+    // ── PvP (POC) ── null hors PvP. Tout ce qui touche à la campagne est court-circuité quand il est posé.
+    private readonly PvpSession? _pvp;
+    private Faction? _pvpWinner;          // issue de la partie (vue locale) une fois le plateau posé
+    private bool _pvpDesync;              // empreintes divergentes : les deux clients ne voient plus la même partie
+    private Rectangle _pvpMenuRect;       // bouton « Menu principal » du panneau de fin
+
     /// <summary>Viewport logique (espace virtuel) dans lequel l'UI se met en page.</summary>
     private Viewport VirtualViewport =>
         new(0, 0, Context.VirtualResolution.X, Context.VirtualResolution.Y);
@@ -974,6 +992,7 @@ public sealed class GameplayScene : Scene
 
     public override void Unload()
     {
+        _pvp?.Dispose();            // PvP : prévient l'adversaire et quitte le lobby (menu, abandon, fermeture)
         FlushCommanderPlayTime();   // historique du commandant : le temps joué depuis le dernier combat
         _sliceUpper?.Dispose();
         _sliceLower?.Dispose();
@@ -1830,6 +1849,13 @@ public sealed class GameplayScene : Scene
 
     private void StartRun()
     {
+        if (_pvp != null)
+        {
+            // Run JETABLE : la scène en a besoin pour ses phases, mais elle n'est jamais sauvegardée.
+            _run = new Run(firstRun: false, commander: null, difficulty: Difficulty.Normal);
+            BeginPvpBattle(_pvp);
+            return;
+        }
         var resumed = _initialRun != null;
         if (_initialRun != null)
         {
@@ -1923,75 +1949,7 @@ public sealed class GameplayScene : Scene
                     case MapObjectKind.Bush: _bushCells.Add(o.Cell); break;
                     case MapObjectKind.Chute: _chuteCells.Add(o.Cell); break;
                 }
-        // Perchoirs des papillons, au pixel près : le DESSUS des rochers dessinés (tuiles « pierre » et
-        // « neige_04 », le même amas de rochers, enneigé pour la seconde) et les touffes des buissons (si leur
-        // PNG existe : le placeholder dessiné n'a pas ces touffes).
-        _perchBuffer.Clear();
-        foreach (var c in _battlefield.Cells())
-            if (_battlefield[c].Id is "pierre" or "neige_04")
-                AddPerches(c, RockPerchSpots);
-        if (_bushSprite != null)
-            foreach (var c in _bushCells)
-                AddPerches(c, BushPerchSpots);
-        _butterfly.SetPerches(_perchBuffer);
-        // Ressac : déclare les cases d'eau du plateau (étendues pour le ressac, eau libre pour les poissons).
-        if (_waterFoam != null)
-        {
-            _waterFoam.ResetBoard();
-            foreach (var c in _battlefield.Cells())
-                if (_battlefield[c].Id is var id && (id.StartsWith("eau", StringComparison.Ordinal) || id == "water"))   // eau*, + la mare de tiles_herb
-                {
-                    var (tex, src) = TileSprite(_battlefield[c].Id, c);
-                    _waterFoam.AddCell(c, tex, src);
-                }
-            _waterFoam.FinishBoard();   // une étendue d'eau = un rythme ; deux étendues séparées = deux rythmes
-        }
-        ApplyWeather();   // heure (jour / couchant / nuit) + pluie de cette mission
-        // Props de décor sur TOUTES les tuiles : herbe = couleur dominante de la tuile « herbe » ; neige = celle de « neige_13 » ;
-        // terre = couleur
-        // dominante du chemin « chemin_v » hors herbe (la même que le haut des murs). Jamais sur un pan vertical.
-        if (_grassProps != null && _groundProps != null && _snowProps != null && _snowPathProps != null
-            && _puddlesDirt != null && _puddlesGrass != null)
-        {
-            var (herbTex, herbSrc) = TileSprite("herbe", new Cell(0, 0));
-            _grassProps.ResetBoard(herbTex, herbSrc);
-            var (pathTex, pathSrc) = TileSprite("chemin_v", new Cell(0, 0));
-            _groundProps.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
-            var (snowTex, snowSrc) = TileSprite("neige_13", new Cell(0, 0));   // neige unie (le bleu foncé hors chemins)
-            _snowProps.ResetBoard(snowTex, snowSrc);
-            var (snowPathTex, snowPathSrc) = TileSprite("neige_23", new Cell(0, 0));   // chemin de neige (bleu clair)
-            _snowPathProps.ResetBoard(snowPathTex, snowPathSrc, exclude: _snowProps.Surface);
-            _puddlesGrass.ResetBoard(herbTex, herbSrc);                                       // flaques : mêmes surfaces
-            _puddlesDirt.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
-            foreach (var c in _battlefield.Cells())
-            {
-                var (tex, src) = TileSprite(_battlefield[c].Id, c);
-                var cell = c;
-                Func<int, int, bool> isFace = (x, y) => IsFacePixel(cell, x, y);   // placement seulement
-                // Le vert uni du tileset des murs est un SOL, pas de l'herbe (même couleur) : pas de props d'herbe.
-                if (!(_tileSheet.TryGetValue(_battlefield[c].Id, out var sheetName) && sheetName == "murs"))
-                {
-                    _grassProps.AddCell(c, tex, src, isFace);
-                    _puddlesGrass.AddCell(c, tex, src, isFace);
-                }
-                _groundProps.AddCell(c, tex, src, isFace);
-                _puddlesDirt.AddCell(c, tex, src, isFace);
-                // Neige : seulement les tuiles du tileset neige (le même bleu foncé est aussi de l'eau ailleurs).
-                if (sheetName == "neige")
-                {
-                    _snowProps.AddCell(c, tex, src, isFace);
-                    if (!_battlefield[c].Slippery)   // la glace a le même bleu clair que les chemins : rien dessus
-                        _snowPathProps.AddCell(c, tex, src, isFace);
-                }
-            }
-            _grassProps.FinishBoard();
-            _groundProps.FinishBoard();
-            _snowProps.FinishBoard();
-            _snowPathProps.FinishBoard();
-            _puddlesDirt.FinishBoard();
-            _puddlesGrass.FinishBoard();
-            _nightLight.ResetBoard(Columns * GridLayout.DefaultTileSize, Rows * GridLayout.DefaultTileSize);   // lucioles
-        }
+        SetupBoardDecor();   // perchoirs, ressac, météo, props, flaques, lucioles
         RefreshLootObjects();   // recrues + coffres (ou trousses + sacoches du DUO, selon les nœuds achetés)
 
         // Mission spéciale = map Speciale avec un sous-objectif (Liberer/Proteger paysans). En mode objectif,
@@ -2016,7 +1974,7 @@ public sealed class GameplayScene : Scene
         // La difficulté s'applique ICI : l'IA ne joue son meilleur coup qu'avec la précision du niveau choisi
         // POUR CETTE RUN, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
         _enemyController = new AiBattleController(PaysanCells,
-            DifficultySettings.For(_run?.Difficulty ?? Difficulty.Normal).AiAccuracy);
+            DifficultySettings.For(_run.Difficulty).AiAccuracy);
         ApplyTreeTuningToMatch();
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing). Pendant le
@@ -2242,7 +2200,7 @@ public sealed class GameplayScene : Scene
     /// <see cref="Run.Difficulty"/> (la valeur persistée avec la run) et non le choix d'écran
     /// <see cref="_chosenDifficulty"/>, qui vaut Normal par défaut sur une partie reprise.
     /// </summary>
-    private bool CanRestartMission => DifficultySettings.For(_run.Difficulty).AllowRestart;
+    private bool CanRestartMission => _pvp == null && DifficultySettings.For(_run.Difficulty).AllowRestart;
 
     /// <summary>
     /// Prépare le TUTORIEL « combat zéro » : board plat, scénario fixe (commandant + 1 soldat joueur,
@@ -2266,6 +2224,229 @@ public sealed class GameplayScene : Scene
             _battlefield = Battlefield.CreateFlat(Columns, Rows);   // herbe partout, aucun obstacle
         }
         _boardIntro = _boardIntroTotal = 0f;                    // pas d'animation d'assemblage en tutoriel
+        ClearBoardObjects();
+        // Le seul objet de la map du tuto : le coffre de la leçon « équipement ».
+        if (_map is { } withObjects)
+            foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
+                _chestCells.Add(o.Cell);
+        _battleLog.Clear();
+        _match = new Match(Columns, Rows, _battlefield);
+        ResetCombatState();
+
+        // Commandant déjà posé (montre l'unité essentielle), 1 SOLDAT à déployer dans l'inventaire.
+        var commanderCell = new Cell(Columns / 2, Rows - 1);
+        PlacePlayer(_run.Commander, commanderCell);
+        _pending.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
+
+        // 1 Soldat ennemi NORMAL (12 PV, dégâts 10) : il survit à la 1re attaque et contre-attaque.
+        var enemyCell = new Cell(Columns / 2, 1);
+        _match.Place(enemyCell, new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass).Spawn(Faction.Enemy));
+
+        _tutorial = new TutorialGuide
+        {
+            Commander = commanderCell,
+            EnemySoldier = enemyCell,
+            Chest = _chestCells.Count > 0 ? _chestCells[0] : null,
+        };
+        _cursor = commanderCell;        // curseur manette sur la zone joueur
+        MarkLayoutDirty();
+        // Reste en phase PLACEMENT (pas de StartBattle, pas de sauvegarde) : le tuto guide le placement.
+    }
+
+    /// <summary>
+    /// Partie PvP (POC) : une map <see cref="CombatType.Multi"/> tirée par la graine de l'hôte (échiquier d'herbe nu
+    /// s'il n'y en a aucune), les deux armées en place, et le combat démarre aussitôt (ni placement, ni sauvegarde).
+    /// Le camp adverse est joué par <see cref="RemoteBattleController"/> ; chaque client joue en bas (plateau
+    /// retourné chez l'invité, cf. <see cref="PvpSetup"/>), l'hôte commence.
+    /// </summary>
+    private void BeginPvpBattle(PvpSession session)
+    {
+        _map = null;   // la map sert au terrain seulement : ses spawns/objets de campagne ne s'appliquent pas
+        Columns = Rows = PvpSetup.Size;
+        _boardIntro = _boardIntroTotal = 0f;
+        ClearBoardObjects();
+        List<Cell>? bushes = null;
+        _battlefield = PvpSetup.PickMap(_maps, session.Seed) is { } map
+            ? PvpSetup.BuildBattlefield(map, session.IsHost, out bushes)
+            : Battlefield.CreateFlat(Columns, Rows);
+        if (bushes != null)
+            _bushCells.AddRange(bushes);
+        DetectSnowMap();
+        SetupBoardDecor();
+        _battleLog.Clear();
+        _combatSeed = session.Seed;
+        _match = PvpSetup.CreateMatch(session.IsHost, session.Seed, _battlefield, _bushCells);
+        ResetCombatState();
+        PvpSetup.PlaceArmies(_match);
+        _enemyController = new RemoteBattleController(session);
+        _cursor = new Cell(Columns / 2, Rows - 2);   // curseur manette sur les pions du joueur
+
+        _run.StartBattle();
+        _battleIntroTimer = 0;   // aucun panneau de placement à faire sortir
+        _lastAiAction = null;
+        MarkLayoutDirty();
+        Context.Sounds.Play("battle_start");
+    }
+
+
+    /// <summary>
+    /// Décor du plateau courant (_battlefield + _bushCells déjà posés) : perchoirs des papillons, ressac et poissons,
+    /// météo, props d'herbe / de terre / de neige, flaques et lucioles. Purement visuel. Campagne et PvP.
+    /// </summary>
+    private void SetupBoardDecor()
+    {
+        // Perchoirs des papillons, au pixel près : le DESSUS des rochers dessinés (tuiles « pierre » et
+        // « neige_04 », le même amas de rochers, enneigé pour la seconde) et les touffes des buissons (si leur
+        // PNG existe : le placeholder dessiné n'a pas ces touffes).
+        _perchBuffer.Clear();
+        foreach (var c in _battlefield.Cells())
+            if (_battlefield[c].Id is "pierre" or "neige_04")
+                AddPerches(c, RockPerchSpots);
+        if (_bushSprite != null)
+            foreach (var c in _bushCells)
+                AddPerches(c, BushPerchSpots);
+        _butterfly.SetPerches(_perchBuffer);
+        // Ressac : déclare les cases d'eau du plateau (étendues pour le ressac, eau libre pour les poissons).
+        if (_waterFoam != null)
+        {
+            _waterFoam.ResetBoard();
+            foreach (var c in _battlefield.Cells())
+                if (_battlefield[c].Id is var id && (id.StartsWith("eau", StringComparison.Ordinal) || id == "water"))   // eau*, + la mare de tiles_herb
+                {
+                    var (tex, src) = TileSprite(_battlefield[c].Id, c);
+                    _waterFoam.AddCell(c, tex, src);
+                }
+            _waterFoam.FinishBoard();   // une étendue d'eau = un rythme ; deux étendues séparées = deux rythmes
+        }
+        ApplyWeather();   // heure (jour / couchant / nuit) + pluie de cette mission
+        // Props de décor sur TOUTES les tuiles : herbe = couleur dominante de la tuile « herbe » ; neige = celle de « neige_13 » ;
+        // terre = couleur
+        // dominante du chemin « chemin_v » hors herbe (la même que le haut des murs). Jamais sur un pan vertical.
+        if (_grassProps != null && _groundProps != null && _snowProps != null && _snowPathProps != null
+            && _puddlesDirt != null && _puddlesGrass != null)
+        {
+            var (herbTex, herbSrc) = TileSprite("herbe", new Cell(0, 0));
+            _grassProps.ResetBoard(herbTex, herbSrc);
+            var (pathTex, pathSrc) = TileSprite("chemin_v", new Cell(0, 0));
+            _groundProps.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
+            var (snowTex, snowSrc) = TileSprite("neige_13", new Cell(0, 0));   // neige unie (le bleu foncé hors chemins)
+            _snowProps.ResetBoard(snowTex, snowSrc);
+            var (snowPathTex, snowPathSrc) = TileSprite("neige_23", new Cell(0, 0));   // chemin de neige (bleu clair)
+            _snowPathProps.ResetBoard(snowPathTex, snowPathSrc, exclude: _snowProps.Surface);
+            _puddlesGrass.ResetBoard(herbTex, herbSrc);                                       // flaques : mêmes surfaces
+            _puddlesDirt.ResetBoard(pathTex, pathSrc, exclude: _grassProps.Surface);
+            foreach (var c in _battlefield.Cells())
+            {
+                var (tex, src) = TileSprite(_battlefield[c].Id, c);
+                var cell = c;
+                Func<int, int, bool> isFace = (x, y) => IsFacePixel(cell, x, y);   // placement seulement
+                // Le vert uni du tileset des murs est un SOL, pas de l'herbe (même couleur) : pas de props d'herbe.
+                if (!(_tileSheet.TryGetValue(_battlefield[c].Id, out var sheetName) && sheetName == "murs"))
+                {
+                    _grassProps.AddCell(c, tex, src, isFace);
+                    _puddlesGrass.AddCell(c, tex, src, isFace);
+                }
+                _groundProps.AddCell(c, tex, src, isFace);
+                _puddlesDirt.AddCell(c, tex, src, isFace);
+                // Neige : seulement les tuiles du tileset neige (le même bleu foncé est aussi de l'eau ailleurs).
+                if (sheetName == "neige")
+                {
+                    _snowProps.AddCell(c, tex, src, isFace);
+                    if (!_battlefield[c].Slippery)   // la glace a le même bleu clair que les chemins : rien dessus
+                        _snowPathProps.AddCell(c, tex, src, isFace);
+                }
+            }
+            _grassProps.FinishBoard();
+            _groundProps.FinishBoard();
+            _snowProps.FinishBoard();
+            _snowPathProps.FinishBoard();
+            _puddlesDirt.FinishBoard();
+            _puddlesGrass.FinishBoard();
+            _nightLight.ResetBoard(Columns * GridLayout.DefaultTileSize, Rows * GridLayout.DefaultTileSize);   // lucioles
+        }
+    }
+    /// <summary>
+    /// PvP, chaque frame de combat : relève le réseau, puis une fois la partie finie (issue posée par
+    /// <see cref="CheckBattleEnd"/>, ou adversaire parti) fige le plateau derrière le panneau de fin et attend le
+    /// retour au menu. Vrai = la frame est consommée (rien d'autre ne doit jouer).
+    /// </summary>
+    private bool UpdatePvp(float dt)
+    {
+        _pvp!.Update(dt);
+        if (_pvpWinner is null && !_pvp.OpponentLeft)
+            return false;
+
+        // Les particules et chiffres déjà lancés finissent de vivre sous le panneau.
+        _sparks.Update(dt);
+        if (_damagePopups.HasActive)
+            _damagePopups.Update(dt, BuildLayout(), _sparks);
+
+        if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter)
+            || (Context.Input.WasLeftClicked && _pvpMenuRect.Contains(Context.Input.MousePosition)))
+        {
+            Context.Sounds.Play("menu_click");
+            Context.Scenes.Change(new MainMenuScene(Context));   // Unload libère la session (on quitte le lobby)
+        }
+        return true;
+    }
+
+    /// <summary>HUD PvP : à qui de jouer (haut), alerte de désynchronisation, et panneau de fin de partie.</summary>
+    private void DrawPvpHud(SpriteBatch sb, Viewport viewport)
+    {
+        var pvp = _pvp!;
+        var over = _pvpWinner is not null || pvp.OpponentLeft;
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        if (!over)
+        {
+            var mine = _match.CurrentTurn == Faction.Player;
+            var text = mine ? Loc.T("pvp.your_turn") : Loc.T("pvp.their_turn", pvp.OpponentName);
+            var w = Context.Font.Measure(text, 2) + 40;
+            var box = new Rectangle((viewport.Width - w) / 2, 10, w, 30);
+            Context.Style.DrawPanel(sb, box);
+            Context.Font.DrawCentered(sb, text, box, 2, mine ? Palette.Yellow2 : Palette.Blue1);
+            if (_pvpDesync)
+                Context.Font.DrawCentered(sb, Loc.T("pvp.desync"), new Rectangle(0, box.Bottom + 6, viewport.Width, 7),
+                    1, Palette.Purple5);
+            sb.End();
+            return;
+        }
+
+        DrawDim(sb, viewport);
+        string title;
+        Color color;
+        if (_pvpWinner is { } winner)
+        {
+            title = Loc.T(winner == Faction.Player ? "pvp.victory" : "pvp.defeat");
+            color = winner == Faction.Player ? Palette.Yellow2 : Palette.Purple5;
+        }
+        else
+        {
+            title = Loc.T("pvp.opponent_left");
+            color = Palette.Yellow2;
+        }
+        var label = Loc.T("menu.main_menu");
+        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
+        const int Gap = 12;
+        var btnW = Context.Font.Measure(label, 1) + 40;
+        var contentW = System.Math.Max(System.Math.Max(Context.Font.Measure(title, 3), btnW), Context.Font.Measure(prompt, 1));
+        var boxW = contentW + 2 * ModalPadH;
+        var boxH = ModalPadV + 21 + Gap + RecapBtnH + Gap + 7 + ModalPadV;
+        var panel = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
+        Context.Style.DrawPanel(sb, panel);
+        var y = panel.Y + ModalPadV;
+        Context.Font.DrawCentered(sb, title, new Rectangle(panel.X, y, panel.Width, 21), 3, color);
+        y += 21 + Gap;
+        _pvpMenuRect = new Rectangle(panel.X + (panel.Width - btnW) / 2, y, btnW, RecapBtnH);
+        DrawRecapButton(sb, _pvpMenuRect, label);
+        y += RecapBtnH + Gap;
+        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
+        Context.Font.DrawCentered(sb, prompt, new Rectangle(panel.X, y, panel.Width, 7), 1, Palette.Cyan1 * a);
+        sb.End();
+    }
+
+    /// <summary>Vide les objets de plateau (buissons, recrues, coffres, chutes…) et l'ambiance animalière.</summary>
+    private void ClearBoardObjects()
+    {
         _bushCells.Clear();
         _recrueCells.Clear();
         _petiteTrousseCells.Clear();
@@ -2277,14 +2458,13 @@ public sealed class GameplayScene : Scene
         _chuteArmed.Clear();
         _fallenCells.Clear();
         _chuteFall.Clear();
-        foreach (var fox in _foxes) fox.Reset();   // pas de renard en tutoriel : rien ne doit distraire de la leçon
+        foreach (var fox in _foxes) fox.Reset();   // pas de renard (tuto, PvP) : rien ne doit distraire
         _foxPending = false;
-        // Le seul objet de la map du tuto : le coffre de la leçon « équipement ».
-        if (_map is { } withObjects)
-            foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
-                _chestCells.Add(o.Cell);
-        _battleLog.Clear();
-        _match = new Match(Columns, Rows, _battlefield);
+    }
+
+    /// <summary>Remet à zéro l'état de combat de la scène (sélection, FX en attente, caméra…) autour d'un Match neuf.</summary>
+    private void ResetCombatState()
+    {
         _facesDown.Clear();
         _enemyForcedFacing.Clear();
         _playerSpec.Clear();
@@ -2335,25 +2515,6 @@ public sealed class GameplayScene : Scene
         _gpButtons = false;
         _battleIntroTimer = 0;
         _tutorialHold = 0;
-
-        // Commandant déjà posé (montre l'unité essentielle), 1 SOLDAT à déployer dans l'inventaire.
-        var commanderCell = new Cell(Columns / 2, Rows - 1);
-        PlacePlayer(_run.Commander, commanderCell);
-        _pending.Add(new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass));
-
-        // 1 Soldat ennemi NORMAL (12 PV, dégâts 10) : il survit à la 1re attaque et contre-attaque.
-        var enemyCell = new Cell(Columns / 2, 1);
-        _match.Place(enemyCell, new UnitSpec(Domaine.Dame, Domaines.Dame.BaseClass).Spawn(Faction.Enemy));
-
-        _tutorial = new TutorialGuide
-        {
-            Commander = commanderCell,
-            EnemySoldier = enemyCell,
-            Chest = _chestCells.Count > 0 ? _chestCells[0] : null,
-        };
-        _cursor = commanderCell;        // curseur manette sur la zone joueur
-        MarkLayoutDirty();
-        // Reste en phase PLACEMENT (pas de StartBattle, pas de sauvegarde) : le tuto guide le placement.
     }
 
     /// <summary>
@@ -3272,7 +3433,7 @@ public sealed class GameplayScene : Scene
         {
             _run.Stats.AddPlayTime(gameTime.ElapsedGameTime.TotalSeconds);
             // Historique du commandant (écran de sélection) : même temps, tuto exclu, versé au profil par lot.
-            if (_tutorial == null)
+            if (_tutorial == null && _pvp == null)
                 _pendingCommanderPlayTime += gameTime.ElapsedGameTime.TotalSeconds;
         }
 
@@ -5703,6 +5864,9 @@ public sealed class GameplayScene : Scene
     {
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+        if (_pvp != null && UpdatePvp(dt))
+            return;
+
         // Tutoriel : bouton « Passer » (toujours) / « continuer » à la victoire — peut terminer le tuto.
         if (_tutorial != null && HandleTutorialInput())
             return;
@@ -6879,6 +7043,15 @@ public sealed class GameplayScene : Scene
     {
         if (_tutorial != null)   // en tuto : pas de recrutement/défaite/sauvegarde — géré par le guide
             return;
+        if (_pvp != null)        // PvP : on retient l'issue, le panneau de fin s'affiche (cf. UpdatePvp)
+        {
+            if (_match.IsOver && _pvpWinner is null)
+            {
+                _pvpWinner = _match.Winner;
+                Context.Sounds.Play(_pvpWinner == Faction.Player ? "victory" : "defeat");
+            }
+            return;
+        }
 
         // DUO : les unités retournées par une « Flèche de Cupidon » disparaissent à la clôture — elles ne
         // comptent ni dans les pertes ni dans le butin. Retirées AVANT tout décompte.
@@ -7040,7 +7213,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void CheckTripleKill(Unit? actor, int deathLogStart)
     {
-        if (actor?.Faction != Faction.Player || _tutorial != null)
+        if (actor?.Faction != Faction.Player || _tutorial != null || _pvp != null)
             return;
         var kills = 0;
         for (var i = deathLogStart; i < _match.DeathLog.Count; i++)
@@ -8305,6 +8478,10 @@ public sealed class GameplayScene : Scene
         // Un passe (aucun coup productif : gardes défensifs en place, joueur hors de portée…) consomme le
         // round, sinon le tour resterait bloqué côté ennemi.
         var kind = ExecuteAction(a, out var landing);
+        // PvP : on doit retrouver EXACTEMENT l'état annoncé par l'adversaire, sinon la partie a divergé.
+        if (_pvp != null && _enemyController is RemoteBattleController remote
+            && remote.ExpectedHash != _match.ComputeStateHash(mirrored: !_pvp.IsHost))
+            _pvpDesync = true;
         switch (a.Kind)
         {
             case BattleActionKind.Pass:
@@ -8332,6 +8509,7 @@ public sealed class GameplayScene : Scene
     private MoveKind ExecuteAction(in BattleAction action, out Cell landing)
     {
         landing = action.Target;
+        var actor = _match.CurrentTurn;
         MoveKind kind;
         switch (action.Kind)
         {
@@ -8352,7 +8530,12 @@ public sealed class GameplayScene : Scene
             default: kind = _match.Apply(action); break;   // Pass
         }
         if (kind != MoveKind.Invalid)
+        {
             _battleLog.Add(action);
+            // PvP : un coup LOCAL part chez l'adversaire, avec l'empreinte de l'état obtenu (repère de l'hôte).
+            if (_pvp != null && actor == Faction.Player)
+                _pvp.SendAction(action, _match.ComputeStateHash(mirrored: !_pvp.IsHost));
+        }
         return kind;
     }
 
@@ -10238,6 +10421,8 @@ public sealed class GameplayScene : Scene
                     DrawRecrueReveal(sb, viewport);
                 if (ChestRevealActive)
                     DrawChestReveal(sb, viewport);       // révélation modale du coffre (centre + inventaire)
+                if (_pvp != null)
+                    DrawPvpHud(sb, viewport);            // PvP : tour courant, désynchro, panneau de fin
                 break;
             case RunPhase.Recruitment:
                 sb.Begin(samplerState: SamplerState.PointClamp);
@@ -10440,6 +10625,7 @@ public sealed class GameplayScene : Scene
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
             if (_recrueReveals.Count > 0) DrawRecrueReveal(sb, viewport);
             if (ChestRevealActive) DrawChestReveal(sb, viewport);
+            if (_pvp != null) DrawPvpHud(sb, viewport);
         }
         if (_pauseMenu.IsOpen)
         {
@@ -20143,7 +20329,10 @@ public sealed class GameplayScene : Scene
             return chief;
 
         var variant = faction == Faction.Player ? $"{cls.Asset}_{side}" : $"{cls.Asset}_ia_{side}";
-        return SpriteFor(variant) ?? SpriteFor(cls.Asset);
+        // Classe sans variante ennemie (le commandant joueur, roi adverse en PvP) : son sprite joueur, pas un vide.
+        return SpriteFor(variant)
+               ?? (faction == Faction.Player ? null : SpriteFor($"{cls.Asset}_{side}"))
+               ?? SpriteFor(cls.Asset);
     }
 
     /// <summary>

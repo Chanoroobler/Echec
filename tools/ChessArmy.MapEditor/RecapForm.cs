@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using ChessArmy.Core.Battle;
 using ChessArmy.Core.Campaign;
 using ChessArmy.Core.Map;
 
@@ -168,6 +169,8 @@ internal sealed class RecapForm : Form
         WL();
         RenderTutoriel(live);
         WL();
+        RenderMulti(live);
+        WL();
         RenderGaps(escGaps, bossGaps, specGaps, drafts, errors, live);
     }
 
@@ -175,7 +178,7 @@ internal sealed class RecapForm : Form
     {
         WL("VUE D'ENSEMBLE", Head, bold: true);
         WL($"  {"Type",-14}{"Jouables",-10}Brouillons", Dim);
-        foreach (var type in new[] { CombatType.Escarmouche, CombatType.Speciale, CombatType.Boss, CombatType.Tutoriel })
+        foreach (var type in new[] { CombatType.Escarmouche, CombatType.Speciale, CombatType.Boss, CombatType.Tutoriel, CombatType.Multi })
         {
             var j = live.Count(r => r.Data.Type == type);
             var d = drafts.Count(r => r.Data.Type == type);
@@ -311,6 +314,21 @@ internal sealed class RecapForm : Form
         if (tuto.Count == 0) { WL("  (aucune)", Warn); return; }
         foreach (var r in tuto)
             WL($"  {NameSize(r)}", Dim);
+    }
+
+    /// <summary>MULTI (PvP) : chaque map, jouable ou non (et pourquoi), symétrique ou jouée retournée par l'invité.</summary>
+    private void RenderMulti(List<Row> live)
+    {
+        WL("MULTI", Head, bold: true);
+        var multi = live.Where(r => r.Data.Type == CombatType.Multi).ToList();
+        if (multi.Count == 0) { WL("  (aucune : le jeu prend un échiquier d'herbe nu)", Warn); return; }
+        foreach (var r in multi)
+        {
+            if (PvpSetup.Problem(r.Data) is { } problem)
+                WL($"  {NameSize(r)} : injouable, {problem}", Bad);
+            else
+                WL($"  {NameSize(r)} : {(PvpSetup.IsMirrorSymmetric(r.Data) ? "symétrique" : "non symétrique (retournée chez l'invité)")}", Dim);
+        }
     }
 
     // ---------------------------------------------------------------- Analyse des manques

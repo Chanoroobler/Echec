@@ -95,8 +95,21 @@ public sealed class MainMenuScene : Scene
     private int _focusCol;
     private bool _confirmYes;   // focus de la boîte de confirmation : true = EFFACER, false = ANNULER
 
-    /// <summary>Nombre de lignes navigables : slots + rangée d'actions + wishlist (démo seulement).</summary>
-    private int RowCount => _slots.Length + 1 + (Context.Settings.IsDemo ? 1 : 0);
+    /// <summary>
+    /// POC multijoueur : bouton visible dans les builds PLAYTEST et Debug seulement (jamais en démo ni dans la
+    /// version complète tant que le mode n'est qu'une preuve de concept).
+    /// </summary>
+#if PLAYTEST || DEBUG
+    private bool PvpAvailable => !Context.Settings.IsDemo;
+#else
+    private bool PvpAvailable => false;
+#endif
+
+    /// <summary>Ligne du bouton multijoueur (juste sous la rangée d'actions), -1 s'il est absent.</summary>
+    private int PvpRow => PvpAvailable ? _slots.Length + 1 : -1;
+
+    /// <summary>Nombre de lignes navigables : slots + rangée d'actions + multijoueur + wishlist (démo seulement).</summary>
+    private int RowCount => _slots.Length + 1 + (PvpAvailable ? 1 : 0) + (Context.Settings.IsDemo ? 1 : 0);
 
     /// <summary>Nombre de colonnes d'une ligne : slot(+croix) / rangée d'actions à trois / wishlist à un.</summary>
     private int ColCount(int row)
@@ -284,6 +297,7 @@ public sealed class MainMenuScene : Scene
         if (lay.Codex.Contains(p)) { _codex.Open(); }
         else if (lay.Options.Contains(p)) { _menu.OpenOptions(); Context.Sounds.Play("menu_open"); }
         else if (lay.Quit.Contains(p)) { Context.Sounds.Play("menu_click"); Context.Quit(); }
+        else if (PvpAvailable && lay.Pvp.Contains(p)) OpenPvp();
         else if (Context.Settings.IsDemo && lay.Wishlist.Contains(p)) { Context.Sounds.Play("menu_click"); Store.OpenWishlist(); }
         else if (!lay.Panel.Contains(p)) TryGrabDecor(lay.Panel, p);   // hors UI : attrape un pion du décor
     }
@@ -369,7 +383,15 @@ public sealed class MainMenuScene : Scene
             else { Context.Sounds.Play("menu_click"); Context.Quit(); }
             return;
         }
+        if (_focusRow == PvpRow) { OpenPvp(); return; }
         Context.Sounds.Play("menu_click"); Store.OpenWishlist();   // wishlist (démo seulement)
+    }
+
+    /// <summary>Écran de recherche d'adversaire (POC multijoueur).</summary>
+    private void OpenPvp()
+    {
+        Context.Sounds.Play("menu_click");
+        Context.Scenes.Change(new PvpLobbyScene(Context));
     }
 
     /// <summary>Rectangle de l'élément racine focus (surbrillance / pointeur synthétique manette).</summary>
@@ -379,7 +401,7 @@ public sealed class MainMenuScene : Scene
             return _focusCol == 1 ? lay.Dels[_focusRow] : lay.Slots[_focusRow];
         if (_focusRow == _slots.Length)
             return _focusCol == 0 ? lay.Codex : _focusCol == 1 ? lay.Options : lay.Quit;
-        return lay.Wishlist;
+        return _focusRow == PvpRow ? lay.Pvp : lay.Wishlist;
     }
 
     /// <summary>
@@ -569,6 +591,8 @@ public sealed class MainMenuScene : Scene
         Button(sb, lay.Codex, Loc.T("menu.codex"), bgPointer, bgDown);
         Button(sb, lay.Options, Loc.T("menu.options"), bgPointer, bgDown);
         Button(sb, lay.Quit, Loc.T("menu.quit"), bgPointer, bgDown);
+        if (PvpAvailable)
+            Button(sb, lay.Pvp, Loc.T("menu.multiplayer"), bgPointer, bgDown);
         if (Context.Settings.IsDemo)
             Button(sb, lay.Wishlist, Loc.T("menu.wishlist_add"), bgPointer, bgDown);
         sb.End();
@@ -725,6 +749,7 @@ public sealed class MainMenuScene : Scene
         // Les trois actions tiennent désormais sur UNE rangée (Codex | Options | Quitter) sous les slots : le
         // panneau y gagne en hauteur, dégageant le haut de l'écran pour la lignée de pions du décor.
         var panelH = Pad + _slots.Length * (RowH + Gap) + BtnH + Pad
+                   + (PvpAvailable ? BtnH + Gap : 0)                // rangée multijoueur (playtest / debug)
                    + (Context.Settings.IsDemo ? BtnH + Gap : 0);   // rangée wishlist en plus (démo)
         var panelX = (w - panelW) / 2;
         // Panneau dans la moitié basse : le titre et la lignée de pions occupent le haut (façon capture).
@@ -753,6 +778,11 @@ public sealed class MainMenuScene : Scene
         lay.Codex = new Rectangle(x, y, btnW, BtnH);
         lay.Options = new Rectangle(x + btnW + Gap, y, btnW, BtnH);
         lay.Quit = new Rectangle(x + 2 * (btnW + Gap), y, ColW - 2 * (btnW + Gap), BtnH);
+        if (PvpAvailable)              // multijoueur pleine largeur sous la rangée d'actions
+        {
+            y += BtnH + Gap;
+            lay.Pvp = new Rectangle(x, y, ColW, BtnH);
+        }
         if (Context.Settings.IsDemo)   // CTA pleine largeur sous la rangée d'actions
             lay.Wishlist = new Rectangle(x, y + BtnH + Gap, ColW, BtnH);
         return lay;
@@ -820,5 +850,6 @@ public sealed class MainMenuScene : Scene
         public Rectangle Options;
         public Rectangle Quit;
         public Rectangle Wishlist;   // démo seulement : bouton pleine largeur vers la page Steam
+        public Rectangle Pvp;        // POC multijoueur (playtest / debug) : bouton pleine largeur
     }
 }

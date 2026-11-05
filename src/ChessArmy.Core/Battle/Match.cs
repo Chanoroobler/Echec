@@ -69,8 +69,9 @@ public sealed class Match
     public Match(int width, int height, Battlefield? terrain = null,
         IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
         IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0,
-        int tueurGeantsBonus = 0, int formationBonus = 0)
+        int tueurGeantsBonus = 0, int formationBonus = 0, Faction firstTurn = Faction.Player)
     {
+        CurrentTurn = firstTurn;   // PvP : chez l'invité, c'est l'adversaire (l'hôte, vu en Enemy) qui ouvre
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
@@ -2549,21 +2550,24 @@ public sealed class Match
     /// chaque coup) ou à vérifier un replay. FNV-1a 64 bits, sans allocation ; n'utilise PAS
     /// string.GetHashCode (aléatoire d'un processus à l'autre).
     /// </summary>
-    public ulong ComputeStateHash()
+    /// <param name="mirrored">Vrai chez l'INVITÉ d'une partie PvP, qui joue sur un plateau RETOURNÉ (lignes
+    /// inversées, camps échangés, cf. <see cref="PvpSetup"/>) : l'empreinte est alors calculée dans le repère de
+    /// l'hôte, pour que les deux clients comparent la même valeur.</param>
+    public ulong ComputeStateHash(bool mirrored = false)
     {
         var h = FnvOffset;
-        h = Mix(h, (int)CurrentTurn);
-        h = Mix(h, Winner is { } w ? (int)w + 1 : 0);
+        h = Mix(h, (int)Canon(CurrentTurn, mirrored));
+        h = Mix(h, Winner is { } w ? (int)Canon(w, mirrored) + 1 : 0);
         h = Mix(h, _extraTurnUsed ? 1 : 0);
         for (var c = 0; c < Width; c++)
             for (var r = 0; r < Height; r++)
             {
-                if (_units[c, r] is not { } u)
+                if (_units[c, mirrored ? Height - 1 - r : r] is not { } u)
                     continue;
                 h = Mix(h, c);
                 h = Mix(h, r);
                 h = MixString(h, u.Class.Name);
-                h = Mix(h, (int)u.Faction);
+                h = Mix(h, (int)Canon(u.Faction, mirrored));
                 h = Mix(h, u.Hp);
                 h = Mix(h, u.MaxHp);
                 h = Mix(h, u.Kills);
@@ -2576,6 +2580,8 @@ public sealed class Match
             }
         return h;
     }
+
+    private static Faction Canon(Faction f, bool mirrored) => mirrored ? f.Opponent() : f;
 
     private const ulong FnvOffset = 14695981039346656037UL;
     private const ulong FnvPrime = 1099511628211UL;

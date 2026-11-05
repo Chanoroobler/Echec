@@ -19,17 +19,37 @@ Le game design (armées, classement, temps, cartes) n'est pas encore décidé. C
 | `_combatSeed` | `GameplayScene` | Graine neuve à chaque combat. Graine + `_battleLog` suffisent pour rejouer le combat |
 | Tests | `tests/.../LockstepTests.cs` | Un combat IA rejoué depuis graine + coups sérialisés retrouve le même état à chaque coup |
 
-## Notes pour la future scène PvP
+## POC PvP (2026-11-05)
 
-Le PvP sera un **mode séparé**, avec sa propre scène. La campagne solo reste telle quelle.
+Bouton **MULTIJOUEUR** au menu principal, visible dans les builds PLAYTEST et Debug uniquement.
 
-- **Construire le `Match` sans bonus de campagne.** Laisser les bonus d'arbre (`RempartBonus`, `FormationBonus`,
-  `TueurDeGeantsBonus`, `ImpactBonus`, `ExtraTurnDomaine`) et `playerBlockedCells` à leur valeur par défaut :
-  les règles sont alors symétriques entre les deux camps.
-- **Les deux clients simulent le même match.** L'hôte joue `Faction.Player`, l'invité `Faction.Enemy`. La scène
-  PvP de l'invité affiche donc le plateau retourné et sélectionne les pions `Enemy`.
-- **Contrôleur distant.** Il faudra une classe `RemoteBattleController : IBattleController` alimentée par le
-  réseau (Steam P2P), qui renvoie `false` tant que le coup n'est pas arrivé. Chaque coup local validé est envoyé,
-  puis on compare `ComputeStateHash()` des deux côtés après chaque coup.
-- **Pas de sacoche, de coffres ni de tuiles recrue en PvP.** Ces effets sont propres à la campagne et utilisent
-  leur propre hasard.
+| Brique | Où | Rôle |
+|---|---|---|
+| `PvpSetup` | `Core/Battle/PvpSetup.cs` | Échiquier 8×8, même armée des deux côtés : 8 Soldats devant, puis Lancier, Cavalier, Mage, Archer, Commandant (roi, essentiel), Mage, Cavalier, Lancier |
+| `PvpMatchmaker` | `Game/Net/PvpMatchmaker.cs` | Recherche par lobby Steam public (filtre `chessarmy_mode = pvp_poc_1`) : rejoint un lobby libre, sinon en crée un et attend |
+| `PvpSession` | `Game/Net/PvpSession.cs` | Échange P2P (SteamNetworkingMessages, fiable) : poignée de main, coups + empreinte, départ de l'adversaire |
+| `RemoteBattleController` | `Game/Net/RemoteBattleController.cs` | Camp adverse alimenté par le réseau |
+| `PvpLobbyScene` | `Game/Scenes/PvpLobbyScene.cs` | Écran « recherche d'un adversaire », bouton Annuler |
+| Mode PvP | `GameplayScene` (`_pvp`) | Combat sans campagne : pas de sauvegarde, de succès ni de méta-progression ; bandeau de tour, panneau de fin |
+
+**Plateau retourné.** Chaque client joue en bas en `Faction.Player`. Les armées étant symétriques, l'hôte et
+l'invité construisent le même plateau local ; seul change le premier joueur (l'hôte). Un coup reçu est retourné
+(`PvpSetup.Mirror`) avant d'être appliqué, et l'empreinte se calcule dans le repère de l'hôte
+(`ComputeStateHash(mirrored: true)` chez l'invité). Le test `Pvp_MirroredClients_StayInSync` le vérifie.
+
+**Maps multi.** Type de map `Multi` (`CombatType.Multi`), créé dans l'éditeur par le bouton **Nouveau multi**
+(échiquier 8×8 d'herbe, armées marquées en E/P à titre indicatif). La map par défaut est `multi_8_01.json`.
+Le jeu tire la map de la partie par la graine de l'hôte, parmi les maps Multi jouables (hors brouillons, triées
+par nom) : les deux clients tombent sur la même. Une map est jouable si elle fait 8×8 et si les deux lignes de
+chaque bord sont franchissables. Elle devrait être **symétrique haut/bas** (mêmes règles sur chaque case et sa
+case miroir, buissons compris) : l'invité la voit alors comme l'hôte. Sinon il la joue retournée, avec les bonnes
+règles mais des tuiles orientées à l'envers. L'éditeur affiche « Sym » / « Ret » dans la colonne Obj, et le récap
+a une section MULTI. Seuls le terrain et les buissons comptent : coffres, recrues et chutes sont ignorés.
+
+**Limites connues du POC.**
+- Le retournement ne tient que si aucun trait n'utilise l'aléa ou l'ordre de parcours du plateau (Orage, Esquive…).
+  C'est le cas des pions de cette armée. Avec d'autres armées, il faudra faire jouer `Faction.Enemy` à l'invité.
+- Le roi adverse n'a pas de sprite ennemi dédié (`commandant_ia_*`) : il reprend le sprite joueur.
+- Pas de limite de temps, pas d'abandon dédié (quitter par le menu pause = défaite par abandon chez l'adversaire),
+  pas de reconnexion.
+- Tester demande deux comptes Steam sur deux PC (Steam n'ouvre qu'un compte par machine).

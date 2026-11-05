@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
+using ChessArmy.Core.Battle;
 using ChessArmy.Core.Map;
 
 namespace ChessArmy.MapEditor;
@@ -239,6 +240,7 @@ internal sealed class MainForm : Form
         };
 
         bar.Controls.Add(ToolButton("Nouveau", (_, _) => NewMap((int)_widthNum.Value, (int)_heightNum.Value)));
+        bar.Controls.Add(ToolButton("Nouveau multi", (_, _) => NewMultiMap()));
         bar.Controls.Add(ToolButton("Ouvrir…", (_, _) => Open()));
         bar.Controls.Add(ToolButton("Enregistrer", (_, _) => Save(false)));
         bar.Controls.Add(ToolButton("Enreg. sous…", (_, _) => Save(true)));
@@ -252,7 +254,8 @@ internal sealed class MainForm : Form
 
         bar.Controls.Add(Label("Type :"));
         // « Tutoriel » : la map du combat zéro. Le jeu la charge par ce type et ne la tire JAMAIS en campagne.
-        _typeBox.Items.AddRange(new object[] { "Escarmouche", "Speciale", "Boss", "Tutoriel" });
+        // « Multi » : map de partie PvP (8×8, armées posées d'office sur les 2 lignes de chaque bord).
+        _typeBox.Items.AddRange(new object[] { "Escarmouche", "Speciale", "Boss", "Tutoriel", "Multi" });
         _typeBox.SelectedIndex = 0;
         _typeBox.SelectedIndexChanged += (_, _) =>
         {
@@ -850,6 +853,32 @@ internal sealed class MainForm : Form
         _mapList?.SetCurrent(null);
     }
 
+    /// <summary>
+    /// Nouvelle map MULTI (PvP) : la map par défaut du mode, un échiquier 8×8 d'herbe avec les armées marquées
+    /// (E sur les deux lignes du haut, P sur les deux du bas). Les spawns ne sont qu'indicatifs : le jeu pose
+    /// toujours la même armée sur ces lignes (cf. Core PvpSetup).
+    /// </summary>
+    private void NewMultiMap()
+    {
+        NewMap(PvpSetup.Size, PvpSetup.Size);
+        if (_doc is null)
+            return;
+        _loading = true;
+        _typeBox.SelectedItem = "Multi";
+        _nameBox.Text = "multi_8_";
+        _loading = false;
+        _doc.Type = "Multi";
+        _doc.Name = _nameBox.Text;
+        SyncSpecialFields();
+        for (var c = 0; c < PvpSetup.Size; c++)
+        {
+            _doc.Spawns[0, c] = _doc.Spawns[1, c] = 'E';
+            _doc.Spawns[PvpSetup.Size - 2, c] = _doc.Spawns[PvpSetup.Size - 1, c] = 'P';
+        }
+        _canvas.SetContent(_doc, _catalog!);
+        _status.Text = "Nouvelle map multi 8×8. Gardez-la symétrique haut/bas : l'invité joue le plateau retourné.";
+    }
+
     private void Open()
     {
         using var dlg = new OpenFileDialog
@@ -935,10 +964,11 @@ internal sealed class MainForm : Form
         _doc.Draft = _draftChk.Checked;
 
         // Filet de sécurité : re-valider avec le MÊME code que le jeu avant d'écrire.
+        MapData parsed;
         try
         {
             var core = TileCatalog.FromJson(_catalog.RawJson);
-            MapLoader.Parse(_doc.ToJson(), core);
+            parsed = MapLoader.Parse(_doc.ToJson(), core);
         }
         catch (Exception ex)
         {
@@ -946,6 +976,12 @@ internal sealed class MainForm : Form
                 "Validation échouée", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+
+        // Map multi injouable (taille, ligne d'armée bloquée) : le jeu l'ignorerait. On prévient, on laisse choisir.
+        if (parsed.Type == CombatType.Multi && PvpSetup.Problem(parsed) is { } problem
+            && MessageBox.Show($"Cette map multi ne sera pas tirée par le jeu : {problem}.\n\nEnregistrer quand même ?",
+                   "Map multi injouable", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return;
 
         var path = _doc.FilePath;
         if (saveAs || string.IsNullOrEmpty(path))
@@ -968,6 +1004,10 @@ internal sealed class MainForm : Form
             _dirty = false;
             UpdateTitle();
             _status.Text = $"Enregistré : {path}";
+            if (parsed.Type == CombatType.Multi && PvpSetup.Problem(parsed) is null)
+                _status.Text += PvpSetup.IsMirrorSymmetric(parsed)
+                    ? "  (multi : symétrique, même rendu des deux côtés)"
+                    : "  (multi : NON symétrique, l'invité la jouera retournée)";
             // Le récap reflète l'état du dossier : le tenir à jour dès qu'une map change sur le disque.
             if (_recap is { IsDisposed: false }) _recap.RefreshReport();
             if (_mapList != null)

@@ -21,6 +21,7 @@ menu.main_menu,MENU PRINCIPAL,MAIN MENU,MENU PRINCIPALE,HAUPTMENU,MENU PRINCIPAL
 menu.quit,QUITTER,QUIT,ESCI,BEENDEN,SALIR,WYJDZ,CIKIS,退出
 menu.demo,DÉMO,DEMO,DEMO,DEMO,DEMO,DEMO,DEMO,试玩版
 menu.wishlist,LISTE DE SOUHAITS,WISHLIST,LISTA DEI DESIDERI,WUNSCHLISTE,LISTA DE DESEOS,LISTA ZYCZEN,ISTEK LISTESI,愿望单
+menu.multiplayer,MULTIJOUEUR,MULTIPLAYER,MULTIGIOCATORE,MEHRSPIELER,MULTIJUGADOR,TRYB WIELOOSOBOWY,COK OYUNCULU,多人游戏
 menu.wishlist_add,AJOUTER À LA LISTE DE SOUHAITS,ADD TO WISHLIST,AGGIUNGI ALLA LISTA DEI DESIDERI,AUF DIE WUNSCHLISTE,ANADIR A LA LISTA DE DESEOS,DODAJ DO LISTY ZYCZEN,ISTEK LISTESINE EKLE,加入愿望单
 demo.thanks_title,MERCI D'AVOIR TESTÉ,THANKS FOR PLAYING,GRAZIE PER AVER PROVATO,DANKE FURS TESTEN,GRACIAS POR PROBAR,DZIEKI ZA GRE,OYNADIGIN ICIN TESEKKURLER,感谢试玩
 demo.thanks_body,Tu as terminé la démo de CHESS ARMY. Ajoute le jeu à ta liste de souhaits pour ne pas manquer la sortie.,You finished the CHESS ARMY demo. Add the game to your wishlist so you do not miss the release.,Hai finito la demo di CHESS ARMY. Aggiungi il gioco alla tua lista dei desideri per non perderti l'uscita.,Du hast die CHESS ARMY Demo beendet. Setze das Spiel auf deine Wunschliste um den Release nicht zu verpassen.,Has terminado la demo de CHESS ARMY. Anade el juego a tu lista de deseos para no perderte el lanzamiento.,Ukończyłeś demo CHESS ARMY. Dodaj grę do listy życzeń aby nie przegapić premiery.,CHESS ARMY demosunu bitirdin. Çıkışı kaçırmamak için oyunu istek listene ekle.,你已完成 CHESS ARMY 试玩版。将游戏加入愿望单以免错过发售。
@@ -959,3 +960,15 @@ tree.brute_masse,CONSCRIPTION,CONSCRIPTION,COSCRIZIONE,AUSHEBUNG,RECLUTAMIENTO,P
 tree.brute_masse.desc,Chaque mission recrute un soldat de plus si la réserve compte plus de {0} unités.,Each mission recruits one more soldier if the reserve holds more than {0} units.,Ogni missione recluta un soldato in più se la riserva conta più di {0} unità.,Jede Mission rekrutiert einen Soldaten mehr wenn die Reserve mehr als {0} Einheiten hält.,Cada misión recluta un soldado más si la reserva tiene más de {0} unidades.,Każda misja rekrutuje dodatkowego żołnierza jeśli rezerwa liczy więcej niż {0} jednostek.,Yedekte {0} birimden fazlası varsa her görev bir asker daha alır.,若预备队超过{0}支单位 每场任务额外招募一名士兵。
 tree.duo_bas_ligne,TIR EN LIGNE,LINE SHOT,TIRO IN LINEA,LINIENSCHUSS,DISPARO EN LINEA,STRZAL W LINII,HAT ATISI,直线射击
 tree.duo_bas_ligne.desc,L'attaque de Basile touche toutes les cibles alignées à sa portée.,Basile attack hits every aligned target within his range.,L'attacco di Basile colpisce tutti i bersagli allineati a portata.,Basiles Angriff trifft alle ausgerichteten Ziele in seiner Reichweite.,El ataque de Basile golpea a todos los objetivos alineados a su alcance.,Atak Basile trafia wszystkie wyrownane cele w jego zasiegu.,Basile'nin saldirisi menzilindeki tum hizali hedeflere vurur.,巴西尔的攻击命中其射程内所有同线目标。
+# ── Multijoueur (POC) ───────────────────────────────────────────────────────
+pvp.searching,RECHERCHE D'UN ADVERSAIRE,SEARCHING FOR AN OPPONENT,RICERCA DI UN AVVERSARIO,GEGNERSUCHE,BUSCANDO UN RIVAL,SZUKANIE PRZECIWNIKA,RAKIP ARANIYOR,正在寻找对手
+pvp.found,ADVERSAIRE TROUVÉ : {0},OPPONENT FOUND: {0},AVVERSARIO TROVATO: {0},GEGNER GEFUNDEN: {0},RIVAL ENCONTRADO: {0},ZNALEZIONO PRZECIWNIKA: {0},RAKIP BULUNDU: {0},已找到对手：{0}
+pvp.no_steam,STEAM N'EST PAS DISPONIBLE,STEAM IS NOT AVAILABLE,STEAM NON È DISPONIBILE,STEAM IST NICHT VERFUGBAR,STEAM NO ESTA DISPONIBLE,STEAM JEST NIEDOSTEPNY,STEAM KULLANILAMIYOR,STEAM 不可用
+pvp.failed,LA RECHERCHE A ÉCHOUÉ,SEARCH FAILED,RICERCA FALLITA,SUCHE FEHLGESCHLAGEN,LA BUSQUEDA HA FALLADO,WYSZUKIWANIE NIEUDANE,ARAMA BASARISIZ,搜索失败
+pvp.cancel,ANNULER,CANCEL,ANNULLA,ABBRECHEN,CANCELAR,ANULUJ,IPTAL,取消
+pvp.your_turn,À TOI DE JOUER,YOUR TURN,TOCCA A TE,DU BIST DRAN,TU TURNO,TWOJA TURA,SIRA SENDE,轮到你了
+pvp.their_turn,TOUR DE {0},{0}'S TURN,TURNO DI {0},{0} IST DRAN,TURNO DE {0},TURA: {0},SIRA: {0},{0} 的回合
+pvp.victory,VICTOIRE,VICTORY,VITTORIA,SIEG,VICTORIA,ZWYCIESTWO,ZAFER,胜利
+pvp.defeat,DÉFAITE,DEFEAT,SCONFITTA,NIEDERLAGE,DERROTA,PORAZKA,YENILGI,失败
+pvp.opponent_left,L'ADVERSAIRE A QUITTÉ LA PARTIE,YOUR OPPONENT LEFT THE GAME,L'AVVERSARIO HA LASCIATO LA PARTITA,DER GEGNER HAT DAS SPIEL VERLASSEN,EL RIVAL HA ABANDONADO LA PARTIDA,PRZECIWNIK OPUSCIL GRE,RAKIP OYUNDAN AYRILDI,对手已离开游戏
+pvp.desync,DÉSYNCHRONISATION : LES DEUX PARTIES DIVERGENT,DESYNC: THE TWO GAMES NO LONGER MATCH,DESINCRONIZZAZIONE: LE DUE PARTITE DIVERGONO,DESYNCHRONISIERT: DIE BEIDEN PARTIEN WEICHEN AB,DESINCRONIZACION: LAS DOS PARTIDAS DIFIEREN,DESYNCHRONIZACJA: GRY SIE ROZJECHALY,SENKRON HATASI: IKI OYUN FARKLI,不同步：双方对局不一致

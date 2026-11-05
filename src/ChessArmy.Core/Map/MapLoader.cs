@@ -182,7 +182,7 @@ public static class MapLoader
         Enum.TryParse<CombatType>(type, ignoreCase: true, out var t)
             ? t
             : throw new FormatException(
-                $"Type de combat inconnu : '{type}'. Attendu Escarmouche, Speciale, Boss ou Tutoriel.");
+                $"Type de combat inconnu : '{type}'. Attendu Escarmouche, Speciale, Boss, Tutoriel ou Multi.");
 
     /// <summary>Sous-type d'objectif (absent/vide = <see cref="SpecialObjective.Aucun"/>). Lève sur une valeur inconnue.</summary>
     private static SpecialObjective ParseObjective(string? objective)

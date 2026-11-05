@@ -7,4 +7,5 @@ public enum CombatType
     Speciale,     // mission spéciale (contenu à venir ; générée comme une escarmouche pour l'instant)
     Boss,         // tuer le boss
     Tutoriel,     // « combat zéro » scénarisé : jamais tirée par la campagne, chargée seule par le tutoriel
+    Multi,        // partie PvP (multijoueur) : jamais tirée par la campagne, cf. Battle.PvpSetup
 }

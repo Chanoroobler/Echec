@@ -431,4 +431,50 @@ public class MapLoaderTests
         var chest = Assert.Single(tuto.Objects);
         Assert.Equal(MapObjectKind.ChestCommon, chest.Kind);
     }
+
+    [Fact]
+    public void ShippedMultiMaps_ArePlayable_AndDefaultIsSymmetric()
+    {
+        var multi = ShippedMaps().Where(m => m.Type == CombatType.Multi).ToList();
+        Assert.NotEmpty(multi);
+        foreach (var m in multi)
+            Assert.Null(Battle.PvpSetup.Problem(m));
+        var byDefault = Assert.Single(multi, m => m.Name == "multi_8_01");
+        Assert.True(Battle.PvpSetup.IsMirrorSymmetric(byDefault));
+    }
+
+    // 8×8 : un mur en (2,3) seulement → NON symétrique (sa case miroir (2,4) est libre).
+    private const string AsymmetricMulti = """
+    {
+      "name": "multi_test", "type": "Multi", "width": 8, "height": 8,
+      "legend": { "c": "damier_clair", "#": "mur_bas" },
+      "tiles": [ "cccccccc", "cccccccc", "cccccccc", "cc#ccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc" ]
+    }
+    """;
+
+    [Fact]
+    public void Multi_AsymmetricMap_IsMirroredForTheGuestOnly()
+    {
+        var map = MapLoader.Parse(AsymmetricMulti, Catalog());
+        Assert.Null(Battle.PvpSetup.Problem(map));
+        Assert.False(Battle.PvpSetup.IsMirrorSymmetric(map));
+
+        var host = Battle.PvpSetup.BuildBattlefield(map, isHost: true, out _);
+        var guest = Battle.PvpSetup.BuildBattlefield(map, isHost: false, out _);
+        Assert.True(host[new Cell(2, 3)].BlocksMovement);
+        Assert.True(guest[new Cell(2, 4)].BlocksMovement);   // même mur, vu depuis l'autre bord
+        Assert.False(guest[new Cell(2, 3)].BlocksMovement);
+    }
+
+    [Fact]
+    public void Multi_ArmyRowBlocked_IsUnplayable_AndNeverPicked()
+    {
+        var blocked = MapLoader.Parse(AsymmetricMulti.Replace("\"cc#ccccc\"", "\"cccccccc\"")
+            .Replace("[ \"cccccccc\", \"cccccccc\"", "[ \"#ccccccc\", \"cccccccc\""), Catalog());
+        Assert.NotNull(Battle.PvpSetup.Problem(blocked));
+        Assert.Null(Battle.PvpSetup.PickMap(new[] { blocked }, seed: 3));
+
+        var ok = MapLoader.Parse(AsymmetricMulti, Catalog());
+        Assert.Same(ok, Battle.PvpSetup.PickMap(new[] { blocked, ok }, seed: 12345));
+    }
 }
