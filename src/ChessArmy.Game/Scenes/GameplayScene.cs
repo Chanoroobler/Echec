@@ -728,6 +728,7 @@ public sealed class GameplayScene : Scene
     // enchaîne inventaire → boutons. Les deux drapeaux sont exclusifs (cf. UpdatePlacementGamepad).
     private Cell _cursor = new(4, 7);   // valeur par défaut (réinitialisée par combat dans BeginPlacement)
     private bool _gpInventory;
+    private bool _abandonFocus;   // manette, réserve pleine : Bas descend des cartes sur le bouton ABANDONNER
     private int _invFocus;
     private int _invScrollRow;   // défilement (en rangées) de la grille de réserve quand elle déborde du panneau
     private bool _gpButtons;
@@ -1871,6 +1872,7 @@ public sealed class GameplayScene : Scene
         _reserveActionFocus = 0;
         _reserveDrag = null;
         _reserveFullFlash = 0f;
+        _denyShake = 0f;
         _rewardKeep.Clear();
         _rewardFocus = 0;
         // Taille du plateau selon (phase, mission) — cf. MapSizeFor : phase 1 = 6×6, sauf missions 4-5 = 7×7 ;
@@ -2577,6 +2579,7 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < _run.RecruitTileUnits; i++)
             _recrueReveals.Add(_run.RollSeenRecruit(rng, Context.Saves.IsUnitDiscovered));
         _gpInventory = false;   // manette : on arrive sur la carte, RB entre ensuite dans la réserve
+        _abandonFocus = false;
         GrantLootPoint(c);      // commandant MARCHAND : une recrue ramassée rapporte un point (plafonné par combat)
         Context.Sounds.Play("unit_place");   // TODO : son dédié « recrue »
     }
@@ -5771,6 +5774,7 @@ public sealed class GameplayScene : Scene
 
             if (!_recrueFlying && !_recrueAdded)   // phase CARTE : on voit les pions, on décide
             {
+                TickDenyFeedback(dt);
                 var vp = VirtualViewport;
                 var availW = vp.Width - RightPanelWidth;
                 var mouse = Context.Input.MousePosition;
@@ -5786,15 +5790,29 @@ public sealed class GameplayScene : Scene
                         return;
                     if (UpdateReservePanelGamepad())
                         return;
-                    if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availW, vp.Height).Contains(mouse)
-                        || Context.Input.WasCancelPressed)
+                    if (UpdateAbandonFocus())
                     { CloseRecrueReveal(); return; }
+                    if (_abandonFocus && Context.Input.UsingGamepad)
+                        return;   // focus sur le bouton : ni choix de carte ni A sur une recrue
 
                     // CHOIX À L'UNITÉ : la place manque pour toutes, mais pas forcément pour UNE. Souris = clic
                     // sur la carte voulue ; manette = gauche/droite pour la désigner puis A. Les cartes restantes
                     // demeurent à l'écran (et repassent en « tout prendre » dès qu'il y a la place pour elles).
                     if (_run.IsReserveFull)
-                        return;   // plus un seul slot : il ne reste que la fusion/suppression ou l'abandon
+                    {
+                        // Plus un seul slot : il ne reste que la fusion/suppression ou l'abandon. Vouloir prendre
+                        // une carte quand même → refus visible (tremblement + « plus de place » + son).
+                        if (Context.Input.UsingGamepad)
+                        {
+                            if (Context.Input.WasConfirmPressed)
+                                DenyFullReserve(System.Math.Clamp(_recruitFocus, 0, count - 1));
+                        }
+                        else if (Context.Input.WasLeftClicked)
+                            for (var i = 0; i < count; i++)
+                                if (DraftCardRect(i, count, availW, vp.Height).Contains(mouse))
+                                    DenyFullReserve(i);
+                        return;
+                    }
                     if (Context.Input.UsingGamepad)
                     {
                         if (Context.Input.Nav(NavDir.Left)) _recruitFocus = (_recruitFocus - 1 + count) % count;
@@ -8034,6 +8052,7 @@ public sealed class GameplayScene : Scene
         _dragSpec = null;
         _dragFrom = null;
         _gpInventory = false;   // manette : on arrive sur les cartes, RB entre dans la réserve
+        _abandonFocus = false;
         _invFocus = 0;
         _invScrollRow = 0;
         _pending.Clear();
@@ -8531,8 +8550,7 @@ public sealed class GameplayScene : Scene
 
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _sparks.Update(dt);
-        if (_reserveFullFlash > 0f)   // feedback « plus de place » (draft ou récompense)
-            _reserveFullFlash -= dt;
+        TickDenyFeedback(dt);   // feedback « plus de place » (draft ou récompense)
 
         // Le panneau de réserve est là aussi (draft / récompense) et peut déborder : la molette le défile
         // comme au placement (ici la caméra ne tourne pas, donc rien d'autre ne lit la molette).
@@ -8600,8 +8618,7 @@ public sealed class GameplayScene : Scene
             var vpH = VirtualViewport;
             var availWH = vpH.Width - RightPanelWidth;
             var mouseH = Context.Input.MousePosition;
-            if (Context.Input.WasLeftClicked && RecruitAbandonBtnRect(availWH, vpH.Height).Contains(mouseH)
-                || Context.Input.WasCancelPressed)
+            if (UpdateAbandonFocus())
             {
                 _recruitChoice = null;   // ABANDONNER : on perd le pion
                 _run.SkipRecruitment();
@@ -8612,9 +8629,19 @@ public sealed class GameplayScene : Scene
                 for (var i = 0; i < _run.Draft.Count; i++)
                     if (DraftCardRect(i, _run.Draft.Count, availWH, vpH.Height).Contains(mouseH))
                     {
-                        SelectRecruit(i, availWH, vpH.Height);   // re-choisir une autre carte
+                        if (ReferenceEquals(_run.Draft[i], choice))
+                            DenyFullReserve(i);                  // re-cliquer le pion tenu : toujours pas la place
+                        else
+                            SelectRecruit(i, availWH, vpH.Height);   // re-choisir une autre carte
                         return;
                     }
+            if (_abandonFocus)
+                return;   // manette sur le bouton : Haut remonte aux cartes (cf. UpdateAbandonFocus)
+            if (Context.Input.WasConfirmPressed)
+            {
+                DenyFullReserve(System.Math.Clamp(_recruitFocus, 0, _run.Draft.Count - 1));
+                return;
+            }
             if (Context.Input.Nav(NavDir.Left)) { _recruitFocus = (_recruitFocus - 1 + _run.Draft.Count) % _run.Draft.Count; SelectRecruit(_recruitFocus, availWH, vpH.Height); }
             if (Context.Input.Nav(NavDir.Right)) { _recruitFocus = (_recruitFocus + 1) % _run.Draft.Count; SelectRecruit(_recruitFocus, availWH, vpH.Height); }
             return;
@@ -8680,10 +8707,10 @@ public sealed class GameplayScene : Scene
     // La réserve = _pending (comme l'inventaire du placement) → la FUSION réutilise EXACTEMENT le système du
     // placement : glisser un portrait sur un identique empile (« N/3 »), la 3e ouvre la popup de choix au
     // centre puis l'animation d'évolution (cf. TryStackOnReserve / DrawFusionStack / DrawFusionPopup). En plus :
-    // clic DROIT sur un portrait = suppression (faire de la place sans fusionner).
+    // lâcher un portrait sur la POUBELLE = suppression (faire de la place sans fusionner).
 
     /// <summary>
-    /// Entrée souris de la réserve post-combat (drag de fusion façon placement + suppression au clic droit).
+    /// Entrée souris de la réserve post-combat (drag de fusion façon placement + suppression par la poubelle).
     /// Renvoie vrai si l'entrée a été CONSOMMÉE (le caller ne doit pas enchaîner sur un recrutement/collecte).
     /// </summary>
     private bool HandleReserveDrag()
@@ -8775,7 +8802,9 @@ public sealed class GameplayScene : Scene
         }
         else if (_pending.Count > 0)
         {
-            Context.Font.Draw(sb, Loc.T("reserve.hint_enter"), new Vector2(hx, hy), 1, Palette.Cyan1);
+            // Manette, hors du panneau : l'entrée (RB) prend la place de la poubelle, encadrée pour se voir.
+            DrawRectBorder(sb, trash, Palette.Yellow2, 2);
+            Context.Font.DrawCentered(sb, Loc.T("reserve.hint_enter"), trash, 1, Palette.Yellow2);
         }
     }
 
@@ -8850,6 +8879,72 @@ public sealed class GameplayScene : Scene
             || Context.Input.WasRightShoulderPressed)
             _gpInventory = false;
         return true;
+    }
+
+    /// <summary>
+    /// Bouton « Abandonner » (pion tenu / recrue sans place) : vrai si on l'actionne. Souris = clic dessus ;
+    /// manette = Bas depuis les cartes le désigne, Haut y remonte, A valide. B abandonne aussi (raccourci).
+    /// </summary>
+    private bool UpdateAbandonFocus()
+    {
+        var vp = VirtualViewport;
+        if (Context.Input.WasLeftClicked
+            && RecruitAbandonBtnRect(vp.Width - RightPanelWidth, vp.Height).Contains(Context.Input.MousePosition))
+            return true;
+        if (Context.Input.WasCancelPressed)
+            return true;
+        if (!Context.Input.UsingGamepad)
+            return false;
+        if (Context.Input.Nav(NavDir.Down)) _abandonFocus = true;
+        else if (Context.Input.Nav(NavDir.Up)) _abandonFocus = false;
+        return _abandonFocus && Context.Input.WasConfirmPressed;
+    }
+
+    /// <summary>
+    /// Bouton « Abandonner » dessiné comme les autres boutons (relief, survol, enfoncement) ; au focus
+    /// manette, liseré et texte dorés. Libellé rouge au repos : l'action fait perdre le pion.
+    /// </summary>
+    private void DrawAbandonButton(SpriteBatch sb, Rectangle ab, string label)
+    {
+        var gamepad = Context.Input.UsingGamepad;
+        var focused = gamepad && _abandonFocus && !_gpInventory;
+        var hover = !gamepad && ab.Contains(Context.Input.MousePosition);
+        var dy = Context.Style.DrawButton(sb, ab, UiStyle.StateOf(hover || focused, hover && Context.Input.IsLeftDown));
+        var area = ab; area.Offset(0, dy);
+        if (focused)
+            DrawRectBorder(sb, Inflate(area, 2), Palette.Yellow2, 2);
+        Context.Font.DrawCentered(sb, label, area, 1, focused ? Palette.Yellow2 : Palette.Purple5);
+    }
+
+    private const float DenyShakeDuration = 0.35f;
+    private float _denyShake;    // > 0 = la carte _denyCard tremble (« non » : réserve pleine)
+    private int _denyCard = -1;
+
+    /// <summary>
+    /// Refus « réserve pleine » quand on veut prendre une carte sans place : la carte tremble, le bandeau
+    /// « plus de place » clignote et un son de refus part.
+    /// </summary>
+    private void DenyFullReserve(int card)
+    {
+        _reserveFullFlash = ReserveFlashDuration;
+        _denyShake = DenyShakeDuration;
+        _denyCard = card;
+        Context.Sounds.Play("unit_deselect");
+    }
+
+    private void TickDenyFeedback(float dt)
+    {
+        if (_reserveFullFlash > 0f) _reserveFullFlash -= dt;
+        if (_denyShake > 0f) _denyShake -= dt;
+    }
+
+    /// <summary>Décalage horizontal (px entiers) de la carte <paramref name="card"/> qui tremble, amorti.</summary>
+    private int DenyShakeDx(int card)
+    {
+        if (_denyShake <= 0f || card != _denyCard)
+            return 0;
+        var k = _denyShake / DenyShakeDuration;
+        return (int)System.MathF.Round(System.MathF.Sin(_denyShake * 70f) * 6f * k);
     }
 
     /// <summary>Rectangle du bouton « Abandonner » (perdre le pion tenu), sous les cartes de draft.</summary>
@@ -14557,15 +14652,23 @@ public sealed class GameplayScene : Scene
             var card = DraftCardRect(0, count, availW, viewport.Height);
             Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recrue.join_plural" : "recrue.join"),
                 new Rectangle(0, card.Y - 44, availW, 24), 2, Palette.Yellow2);
+            // Manette : la carte ne se soulève que si le focus est bien sur elle (pas dans la réserve / le bouton).
+            var gpAway = Context.Input.UsingGamepad && (_gpInventory || _abandonFocus);
             TickCardFx(count,
-                !FusionOpen && !EvoPlaying ? HoveredCardIndex(count, _recruitFocus, availW, viewport.Height) : -1,
+                !FusionOpen && !EvoPlaying && !gpAway ? HoveredCardIndex(count, _recruitFocus, availW, viewport.Height) : -1,
                 availW, viewport.Height);
-            // Manette : la carte désignée est encadrée (pendant du draft) quand il faut en choisir UNE.
-            var pickOne = _run.ReserveLimit - _run.ReserveCount < count && !_run.IsReserveFull && count > 1;
-            var rf = pickOne && Context.Input.UsingGamepad ? System.Math.Clamp(_recruitFocus, 0, count - 1) : -1;
+            // Manette : tant que le focus est côté cartes (pas dans la réserve), la carte désignée est encadrée,
+            // pour qu'on voie où l'on est (choisir UNE recrue, ou réserve pleine : abandonner / RB).
+            var lacksRoom = _run.ReserveLimit - _run.ReserveCount < count;
+            var rf = lacksRoom && Context.Input.UsingGamepad && !_gpInventory && !_abandonFocus
+                ? System.Math.Clamp(_recruitFocus, 0, count - 1) : -1;
             for (var i = 0; i < count; i++)
-                DrawFxDraftCard(sb, i, _recrueReveals[i], DraftCardRect(i, count, availW, viewport.Height),
-                    i == rf ? Palette.Yellow2 : null);
+            {
+                var cr = DraftCardRect(i, count, availW, viewport.Height);
+                cr.X += DenyShakeDx(i);
+                DrawFxDraftCard(sb, i, _recrueReveals[i], cr, i == rf ? Palette.Yellow2 : null);
+            }
+            DrawReserveFullFlash(sb, availW, viewport.Height, card.Y - 47);   // par-dessus le titre
 
             // Pas la place pour TOUTES les recrues : faire de la place, en prendre une, ou tout abandonner.
             if (_run.ReserveLimit - _run.ReserveCount < count)
@@ -14581,13 +14684,10 @@ public sealed class GameplayScene : Scene
 
                 var ab = RecruitAbandonBtnRect(availW, viewport.Height);
                 Context.Style.TrackHover(ab);
-                Context.Style.FillDither(sb, ab);
-                DrawRectBorder(sb, ab, Palette.Purple5, 2);
                 // À plusieurs recrues la réserve n'est pas forcément PLEINE : il manque juste des places.
-                Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recruit.abandon_plural" : "recruit.abandon"),
-                    ab, 1, Palette.Purple5);
+                DrawAbandonButton(sb, ab, Loc.T(count > 1 ? "recruit.abandon_plural" : "recruit.abandon"));
                 Context.Font.DrawCentered(sb, Loc.T(count > 1 ? "recruit.hold_prompt_plural" : "recruit.hold_prompt"),
-                    new Rectangle(0, ab.Bottom + 6, availW, 12), 1, Palette.Cyan1);
+                    new Rectangle(0, ab.Bottom + 6, availW, 12), 1, Palette.Purple5);
             }
             else
             {
@@ -17924,7 +18024,7 @@ public sealed class GameplayScene : Scene
             new Rectangle(0, PostCombatTitleY + 12, availW, 24), 3, Palette.Yellow2);
         var held = _recruitChoice is not null && _recruitHold <= 0f;   // pion tenu (réserve pleine)
         Context.Font.DrawCentered(sb, Loc.T(held ? "recruit.hold_prompt" : "recruit.subtitle"),
-            new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, held ? Palette.Cyan1 : Palette.Blue1);
+            new Rectangle(0, PostCombatTitleY + 52, availW, 12), 1, held ? Palette.Purple5 : Palette.Blue1);
         // Relief des cartes : seulement tant qu'on choisit (pas de pion tenu / en vol, pas de modale de fusion).
         var draftLive = _recruitChoice == null && !FusionOpen && !EvoPlaying && !(Context.Input.UsingGamepad && _gpInventory);
         TickCardFx(_run.Draft.Count,
@@ -17945,8 +18045,9 @@ public sealed class GameplayScene : Scene
         for (var i = 0; i < _run.Draft.Count; i++)
         {
             Color? border = (held && i == ci) || i == fi ? Palette.Yellow2 : null;
-            DrawFxDraftCard(sb, i, _run.Draft[i], DraftCardRect(i, _run.Draft.Count, availW, viewport.Height),
-                border, held && i != ci ? 0.55f : 0f);
+            var cr = DraftCardRect(i, _run.Draft.Count, availW, viewport.Height);
+            cr.X += DenyShakeDx(i);
+            DrawFxDraftCard(sb, i, _run.Draft[i], cr, border, held && i != ci ? 0.55f : 0f);
         }
 
         if (held)
@@ -17954,9 +18055,7 @@ public sealed class GameplayScene : Scene
             // Pion TENU : bouton « Abandonner » (perdre le pion).
             var ab = RecruitAbandonBtnRect(availW, viewport.Height);
             Context.Style.TrackHover(ab);
-            Context.Style.FillDither(sb, ab);
-            DrawRectBorder(sb, ab, Palette.Purple5, 2);
-            Context.Font.DrawCentered(sb, Loc.T("recruit.abandon"), ab, 1, Palette.Purple5);
+            DrawAbandonButton(sb, ab, Loc.T("recruit.abandon"));
         }
         else if (showFocus)
         {
@@ -18079,14 +18178,14 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>Feedback « plus de place » (bandeau rouge pulsé), déclenché sur un recrutement/collecte bloqué.</summary>
-    private void DrawReserveFullFlash(SpriteBatch sb, int availW, int vpH)
+    private void DrawReserveFullFlash(SpriteBatch sb, int availW, int vpH, int y = 126)
     {
         if (_reserveFullFlash <= 0f)
             return;
         var pulse = 0.45f + 0.55f * (float)System.Math.Abs(System.Math.Sin(_time * 18));
         var msg = Loc.T("reserve.no_room");
         var w = Context.Font.Measure(msg, 2) + 40;
-        var box = new Rectangle((availW - w) / 2, 126, w, 30);
+        var box = new Rectangle((availW - w) / 2, y, w, 30);
         Context.Style.FillDither(sb, box);
         DrawRectBorder(sb, box, Palette.Purple5, 2);
         Context.Font.DrawCentered(sb, msg, box, 2, Palette.Purple5 * (0.5f + 0.5f * pulse));
@@ -18463,7 +18562,7 @@ public sealed class GameplayScene : Scene
     // Les cartes de la popup de fusion se penchent, elles (c'est la modale du dessus).
     private const float CardTiltMax = 0.07f;        // rad (~4°) d'inclinaison max, souris au bord de la carte (0.26 puis 0.13 jugés trop forts)
     private const float CardTiltCamera = 800f;      // px du canvas : distance de la « caméra » (plus petit = perspective plus forte)
-    private const int CardTiltPad = 4;              // marge du rendu à plat : le cadre de focus déborde de 3 px
+    private const int CardTiltPad = 7;              // marge du rendu à plat : le cadre de focus déborde de 6 px
     private const int TiltCols = 6, TiltRows = 10;  // subdivision de la grille (perspective correcte sans shader)
     private const int TiltSlots = 2;                // cartes penchées à la fois (la survolée + celle qui retombe)
     private readonly RenderTarget2D?[] _tiltFlat = new RenderTarget2D?[TiltSlots];   // carte à plat, pixels du canvas
@@ -18622,8 +18721,8 @@ public sealed class GameplayScene : Scene
         DrawCardShine(sb, i, r);
         if (dim > 0f)
             DrawRect(sb, r, Palette.Black1 * dim);
-        if (border is { } bc)
-            DrawRectBorder(sb, Inflate(r, 3), bc, 3);
+        if (border is { } bc)   // cadre de focus épais et DÉCOLLÉ du bord : il ne se fond pas dans le cadre or de la carte
+            DrawRectBorder(sb, Inflate(r, 6), bc, 4);
         if (checkbox >= 0)
             DrawCheckbox(sb, new Rectangle(r.X + 6, r.Y + 6, 18, 18), checkbox == 1);
     }
