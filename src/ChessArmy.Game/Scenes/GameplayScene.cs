@@ -609,6 +609,14 @@ public sealed class GameplayScene : Scene
     private Run _run = null!;
     private Match _match = null!;
 
+    // PRÉPARATION MULTIJOUEUR (lockstep) : un combat = sa GRAINE + la suite de ses coups. _combatSeed alimente
+    // TOUT l'aléa du moteur (et de l'IA, cf. EnemyAi), _battleLog reçoit chaque coup VALIDÉ (cf. ExecuteAction) :
+    // c'est là qu'un client réseau enverra ses coups, et de quoi rejouer/diagnostiquer un combat. Le camp ennemi
+    // est piloté par _enemyController (IA aujourd'hui ; adversaire distant demain), jamais par EnemyAi en direct.
+    private int _combatSeed;
+    private readonly List<BattleAction> _battleLog = new();
+    private IBattleController _enemyController = null!;
+
     // Orientation visuelle par unité : true = regarde vers le bas (face caméra). Suit la dernière
     // action verticale (déplacement/attaque) ; à défaut, selon la MOITIÉ du plateau (cf. DefaultFacesDown).
     private readonly Dictionary<Unit, bool> _facesDown = new();
@@ -1999,8 +2007,16 @@ public sealed class GameplayScene : Scene
         // squatte pas) ; les ennemis, eux, y vont pour les capturer.
         var playerBlocked = IsProtectMission ? _recrueCells : null;
         // Bonus d'arbre qui règlent le MOTEUR : « Rempart renforcé », « Formation renforcée »… (cf. Run + Match).
-        _match = new Match(Columns, Rows, _battlefield, _bushCells,
+        // Graine NEUVE à chaque combat (le hasard reste imprévisible d'une tentative à l'autre), mais connue :
+        // graine + _battleLog suffisent à rejouer le combat à l'identique.
+        _combatSeed = System.Random.Shared.Next();
+        _battleLog.Clear();
+        _match = new Match(Columns, Rows, _battlefield, _bushCells, rng: new System.Random(_combatSeed),
             eliminationEndsGame: !_specialMission, playerBlockedCells: playerBlocked);
+        // La difficulté s'applique ICI : l'IA ne joue son meilleur coup qu'avec la précision du niveau choisi
+        // POUR CETTE RUN, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
+        _enemyController = new AiBattleController(PaysanCells,
+            DifficultySettings.For(_run?.Difficulty ?? Difficulty.Normal).AiAccuracy);
         ApplyTreeTuningToMatch();
         // Mission spéciale : briefing détaillé en modale d'ouverture (l'encart sous la frise n'en garde
         // que le rappel une fois refermé — cf. DrawSpecialBriefingModal / DrawSpecialBriefing). Pendant le
@@ -2267,6 +2283,7 @@ public sealed class GameplayScene : Scene
         if (_map is { } withObjects)
             foreach (var o in withObjects.Objects.Where(o => o.Kind == MapObjectKind.ChestCommon))
                 _chestCells.Add(o.Cell);
+        _battleLog.Clear();
         _match = new Match(Columns, Rows, _battlefield);
         _facesDown.Clear();
         _enemyForcedFacing.Clear();
@@ -7577,14 +7594,14 @@ public sealed class GameplayScene : Scene
     /// comme pour une attaque (cf. <see cref="Match.TrySpendAction"/>) — la sacoche, elle, reste sur le terrain
     /// comme d'habitude : on peut y revenir une fois l'objet lancé.
     /// </summary>
-    private void ResolveSatchelPull(Cell from, Cell satchel)
+    private MoveKind ResolveSatchelPull(Cell from, Cell satchel)
     {
         if (_match.UnitAt(from) is not { } shooter)
-            return;
+            return MoveKind.Invalid;
         FaceToward(shooter, from, satchel);
         Context.Sounds.Play("unit_shoot");
         TriggerSacoche(satchel, shooter);
-        _match.TrySpendAction(from);
+        return _match.Apply(BattleAction.SatchelPull(from, satchel));
     }
 
     /// <summary>
@@ -8104,40 +8121,8 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void CombatActAt(Cell cell)
     {
-        if (_selected is { } sel && _attackTargets.Contains(cell))
-        {
-            ResolveAttack(sel, cell);
-            EndPlayerAction();
+        if (_selected is { } sel && TryPlayerActionAt(sel, cell))
             return;
-        }
-        if (_selected is { } selH && _healTargets.Contains(cell))   // trait « Soin » : cible un allié blessé
-        {
-            ResolveHeal(selH, cell);
-            EndPlayerAction();
-            return;
-        }
-        if (_selected is { } selS && _satchelTargets.Contains(cell))   // « Sacoche aimantée » : tir sur une sacoche
-        {
-            ResolveSatchelPull(selS, cell);
-            EndPlayerAction();
-            return;
-        }
-        if (_selected is { } selT && _throwTargets.Contains(cell))   // « Chair à canon » : le jet part
-        {
-            ResolveThrow(selT, cell);
-            EndPlayerAction();
-            return;
-        }
-        if (_selected is { } sel2 && _legalMoves.Contains(cell))
-        {
-            TryMoveWithFx(sel2, cell);
-            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, sel2, cell);
-            TriggerLanding(cell);
-            Context.Sounds.Play("unit_move");
-            TutorialOnPlayerMove(cell);
-            EndPlayerAction();
-            return;
-        }
 
         if (_match.UnitAt(cell) is { Faction: Faction.Player } && (_tutorial is null || _tutorial.CanSelectInCombat(cell)))
         {
@@ -8249,46 +8234,8 @@ public sealed class GameplayScene : Scene
         }
         var cell = hit.Value;
 
-        if (_selected is not null && _attackTargets.Contains(cell))
-        {
-            ResolveAttack(_selected.Value, cell);
-            EndPlayerAction();
+        if (_selected is { } sel && TryPlayerActionAt(sel, cell))
             return;
-        }
-
-        if (_selected is not null && _healTargets.Contains(cell))   // trait « Soin » : cible un allié blessé
-        {
-            ResolveHeal(_selected.Value, cell);
-            EndPlayerAction();
-            return;
-        }
-
-        if (_selected is not null && _satchelTargets.Contains(cell))   // « Sacoche aimantée » : tir sur une sacoche
-        {
-            ResolveSatchelPull(_selected.Value, cell);
-            EndPlayerAction();
-            return;
-        }
-
-        if (_selected is not null && _throwTargets.Contains(cell))   // « Chair à canon » : le jet part
-        {
-            ResolveThrow(_selected.Value, cell);
-            EndPlayerAction();
-            return;
-        }
-
-
-        if (_selected is not null && _legalMoves.Contains(cell))
-        {
-            var from = _selected.Value;
-            TryMoveWithFx(from, cell);
-            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
-            TriggerLanding(cell);
-            Context.Sounds.Play("unit_move");
-            TutorialOnPlayerMove(cell);
-            EndPlayerAction();
-            return;
-        }
 
         var unit = _match.UnitAt(cell);
         if (unit is { Faction: Faction.Player } && (_tutorial is null || _tutorial.CanSelectInCombat(cell)))
@@ -8326,39 +8273,8 @@ public sealed class GameplayScene : Scene
             return;
         }
 
-        if (_attackTargets.Contains(cell))
-        {
-            ResolveAttack(from, cell);
-            EndPlayerAction();
-        }
-        else if (_healTargets.Contains(cell))       // glissé sur un allié blessé : soin (trait « Soin »)
-        {
-            ResolveHeal(from, cell);
-            EndPlayerAction();
-        }
-        else if (_satchelTargets.Contains(cell))    // glissé sur une sacoche à portée : on l'aimante
-        {
-            ResolveSatchelPull(from, cell);
-            EndPlayerAction();
-        }
-        else if (_throwTargets.Contains(cell))      // glissé sur un ennemi à portée : le jet part
-        {
-            ResolveThrow(from, cell);
-            EndPlayerAction();
-        }
-        else if (_legalMoves.Contains(cell))
-        {
-            TryMoveWithFx(from, cell);
-            if (_match.UnitAt(cell) is { } moved) FaceToward(moved, from, cell);
-            TriggerLanding(cell);
-            Context.Sounds.Play("unit_move");
-            TutorialOnPlayerMove(cell);
-            EndPlayerAction();
-        }
-        else
-        {
+        if (!TryPlayerActionAt(from, cell))
             TriggerLanding(from);                   // case invalide : retombe sur place, reste sélectionné
-        }
     }
 
     private void EndPlayerAction()
@@ -8381,38 +8297,85 @@ public sealed class GameplayScene : Scene
         if (_aiTimer > 0)
             return;
 
-        // La difficulté s'applique ICI : l'IA ne joue son meilleur coup qu'avec la précision du niveau
-        // choisi POUR CETTE RUN, sinon elle descend d'un cran de priorité (cf. DifficultySettings).
-        var accuracy = DifficultySettings.For(_run?.Difficulty ?? Difficulty.Normal).AiAccuracy;
-        var action = EnemyAi.ChooseAction(_match, PaysanCells(), accuracy);
-        if (action is not { } a)
-        {
-            // Aucun coup productif (ex. gardes défensifs déjà en place, joueur hors de portée) : l'ennemi
-            // PASSE, sinon le tour resterait bloqué côté ennemi. Le round est tout de même consommé.
-            _match.PassTurn();
-            _lastAiAction = null;   // rien à revoir : l'IA a passé son tour
-            OnEnemyTurnResolved();
+        // Coup pas encore prêt (futur adversaire distant dont le coup n'est pas arrivé) : on réessaie à la frame
+        // suivante. L'IA, elle, répond toujours tout de suite.
+        if (!_enemyController.TryGetAction(_match, out var a))
             return;
-        }
 
-        if (a.IsAttack)
+        // Un passe (aucun coup productif : gardes défensifs en place, joueur hors de portée…) consomme le
+        // round, sinon le tour resterait bloqué côté ennemi.
+        var kind = ExecuteAction(a, out var landing);
+        switch (a.Kind)
         {
-            if (ResolveAttack(a.From, a.To) != MoveKind.Invalid)
-                RecordAiAttackReplay();     // fige l'attaque pour pouvoir la REVOIR (touche R / RB)
-        }
-        else
-        {
-            var mover = _match.UnitAt(a.From);
-            TryMoveWithFx(a.From, a.To);
-            // Case d'arrivée RÉELLE : sur glace le pion dérape AU-DELÀ de a.To (cf. TryMoveWithFx). Sans ça, le
-            // replay (touche R) enregistrait la case intermédiaire et un sprite null → il ne rejouait rien.
-            var landing = mover != null && _match.CellOf(mover) is { } lc ? lc : a.To;
-            if (_match.UnitAt(landing) is { } moved) FaceToward(moved, a.From, landing);
-            TriggerLanding(landing);
-            Context.Sounds.Play("unit_move");
-            RecordAiMoveReplay(a.From, landing);
+            case BattleActionKind.Pass:
+                _lastAiAction = null;   // rien à revoir : l'ennemi a passé son tour
+                break;
+            case BattleActionKind.Move:
+                RecordAiMoveReplay(a.From, landing);
+                break;
+            default:
+                // Attaque (et, côté adversaire humain, jet/soin…) : figée pour pouvoir la REVOIR (touche R / RB).
+                if (kind != MoveKind.Invalid)
+                    RecordAiAttackReplay();
+                break;
         }
         OnEnemyTurnResolved();
+    }
+
+    /// <summary>
+    /// Point d'entrée UNIQUE d'un coup côté scène, quel que soit le camp ou la source (souris, manette, IA,
+    /// futur adversaire distant) : résout le coup via le moteur avec tout son feedback (FX, orientation,
+    /// rebond, son), puis l'ajoute au <see cref="_battleLog"/> s'il est valide. <paramref name="landing"/> =
+    /// case d'arrivée RÉELLE d'un déplacement (sur glace le pion dérape AU-DELÀ de la case visée — sans ça, le
+    /// replay enregistrait la case intermédiaire et un sprite null) ; sinon la case ciblée.
+    /// </summary>
+    private MoveKind ExecuteAction(in BattleAction action, out Cell landing)
+    {
+        landing = action.Target;
+        MoveKind kind;
+        switch (action.Kind)
+        {
+            case BattleActionKind.Move:
+            {
+                var mover = _match.UnitAt(action.From);
+                kind = TryMoveWithFx(action.From, action.Target);
+                landing = mover != null && _match.CellOf(mover) is { } lc ? lc : action.Target;
+                if (_match.UnitAt(landing) is { } moved) FaceToward(moved, action.From, landing);
+                TriggerLanding(landing);
+                Context.Sounds.Play("unit_move");
+                break;
+            }
+            case BattleActionKind.Attack: kind = ResolveAttack(action.From, action.Target); break;
+            case BattleActionKind.Heal: kind = ResolveHeal(action.From, action.Target); break;
+            case BattleActionKind.SatchelPull: kind = ResolveSatchelPull(action.From, action.Target); break;
+            case BattleActionKind.Throw: kind = ResolveThrow(action.From, action.Target); break;
+            default: kind = _match.Apply(action); break;   // Pass
+        }
+        if (kind != MoveKind.Invalid)
+            _battleLog.Add(action);
+        return kind;
+    }
+
+    /// <summary>
+    /// Coup du JOUEUR local depuis <paramref name="from"/> (pion sélectionné) vers <paramref name="cell"/>, d'après
+    /// les cibles calculées à la sélection — même priorité pour la souris (clic ou glisser) et la manette :
+    /// attaque, soin, sacoche, jet, déplacement. Faux si la case n'offre aucun coup (rien n'est joué).
+    /// </summary>
+    private bool TryPlayerActionAt(Cell from, Cell cell)
+    {
+        BattleAction action;
+        if (_attackTargets.Contains(cell)) action = BattleAction.Attack(from, cell);
+        else if (_healTargets.Contains(cell)) action = BattleAction.Heal(from, cell);           // trait « Soin » : allié blessé
+        else if (_satchelTargets.Contains(cell)) action = BattleAction.SatchelPull(from, cell); // « Sacoche aimantée »
+        else if (_throwTargets.Contains(cell)) action = BattleAction.Throw(from, cell);         // « Chair à canon »
+        else if (_legalMoves.Contains(cell)) action = BattleAction.Move(from, cell);
+        else return false;
+
+        ExecuteAction(action, out var landing);
+        if (action.Kind == BattleActionKind.Move)
+            TutorialOnPlayerMove(landing);
+        EndPlayerAction();
+        return true;
     }
 
     /// <summary>Fige la dernière ATTAQUE de l'IA (état de <see cref="_fx"/> + feedback principal en attente) pour pouvoir
@@ -9323,7 +9286,7 @@ public sealed class GameplayScene : Scene
     /// Résout le jet : l'allié au contact le plus proche de la cible est lancé, la cible encaisse la puissance
     /// du porteur et le projectile atterrit au plus près d'elle. Le tour du porteur est consommé par le moteur.
     /// </summary>
-    private void ResolveThrow(Cell from, Cell target)
+    private MoveKind ResolveThrow(Cell from, Cell target)
     {
         // Figé AVANT le lancer : la cible peut mourir (sprite pour sa dissolution), et le chiffre affiché est
         // celui d'une attaque du porteur (même calcul que le moteur, borné aux PV).
@@ -9333,11 +9296,11 @@ public sealed class GameplayScene : Scene
 
         var throwActor = _match.UnitAt(from);
         var deathLogStart = _match.DeathLog.Count;
-        var kind = _match.TryThrow(from, target);
+        var kind = _match.Apply(BattleAction.Throw(from, target));
         if (kind == MoveKind.Invalid)
         {
             ClearThrow();
-            return;
+            return kind;
         }
         CheckTripleKill(throwActor, deathLogStart);
 
@@ -9368,6 +9331,7 @@ public sealed class GameplayScene : Scene
         }
         Context.Sounds.Play("unit_charge");
         ClearThrow();
+        return kind;
     }
 
     /// <summary>Lance le rebond de « pose » sur la case où un pion vient d'atterrir.</summary>
@@ -9389,7 +9353,7 @@ public sealed class GameplayScene : Scene
         var moverSprite = _match.UnitAt(from) is { } mover ? UnitSprite(mover) : null;
         var actor = _match.UnitAt(from);
         var deathLogStart = _match.DeathLog.Count;
-        var kind = _match.TryMove(from, to);
+        var kind = _match.Apply(BattleAction.Move(from, to));
         CheckTripleKill(actor, deathLogStart);
         foreach (var (cell, dmg) in _match.LastImpactHits)
             SpawnDamage(cell, dmg);
@@ -9445,16 +9409,17 @@ public sealed class GameplayScene : Scene
     /// son d'incantation + « +N » vert flottant sur le soigné. La cible est déjà bornée aux alliés blessés à
     /// portée par <see cref="Match.HealTargets"/>/<see cref="Match.TryHeal"/>.
     /// </summary>
-    private void ResolveHeal(Cell from, Cell target)
+    private MoveKind ResolveHeal(Cell from, Cell target)
     {
         if (_match.UnitAt(from) is { } healer)
             FaceToward(healer, from, target);
         var before = _match.UnitAt(target)?.Hp ?? 0;
-        _match.TryHeal(from, target);
+        var kind = _match.Apply(BattleAction.Heal(from, target));
         var healed = (_match.UnitAt(target)?.Hp ?? 0) - before;
         Context.Sounds.Play("unit_cast");
         if (healed > 0)
             _damagePopups.SpawnText(target, "+" + healed, HealColor);
+        return kind;
     }
 
     /// <summary>
@@ -9515,7 +9480,7 @@ public sealed class GameplayScene : Scene
         }
 
         var deathLogStart = _match.DeathLog.Count;
-        var kind = _match.TryAttack(from, target);
+        var kind = _match.Apply(BattleAction.Attack(from, target));
         if (kind == MoveKind.Invalid)
             return kind;
         CheckTripleKill(attacker, deathLogStart);

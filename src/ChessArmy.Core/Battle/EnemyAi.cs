@@ -85,14 +85,15 @@ public static class EnemyAi
     /// <summary>Jeu parfait : l'IA prend toujours la meilleure décision disponible. Défaut hors difficulté.</summary>
     public const double PerfectAccuracy = 1.0;
 
-    private static readonly Random SharedRng = new();
     private static readonly IReadOnlyCollection<Cell> NoPaysans = Array.Empty<Cell>();
 
-    public static AiAction? ChooseAction(Match match) => ChooseAction(match, NoPaysans, SharedRng);
+    // Sans aléa explicite, l'IA tire dans celui du MATCH : un combat (graine + coups) reste ainsi rejouable
+    // à l'identique, IA comprise (replay, vérification de désynchronisation en multijoueur).
+    public static AiAction? ChooseAction(Match match) => ChooseAction(match, NoPaysans, match.Rng);
 
     public static AiAction? ChooseAction(
         Match match, IReadOnlyCollection<Cell> paysanCells, double accuracy = PerfectAccuracy) =>
-        ChooseAction(match, paysanCells, SharedRng, accuracy);
+        ChooseAction(match, paysanCells, match.Rng, accuracy);
 
     /// <param name="paysanCells">Cases des paysans (tuiles recrue non résolues) : GARDÉES par les défensifs,
     /// ASSAILLIES par les offensifs.</param>

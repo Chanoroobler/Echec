@@ -2517,6 +2517,87 @@ public sealed class Match
     }
 
     /// <summary>
+    /// Point d'entrée UNIQUE d'un coup (joueur, IA, futur adversaire distant, replay) : aiguille vers
+    /// TryMove/TryAttack/TryThrow/TryHeal/TrySpendAction/PassTurn. Avec la même graine (<see cref="Rng"/>) et
+    /// la même suite de coups, deux Match aboutissent au même état (cf. <see cref="ComputeStateHash"/>).
+    /// </summary>
+    public MoveKind Apply(in BattleAction action)
+    {
+        switch (action.Kind)
+        {
+            case BattleActionKind.Pass:
+                if (IsOver)
+                    return MoveKind.Invalid;
+                PassTurn();
+                return MoveKind.Moved;
+            case BattleActionKind.Move: return TryMove(action.From, action.Target);
+            case BattleActionKind.Attack: return TryAttack(action.From, action.Target);
+            case BattleActionKind.Throw: return TryThrow(action.From, action.Target);
+            case BattleActionKind.Heal: return TryHeal(action.From, action.Target);
+            case BattleActionKind.SatchelPull: return TrySpendAction(action.From);
+            default: return MoveKind.Invalid;
+        }
+    }
+
+    /// <summary>Source d'aléa du combat, partagée avec l'IA : tout tirage qui influence l'état doit en venir,
+    /// pour qu'un combat soit entièrement rejouable depuis sa graine.</summary>
+    internal System.Random Rng => _rng;
+
+    /// <summary>
+    /// Empreinte DÉTERMINISTE de l'état de jeu (tour, vainqueur, et pour chaque case occupée : classe, camp,
+    /// PV, compteurs de traits…). Sert à détecter une désynchronisation entre deux clients (comparée après
+    /// chaque coup) ou à vérifier un replay. FNV-1a 64 bits, sans allocation ; n'utilise PAS
+    /// string.GetHashCode (aléatoire d'un processus à l'autre).
+    /// </summary>
+    public ulong ComputeStateHash()
+    {
+        var h = FnvOffset;
+        h = Mix(h, (int)CurrentTurn);
+        h = Mix(h, Winner is { } w ? (int)w + 1 : 0);
+        h = Mix(h, _extraTurnUsed ? 1 : 0);
+        for (var c = 0; c < Width; c++)
+            for (var r = 0; r < Height; r++)
+            {
+                if (_units[c, r] is not { } u)
+                    continue;
+                h = Mix(h, c);
+                h = Mix(h, r);
+                h = MixString(h, u.Class.Name);
+                h = Mix(h, (int)u.Faction);
+                h = Mix(h, u.Hp);
+                h = Mix(h, u.MaxHp);
+                h = Mix(h, u.Kills);
+                h = Mix(h, u.RagePower);
+                h = Mix(h, u.VengeancePower);
+                h = Mix(h, u.RoquePower);
+                h = Mix(h, u.InheritedPower);
+                h = Mix(h, u.Equipments.Count);
+                h = Mix(h, (u.Charmed ? 1 : 0) | (u.UltimateReviveUsed ? 2 : 0) | (u.HitSinceOwnTurn ? 4 : 0));
+            }
+        return h;
+    }
+
+    private const ulong FnvOffset = 14695981039346656037UL;
+    private const ulong FnvPrime = 1099511628211UL;
+
+    private static ulong Mix(ulong h, int value)
+    {
+        for (var i = 0; i < 4; i++)
+        {
+            h ^= (byte)(value >> (8 * i));
+            h *= FnvPrime;
+        }
+        return h;
+    }
+
+    private static ulong MixString(ulong h, string s)
+    {
+        foreach (var ch in s)
+            h = Mix(h, ch);
+        return h;
+    }
+
+    /// <summary>
     /// Cibles qu'aurait l'unité de <paramref name="from"/> si elle se déplaçait en <paramref name="to"/>
     /// (plateau SIMULÉ puis restauré, tour inchangé). Outil d'IA pour repérer un coup qui amène à
     /// portée d'attaque. Renvoie une nouvelle liste (vide si <paramref name="from"/> est vide).
