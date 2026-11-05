@@ -28,7 +28,7 @@ namespace ChessArmy.Game.Scenes;
 /// son inventaire par glisser-déposer depuis le panneau de droite, puis combat l'IA.
 /// Échap = menu pause, F1 = bascule du quadrillage, F2 = bascule du damier.
 /// </summary>
-public sealed class GameplayScene : Scene
+public sealed partial class GameplayScene : Scene
 {
     // Dimensions du plateau du combat COURANT — variables : une map dessinée (escarmouche 6×6) les
     // fixe à sa taille, sinon 8×8 (terrain aléatoire). Réglées par combat dans BeginPlacement/BeginTutorial.
@@ -898,21 +898,15 @@ public sealed class GameplayScene : Scene
     }
 
     /// <summary>
-    /// Partie PvP (POC) contre un joueur Steam : un seul combat sur un échiquier 8×8, même armée des deux côtés
-    /// (cf. <see cref="PvpSetup"/>), hors campagne (aucune sauvegarde, aucun succès, aucune méta-progression).
-    /// La scène prend possession de <paramref name="session"/> et la libère en sortant.
+    /// Partie MULTIJOUEUR (contre un joueur Steam ou un bot) : un seul combat, hors campagne (aucune sauvegarde de
+    /// run, aucun succès, aucune méta-progression du solo). Toute la logique est dans GameplayScene.Pvp.cs ; la
+    /// scène prend possession de la session réseau et la libère en sortant.
     /// </summary>
-    public GameplayScene(GameContext context, PvpSession session) : base(context)
+    public GameplayScene(GameContext context, PvpMatchInfo match) : base(context)
     {
         _saveSlot = -1;
-        _pvp = session;
+        _pvpInfo = match;
     }
-
-    // ── PvP (POC) ── null hors PvP. Tout ce qui touche à la campagne est court-circuité quand il est posé.
-    private readonly PvpSession? _pvp;
-    private Faction? _pvpWinner;          // issue de la partie (vue locale) une fois le plateau posé
-    private bool _pvpDesync;              // empreintes divergentes : les deux clients ne voient plus la même partie
-    private Rectangle _pvpMenuRect;       // bouton « Menu principal » du panneau de fin
 
     /// <summary>Viewport logique (espace virtuel) dans lequel l'UI se met en page.</summary>
     private Viewport VirtualViewport =>
@@ -992,7 +986,7 @@ public sealed class GameplayScene : Scene
 
     public override void Unload()
     {
-        _pvp?.Dispose();            // PvP : prévient l'adversaire et quitte le lobby (menu, abandon, fermeture)
+        UnloadPvp();                // PvP : partie quittée = défaite, prévient l'adversaire et quitte le lobby
         FlushCommanderPlayTime();   // historique du commandant : le temps joué depuis le dernier combat
         _sliceUpper?.Dispose();
         _sliceLower?.Dispose();
@@ -1849,11 +1843,11 @@ public sealed class GameplayScene : Scene
 
     private void StartRun()
     {
-        if (_pvp != null)
+        if (_pvpInfo != null)
         {
             // Run JETABLE : la scène en a besoin pour ses phases, mais elle n'est jamais sauvegardée.
             _run = new Run(firstRun: false, commander: null, difficulty: Difficulty.Normal);
-            BeginPvpBattle(_pvp);
+            BeginPvpBattle();
             return;
         }
         var resumed = _initialRun != null;
@@ -2200,7 +2194,7 @@ public sealed class GameplayScene : Scene
     /// <see cref="Run.Difficulty"/> (la valeur persistée avec la run) et non le choix d'écran
     /// <see cref="_chosenDifficulty"/>, qui vaut Normal par défaut sur une partie reprise.
     /// </summary>
-    private bool CanRestartMission => _pvp == null && DifficultySettings.For(_run.Difficulty).AllowRestart;
+    private bool CanRestartMission => _pvpInfo == null && DifficultySettings.For(_run.Difficulty).AllowRestart;
 
     /// <summary>
     /// Prépare le TUTORIEL « combat zéro » : board plat, scénario fixe (commandant + 1 soldat joueur,
@@ -2251,41 +2245,6 @@ public sealed class GameplayScene : Scene
         _cursor = commanderCell;        // curseur manette sur la zone joueur
         MarkLayoutDirty();
         // Reste en phase PLACEMENT (pas de StartBattle, pas de sauvegarde) : le tuto guide le placement.
-    }
-
-    /// <summary>
-    /// Partie PvP (POC) : une map <see cref="CombatType.Multi"/> tirée par la graine de l'hôte (échiquier d'herbe nu
-    /// s'il n'y en a aucune), les deux armées en place, et le combat démarre aussitôt (ni placement, ni sauvegarde).
-    /// Le camp adverse est joué par <see cref="RemoteBattleController"/> ; chaque client joue en bas (plateau
-    /// retourné chez l'invité, cf. <see cref="PvpSetup"/>), l'hôte commence.
-    /// </summary>
-    private void BeginPvpBattle(PvpSession session)
-    {
-        _map = null;   // la map sert au terrain seulement : ses spawns/objets de campagne ne s'appliquent pas
-        Columns = Rows = PvpSetup.Size;
-        _boardIntro = _boardIntroTotal = 0f;
-        ClearBoardObjects();
-        List<Cell>? bushes = null;
-        _battlefield = PvpSetup.PickMap(_maps, session.Seed) is { } map
-            ? PvpSetup.BuildBattlefield(map, session.IsHost, out bushes)
-            : Battlefield.CreateFlat(Columns, Rows);
-        if (bushes != null)
-            _bushCells.AddRange(bushes);
-        DetectSnowMap();
-        SetupBoardDecor();
-        _battleLog.Clear();
-        _combatSeed = session.Seed;
-        _match = PvpSetup.CreateMatch(session.IsHost, session.Seed, _battlefield, _bushCells);
-        ResetCombatState();
-        PvpSetup.PlaceArmies(_match);
-        _enemyController = new RemoteBattleController(session);
-        _cursor = new Cell(Columns / 2, Rows - 2);   // curseur manette sur les pions du joueur
-
-        _run.StartBattle();
-        _battleIntroTimer = 0;   // aucun panneau de placement à faire sortir
-        _lastAiAction = null;
-        MarkLayoutDirty();
-        Context.Sounds.Play("battle_start");
     }
 
 
@@ -2364,84 +2323,6 @@ public sealed class GameplayScene : Scene
             _puddlesGrass.FinishBoard();
             _nightLight.ResetBoard(Columns * GridLayout.DefaultTileSize, Rows * GridLayout.DefaultTileSize);   // lucioles
         }
-    }
-    /// <summary>
-    /// PvP, chaque frame de combat : relève le réseau, puis une fois la partie finie (issue posée par
-    /// <see cref="CheckBattleEnd"/>, ou adversaire parti) fige le plateau derrière le panneau de fin et attend le
-    /// retour au menu. Vrai = la frame est consommée (rien d'autre ne doit jouer).
-    /// </summary>
-    private bool UpdatePvp(float dt)
-    {
-        _pvp!.Update(dt);
-        if (_pvpWinner is null && !_pvp.OpponentLeft)
-            return false;
-
-        // Les particules et chiffres déjà lancés finissent de vivre sous le panneau.
-        _sparks.Update(dt);
-        if (_damagePopups.HasActive)
-            _damagePopups.Update(dt, BuildLayout(), _sparks);
-
-        if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter)
-            || (Context.Input.WasLeftClicked && _pvpMenuRect.Contains(Context.Input.MousePosition)))
-        {
-            Context.Sounds.Play("menu_click");
-            Context.Scenes.Change(new MainMenuScene(Context));   // Unload libère la session (on quitte le lobby)
-        }
-        return true;
-    }
-
-    /// <summary>HUD PvP : à qui de jouer (haut), alerte de désynchronisation, et panneau de fin de partie.</summary>
-    private void DrawPvpHud(SpriteBatch sb, Viewport viewport)
-    {
-        var pvp = _pvp!;
-        var over = _pvpWinner is not null || pvp.OpponentLeft;
-        sb.Begin(samplerState: SamplerState.PointClamp);
-        if (!over)
-        {
-            var mine = _match.CurrentTurn == Faction.Player;
-            var text = mine ? Loc.T("pvp.your_turn") : Loc.T("pvp.their_turn", pvp.OpponentName);
-            var w = Context.Font.Measure(text, 2) + 40;
-            var box = new Rectangle((viewport.Width - w) / 2, 10, w, 30);
-            Context.Style.DrawPanel(sb, box);
-            Context.Font.DrawCentered(sb, text, box, 2, mine ? Palette.Yellow2 : Palette.Blue1);
-            if (_pvpDesync)
-                Context.Font.DrawCentered(sb, Loc.T("pvp.desync"), new Rectangle(0, box.Bottom + 6, viewport.Width, 7),
-                    1, Palette.Purple5);
-            sb.End();
-            return;
-        }
-
-        DrawDim(sb, viewport);
-        string title;
-        Color color;
-        if (_pvpWinner is { } winner)
-        {
-            title = Loc.T(winner == Faction.Player ? "pvp.victory" : "pvp.defeat");
-            color = winner == Faction.Player ? Palette.Yellow2 : Palette.Purple5;
-        }
-        else
-        {
-            title = Loc.T("pvp.opponent_left");
-            color = Palette.Yellow2;
-        }
-        var label = Loc.T("menu.main_menu");
-        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
-        const int Gap = 12;
-        var btnW = Context.Font.Measure(label, 1) + 40;
-        var contentW = System.Math.Max(System.Math.Max(Context.Font.Measure(title, 3), btnW), Context.Font.Measure(prompt, 1));
-        var boxW = contentW + 2 * ModalPadH;
-        var boxH = ModalPadV + 21 + Gap + RecapBtnH + Gap + 7 + ModalPadV;
-        var panel = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
-        Context.Style.DrawPanel(sb, panel);
-        var y = panel.Y + ModalPadV;
-        Context.Font.DrawCentered(sb, title, new Rectangle(panel.X, y, panel.Width, 21), 3, color);
-        y += 21 + Gap;
-        _pvpMenuRect = new Rectangle(panel.X + (panel.Width - btnW) / 2, y, btnW, RecapBtnH);
-        DrawRecapButton(sb, _pvpMenuRect, label);
-        y += RecapBtnH + Gap;
-        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
-        Context.Font.DrawCentered(sb, prompt, new Rectangle(panel.X, y, panel.Width, 7), 1, Palette.Cyan1 * a);
-        sb.End();
     }
 
     /// <summary>Vide les objets de plateau (buissons, recrues, coffres, chutes…) et l'ambiance animalière.</summary>
@@ -3433,7 +3314,7 @@ public sealed class GameplayScene : Scene
         {
             _run.Stats.AddPlayTime(gameTime.ElapsedGameTime.TotalSeconds);
             // Historique du commandant (écran de sélection) : même temps, tuto exclu, versé au profil par lot.
-            if (_tutorial == null && _pvp == null)
+            if (_tutorial == null && _pvpInfo == null)
                 _pendingCommanderPlayTime += gameTime.ElapsedGameTime.TotalSeconds;
         }
 
@@ -5864,7 +5745,7 @@ public sealed class GameplayScene : Scene
     {
         var dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
-        if (_pvp != null && UpdatePvp(dt))
+        if (_pvpInfo != null && UpdatePvp(dt))
             return;
 
         // Tutoriel : bouton « Passer » (toujours) / « continuer » à la victoire — peut terminer le tuto.
@@ -7043,13 +6924,10 @@ public sealed class GameplayScene : Scene
     {
         if (_tutorial != null)   // en tuto : pas de recrutement/défaite/sauvegarde — géré par le guide
             return;
-        if (_pvp != null)        // PvP : on retient l'issue, le panneau de fin s'affiche (cf. UpdatePvp)
+        if (_pvpInfo != null)    // multi : issue, gains et panneau de fin (cf. GameplayScene.Pvp.cs)
         {
-            if (_match.IsOver && _pvpWinner is null)
-            {
-                _pvpWinner = _match.Winner;
-                Context.Sounds.Play(_pvpWinner == Faction.Player ? "victory" : "defeat");
-            }
+            if (_match.IsOver)
+                OnPvpBattleEnd();
             return;
         }
 
@@ -7213,7 +7091,7 @@ public sealed class GameplayScene : Scene
     /// </summary>
     private void CheckTripleKill(Unit? actor, int deathLogStart)
     {
-        if (actor?.Faction != Faction.Player || _tutorial != null || _pvp != null)
+        if (actor?.Faction != Faction.Player || _tutorial != null || _pvpInfo != null)
             return;
         var kills = 0;
         for (var i = deathLogStart; i < _match.DeathLog.Count; i++)
@@ -8478,10 +8356,8 @@ public sealed class GameplayScene : Scene
         // Un passe (aucun coup productif : gardes défensifs en place, joueur hors de portée…) consomme le
         // round, sinon le tour resterait bloqué côté ennemi.
         var kind = ExecuteAction(a, out var landing);
-        // PvP : on doit retrouver EXACTEMENT l'état annoncé par l'adversaire, sinon la partie a divergé.
-        if (_pvp != null && _enemyController is RemoteBattleController remote
-            && remote.ExpectedHash != _match.ComputeStateHash(mirrored: !_pvp.IsHost))
-            _pvpDesync = true;
+        if (_pvpInfo != null)
+            OnOpponentActionApplied();   // multi : contrôle de synchronisation + pendule de l'adversaire
         switch (a.Kind)
         {
             case BattleActionKind.Pass:
@@ -8532,9 +8408,9 @@ public sealed class GameplayScene : Scene
         if (kind != MoveKind.Invalid)
         {
             _battleLog.Add(action);
-            // PvP : un coup LOCAL part chez l'adversaire, avec l'empreinte de l'état obtenu (repère de l'hôte).
-            if (_pvp != null && actor == Faction.Player)
-                _pvp.SendAction(action, _match.ComputeStateHash(mirrored: !_pvp.IsHost));
+            // Multi : règles de fin de coup (Séisme, position morte), pendule, et envoi du coup LOCAL à l'adversaire.
+            if (_pvpInfo != null)
+                OnPvpActionExecuted(action, actor);
         }
         return kind;
     }
@@ -8631,7 +8507,8 @@ public sealed class GameplayScene : Scene
         _battleRounds++;
         if (HasSpecialTurnLimit && _specialRoundsLeft > 0)   // « sauver » est une course : pas de décompte
             _specialRoundsLeft--;
-        TriggerSeismes();
+        if (_pvpInfo == null)   // multi : Séisme symétrique, déjà appliqué en fin de coup (PvpSetup.AfterAction)
+            TriggerSeismes();
     }
 
     /// <summary>
@@ -8640,9 +8517,11 @@ public sealed class GameplayScene : Scene
     /// haut en bas (cf. TileTremor) + poussière + un chiffre de dégâts par cible + le son « seisme ». Les
     /// dégâts/kills sont déjà appliqués côté moteur.
     /// </summary>
-    private void TriggerSeismes()
+    private void TriggerSeismes() => ShowSeismeHits(_match.ApplySeismes(Faction.Player));
+
+    /// <summary>Feedback des frappes de « Séisme » déjà appliquées par le moteur (campagne ou multi).</summary>
+    private void ShowSeismeHits(IReadOnlyList<(Cell Cell, int Damage)> hits)
     {
-        var hits = _match.ApplySeismes(Faction.Player);
         if (hits.Count == 0)
             return;
         _tremor.Shake(_match.LastSeismeZone);               // les tuiles de l'AoE tressautent de haut en bas
@@ -10421,7 +10300,7 @@ public sealed class GameplayScene : Scene
                     DrawRecrueReveal(sb, viewport);
                 if (ChestRevealActive)
                     DrawChestReveal(sb, viewport);       // révélation modale du coffre (centre + inventaire)
-                if (_pvp != null)
+                if (_pvpInfo != null)
                     DrawPvpHud(sb, viewport);            // PvP : tour courant, désynchro, panneau de fin
                 break;
             case RunPhase.Recruitment:
@@ -10625,7 +10504,7 @@ public sealed class GameplayScene : Scene
             if (_tutorial != null) DrawTutorialOverlay(sb, hit, viewport);
             if (_recrueReveals.Count > 0) DrawRecrueReveal(sb, viewport);
             if (ChestRevealActive) DrawChestReveal(sb, viewport);
-            if (_pvp != null) DrawPvpHud(sb, viewport);
+            if (_pvpInfo != null) DrawPvpHud(sb, viewport);
         }
         if (_pauseMenu.IsOpen)
         {

@@ -1,0 +1,93 @@
+{
+  // Barème du mode MULTIJOUEUR (PvP). Toutes les valeurs sont des propositions de départ, à régler.
+  // Coûts : un pion coûte selon son TIER (1, 2, 3), un équipement selon sa RARETÉ (Common, Rare, Legendary).
+  // Le commandant est GRATUIT (hors budget). Un équipement par pion, commandant exclu.
+  "budget": 100,
+  "unitCost": { "1": 4, "2": 8, "3": 13 },
+  "equipmentCost": { "Common": 3, "Rare": 6, "Legendary": 10 },
+
+  // Économie des coffres. Les points de départ ouvrent un coffre de chaque type (tuto multi).
+  "chestCost": { "units": 60, "equipment": 40 },
+  "startPoints": 100,
+  "pointsPerKill": 2,
+  "pointsForWin": 15,
+  "pointsForDraw": 5,
+
+  // Temps (secondes).
+  "reserveSeconds": 600,
+  "moveSeconds": 60,
+  "reconnectSeconds": 60,
+  "buildChoiceSeconds": 30,
+  "botAfterSeconds": 40,
+
+  // Cote (Elo) et rangs. Un rang couvre la cote de « from » jusqu'au rang suivant, découpé en « divisions »
+  // tranches égales (la division III est la plus basse). Master n'a pas de division.
+  "startRating": 950,
+  "eloK": 32,
+  "ranks": [
+    { "id": "bronze", "from": 0, "divisions": 3, "span": 300 },
+    { "id": "fer", "from": 1100, "divisions": 3, "span": 300 },
+    { "id": "argent", "from": 1400, "divisions": 3, "span": 300 },
+    { "id": "or", "from": 1700, "divisions": 3, "span": 300 },
+    { "id": "master", "from": 2000, "divisions": 1, "span": 0 }
+  ],
+
+  // Commandants : stats PROPRES au multi (sans arbre), dans l'esprit de leur archétype.
+  "startingCommanders": [ "commandant", "Commandant_lancier", "Commandant_cavalier" ],
+  "commanders": {
+    "commandant":          { "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1, "traits": [ "Orage" ] },
+    "Commandant_lancier":  { "hp": 40, "damage": 10, "moveRange": 2, "attackRange": 2, "traits": [ "Rempart" ] },
+    "Commandant_cavalier": { "hp": 30, "damage": 12, "moveRange": 3, "attackRange": 3, "traits": [ "Franchissement", "Aura de puissance" ] },
+    "Commandant_fou":      { "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "traits": [ "Drain de vie" ] },
+    "Commandant_marchand": { "hp": 24, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": [ "Franchissement", "Esquive" ] },
+    "Commandant_duo":      { "hp": 30, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": [ "Duelliste" ] },
+    "Commandant_brute":    { "hp": 32, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": [ "Berserk" ] }
+  },
+
+  // Bots de secours, un niveau par rang : précision de l'IA (0..1) et IA « tactique » (évalue risques et
+  // valeur des pièces) à partir d'un certain rang. Armées écrites à la main : « back » = ligne du fond,
+  // « front » = ligne de devant, 8 cases de gauche à droite ; « * » = case du commandant, « » = vide,
+  // « classe+équipement » pour équiper un pion.
+  "bots": {
+    "bronze": {
+      "accuracy": 0.5, "tactical": false,
+      "armies": [
+        { "commander": "commandant",
+          "back":  [ "lancier", "cavalier", "mage", "soldat", "*", "mage", "cavalier", "lancier" ],
+          "front": [ "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat" ] }
+      ]
+    },
+    "fer": {
+      "accuracy": 0.75, "tactical": false,
+      "armies": [
+        { "commander": "Commandant_lancier",
+          "back":  [ "lancier", "cavalier", "mage", "archer", "*", "mage", "cavalier", "lancier" ],
+          "front": [ "soldat", "soldat", "garde", "soldat", "soldat", "garde", "soldat", "soldat" ] }
+      ]
+    },
+    "argent": {
+      "accuracy": 1.0, "tactical": false,
+      "armies": [
+        { "commander": "Commandant_cavalier",
+          "back":  [ "garde", "cavalier_lourd", "clerc", "archer", "*", "sorcier", "cavalier_lourd", "garde" ],
+          "front": [ "soldat", "spadassin", "soldat", "", "", "soldat", "spadassin", "soldat" ] }
+      ]
+    },
+    "or": {
+      "accuracy": 0.9, "tactical": true,
+      "armies": [
+        { "commander": "Commandant_fou",
+          "back":  [ "phalange", "paladin", "pretresse", "", "*", "archimage", "paladin", "phalange" ],
+          "front": [ "", "garde", "", "", "", "", "garde", "" ] }
+      ]
+    },
+    "master": {
+      "accuracy": 1.0, "tactical": true,
+      "armies": [
+        { "commander": "Commandant_duo",
+          "back":  [ "forteresse", "cavalier_griffon", "barde", "", "*", "archimage", "paladin", "forteresse" ],
+          "front": [ "", "", "maitre_arme", "", "", "soldat", "", "" ] }
+      ]
+    }
+  }
+}

@@ -69,9 +69,12 @@ public sealed class Match
     public Match(int width, int height, Battlefield? terrain = null,
         IEnumerable<Cell>? coverCells = null, System.Random? rng = null, bool eliminationEndsGame = true,
         IEnumerable<Cell>? playerBlockedCells = null, int rempartBonus = 0,
-        int tueurGeantsBonus = 0, int formationBonus = 0, Faction firstTurn = Faction.Player)
+        int tueurGeantsBonus = 0, int formationBonus = 0, Faction firstTurn = Faction.Player,
+        bool mirrorRows = false, bool pvpRules = false)
     {
-        CurrentTurn = firstTurn;   // PvP : chez l'invité, c'est l'adversaire (l'hôte, vu en Enemy) qui ouvre
+        CurrentTurn = firstTurn;   // PvP : le premier joueur est tiré au sort (cf. PvpSetup)
+        _mirrorRows = mirrorRows;
+        PvpRules = pvpRules;
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
@@ -201,7 +204,87 @@ public sealed class Match
     public int Height { get; }
     public Faction CurrentTurn { get; private set; } = Faction.Player;
     public Faction? Winner { get; private set; }
-    public bool IsOver => Winner != null;
+
+    /// <summary>Partie nulle (PvP) : destruction mutuelle, égalité acceptée ou position morte (cf. <see cref="EndInDraw"/>).</summary>
+    public bool IsDraw { get; private set; }
+
+    public bool IsOver => Winner != null || IsDraw;
+
+    /// <summary>
+    /// PvP : le plateau de ce client est RETOURNÉ par rapport au repère commun (celui de l'hôte). Tous les
+    /// parcours et départages du moteur suivent alors l'ordre du repère commun, pour que les deux clients
+    /// résolvent chaque coup à l'identique (cf. <see cref="Units"/>, <see cref="CanonKey"/>).
+    /// </summary>
+    private readonly bool _mirrorRows;
+
+    /// <summary>Règles PvP : les deux camps sont strictement équivalents (destruction mutuelle = nulle, et non
+    /// défaite du joueur comme en campagne).</summary>
+    public bool PvpRules { get; }
+
+    /// <summary>Termine la partie sur une nulle (égalité acceptée, position morte). Sans effet si elle est finie.</summary>
+    public void EndInDraw()
+    {
+        if (!IsOver)
+            IsDraw = true;
+    }
+
+    /// <summary>
+    /// Position MORTE (PvP, égalité automatique) : plus aucune pièce ne pourra JAMAIS toucher une pièce adverse,
+    /// même en plusieurs coups. Estimation PRUDENTE : chaque pièce est supposée seule sur le plateau (les autres
+    /// pièces ne la bloquent pas), on calcule toutes les cases qu'elle peut atteindre puis tout ce qu'elle
+    /// menacerait depuis l'une d'elles (tir, Impact, Séisme, jet). S'il n'existe toujours aucun contact possible
+    /// entre les deux camps, la partie est nulle. Ne se déclare donc jamais à tort.
+    /// </summary>
+    public bool IsDeadPosition()
+    {
+        var scratch = new Match(Width, Height, _terrain);
+        var pieces = new List<(Faction Faction, HashSet<Cell> Reach, HashSet<Cell> Threat)>();
+        var moves = new List<Cell>();
+        var threat = new List<Cell>();
+        var frontier = new Queue<Cell>();
+        foreach (var (cell, unit) in Units())
+        {
+            var ghost = new Unit(unit.Domaine, unit.Faction, unit.Class, unit.Equipments, unit.Buffs);
+            var reach = new HashSet<Cell> { cell };
+            var hits = new HashSet<Cell>();
+            frontier.Enqueue(cell);
+            while (frontier.Count > 0)
+            {
+                var at = frontier.Dequeue();
+                scratch._units[at.Column, at.Row] = ghost;
+                scratch.AppendLegalMoves(at, ghost, moves);
+                scratch.AppendThreatenedCells(at, ghost, ghost.AttackDomaine, threat);
+                scratch._units[at.Column, at.Row] = null;
+                foreach (var to in moves)
+                    if (reach.Add(to))
+                        frontier.Enqueue(to);
+                moves.Clear();
+                hits.UnionWith(threat);
+                threat.Clear();
+                // Effets de proximité : Impact / Séisme (cases voisines), jet de « Chair à canon » (distance).
+                var near = ghost.HasTrait(Trait.ChairACanon) ? ChairACanonRange
+                    : ghost.HasTrait(Trait.Impact) || ghost.HasTrait(Trait.Seisme) ? 1 : 0;
+                for (var dc = -near; dc <= near; dc++)
+                    for (var dr = -near; dr <= near; dr++)
+                        if (InBounds(new Cell(at.Column + dc, at.Row + dr)))
+                            hits.Add(new Cell(at.Column + dc, at.Row + dr));
+            }
+            pieces.Add((unit.Faction, reach, hits));
+        }
+
+        foreach (var a in pieces)
+            foreach (var b in pieces)
+                if (a.Faction != b.Faction && a.Threat.Overlaps(b.Reach))
+                    return false;
+        return true;
+    }
+
+    /// <summary>Termine la partie par la défaite de <paramref name="loser"/> (temps écoulé, abandon, déconnexion).</summary>
+    public void Concede(Faction loser)
+    {
+        if (!IsOver)
+            Winner = loser.Opponent();
+    }
 
     public bool InBounds(Cell cell) =>
         cell.Column >= 0 && cell.Column < Width && cell.Row >= 0 && cell.Row < Height;
@@ -235,11 +318,14 @@ public sealed class Match
         _essential.Remove(unit);
     }
 
+    /// <summary>Unités du plateau, dans l'ordre du repère COMMUN (lignes de l'hôte, cf. <see cref="_mirrorRows"/>) :
+    /// tout effet résolu « unité par unité » s'applique dans le même ordre sur les deux clients PvP.</summary>
     public IEnumerable<(Cell Cell, Unit Unit)> Units()
     {
-        for (var row = 0; row < Height; row++)
+        for (var i = 0; i < Height; i++)
             for (var column = 0; column < Width; column++)
             {
+                var row = CanonRow(i);
                 var unit = _units[column, row];
                 if (unit != null)
                     yield return (new Cell(column, row), unit);
@@ -795,9 +881,9 @@ public sealed class Match
         Cell? best = null;
         var bestDistance = int.MaxValue;
         for (var column = 0; column < Width; column++)
-        for (var row = 0; row < Height; row++)
+        for (var i = 0; i < Height; i++)
         {
-            var cell = new Cell(column, row);
+            var cell = new Cell(column, CanonRow(i));   // ordre du repère commun : même point de chute en PvP
             // Case vide, praticable (ni mur ni eau — sauf pour qui vole) et non interdite au camp du projectile.
             if (UnitAt(cell) != null || BlocksPlayerLanding(cell, thrown)
                 || (BlocksMovement(cell) && !thrown.HasTrait(Trait.Vol)))
@@ -954,8 +1040,23 @@ public sealed class Match
     /// <c>null</c> si aucune glissade. Pour le feedback (glissement + son).</summary>
     public IReadOnlyList<Cell>? LastSlide => _lastSlide;
 
-    private static readonly (int Dc, int Dr)[] Neighbors8 =
+    private static readonly (int Dc, int Dr)[] Neighbors8Canon =
         { (-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1) };
+
+    // Même liste vue depuis le plateau RETOURNÉ : la n-ième entrée désigne la même case du repère commun.
+    private static readonly (int Dc, int Dr)[] Neighbors8Mirrored =
+        { (-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1) };
+
+    /// <summary>Les 8 voisins, dans l'ordre du repère COMMUN (cf. <see cref="_mirrorRows"/>) : un effet appliqué
+    /// voisin après voisin touche les mêmes cases dans le même ordre sur les deux clients.</summary>
+    private (int Dc, int Dr)[] Neighbors8 => _mirrorRows ? Neighbors8Mirrored : Neighbors8Canon;
+
+    /// <summary>Indice de ligne du repère COMMUN → ligne locale (identique hors plateau retourné).</summary>
+    private int CanonRow(int i) => _mirrorRows ? Height - 1 - i : i;
+
+    /// <summary>Clé d'ordre d'une case dans le repère COMMUN (lignes puis colonnes) : départage les ex aequo et
+    /// ordonne les tirages au sort à l'identique sur les deux clients.</summary>
+    private int CanonKey(Cell cell) => CanonRow(cell.Row) * Width + cell.Column;
 
     private static int ChebyshevDistance(Cell a, Cell b) =>
         System.Math.Max(System.Math.Abs(a.Column - b.Column), System.Math.Abs(a.Row - b.Row));
@@ -1403,6 +1504,8 @@ public sealed class Match
             pool.Add(move);
         }
 
+        if (pool.Count > 1)   // ordre du repère commun avant le tirage (les directions de déplacement, elles, ne le sont pas)
+            pool.Sort((a, b) => CanonKey(a).CompareTo(CanonKey(b)));
         var to = pool[_rng.Next(pool.Count)];
         MoveUnit(from, to);
         _dodges.Add((from, to));
@@ -2536,6 +2639,16 @@ public sealed class Match
             case BattleActionKind.Throw: return TryThrow(action.From, action.Target);
             case BattleActionKind.Heal: return TryHeal(action.From, action.Target);
             case BattleActionKind.SatchelPull: return TrySpendAction(action.From);
+            case BattleActionKind.Resign:
+                if (IsOver || action.From.Column is not (0 or 1))
+                    return MoveKind.Invalid;
+                Concede((Faction)action.From.Column);
+                return MoveKind.Moved;
+            case BattleActionKind.AgreeDraw:
+                if (IsOver)
+                    return MoveKind.Invalid;
+                EndInDraw();
+                return MoveKind.Moved;
             default: return MoveKind.Invalid;
         }
     }
@@ -2558,7 +2671,7 @@ public sealed class Match
         var h = FnvOffset;
         h = Mix(h, (int)Canon(CurrentTurn, mirrored));
         h = Mix(h, Winner is { } w ? (int)Canon(w, mirrored) + 1 : 0);
-        h = Mix(h, _extraTurnUsed ? 1 : 0);
+        h = Mix(h, (_extraTurnUsed ? 1 : 0) | (IsDraw ? 2 : 0));
         for (var c = 0; c < Width; c++)
             for (var r = 0; r < Height; r++)
             {
@@ -2739,6 +2852,8 @@ public sealed class Match
 
     private void UpdateWinner()
     {
+        if (IsDraw)
+            return;   // nulle déjà prononcée (PvP) : rien ne la renverse
         bool hasPlayer = false, hasEnemy = false;
         foreach (var (_, unit) in Units())
         {
@@ -2764,6 +2879,14 @@ public sealed class Match
         if (SoloSurvivorEnabled && playerLeaderStanding)
             playerLeaderDown = false;
 
+        // PvP : les deux camps tombent dans le même coup (riposte, foudre…) → nulle, symétrique pour les deux joueurs.
+        var playerLost = !hasPlayer || playerLeaderDown;
+        var enemyLost = !hasEnemy || enemyLeaderDown;
+        if (PvpRules && playerLost && enemyLost)
+        {
+            IsDraw = true;
+            return;
+        }
         // Camp joueur anéanti (ou commandant tombé) = défaite : toujours décisif, même à objectif.
         if (!hasPlayer || playerLeaderDown) Winner = Faction.Enemy;
         // Camp ennemi anéanti = victoire, SAUF en mode objectif (mission spéciale) où l'on laisse le

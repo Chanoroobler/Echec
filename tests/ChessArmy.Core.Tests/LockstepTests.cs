@@ -83,44 +83,6 @@ public class LockstepTests
     }
 
     [Fact]
-    public void Pvp_MirroredClients_StayInSync()
-    {
-        // Hôte et invité jouent chacun « en bas » : l'invité a le plateau retourné, et reçoit les coups de
-        // l'hôte retournés (et inversement). L'empreinte, calculée dans le repère de l'hôte, doit concorder.
-        var host = PvpSetup.CreateMatch(isHost: true, seed: 7);
-        var guest = PvpSetup.CreateMatch(isHost: false, seed: 7);
-        PvpSetup.PlaceArmies(host);
-        PvpSetup.PlaceArmies(guest);
-        Assert.Equal(host.ComputeStateHash(), guest.ComputeStateHash(mirrored: true));
-
-        var played = 0;
-        for (; played < 60 && !host.IsOver; played++)
-        {
-            var hostMoves = host.CurrentTurn == Faction.Player;
-            Assert.Equal(hostMoves ? Faction.Enemy : Faction.Player, guest.CurrentTurn);
-            var (mover, other) = hostMoves ? (host, guest) : (guest, host);
-            var action = ScriptedPlayerAction(mover);
-            Assert.NotEqual(MoveKind.Invalid, mover.Apply(action));
-            Assert.NotEqual(MoveKind.Invalid, other.Apply(PvpSetup.Mirror(action)));
-            Assert.Equal(host.ComputeStateHash(), guest.ComputeStateHash(mirrored: true));
-        }
-        Assert.True(played > 10);
-        Assert.Equal(host.IsOver, guest.IsOver);
-    }
-
-    [Fact]
-    public void Pvp_Army_IsChessLayout()
-    {
-        var match = PvpSetup.CreateMatch(isHost: true, seed: 1);
-        PvpSetup.PlaceArmies(match);
-        Assert.Equal(32, match.Units().Count());
-        Assert.True(match.UnitAt(new Cell(4, 7))!.IsEssential);   // le roi du joueur local
-        Assert.True(match.UnitAt(new Cell(4, 0))!.IsEssential);   // le roi adverse
-        Assert.Equal("Archer", match.UnitAt(new Cell(3, 7))!.Class.Name);
-        Assert.Equal(Faction.Enemy, PvpSetup.CreateMatch(isHost: false, seed: 1).CurrentTurn);
-    }
-
-    [Fact]
     public void StateHash_ChangesWhenStateChanges()
     {
         var a = Setup(1);

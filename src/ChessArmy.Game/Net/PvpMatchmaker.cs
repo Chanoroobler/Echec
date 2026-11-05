@@ -4,10 +4,16 @@ using Steamworks;
 namespace ChessArmy.Game.Net;
 
 /// <summary>
-/// Recherche automatique d'un adversaire (POC) par les lobbies Steam : on cherche un lobby PvP public avec une
-/// place libre ; s'il y en a un on le rejoint (on devient l'INVITÉ), sinon on crée le sien et on attend (on est
-/// l'HÔTE). Deux joueurs qui créent chacun leur lobby au même instant se retrouvent grâce à un nouveau balayage
-/// régulier : celui dont le lobby a le plus GRAND identifiant abandonne le sien et rejoint l'autre.
+/// Recherche d'un adversaire par les lobbies Steam.
+///
+/// RECHERCHE CLASSÉE (<see cref="Start"/>) : on cherche un lobby public avec une place libre et une cote PROCHE ;
+/// l'écart toléré s'élargit avec le temps d'attente, si bien qu'avec beaucoup de joueurs on tombe sur quelqu'un
+/// de son niveau et qu'avec peu on finit par trouver n'importe qui. Sans lobby à rejoindre, on crée le sien et on
+/// attend (on est l'HÔTE). Deux hôtes qui s'attendent se retrouvent grâce au balayage régulier : celui dont le
+/// lobby a le plus GRAND identifiant abandonne le sien et rejoint l'autre. C'est l'écran qui bascule sur un bot
+/// au bout de <c>BotAfterSeconds</c>.
+///
+/// DÉFI ENTRE AMIS (<see cref="StartFriendLobby"/> / <see cref="JoinInvite"/>) : lobby privé + invitation Steam.
 ///
 /// Dès qu'un adversaire est trouvé, <see cref="Session"/> est prête ; c'est l'appelant qui en prend possession
 /// (et qui la libère), le matchmaker ne la libère jamais.
@@ -16,8 +22,11 @@ public sealed class PvpMatchmaker : IDisposable
 {
     // Version du protocole dans le filtre : deux builds incompatibles ne se trouvent jamais.
     private const string ModeKey = "chessarmy_mode";
-    private const string ModeValue = "pvp_poc_1";
+    private const string ModeValue = "pvp_2";
+    private const string RatingKey = "rating";
     private const float RescanInterval = 4f;
+    private const int BaseRatingGap = 150;
+    private const int GapPerSecond = 20;
 
     /// <summary>Seul pair dont on accepte la session P2P entrante (l'adversaire de la partie en cours).</summary>
     internal static CSteamID AllowedPeer = CSteamID.Nil;
@@ -28,14 +37,18 @@ public sealed class PvpMatchmaker : IDisposable
     private readonly CallResult<LobbyEnter_t> _enterResult;
     private readonly Callback<LobbyChatUpdate_t> _chatUpdate;
     private readonly Random _seeds = new();
+    private readonly int _rating;
 
     private CSteamID _ownLobby = CSteamID.Nil;   // lobby créé par nous, en attente d'un adversaire
     private bool _requestPending;
     private float _rescanTimer;
+    private bool _friendMode;
     private bool _disposed;
 
-    public PvpMatchmaker()
+    /// <param name="rating">Cote du joueur local (sert au rapprochement et part dans la poignée de main).</param>
+    public PvpMatchmaker(int rating)
     {
+        _rating = rating;
         _listResult = CallResult<LobbyMatchList_t>.Create(OnLobbyList);
         _createResult = CallResult<LobbyCreated_t>.Create(OnLobbyCreated);
         _enterResult = CallResult<LobbyEnter_t>.Create(OnLobbyEntered);
@@ -46,10 +59,16 @@ public sealed class PvpMatchmaker : IDisposable
     /// <summary>Adversaire trouvé : la partie est prête à se lancer une fois <see cref="PvpSession.Started"/>.</summary>
     public PvpSession? Session { get; private set; }
 
-    /// <summary>Échec définitif (Steam absent, création de lobby refusée) : on ne cherche plus.</summary>
+    /// <summary>Échec définitif (Steam absent, création de lobby refusée, invitation impossible).</summary>
     public bool Failed { get; private set; }
 
-    /// <summary>Recherche automatique (lobby public).</summary>
+    /// <summary>Temps passé à chercher (recherche classée).</summary>
+    public float SearchTime { get; private set; }
+
+    /// <summary>Écart de cote toléré en ce moment.</summary>
+    private int RatingGap => BaseRatingGap + (int)(SearchTime * GapPerSecond);
+
+    /// <summary>Recherche classée (lobby public).</summary>
     public void Start()
     {
         if (!SteamService.IsActive)
@@ -59,9 +78,6 @@ public sealed class PvpMatchmaker : IDisposable
         }
         RequestList();
     }
-
-    // Défi entre amis : lobby PRIVÉ (seuls les invités le rejoignent), jamais de balayage public.
-    private bool _friendMode;
 
     /// <summary>
     /// Défier un ami : crée un lobby privé puis ouvre la fenêtre d'invitation de l'overlay Steam. L'ami qui
@@ -102,7 +118,10 @@ public sealed class PvpMatchmaker : IDisposable
     /// <summary>À appeler chaque frame tant qu'aucun adversaire n'est trouvé : relance le balayage des lobbies.</summary>
     public void Update(float dt)
     {
-        if (_disposed || Failed || _friendMode || Session != null || _requestPending || _ownLobby == CSteamID.Nil)
+        if (_disposed || Failed || _friendMode || Session != null)
+            return;
+        SearchTime += dt;
+        if (_requestPending || _ownLobby == CSteamID.Nil)
             return;
         _rescanTimer -= dt;
         if (_rescanTimer <= 0f)
@@ -126,11 +145,16 @@ public sealed class PvpMatchmaker : IDisposable
         SteamMatchmaking.AddRequestLobbyListStringFilter(ModeKey, ModeValue, ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.AddRequestLobbyListFilterSlotsAvailable(1);
         SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
-        SteamMatchmaking.AddRequestLobbyListResultCountFilter(10);
+        SteamMatchmaking.AddRequestLobbyListNearValueFilter(RatingKey, _rating);   // les plus proches d'abord
+        SteamMatchmaking.AddRequestLobbyListResultCountFilter(20);
         _listResult.Set(SteamMatchmaking.RequestLobbyList());
         _requestPending = true;
         _rescanTimer = RescanInterval;
     }
+
+    private bool RatingFits(CSteamID lobby) =>
+        !int.TryParse(SteamMatchmaking.GetLobbyData(lobby, RatingKey), out var other)
+        || Math.Abs(other - _rating) <= RatingGap;
 
     private void OnLobbyList(LobbyMatchList_t result, bool ioFailure)
     {
@@ -142,7 +166,7 @@ public sealed class PvpMatchmaker : IDisposable
             for (var i = 0; i < result.m_nLobbiesMatching; i++)
             {
                 var lobby = SteamMatchmaking.GetLobbyByIndex(i);
-                if (lobby == _ownLobby)
+                if (lobby == _ownLobby || !RatingFits(lobby))
                     continue;
                 if (_ownLobby != CSteamID.Nil)
                 {
@@ -185,6 +209,7 @@ public sealed class PvpMatchmaker : IDisposable
             ReopenInvite();   // défi : on invite tout de suite un ami (le lobby privé n'est pas cherchable)
             return;
         }
+        SteamMatchmaking.SetLobbyData(_ownLobby, RatingKey, _rating.ToString());
         SteamMatchmaking.SetLobbyData(_ownLobby, ModeKey, ModeValue);   // visible des recherches à partir d'ici
         _rescanTimer = RescanInterval;
     }
@@ -213,7 +238,7 @@ public sealed class PvpMatchmaker : IDisposable
             RequestList();
             return;
         }
-        Session = new PvpSession(lobby, owner, isHost: false);
+        Session = new PvpSession(lobby, owner, isHost: false, friendly: _friendMode, _rating);
     }
 
     private void OnChatUpdate(LobbyChatUpdate_t update)
@@ -226,7 +251,7 @@ public sealed class PvpMatchmaker : IDisposable
         if (guest == SteamUser.GetSteamID())
             return;
         SteamMatchmaking.SetLobbyJoinable(_ownLobby, false);   // complet : plus personne ne le trouve
-        Session = new PvpSession(_ownLobby, guest, isHost: true);
+        Session = new PvpSession(_ownLobby, guest, isHost: true, friendly: _friendMode, _rating);
         Session.PrepareAsHost(_seeds.Next());
         _ownLobby = CSteamID.Nil;   // désormais possédé par la session (elle le quittera)
     }

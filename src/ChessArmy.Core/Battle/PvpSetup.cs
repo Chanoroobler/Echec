@@ -1,69 +1,104 @@
 using System.Collections.Generic;
 using System.Linq;
-using ChessArmy.Core.Campaign;
 using ChessArmy.Core.Map;
+using ChessArmy.Core.Pvp;
 
 namespace ChessArmy.Core.Battle;
 
 /// <summary>
-/// Mise en place du PvP (POC) : un vrai échiquier 8×8, la même armée des deux côtés.
+/// Mise en place et règles d'une partie PvP sur un plateau 8×8.
 ///
-/// Chaque client joue « en bas » en <see cref="Faction.Player"/> : l'invité a donc un plateau RETOURNÉ (lignes
-/// inversées, camps échangés). Les deux armées étant identiques et symétriques par rapport à l'axe horizontal,
-/// les deux clients construisent EXACTEMENT le même plateau local ; seul change qui joue en premier (l'hôte).
-/// Un coup reçu est retourné par <see cref="Mirror(in BattleAction)"/> avant d'être appliqué, et l'empreinte
-/// se compare dans le repère de l'hôte (cf. <see cref="Match.ComputeStateHash(bool)"/>).
+/// Chaque client joue « en bas » en <see cref="Faction.Player"/>. L'hôte voit le repère COMMUN ; l'invité a le
+/// plateau RETOURNÉ (lignes inversées, camps échangés) et son <see cref="Match"/> est créé avec
+/// <c>mirrorRows</c> : le moteur parcourt alors le plateau dans l'ordre du repère commun, si bien que les deux
+/// clients résolvent chaque coup à l'identique. Un coup reçu est retourné par <see cref="Mirror(in BattleAction)"/>
+/// avant d'être appliqué, et l'empreinte se compare dans le repère de l'hôte (cf. <see cref="Match.ComputeStateHash(bool)"/>).
 /// </summary>
 public static class PvpSetup
 {
     public const int Size = 8;
 
-    /// <summary>Plateau d'un client : <paramref name="isHost"/> joue le premier coup. <paramref name="terrain"/> et
-    /// <paramref name="cover"/> (buissons) viennent de <see cref="BuildBattlefield"/> ; null = herbe nue.</summary>
-    public static Match CreateMatch(bool isHost, int seed, Battlefield? terrain = null, IEnumerable<Cell>? cover = null) =>
+    /// <summary>Plateau d'un client. <paramref name="mirrored"/> = invité (plateau retourné) ;
+    /// <paramref name="localStarts"/> = le joueur local joue le premier coup (tirage au sort).</summary>
+    public static Match CreateMatch(bool mirrored, bool localStarts, int seed, Battlefield? terrain = null,
+        IEnumerable<Cell>? cover = null) =>
         new(Size, Size, terrain, cover, rng: new System.Random(seed),
-            firstTurn: isHost ? Faction.Player : Faction.Enemy);
+            firstTurn: localStarts ? Faction.Player : Faction.Enemy, mirrorRows: mirrored, pvpRules: true);
+
+    /// <summary>Tirage au sort du premier joueur, dérivé de la graine de l'hôte (les deux clients le connaissent).</summary>
+    public static bool HostStarts(int seed) => (seed & 0x10) == 0;
 
     /// <summary>
-    /// Rangée arrière, de gauche à droite (colonnes 0 à 7), vue du joueur local : Lancier, Cavalier, Mage,
-    /// Archer (case de la dame), Commandant (le roi : essentiel, sa chute décide la partie), Mage, Cavalier, Lancier.
-    /// Devant : 8 Soldats.
+    /// Pose une armée : celle du joueur local sur les deux lignes du bas, celle de l'adversaire sur les deux du
+    /// haut (même colonne : les deux commandants se font face). Les pions inconnus sont ignorés.
     /// </summary>
-    public static UnitSpec BackRowSpec(int column)
+    public static void PlaceArmy(Match match, PvpBuild build, Faction faction)
     {
-        switch (column)
+        var back = faction == Faction.Player ? Size - 1 : 0;
+        var front = faction == Faction.Player ? Size - 2 : 1;
+        if (PvpCatalog.SpawnCommander(build.CommanderId, faction) is { } king)
+            match.Place(new Cell(PvpBuild.KingColumn, back), king);
+        foreach (var slot in build.Slots)
         {
-            case 0: case 7: return new UnitSpec(Domaine.Tour, Domaines.Tour.BaseClass);
-            case 1: case 6: return new UnitSpec(Domaine.Cavalier, Domaines.Cavalier.BaseClass);
-            case 2: case 5: return new UnitSpec(Domaine.Fou, Domaines.Fou.BaseClass);
-            case 3:
-                var archer = Domaines.Dame.BaseClass.Evolutions.FirstOrDefault(c => c.Name == "Archer")
-                             ?? Domaines.Dame.BaseClass;
-                return new UnitSpec(Domaine.Dame, archer);
-            default:
-                var king = Commandes.Commander;
-                return new UnitSpec(king.Movement, king.BaseClass, essential: true);
+            if (PvpBuild.IsKingCell(slot.Column, slot.Line) || slot.Column is < 0 or >= Size)
+                continue;
+            var cell = new Cell(slot.Column, slot.Line == PvpBuild.BackLine ? back : front);
+            if (match.UnitAt(cell) == null && PvpCatalog.Spawn(slot, faction) is { } unit)
+                match.Place(cell, unit);
         }
     }
 
-    public static UnitSpec PawnSpec() => new(Domaine.Dame, Domaines.Dame.BaseClass);
-
-    /// <summary>Pose les deux armées : le joueur local sur les deux dernières lignes, l'adversaire en haut.</summary>
-    public static void PlaceArmies(Match match)
+    /// <summary>
+    /// Règles de FIN DE COUP du PvP, appliquées à l'identique par la scène, l'adversaire et le rejeu :
+    /// quand la main passe à un camp, ses porteurs de « Séisme » frappent (règle symétrique de celle de la
+    /// campagne), puis la partie est déclarée nulle si la position est morte. Renvoie les frappes de Séisme.
+    /// </summary>
+    public static IReadOnlyList<(Cell Cell, int Damage)> AfterAction(Match match, Faction actor)
     {
-        for (var c = 0; c < Size; c++)
+        IReadOnlyList<(Cell Cell, int Damage)> hits = System.Array.Empty<(Cell, int)>();
+        if (!match.IsOver && match.CurrentTurn != actor)
+            hits = match.ApplySeismes(match.CurrentTurn);
+        if (!match.IsOver && match.IsDeadPosition())
+            match.EndInDraw();
+        return hits;
+    }
+
+    /// <summary>Résout les effets en chaîne (réaction en chaîne, balle rebondissante) que la scène déroule
+    /// pendant ses animations : le rejeu les vide d'un coup.</summary>
+    public static void ResolvePending(Match match)
+    {
+        while (match.ResolveNextChainLink() != null) { }
+        while (match.ResolveNextBounce() != null) { }
+    }
+
+    /// <summary>
+    /// Rejoue une partie à partir de sa graine, des deux armées et du journal des coups (dans le repère local),
+    /// exactement comme la scène l'a jouée. Sert à REVALIDER une partie contre un bot avant d'accorder points et
+    /// cote : une valeur modifiée en mémoire pendant le combat donne un autre résultat.
+    /// </summary>
+    public static Match Replay(int seed, bool localStarts, Battlefield? terrain, IEnumerable<Cell>? cover,
+        PvpBuild local, PvpBuild opponent, IEnumerable<BattleAction> log)
+    {
+        var match = CreateMatch(mirrored: false, localStarts, seed, terrain, cover);
+        PlaceArmy(match, local, Faction.Player);
+        PlaceArmy(match, opponent, Faction.Enemy);
+        foreach (var action in log)
         {
-            match.Place(new Cell(c, Size - 1), BackRowSpec(c).Spawn(Faction.Player));
-            match.Place(new Cell(c, Size - 2), PawnSpec().Spawn(Faction.Player));
-            match.Place(new Cell(c, 0), BackRowSpec(c).Spawn(Faction.Enemy));
-            match.Place(new Cell(c, 1), PawnSpec().Spawn(Faction.Enemy));
+            if (match.IsOver)
+                break;
+            var actor = match.CurrentTurn;
+            if (match.Apply(action) == MoveKind.Invalid)
+                break;
+            AfterAction(match, actor);
+            ResolvePending(match);
         }
+        return match;
     }
 
     /// <summary>
     /// Raison pour laquelle une map <see cref="CombatType.Multi"/> n'est PAS jouable (null = jouable) : taille
     /// différente de <see cref="Size"/>×<see cref="Size"/>, ou case infranchissable sur les deux lignes de départ
-    /// d'une armée (les 16 pions y sont posés d'office).
+    /// d'une armée (les pions y sont posés d'office).
     /// </summary>
     public static string? Problem(MapData map)
     {
@@ -131,7 +166,12 @@ public static class PvpSetup
 
     public static Cell Mirror(Cell cell) => new(cell.Column, Size - 1 - cell.Row);
 
-    /// <summary>Coup de l'adversaire (dans SON repère) traduit dans le repère local.</summary>
-    public static BattleAction Mirror(in BattleAction action) =>
-        new(action.Kind, Mirror(action.From), Mirror(action.Target));
+    /// <summary>Coup de l'adversaire (dans SON repère) traduit dans le repère local. Les fins de partie
+    /// (abandon) changent aussi de camp : « Player » chez l'un est « Enemy » chez l'autre.</summary>
+    public static BattleAction Mirror(in BattleAction action) => action.Kind switch
+    {
+        BattleActionKind.Resign => BattleAction.Resign(((Faction)action.From.Column).Opponent()),
+        BattleActionKind.AgreeDraw or BattleActionKind.Pass => action,
+        _ => new(action.Kind, Mirror(action.From), Mirror(action.Target)),
+    };
 }

@@ -59,57 +59,85 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
 - Premier joueur **tiré au sort**.
 - Déconnexion : **60 s** pour revenir, puis défaite.
 
-## Déjà en place (2026-11-05)
+## Implémentation (2026-11-05)
 
-| Brique | Où | Rôle |
+Bouton **MULTIJOUEUR** au menu principal, visible dans les builds PLAYTEST et Debug uniquement
+(`PvpInvites.Compiled`). Le barème est dans `Assets/Config/pvp.json` (budget, coûts, coffres, gains, temps, rangs,
+stats des commandants, bots).
+
+### Parcours d'écrans
+
+| Écran | Fichier | Rôle |
 |---|---|---|
-| `BattleAction` | `Core/Battle/BattleAction.cs` | Un coup sous forme de données (type + 2 cases), sérialisable sur 5 octets sans allocation |
-| `Match.Apply(action)` | `Core/Battle/Match.cs` | Point d'entrée unique d'un coup dans le moteur |
-| `Match.ComputeStateHash()` | `Core/Battle/Match.cs` | Empreinte déterministe de l'état (FNV-1a), pour détecter une désynchronisation |
-| Aléa unique | `Match` + `EnemyAi` | Tout l'aléa du combat, IA comprise, vient de la graine du `Match` |
-| `IBattleController` | `Core/Battle/BattleController.cs` | Décide des coups d'un camp. `AiBattleController` aujourd'hui, un contrôleur distant demain |
-| `ExecuteAction` | `GameplayScene` | Point d'entrée unique côté scène (souris, manette, IA), avec FX. Chaque coup validé va dans `_battleLog` |
-| `_combatSeed` | `GameplayScene` | Graine neuve à chaque combat. Graine + `_battleLog` suffisent pour rejouer le combat |
-| Tests | `tests/.../LockstepTests.cs` | Un combat IA rejoué depuis graine + coups sérialisés retrouve le même état à chaque coup |
+| Accueil multi | `Game/Scenes/PvpLobbyScene.cs` | Profil (rang, cote, points, bilan), PARTIE CLASSÉE, DÉFIER UN AMI, MES ARMÉES, COFFRES ; tuto à la première visite ; recherche et attente |
+| Choix d'armée | `Game/Scenes/PvpPrepScene.cs` | Aperçu de la map tirée, choix d'une des 3 armées en 30 s, échange des armées |
+| Combat | `GameplayScene` + `GameplayScene.Pvp.cs` | Pendules, égalité, déconnexion, gains, panneau de fin |
+| Mes armées | `Game/Scenes/PvpBuildScene.cs` | Composer les 3 armées : commandant, pions, équipements, budget, corbeille |
+| Coffres | `Game/Scenes/PvpChestScene.cs` | Coffre de pions et coffre d'équipements, sans doublon |
 
-## POC PvP (2026-11-05)
+Sans Steam (lancement depuis Visual Studio), PARTIE CLASSÉE lance directement une partie contre un bot.
 
-Bouton **MULTIJOUEUR** au menu principal, visible dans les builds PLAYTEST et Debug uniquement.
+### Moteur (Core)
 
-| Brique | Où | Rôle |
-|---|---|---|
-| `PvpSetup` | `Core/Battle/PvpSetup.cs` | Échiquier 8×8, même armée des deux côtés : 8 Soldats devant, puis Lancier, Cavalier, Mage, Archer, Commandant (roi, essentiel), Mage, Cavalier, Lancier |
-| `PvpMatchmaker` | `Game/Net/PvpMatchmaker.cs` | Recherche par lobby Steam public (filtre `chessarmy_mode = pvp_poc_1`) : rejoint un lobby libre, sinon en crée un et attend |
-| `PvpSession` | `Game/Net/PvpSession.cs` | Échange P2P (SteamNetworkingMessages, fiable) : poignée de main, coups + empreinte, départ de l'adversaire |
-| `RemoteBattleController` | `Game/Net/RemoteBattleController.cs` | Camp adverse alimenté par le réseau |
-| `PvpLobbyScene` | `Game/Scenes/PvpLobbyScene.cs` | Écran « recherche d'un adversaire », bouton Annuler |
-| Mode PvP | `GameplayScene` (`_pvp`) | Combat sans campagne : pas de sauvegarde, de succès ni de méta-progression ; bandeau de tour, panneau de fin |
+| Brique | Rôle |
+|---|---|
+| `Match` (`mirrorRows`, `pvpRules`) | Le client RETOURNÉ parcourt le plateau dans l'ordre du repère commun (`Units()`, voisins, points de chute, tirages au sort) : les deux clients résolvent chaque coup à l'identique, pour toutes les classes et tous les traits. Destruction mutuelle = nulle |
+| `Match.IsDeadPosition` | Égalité automatique : plus aucun contact possible entre les deux camps, même en plusieurs coups (estimation prudente) |
+| `BattleAction` Resign / AgreeDraw | Fins de partie (temps écoulé, abandon, égalité acceptée), journalisées comme les coups |
+| `PvpSetup` | Création du plateau, pose des armées, règles de fin de coup (Séisme symétrique, position morte), rejeu, maps |
+| `Pvp/PvpConfig` | Lecture de `pvp.json` |
+| `Pvp/PvpBuild` + `PvpCatalog` | Armée (commandant + pions + équipements), coût, validation, commandants aux stats multi |
+| `Pvp/PvpRanks` | Cote Elo, rangs à divisions |
+| `Pvp/PvpProfile` | Profil multi : points, cote, bilan, déblocages, 3 armées ; fichier chiffré (AES) et signé (HMAC), lié au compte Steam |
+| `Pvp/Obscured` | `ObscuredInt` / `ObscuredSet` : valeurs jamais en clair en mémoire, toute retouche détectée |
+| `Pvp/PvpClock` | Réserve 10 min + 1 min par coup |
+| `Pvp/PvpBotAi` | Bot de base (IA de campagne, précision selon le rang) ou tactique (évalue chaque coup) |
 
-**Défier un ami.** L'écran MULTIJOUEUR propose RECHERCHE RAPIDE (lobby public) ou DÉFIER UN AMI : un lobby
-**privé** est créé et la fenêtre d'invitation de l'overlay Steam s'ouvre (bouton INVITER UN AMI pour la rouvrir).
-L'ami accepte depuis Steam : jeu lancé, l'invitation arrive par `GameLobbyJoinRequested_t` ; jeu fermé, Steam le
-lance avec `+connect_lobby <id>`. Dans les deux cas `PvpInvites` met le lobby de côté et le menu principal (ou
-l'écran multijoueur) le rejoint. Une invitation acceptée en pleine campagne attend le retour au menu.
-Le défi nécessite l'overlay Steam (lancer le jeu depuis Steam).
+### Réseau (Game/Net)
 
-**Plateau retourné.** Chaque client joue en bas en `Faction.Player`. Les armées étant symétriques, l'hôte et
-l'invité construisent le même plateau local ; seul change le premier joueur (l'hôte). Un coup reçu est retourné
-(`PvpSetup.Mirror`) avant d'être appliqué, et l'empreinte se calcule dans le repère de l'hôte
-(`ComputeStateHash(mirrored: true)` chez l'invité). Le test `Pvp_MirroredClients_StayInSync` le vérifie.
+| Brique | Rôle |
+|---|---|
+| `PvpMatchmaker` | Recherche par cote : lobbies triés par proximité, écart toléré qui s'élargit avec l'attente ; lobby privé pour les défis |
+| `PvpSession` | Protocole P2P : bonjour/départ (graine + cotes), armées, coups (+ empreinte + réserve), égalité, battements de cœur, départ |
+| `PvpInvites` | Invitations Steam acceptées (jeu lancé ou `+connect_lobby`) |
+| `PvpProfileStore` | Fichier `%AppData%/Echec/save/pvp_<steamid>.dat` ; un fichier retouché est mis de côté (`.rejete`) |
+| `PvpMatchInfo` | Description d'une partie (humain ou bot, armées, graine, premier joueur, classée ou non) |
 
-**Maps multi.** Type de map `Multi` (`CombatType.Multi`), créé dans l'éditeur par le bouton **Nouveau multi**
-(échiquier 8×8 d'herbe, armées marquées en E/P à titre indicatif). La map par défaut est `multi_8_01.json`.
-Le jeu tire la map de la partie par la graine de l'hôte, parmi les maps Multi jouables (hors brouillons, triées
-par nom) : les deux clients tombent sur la même. Une map est jouable si elle fait 8×8 et si les deux lignes de
-chaque bord sont franchissables. Elle devrait être **symétrique haut/bas** (mêmes règles sur chaque case et sa
-case miroir, buissons compris) : l'invité la voit alors comme l'hôte. Sinon il la joue retournée, avec les bonnes
-règles mais des tuiles orientées à l'envers. L'éditeur affiche « Sym » / « Ret » dans la colonne Obj, et le récap
-a une section MULTI. Seuls le terrain et les buissons comptent : coffres, recrues et chutes sont ignorés.
+### Règles appliquées
 
-**Limites connues du POC.**
-- Le retournement ne tient que si aucun trait n'utilise l'aléa ou l'ordre de parcours du plateau (Orage, Esquive…).
-  C'est le cas des pions de cette armée. Avec d'autres armées, il faudra faire jouer `Faction.Enemy` à l'invité.
-- Le roi adverse n'a pas de sprite ennemi dédié (`commandant_ia_*`) : il reprend le sprite joueur.
-- Pas de limite de temps, pas d'abandon dédié (quitter par le menu pause = défaite par abandon chez l'adversaire),
-  pas de reconnexion.
-- Tester demande deux comptes Steam sur deux PC (Steam n'ouvre qu'un compte par machine).
+- **Premier joueur** : tiré de la graine de l'hôte (`PvpSetup.HostStarts`), connu des deux.
+- **Pendules** : ne tournent que plateau posé (jamais pendant les animations ni une déconnexion). Chacun fait foi
+  pour sa propre pendule et s'annonce perdant (`Resign`) ; la réserve part avec chaque coup pour recaler l'affichage
+  adverse. Un adversaire dont la pendule tombe et qui ne se déclare pas est déclaré perdant 15 s plus tard.
+- **Égalité** : bouton (ou Y) ; l'adversaire accepte ou refuse. Un bot accepte s'il est nettement en retard au
+  matériel. Égalité automatique en position morte ou destruction mutuelle.
+- **Déconnexion** : au-delà de 4 s de silence, compte à rebours de 60 s (pendules arrêtées), puis victoire.
+  Quitter (menu pause) = départ immédiat = défaite, comptée même si on ferme la scène (anti rage-quit).
+- **Gains** : points par pion tué (perdant compris) + bonus de victoire ou de nulle. Cote Elo si la partie est
+  classée (pas pour les défis entre amis). Contre un bot, la partie est REJOUÉE depuis la graine et le journal
+  des coups avant tout gain : un état final différent (mémoire modifiée) = partie non validée.
+- **Désynchronisation** (empreintes différentes) : signalée en rouge, et la partie ne rapporte rien.
+
+### Maps multi
+
+Type de map `Multi` (`CombatType.Multi`), créé dans l'éditeur par le bouton **Nouveau multi** (échiquier 8×8,
+armées marquées en E/P à titre indicatif). Map par défaut : `multi_8_01.json`. Le jeu tire la map par la graine de
+l'hôte, parmi les maps Multi jouables (hors brouillons, triées par nom). Jouable = 8×8 et deux lignes
+franchissables de chaque côté. **Symétrique haut/bas** recommandé : l'invité la voit alors comme l'hôte ; sinon il
+la joue retournée (règles justes, tuiles orientées à l'envers). L'éditeur affiche « Sym » / « Ret » et le récap a
+une section MULTI. Seuls le terrain et les buissons comptent.
+
+### Tests (`tests/ChessArmy.Core.Tests/PvpTests.cs`)
+
+- 60 parties au hasard entre un hôte et un invité retourné, armées tirées dans TOUTES les classes, commandants et
+  équipements : empreintes identiques à chaque coup.
+- Rejeu identique à la partie jouée ; abandon et égalité retournés ; position morte ; budget, armées des bots ;
+  rangs et Elo ; profil chiffré (retouche et autre compte refusés) ; coffres sans doublon ; `ObscuredInt` qui
+  détecte une retouche mémoire ; bot tactique qui prend le roi.
+
+### Limites connues
+
+- Tout est stocké côté client : ces protections arrêtent la triche facile, pas un tricheur déterminé (il faudrait un serveur).
+- La reconnexion couvre une coupure réseau ; un joueur dont le jeu plante ne peut pas reprendre la partie.
+- Les bots utilisent des armées écrites à la main par rang ; copier les armées de vrais joueurs demande un stockage partagé.
+- Tester à deux demande deux comptes Steam sur deux PC.

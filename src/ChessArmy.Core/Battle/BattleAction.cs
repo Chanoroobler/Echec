@@ -16,6 +16,10 @@ public enum BattleActionKind : byte
     Heal = 4,
     /// <summary>« Sacoche aimantée » : geste de CAMPAGNE (la scène applique l'effet), le moteur consomme l'action.</summary>
     SatchelPull = 5,
+    /// <summary>Fin de partie : le camp <c>From.Column</c> (0 = Player, 1 = Enemy) perd (temps écoulé, abandon).</summary>
+    Resign = 6,
+    /// <summary>Fin de partie : égalité acceptée par les deux joueurs.</summary>
+    AgreeDraw = 7,
 }
 
 /// <summary>
@@ -35,6 +39,8 @@ public readonly record struct BattleAction(BattleActionKind Kind, Cell From, Cel
     public static BattleAction Throw(Cell from, Cell target) => new(BattleActionKind.Throw, from, target);
     public static BattleAction Heal(Cell from, Cell target) => new(BattleActionKind.Heal, from, target);
     public static BattleAction SatchelPull(Cell from, Cell satchel) => new(BattleActionKind.SatchelPull, from, satchel);
+    public static BattleAction Resign(Faction loser) => new(BattleActionKind.Resign, new Cell((int)loser, 0), default);
+    public static BattleAction AgreeDraw => new(BattleActionKind.AgreeDraw, default, default);
 
     /// <summary>Écrit le coup sur <see cref="SerializedSize"/> octets (sans allocation). Les plateaux tiennent
     /// largement sur un octet par coordonnée.</summary>

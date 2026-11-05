@@ -88,6 +88,7 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         LoadEquipmentConfig();
         LoadCommandTreeConfig();
         LoadCampaignConfig();
+        LoadPvpConfig();
         // Textes localisés (Assets/Config/strings.csv) chargés avant tout rendu d'UI.
         Loc.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/strings.csv"));
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
@@ -160,6 +161,22 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
     }
 
     /// <summary>Charge le plan de campagne (taille de map + effectif/tiers par mission) depuis Assets/Config/campaign.json (repli codé si absent/invalide).</summary>
+    /// <summary>Barème du multijoueur (Assets/Config/pvp.json) ; valeurs par défaut du Core s'il manque.</summary>
+    private static void LoadPvpConfig()
+    {
+        var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/pvp.json");
+        if (!System.IO.File.Exists(path))
+            return;
+        try
+        {
+            ChessArmy.Core.Pvp.PvpConfig.Load(ChessArmy.Core.Pvp.PvpConfig.FromJson(System.IO.File.ReadAllText(path)));
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"pvp.json ignoré (invalide) : {ex.Message}");
+        }
+    }
+
     private static void LoadCampaignConfig()
     {
         var path = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets/Config/campaign.json");
