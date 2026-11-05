@@ -5,6 +5,7 @@ using ChessArmy.Core.Battle;
 using ChessArmy.Core.Campaign;
 using ChessArmy.Engine;
 using ChessArmy.Engine.Audio;
+using ChessArmy.Game.Net;
 using ChessArmy.Game.UI;
 using ChessArmy.Engine.Input;
 using ChessArmy.Engine.Localization;
@@ -99,11 +100,7 @@ public sealed class MainMenuScene : Scene
     /// POC multijoueur : bouton visible dans les builds PLAYTEST et Debug seulement (jamais en démo ni dans la
     /// version complète tant que le mode n'est qu'une preuve de concept).
     /// </summary>
-#if PLAYTEST || DEBUG
-    private bool PvpAvailable => !Context.Settings.IsDemo;
-#else
-    private bool PvpAvailable => false;
-#endif
+    private bool PvpAvailable => PvpInvites.Compiled && !Context.Settings.IsDemo;
 
     /// <summary>Ligne du bouton multijoueur (juste sous la rangée d'actions), -1 s'il est absent.</summary>
     private int PvpRow => PvpAvailable ? _slots.Length + 1 : -1;
@@ -243,6 +240,14 @@ public sealed class MainMenuScene : Scene
     {
         // Le va-et-vient du décor tourne en continu (même derrière un overlay semi-transparent).
         _decorTime += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+        // Invitation d'ami Steam acceptée (jeu lancé par l'invitation, ou retour au menu après l'avoir acceptée) :
+        // on rejoint directement la partie de l'ami.
+        if (PvpAvailable && PvpInvites.TryTake(out var invite))
+        {
+            Context.Scenes.Change(new PvpLobbyScene(Context, invite));
+            return;
+        }
 
         if (_codex.IsOpen)   // overlay par-dessus le menu : capte tout jusqu'à sa fermeture
         {

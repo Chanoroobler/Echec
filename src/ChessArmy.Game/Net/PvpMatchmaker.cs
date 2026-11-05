@@ -49,6 +49,7 @@ public sealed class PvpMatchmaker : IDisposable
     /// <summary>Échec définitif (Steam absent, création de lobby refusée) : on ne cherche plus.</summary>
     public bool Failed { get; private set; }
 
+    /// <summary>Recherche automatique (lobby public).</summary>
     public void Start()
     {
         if (!SteamService.IsActive)
@@ -59,10 +60,49 @@ public sealed class PvpMatchmaker : IDisposable
         RequestList();
     }
 
+    // Défi entre amis : lobby PRIVÉ (seuls les invités le rejoignent), jamais de balayage public.
+    private bool _friendMode;
+
+    /// <summary>
+    /// Défier un ami : crée un lobby privé puis ouvre la fenêtre d'invitation de l'overlay Steam. L'ami qui
+    /// accepte rejoint ce lobby (<see cref="JoinInvite"/> de son côté) ; on est l'hôte.
+    /// </summary>
+    public void StartFriendLobby()
+    {
+        _friendMode = true;
+        if (!SteamService.IsActive)
+        {
+            Failed = true;
+            return;
+        }
+        _createResult.Set(SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePrivate, 2));
+        _requestPending = true;
+    }
+
+    /// <summary>Rouvre la fenêtre d'invitation de l'overlay (ami oublié, fenêtre fermée trop vite).</summary>
+    public void ReopenInvite()
+    {
+        if (_ownLobby != CSteamID.Nil)
+            SteamFriends.ActivateGameOverlayInviteDialog(_ownLobby);
+    }
+
+    /// <summary>Rejoindre le lobby d'un ami dont on a accepté l'invitation (on est l'invité).</summary>
+    public void JoinInvite(CSteamID lobby)
+    {
+        _friendMode = true;   // un échec ne relance PAS une recherche publique
+        if (!SteamService.IsActive)
+        {
+            Failed = true;
+            return;
+        }
+        _enterResult.Set(SteamMatchmaking.JoinLobby(lobby));
+        _requestPending = true;
+    }
+
     /// <summary>À appeler chaque frame tant qu'aucun adversaire n'est trouvé : relance le balayage des lobbies.</summary>
     public void Update(float dt)
     {
-        if (_disposed || Failed || Session != null || _requestPending || _ownLobby == CSteamID.Nil)
+        if (_disposed || Failed || _friendMode || Session != null || _requestPending || _ownLobby == CSteamID.Nil)
             return;
         _rescanTimer -= dt;
         if (_rescanTimer <= 0f)
@@ -75,7 +115,10 @@ public sealed class PvpMatchmaker : IDisposable
         Session?.Dispose();
         Session = null;
         _ownLobby = CSteamID.Nil;
-        RequestList();
+        if (_friendMode)
+            Failed = true;   // défi : pas de repli sur une recherche publique, l'écran propose de recommencer
+        else
+            RequestList();
     }
 
     private void RequestList()
@@ -137,6 +180,11 @@ public sealed class PvpMatchmaker : IDisposable
             return;
         }
         _ownLobby = new CSteamID(result.m_ulSteamIDLobby);
+        if (_friendMode)
+        {
+            ReopenInvite();   // défi : on invite tout de suite un ami (le lobby privé n'est pas cherchable)
+            return;
+        }
         SteamMatchmaking.SetLobbyData(_ownLobby, ModeKey, ModeValue);   // visible des recherches à partir d'ici
         _rescanTimer = RescanInterval;
     }
@@ -155,8 +203,13 @@ public sealed class PvpMatchmaker : IDisposable
         var owner = ok ? SteamMatchmaking.GetLobbyOwner(lobby) : CSteamID.Nil;
         if (!ok || owner == SteamUser.GetSteamID() || owner == CSteamID.Nil)
         {
-            // Lobby plein entre-temps, ou déserté par son hôte : on repart à la recherche.
+            // Lobby plein entre-temps, ou déserté par son hôte : on repart à la recherche (invitation : échec).
             if (ok) SteamMatchmaking.LeaveLobby(lobby);
+            if (_friendMode)
+            {
+                Failed = true;
+                return;
+            }
             RequestList();
             return;
         }

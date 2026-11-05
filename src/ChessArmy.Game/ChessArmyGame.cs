@@ -93,6 +93,8 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         // Réglages persistés (résolution / plein écran / volumes / langue) chargés AVANT le premier Apply.
         _saves.LoadInto(_settings);
         ApplyDemoMode();   // mode démo (options.json / -demo / demo.flag) poussé dans le Core AVANT toute run
+        if (!_settings.IsDemo)
+            Net.PvpInvites.Init();   // invitations d'amis Steam (multijoueur), y compris au lancement par invitation
         Loc.Current = _settings.Language;
         Apply(_settings.Display);
         base.Initialize();
