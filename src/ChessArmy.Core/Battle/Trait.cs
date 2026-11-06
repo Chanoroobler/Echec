@@ -81,6 +81,22 @@ public static class Trait
     };
 
     /// <summary>
+    /// Traits dont la DESCRIPTION renvoie à un autre trait sans l'expliquer (« le bonus de REMPART s'applique
+    /// aux alliés adjacents ») : l'UI affiche juste dessous un rappel du trait cité. Table explicite plutôt
+    /// qu'une recherche du mot dans le texte traduit (fragile dans les 8 langues).
+    /// </summary>
+    private static readonly System.Collections.Generic.Dictionary<string, string[]> ReferencesByTrait = new()
+    {
+        [AuraDeRempart] = new[] { Rempart },
+    };
+
+    private static readonly string[] NoReferences = System.Array.Empty<string>();
+
+    /// <summary>Traits cités (et non expliqués) par la description de <paramref name="trait"/> ; vide sinon.</summary>
+    public static System.Collections.Generic.IReadOnlyList<string> ReferencedBy(string trait) =>
+        ReferencesByTrait.TryGetValue(trait, out var refs) ? refs : NoReferences;
+
+    /// <summary>
     /// Traits portés par un OBJET À LANCER de la sacoche : leur porteur les perd (l'objet se brise) dès qu'il
     /// a attaqué une fois. Cf. <c>Match.ConsumeThrownItem</c> et l'arbre du commandant DUO.
     /// </summary>

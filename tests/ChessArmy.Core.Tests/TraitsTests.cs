@@ -26,6 +26,27 @@ public class TraitsTests
 
     private static Match Board(int size = 8) => new(size, size);
 
+    // ── Traits cités par une description (rappel affiché par l'UI) ────────────────
+
+    [Fact]
+    public void AuraDeRempart_References_Rempart()
+    {
+        Assert.Equal(new[] { Trait.Rempart }, Trait.ReferencedBy(Trait.AuraDeRempart));
+        Assert.Empty(Trait.ReferencedBy(Trait.Rempart));
+        Assert.Empty(Trait.ReferencedBy("Inconnu"));
+    }
+
+    [Fact]
+    public void ReferencedTraits_AreKnown_AndNeverSelf()
+    {
+        foreach (var t in Trait.All)
+            foreach (var r in Trait.ReferencedBy(t))
+            {
+                Assert.Contains(r, Trait.All);
+                Assert.NotEqual(t, r);
+            }
+    }
+
     // ── Rempart / Duelliste : réductions de dégâts ────────────────────────────────
 
     [Fact]

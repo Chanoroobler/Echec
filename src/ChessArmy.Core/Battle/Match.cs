@@ -210,6 +210,15 @@ public sealed class Match
 
     public bool IsOver => Winner != null || IsDraw;
 
+    /// <summary>Pourquoi la partie s'est terminée (<see cref="MatchEndReason.None"/> tant qu'elle continue).</summary>
+    public MatchEndReason EndReason { get; private set; }
+
+    /// <summary>Passages de main d'un camp à l'autre depuis le début (un tour bonus n'en est pas un).</summary>
+    public int Handovers { get; private set; }
+
+    /// <summary>Numéro du tour en cours, façon échecs : un tour = chaque camp a joué une fois (commence à 1).</summary>
+    public int Round => Handovers / 2 + 1;
+
     /// <summary>
     /// PvP : le plateau de ce client est RETOURNÉ par rapport au repère commun (celui de l'hôte). Tous les
     /// parcours et départages du moteur suivent alors l'ordre du repère commun, pour que les deux clients
@@ -222,10 +231,12 @@ public sealed class Match
     public bool PvpRules { get; }
 
     /// <summary>Termine la partie sur une nulle (égalité acceptée, position morte). Sans effet si elle est finie.</summary>
-    public void EndInDraw()
+    public void EndInDraw(MatchEndReason reason = MatchEndReason.AgreedDraw)
     {
-        if (!IsOver)
-            IsDraw = true;
+        if (IsOver)
+            return;
+        IsDraw = true;
+        EndReason = reason;
     }
 
     /// <summary>
@@ -280,10 +291,12 @@ public sealed class Match
     }
 
     /// <summary>Termine la partie par la défaite de <paramref name="loser"/> (temps écoulé, abandon, déconnexion).</summary>
-    public void Concede(Faction loser)
+    public void Concede(Faction loser, MatchEndReason reason = MatchEndReason.Resign)
     {
-        if (!IsOver)
-            Winner = loser.Opponent();
+        if (IsOver)
+            return;
+        Winner = loser.Opponent();
+        EndReason = reason;
     }
 
     public bool InBounds(Cell cell) =>
@@ -2616,6 +2629,7 @@ public sealed class Match
             return;
         ClearRecentHitsFor(CurrentTurn);   // passer, c'est aussi avoir joué son tour
         CurrentTurn = CurrentTurn.Opponent();
+        Handovers++;
         if (CurrentTurn == Faction.Player)
             _extraTurnUsed = false;
     }
@@ -2642,7 +2656,8 @@ public sealed class Match
             case BattleActionKind.Resign:
                 if (IsOver || action.From.Column is not (0 or 1))
                     return MoveKind.Invalid;
-                Concede((Faction)action.From.Column);
+                // Le coup « Resign » n'est envoyé aujourd'hui que par une pendule tombée (cf. GameplayScene.OnClockFlag).
+                Concede((Faction)action.From.Column, MatchEndReason.Timeout);
                 return MoveKind.Moved;
             case BattleActionKind.AgreeDraw:
                 if (IsOver)
@@ -2656,6 +2671,102 @@ public sealed class Match
     /// <summary>Source d'aléa du combat, partagée avec l'IA : tout tirage qui influence l'état doit en venir,
     /// pour qu'un combat soit entièrement rejouable depuis sa graine.</summary>
     internal System.Random Rng => _rng;
+
+    /// <summary>Vrai si la partie peut être copiée (<see cref="Clone"/>) : son aléa est un <see cref="SeededRandom"/>
+    /// (parties multi, cf. <see cref="PvpSetup.CreateMatch"/>).</summary>
+    public bool CanClone => _rng is SeededRandom;
+
+    /// <summary>
+    /// Copie EXACTE et indépendante de la partie (unités, compteurs, effets en cours, aléa) : jouer les mêmes coups
+    /// sur la copie et sur l'original donne le même résultat. Sert à la recherche des bots multi (bien plus rapide
+    /// que rejouer toute la partie). Le terrain et les cases de couvert, jamais modifiés, sont partagés.
+    /// </summary>
+    public Match Clone()
+    {
+        if (_rng is not SeededRandom seeded)
+            throw new System.InvalidOperationException("Seule une partie à aléa copiable (SeededRandom) se copie.");
+        return new Match(this, seeded.Clone());
+    }
+
+    private Match(Match s, System.Random rng)
+    {
+        var map = new Dictionary<Unit, Unit>(40, ReferenceEqualityComparer.Instance);
+        Unit Map(Unit u)
+        {
+            if (!map.TryGetValue(u, out var copy))
+                map[u] = copy = u.CopyState();
+            return copy;
+        }
+
+        Width = s.Width;
+        Height = s.Height;
+        _units = new Unit?[Width, Height];
+        for (var c = 0; c < Width; c++)
+            for (var r = 0; r < Height; r++)
+                if (s._units[c, r] is { } u)
+                    _units[c, r] = Map(u);
+        _terrain = s._terrain;
+        _cover = s._cover;   // jamais modifié après la création
+        foreach (var u in s._essential) _essential.Add(Map(u));
+        _impactHits.AddRange(s._impactHits);
+        _impactZone.AddRange(s._impactZone);
+        _seismeZone.AddRange(s._seismeZone);
+        _lastRecule = s._lastRecule;
+        _dodges.AddRange(s._dodges);
+        _lastRiposte = s._lastRiposte;
+        _thorns.AddRange(s._thorns);
+        _reflecting = s._reflecting;
+        _lastPierce = s._lastPierce;
+        _interceptions.AddRange(s._interceptions);
+        _lastSlide = s._lastSlide;   // remplacé en bloc, jamais modifié
+        _rng = rng;
+        _eliminationEndsGame = s._eliminationEndsGame;
+        _playerBlocked = new HashSet<Cell>(s._playerBlocked);
+        RempartBonus = s.RempartBonus;
+        TueurDeGeantsBonus = s.TueurDeGeantsBonus;
+        FormationBonus = s.FormationBonus;
+        ImpactBonus = s.ImpactBonus;
+        ExtraTurnDomaine = s.ExtraTurnDomaine;
+        _extraTurnUsed = s._extraTurnUsed;
+        LastGrantedExtraTurn = s.LastGrantedExtraTurn;
+        CurrentTurn = s.CurrentTurn;
+        Winner = s.Winner;
+        IsDraw = s.IsDraw;
+        EndReason = s.EndReason;
+        Handovers = s.Handovers;
+        _mirrorRows = s._mirrorRows;
+        PvpRules = s.PvpRules;
+        _lastThrow = s._lastThrow;
+        _shieldHits.AddRange(s._shieldHits);
+        _shielding = s._shielding;
+        _sharing = s._sharing;
+        _splashHits.AddRange(s._splashHits);
+        _lastCharm = s._lastCharm;
+        _bounceHits.AddRange(s._bounceHits);
+        _bounceFrom = s._bounceFrom;
+        _brokenItem = s._brokenItem;
+        _grenadeBlast = s._grenadeBlast;
+        CrossKillPower = s.CrossKillPower;
+        RoqueEnabled = s.RoqueEnabled;
+        RoquePower = s.RoquePower;
+        SoloSurvivorEnabled = s.SoloSurvivorEnabled;
+        _chainAttacker = s._chainAttacker is { } chain ? Map(chain) : null;
+        _chainOrigin = s._chainOrigin;
+        _chainLinksLeft = s._chainLinksLeft;
+        _bounceQueue.AddRange(s._bounceQueue);
+        _bounceAttacker = s._bounceAttacker is { } bounce ? Map(bounce) : null;
+        foreach (var (cell, dead) in s._deathLog) _deathLog.Add((cell, Map(dead)));
+        s._vengeanceFresh.CopyTo(_vengeanceFresh, 0);
+        UltimateReviveTriggered = s.UltimateReviveTriggered;
+
+        // Les références entre unités (tueur, assaillants) suivent les copies ; les unités tuées qu'on ne
+        // connaissait que par là sont copiées à leur tour.
+        var done = new HashSet<Unit>(ReferenceEqualityComparer.Instance);
+        while (done.Count < map.Count)
+            foreach (var copy in map.Values.ToList())
+                if (done.Add(copy))
+                    copy.RemapUnits(Map);
+    }
 
     /// <summary>
     /// Empreinte DÉTERMINISTE de l'état de jeu (tour, vainqueur, et pour chaque case occupée : classe, camp,
@@ -2846,6 +2957,7 @@ public sealed class Match
 
         ClearRecentHitsFor(CurrentTurn);   // le camp qui vient de jouer a eu sa chance de répondre
         CurrentTurn = CurrentTurn.Opponent();
+        Handovers++;
         if (CurrentTurn == Faction.Player)
             _extraTurnUsed = false;   // la main revient au joueur : son tour bonus est de nouveau disponible
     }
@@ -2885,6 +2997,7 @@ public sealed class Match
         if (PvpRules && playerLost && enemyLost)
         {
             IsDraw = true;
+            EndReason = MatchEndReason.MutualDestruction;
             return;
         }
         // Camp joueur anéanti (ou commandant tombé) = défaite : toujours décisif, même à objectif.
@@ -2892,5 +3005,7 @@ public sealed class Match
         // Camp ennemi anéanti = victoire, SAUF en mode objectif (mission spéciale) où l'on laisse le
         // joueur poursuivre l'objectif. Le boss tué reste décisif dans tous les cas.
         else if ((!hasEnemy && _eliminationEndsGame) || enemyLeaderDown) Winner = Faction.Player;
+        if (Winner != null && EndReason == MatchEndReason.None)
+            EndReason = MatchEndReason.LeaderDown;
     }
 }

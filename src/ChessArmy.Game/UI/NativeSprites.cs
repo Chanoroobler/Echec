@@ -13,7 +13,8 @@ namespace ChessArmy.Game.UI;
 public static class NativeSprites
 {
     private struct Entry { public Texture2D Tex; public Rectangle Canvas; public Color Tint; }
-    private static readonly Entry[] Entries = new Entry[8];
+    // 96 : le contenu des coffres du multi (jusqu'à ~70 objets en 32×32) y passe en plus des plateaux de carte.
+    private static readonly Entry[] Entries = new Entry[96];
     private static int _count;
 
     /// <summary>Échelle canvas → écran de la frame en cours (fixée par la couche Game avant le dessin des scènes).</summary>

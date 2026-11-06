@@ -1,16 +1,127 @@
 {
-  // Barème du mode MULTIJOUEUR (PvP). Toutes les valeurs sont des propositions de départ, à régler.
-  // Coûts : un pion coûte selon son TIER (1, 2, 3), un équipement selon sa RARETÉ (Common, Rare, Legendary).
-  // Le commandant est GRATUIT (hors budget). Un équipement par pion, commandant exclu.
-  "budget": 100,
-  "unitCost": { "1": 4, "2": 8, "3": 13 },
-  "equipmentCost": { "Common": 3, "Rare": 6, "Legendary": 10 },
+  // Barème du mode MULTIJOUEUR (PvP).
+  // COÛTS : en multi, le tier ne fixe PAS le prix. Chaque classe et chaque équipement coûte selon sa force MESURÉE
+  // par simulation (bots contre bots, cf. tools/ChessArmy.Balance). « unitCost », « equipmentCost » et « budget » sont
+  // RÉÉCRITS par cet outil : relancez-le après tout changement de stats plutôt que de les retoucher à la main.
+  //   dotnet run --project tools/ChessArmy.Balance -c Release -- --games 200
+  // Le commandant se PAIE sur le budget (« commanderCost », mesuré : le plus faible coûte 0). Un équipement par pion, commandant exclu.
+  // Principe : l'armée de DÉPART remplit EXACTEMENT le budget. Débloquer des pièces ne rend pas plus fort, ça ouvre
+  // d'autres stratégies : une pièce deux fois plus forte coûte deux fois plus. Les équipements ont leur budget à part.
+  "budget": 35,   // armée : commandant + pions
+  // Budget SÉPARÉ des équipements (les points de l'un ne servent jamais à l'autre).
+  "equipmentBudget": 10,
+  "maxSameEquipment": 2,   // exemplaires d'un même équipement dans une armée, au plus
+  "unitCost": {
+    "soldat": 3,   // mesuré : 3.00
+    "cavalier": 4,   // mesuré : 4.25
+    "forteresse": 4,   // mesuré : 3.78
+    "garde": 4,   // mesuré : 3.76
+    "javelinier": 4,   // mesuré : 4.41
+    "lancier": 4,   // mesuré : 3.88
+    "mage": 4,   // mesuré : 4.12
+    "spadassin": 4,   // mesuré : 4.11
+    "archer": 5,   // mesuré : 4.56
+    "archer_monte": 5,   // mesuré : 4.68
+    "barde": 5,   // mesuré : 5.19
+    "cavalier_griffon": 5,   // mesuré : 5.44
+    "cavalier_lourd": 5,   // mesuré : 4.75
+    "clerc": 5,   // mesuré : 4.50
+    "sorcier": 5,   // mesuré : 4.98
+    "arbaletrier_monte": 6,   // mesuré : 6.16
+    "barbare": 6,   // mesuré : 6.00
+    "phalange": 6,   // mesuré : 5.83
+    "pretresse": 6,   // mesuré : 6.03
+    "Dragoon": 7,   // mesuré : 7.26
+    "archimage": 7,   // mesuré : 6.52
+    "demoniste": 7,   // mesuré : 7.07
+    "rodeur": 7,   // mesuré : 6.65
+    "archer_griffon": 8,   // mesuré : 8.15
+    "maitre_arme": 8,   // mesuré : 7.79
+    "paladin": 8,   // mesuré : 7.83
+    "voltigeur": 8,   // mesuré : 8.04
+    "arbaletrier": 8   // mesuré : 8.66 (plafonné à 8, règle des 3 à 8 points)
+  },
+  "equipmentCost": {
+    "Balistique": 1,   // mesuré : 1.35
+    "EpineRare": 1,   // mesuré : 1.25
+    "Recule": 1,   // mesuré : 0.37
+    "auraCeleriteRare": 1,   // mesuré : -0.02
+    "auraPuissanceRare": 1,   // mesuré : 0.57
+    "auraRempartRare": 1,   // mesuré : 0.76
+    "berserkLegendaire": 1,   // mesuré : -0.71
+    "botteRare": 1,   // mesuré : 1.44
+    "bouclier": 1,   // mesuré : 0.65
+    "formation": 1,   // mesuré : -0.17
+    "franchissement": 1,   // mesuré : 0.98
+    "lance": 1,   // mesuré : 1.46
+    "lienPuissanceLegendaire": 1,   // mesuré : 1.37
+    "lienPuissanceRare": 1,   // mesuré : -0.11
+    "orageRare": 1,   // mesuré : 0.67
+    "phenix": 1,   // mesuré : 1.26
+    "rageRare": 1,   // mesuré : 0.74
+    "soinRare": 1,   // mesuré : -0.02
+    "static": 1,   // mesuré : -0.46
+    "volLegendaire": 1,   // mesuré : 0.89
+    "volRare": 1,   // mesuré : 0.19
+    "Loup": 2,   // mesuré : 1.67
+    "TranspercerRare": 2,   // mesuré : 1.72
+    "armure": 2,   // mesuré : 2.15
+    "auraCeleriteLegendaire": 2,   // mesuré : 1.74
+    "casque": 2,   // mesuré : 1.98
+    "casqueRare": 2,   // mesuré : 1.52
+    "duelliste": 2,   // mesuré : 1.65
+    "epee": 2,   // mesuré : 1.93
+    "franchissementRare": 2,   // mesuré : 2.21
+    "riposteRare": 2,   // mesuré : 2.42
+    "staticRare": 2,   // mesuré : 1.98
+    "tueurGeantLegendaire": 2,   // mesuré : 1.93
+    "volVieLegendaire": 2,   // mesuré : 2.46
+    "BalistiqueRare": 3,   // mesuré : 3.48
+    "InterceptionLegendaire": 3,   // mesuré : 2.84
+    "ReculeRare": 3,   // mesuré : 2.68
+    "armureRare": 3,   // mesuré : 2.50
+    "casqueLegendaire": 3,   // mesuré : 2.76
+    "duellisteRare": 3,   // mesuré : 2.81
+    "esquive": 3,   // mesuré : 2.70
+    "esquiveRare": 3,   // mesuré : 2.69
+    "hache": 3,   // mesuré : 3.29
+    "hacheRare": 3,   // mesuré : 2.89
+    "lanceRare": 3,   // mesuré : 2.88
+    "soinLegendaire": 3,   // mesuré : 2.68
+    "auraPuissanceLegendaire": 4,   // mesuré : 4.15
+    "auraRempartLegendaire": 4,   // mesuré : 3.55
+    "botteLegendaire": 4,   // mesuré : 4.01
+    "bouclierLegendaire": 4,   // mesuré : 3.94
+    "bouclierRare": 4,   // mesuré : 4.38
+    "formationRare": 4,   // mesuré : 3.72
+    "hacheLegendaire": 4,   // mesuré : 4.19
+    "EpineLegendaire": 5,   // mesuré : 4.57
+    "armureLegendaire": 5,   // mesuré : 5.41
+    "epeeLegendaire": 5,   // mesuré : 4.59
+    "epeeRare": 5,   // mesuré : 4.77
+    "orageLegendaire": 5,   // mesuré : 5.41
+    "LoupRare": 6,   // mesuré : 6.40
+    "TempeteLegendaire": 6,   // mesuré : 6.29
+    "esquiveLegendaire": 6,   // mesuré : 6.00
+    "rageLegendaire": 6,   // mesuré : 6.04
+    "LoupLegendaire": 7   // mesuré : 7.07
+  },
+  "commanderCost": {
+    "Commandant_fou": 0,   // mesuré : 0.00
+    "Commandant_duo": 1,   // mesuré : 1.18
+    "Commandant_cavalier": 2,   // mesuré : 2.14
+    "Commandant_brute": 3,   // mesuré : 3.10
+    "Commandant_lancier": 3,   // mesuré : 2.55
+    "commandant": 3,   // mesuré : 3.06
+    "Commandant_marchand": 4   // mesuré : 3.52
+  },
+
 
   // Économie des coffres. Les points de départ ouvrent un coffre de chaque type (tuto multi).
   "chestCost": { "units": 60, "equipment": 40 },
   "startPoints": 100,
-  "pointsPerKill": 2,
-  "pointsForWin": 15,
+  "pointsPerKill": 5,
+  "pointsForWin": 30,
   "pointsForDraw": 5,
 
   // Temps (secondes).
@@ -18,7 +129,8 @@
   "moveSeconds": 60,
   "reconnectSeconds": 60,
   "buildChoiceSeconds": 30,
-  "botAfterSeconds": 40,
+  // Recherche classée : personne au bout de « botAfterSeconds » → bot du niveau du joueur (partie classée).
+  "botAfterSeconds": 10,
 
   // Cote (Elo) et rangs. Un rang couvre la cote de « from » jusqu'au rang suivant, découpé en « divisions »
   // tranches égales (la division III est la plus basse). Master n'a pas de division.
@@ -32,62 +144,291 @@
     { "id": "master", "from": 2000, "divisions": 1, "span": 0 }
   ],
 
-  // Commandants : stats PROPRES au multi (sans arbre), dans l'esprit de leur archétype.
-  "startingCommanders": [ "commandant", "Commandant_lancier", "Commandant_cavalier" ],
-  "commanders": {
-    "commandant":          { "hp": 28, "damage": 12, "moveRange": 1, "attackRange": 1, "traits": [ "Orage" ] },
-    "Commandant_lancier":  { "hp": 40, "damage": 10, "moveRange": 2, "attackRange": 2, "traits": [ "Rempart" ] },
-    "Commandant_cavalier": { "hp": 30, "damage": 12, "moveRange": 3, "attackRange": 3, "traits": [ "Franchissement", "Aura de puissance" ] },
-    "Commandant_fou":      { "hp": 20, "damage": 16, "moveRange": 2, "attackRange": 3, "traits": [ "Drain de vie" ] },
-    "Commandant_marchand": { "hp": 24, "damage": 10, "moveRange": 3, "attackRange": 3, "traits": [ "Franchissement", "Esquive" ] },
-    "Commandant_duo":      { "hp": 30, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": [ "Duelliste" ] },
-    "Commandant_brute":    { "hp": 32, "damage": 14, "moveRange": 2, "attackRange": 1, "traits": [ "Berserk" ] }
+  // Équipements RETIRÉS du multi (le solo les garde) : ni posables, ni dans les coffres multi.
+  "excludedEquipment": [ "seisme", "arcLegendaire", "ImpactRare" ],
+
+  // Stats de pions PROPRES AU MULTI : chaque valeur remplace celle de units.json en multi seulement (le solo ne
+  // bouge pas). Sert à recadrer une pièce trop forte ou trop faible ; relancer ensuite l'outil d'équilibrage.
+  "unitStats": {
+    "Dragoon": { "hp": 12, "damage": 10 },   // solo : 20 / 16
+    "arbaletrier": { "hp": 11, "damage": 11 },   // solo : 16 / 16
+    "arbaletrier_monte": { "hp": 13, "damage": 10 },   // solo : 18 / 15
+    "archer": { "hp": 11, "damage": 10 },   // solo : 14 / 13
+    "archer_griffon": { "hp": 12, "damage": 9 },   // solo : 16 / 13
+    "archer_monte": { "hp": 11, "damage": 10 },   // solo : 14 / 12
+    "archimage": { "hp": 7, "damage": 13 },   // solo : 12 / 22
+    "barbare": { "hp": 13, "damage": 11 },   // solo : 18 / 15
+    "barde": { "hp": 12, "damage": 9 },   // solo : 15 / 12
+    "cavalier": { "hp": 13, "damage": 11 },   // solo : 12 / 10
+    "cavalier_griffon": { "hp": 17, "damage": 11 },   // solo : 24 / 16
+    "cavalier_lourd": { "hp": 20, "damage": 10 },   // solo : 16 / 14
+    "clerc": { "hp": 11, "damage": 11 },   // solo : 12 / 12
+    "demoniste": { "hp": 14, "damage": 13 },   // solo : 20 / 18
+    "forteresse": { "hp": 18, "damage": 7 },   // solo : 30 / 12
+    "garde": { "hp": 13, "damage": 8 },   // solo : 20 / 12
+    "javelinier": { "hp": 12, "damage": 10 },   // solo : 16 / 13
+    "mage": { "hp": 5, "damage": 13 },   // solo : 6 / 14
+    "maitre_arme": { "hp": 11, "damage": 9 },   // solo : 20 / 16
+    "paladin": { "hp": 13, "damage": 11 },   // solo : 22 / 18
+    "phalange": { "hp": 12, "damage": 7 },   // solo : 24 / 14
+    "pretresse": { "hp": 11, "damage": 12 },   // solo : 13 / 14
+    "rodeur": { "hp": 8, "damage": 8 },   // solo : 16 / 15
+    "sorcier": { "hp": 7, "damage": 12 },   // solo : 10 / 18
+    "spadassin": { "hp": 12, "damage": 10 },   // solo : 16 / 13
+    "voltigeur": { "hp": 12, "damage": 12 }   // solo : 18 / 18
   },
 
-  // Bots de secours, un niveau par rang : précision de l'IA (0..1) et IA « tactique » (évalue risques et
-  // valeur des pièces) à partir d'un certain rang. Armées écrites à la main : « back » = ligne du fond,
-  // « front » = ligne de devant, 8 cases de gauche à droite ; « * » = case du commandant, « » = vide,
-  // « classe+équipement » pour équiper un pion.
+  // Commandants : stats PROPRES au multi, SANS POUVOIR pour l'instant (ni arbre ni trait) ; l'archétype passe par les stats.
+  // Armée de DÉPART (écrite par l'outil d'équilibrage) : premier build de tout nouveau profil.
+  "startingArmy": { "commander": "commandant",
+    "back":  [ "", "cavalier", "lancier", "mage", "*", "mage", "cavalier", "" ],
+    "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+  "startingCommanders": [ "commandant", "Commandant_lancier", "Commandant_cavalier" ],
+  "commanders": {
+    "commandant":          { "hp": 20, "damage": 12, "moveRange": 1, "attackRange": 1 },
+    "Commandant_lancier":  { "hp": 28, "damage": 10, "moveRange": 2, "attackRange": 2 },
+    "Commandant_cavalier": { "hp": 30, "damage": 12, "moveRange": 3, "attackRange": 3 },
+    "Commandant_fou":      { "hp": 24, "damage": 16, "moveRange": 2, "attackRange": 3 },
+    "Commandant_marchand": { "hp": 32, "damage": 12, "moveRange": 3, "attackRange": 3 },
+    "Commandant_duo":      { "hp": 26, "damage": 12, "moveRange": 2, "attackRange": 1 },
+    "Commandant_brute":    { "hp": 15, "damage": 12, "moveRange": 2, "attackRange": 1 },
+    // Compagnon du DUO (posé d'office à côté de lui ; sa mort fait perdre aussi), compté dans le coût du DUO.
+    "Basile":              { "hp": 26, "damage": 10, "moveRange": 1, "attackRange": 2 }
+  },
+
+  // Armées des bots : réserve des rangs Argent à Master, composée par l'outil (--bot-armies). Chacune
+  // remplit exactement le budget d'armée : seule l'intelligence change avec le rang. Pas d'équipement ici : à partir
+  // d'Argent, ils sont tirés au hasard à CHAQUE partie dans le budget d'équipement (« equipment » des bots).
+  "botArmies": [
+    { "commander": "Commandant_brute",
+      "back":  [ "", "arbaletrier_monte", "arbaletrier_monte", "arbaletrier_monte", "*", "arbaletrier_monte", "forteresse", "forteresse" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "garde", "archimage", "archer_monte", "forteresse", "*", "forteresse", "archer_monte", "garde" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "cavalier", "barde", "", "*", "rodeur", "barde", "cavalier_lourd" ],
+      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "javelinier", "javelinier", "javelinier", "demoniste", "*", "demoniste", "javelinier", "clerc" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "sorcier", "archer_griffon", "sorcier", "*", "sorcier", "garde", "sorcier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "sorcier", "Dragoon", "Dragoon", "*", "Dragoon", "archer", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "", "arbaletrier", "archimage", "*", "clerc", "lancier", "" ],
+      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "cavalier_griffon", "clerc", "mage", "*", "arbaletrier", "clerc", "clerc" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier_lourd", "archimage", "archimage", "*", "archimage", "archimage", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "archer", "clerc", "", "*", "cavalier", "archer_griffon", "cavalier" ],
+      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "cavalier_lourd", "cavalier_lourd", "*", "rodeur", "pretresse", "" ],
+      "front": [ "", "", "spadassin", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "cavalier_griffon", "javelinier", "javelinier", "cavalier_griffon", "*", "cavalier_griffon", "cavalier_griffon", "javelinier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "cavalier_griffon", "phalange", "cavalier_griffon", "*", "cavalier_lourd", "phalange", "" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "", "mage", "Dragoon", "*", "archer_griffon", "archimage", "" ],
+      "front": [ "", "", "", "barbare", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "", "sorcier", "lancier", "*", "lancier", "garde", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier_lourd", "javelinier", "archer_griffon", "*", "archer_griffon", "javelinier", "javelinier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "javelinier", "mage", "", "*", "garde", "garde", "mage" ],
+      "front": [ "", "", "spadassin", "spadassin", "barbare", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "rodeur", "javelinier", "*", "demoniste", "archer", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "", "", "sorcier", "*", "sorcier", "", "" ],
+      "front": [ "", "", "barbare", "maitre_arme", "maitre_arme", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "forteresse", "forteresse", "barde", "forteresse", "*", "barde", "forteresse", "barde" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "javelinier", "javelinier", "javelinier", "javelinier", "*", "lancier", "javelinier", "javelinier" ],
+      "front": [ "", "", "", "javelinier", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "archer", "archimage", "archimage", "*", "archer", "voltigeur", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "garde", "forteresse", "forteresse", "forteresse", "*", "garde", "cavalier_lourd", "garde" ],
+      "front": [ "", "", "", "forteresse", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "cavalier_lourd", "javelinier", "cavalier_lourd", "", "*", "javelinier", "cavalier_lourd", "rodeur" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "javelinier", "javelinier", "javelinier", "cavalier", "*", "javelinier", "rodeur", "javelinier" ],
+      "front": [ "", "", "", "cavalier", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "sorcier", "forteresse", "forteresse", "*", "archer", "paladin", "" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "sorcier", "sorcier", "lancier", "*", "archer_monte", "lancier", "" ],
+      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "archimage", "archimage", "archimage", "*", "archimage", "forteresse", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "cavalier", "sorcier", "cavalier", "sorcier", "*", "sorcier", "cavalier", "sorcier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "", "barde", "cavalier_griffon", "*", "cavalier_griffon", "", "" ],
+      "front": [ "", "", "barbare", "barbare", "barbare", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "sorcier", "lancier", "arbaletrier", "", "*", "mage", "mage", "sorcier" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "mage", "mage", "sorcier", "cavalier", "*", "mage", "sorcier", "cavalier" ],
+      "front": [ "", "", "", "sorcier", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "forteresse", "forteresse", "forteresse", "*", "forteresse", "forteresse", "" ],
+      "front": [ "", "", "spadassin", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "javelinier", "voltigeur", "archer_monte", "*", "demoniste", "demoniste", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "arbaletrier_monte", "archer_monte", "cavalier_lourd", "*", "arbaletrier_monte", "cavalier_lourd", "archer" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "", "javelinier", "garde", "*", "garde", "", "" ],
+      "front": [ "", "soldat", "soldat", "spadassin", "soldat", "spadassin", "soldat", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "javelinier", "Dragoon", "sorcier", "*", "sorcier", "sorcier", "Dragoon" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "cavalier_griffon", "cavalier_griffon", "", "*", "pretresse", "arbaletrier", "demoniste" ],
+      "front": [ "", "", "", "soldat", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "cavalier_lourd", "cavalier_lourd", "*", "paladin", "cavalier_lourd", "" ],
+      "front": [ "", "", "", "barbare", "barbare", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "", "archimage", "cavalier_lourd", "*", "archimage", "cavalier_lourd", "" ],
+      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] }
+  ],
+
+  // Poids de l'évaluation des bots qui calculent, ENTRAÎNÉS par auto-jeu (outil : --ai-train).
+  "botWeights": { "pieceBase": 2, "pieceHp": 0.3, "pieceDamage": 0.4, "pieceRange": 0.846, "pieceMove": 0.315, "tempo": 0.74, "hanging": 0.253, "kingDanger": 30, "advance": 0.15, "mobility": 0.03, "support": 0.2 },
+
+  // Styles de jeu des bots NOMMÉS : un nom joue toujours le même style. Ils changent la façon de jouer, pas la
+  // force (chacun mesuré contre le neutre au même niveau, --ai-pair --a "or-2:advance=1.25,aggression=1.6").
+  //   advance : envie d'avancer vers l'adversaire ; aggression : recherche des cibles ;
+  //   caution : poids du danger ; guard : ses pièces restent près de son commandant.
+  "botStyles": {
+    "equilibre": { "names": [ "Aldric", "Fiora", "Kilian", "Perrine" ] },
+    "agressif":  { "advance": 1.25, "aggression": 1.6, "names": [ "Bérénice", "Gaspard", "Mathis", "Octave" ] },
+    "prudent":   { "caution": 1.4, "advance": 0.6, "aggression": 0.85, "names": [ "Corwin", "Hélène", "Noémie", "Isidore" ] },
+    "garde":     { "guard": 1.0, "advance": 0.7, "names": [ "Daphné", "Edmond", "Jeanne", "Léontine" ] }
+  },
+
+  // Armées des bots BRONZE et FER (« beginnerArmies » des bots), composées par l'outil (--beginner-armies) :
+  // pions de BASE et au plus UNE pièce différente, pour qu'un nouveau joueur ne soit pas perdu. Budget plein, sans équipement.
+  "botArmiesBeginner": [
+    { "commander": "Commandant_brute",
+      "back":  [ "cavalier", "cavalier", "cavalier", "lancier", "*", "cavalier", "lancier", "cavalier" ],
+      "front": [ "", "", "", "lancier", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "lancier", "cavalier", "lancier", "*", "mage", "cavalier", "cavalier" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "mage", "cavalier", "lancier", "", "*", "cavalier", "lancier", "mage" ],
+      "front": [ "", "", "mage", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "cavalier", "paladin", "*", "cavalier", "cavalier", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "lancier", "mage", "cavalier", "mage", "*", "lancier", "cavalier", "mage" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "", "archer_monte", "cavalier", "*", "cavalier", "", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "mage", "lancier", "mage", "*", "mage", "mage", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "", "cavalier", "sorcier", "*", "cavalier", "mage", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "mage", "mage", "archer_monte", "*", "mage", "mage", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "cavalier", "voltigeur", "cavalier", "", "*", "mage", "cavalier", "cavalier" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "lancier", "mage", "*", "mage", "sorcier", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "lancier", "cavalier", "cavalier", "*", "mage", "lancier", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "", "cavalier", "rodeur", "*", "cavalier", "lancier", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "rodeur", "mage", "cavalier", "*", "cavalier", "mage", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "mage", "mage", "archimage", "*", "cavalier", "cavalier", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier", "cavalier", "mage", "*", "sorcier", "lancier", "" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "mage", "rodeur", "cavalier", "", "*", "lancier", "mage", "lancier" ],
+      "front": [ "", "", "", "soldat", "lancier", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "cavalier_lourd", "cavalier", "cavalier", "mage", "*", "mage", "lancier", "cavalier" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "mage", "arbaletrier_monte", "mage", "*", "lancier", "lancier", "lancier" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "sorcier", "cavalier", "mage", "*", "cavalier", "mage", "lancier" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] }
+  ],
+
+  // Bots de secours : un niveau d'IA PAR DIVISION (bronze-3 le plus faible … master), pour sentir la montée.
+  // Armées : « botArmies » pour tous, sauf Bronze et Fer (« beginnerArmies » : la réserve « botArmiesBeginner »,
+  // pions de base). À part ça, seule l'INTELLIGENCE monte.
+  //   forceAttack : attaque dès qu'un pion le peut (plancher : jamais complètement bête) ;
+  //   killChance  : avec forceAttack, chance de choisir la meilleure attaque (tuer) plutôt qu'une au hasard ;
+  //   caution     : 0 = fonce sans regarder le danger, 1 = pèse l'échange ;
+  //   recklessness: part des coups où il fonce sans regarder le danger (pente douce des rangs bas) ;
+  //   depth       : 0 = un coup à la fois, 1 = prévoit la réponse adverse, 2 = et sa propre réponse… ;
+  //   breadth / replyBreadth : coups examinés à la racine / plus bas ;
+  //   accuracy    : chance de jouer son meilleur coup (sinon un des deux suivants) ;
+  //   equipment   : false = armées SANS équipement (Bronze, Fer) ; à partir d'Argent, équipements tirés au hasard
+  //                 à chaque partie, 10 pts (la même armée ne revient pas toujours pareille).
+  //   minDelaySeconds / maxDelaySeconds : « réflexion » affichée avant chaque coup, tirée au hasard (air d'un joueur) ;
+  //   le vrai calcul se fait pendant ce temps, et le rang le plus haut joue plus vite.
+  // Échelle MESURÉE par l'outil (--ai-ladder) : chaque niveau doit battre le précédent.
   "bots": {
-    "bronze": {
-      "accuracy": 0.5, "tactical": false,
-      "armies": [
-        { "commander": "commandant",
-          "back":  [ "lancier", "cavalier", "mage", "soldat", "*", "mage", "cavalier", "lancier" ],
-          "front": [ "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat" ] }
-      ]
-    },
-    "fer": {
-      "accuracy": 0.75, "tactical": false,
-      "armies": [
-        { "commander": "Commandant_lancier",
-          "back":  [ "lancier", "cavalier", "mage", "archer", "*", "mage", "cavalier", "lancier" ],
-          "front": [ "soldat", "soldat", "garde", "soldat", "soldat", "garde", "soldat", "soldat" ] }
-      ]
-    },
-    "argent": {
-      "accuracy": 1.0, "tactical": false,
-      "armies": [
-        { "commander": "Commandant_cavalier",
-          "back":  [ "garde", "cavalier_lourd", "clerc", "archer", "*", "sorcier", "cavalier_lourd", "garde" ],
-          "front": [ "soldat", "spadassin", "soldat", "", "", "soldat", "spadassin", "soldat" ] }
-      ]
-    },
-    "or": {
-      "accuracy": 0.9, "tactical": true,
-      "armies": [
-        { "commander": "Commandant_fou",
-          "back":  [ "phalange", "paladin", "pretresse", "", "*", "archimage", "paladin", "phalange" ],
-          "front": [ "", "garde", "", "", "", "", "garde", "" ] }
-      ]
-    },
-    "master": {
-      "accuracy": 1.0, "tactical": true,
-      "armies": [
-        { "commander": "Commandant_duo",
-          "back":  [ "forteresse", "cavalier_griffon", "barde", "", "*", "archimage", "paladin", "forteresse" ],
-          "front": [ "", "", "maitre_arme", "", "", "soldat", "", "" ] }
-      ]
-    }
+    "bronze-3": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.25, "caution": 0.3, "recklessness": 1.0, "accuracy": 0.45, "minDelaySeconds": 3, "maxDelaySeconds": 8 },
+    "bronze-2": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.45, "caution": 0.35, "recklessness": 0.7, "accuracy": 0.55, "minDelaySeconds": 3, "maxDelaySeconds": 8 },
+    "bronze-1": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.55, "caution": 0.4, "recklessness": 0.5, "accuracy": 0.65, "minDelaySeconds": 3, "maxDelaySeconds": 7.5 },
+    "fer-3":    { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.7, "caution": 0.5, "recklessness": 0.3, "accuracy": 0.75, "minDelaySeconds": 3, "maxDelaySeconds": 7.5 },
+    "fer-2":    { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.85, "caution": 0.7, "recklessness": 0.15, "accuracy": 0.85, "minDelaySeconds": 3, "maxDelaySeconds": 7 },
+    "fer-1":    { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.95, "caution": 1.0, "accuracy": 0.95, "minDelaySeconds": 2.5, "maxDelaySeconds": 7 },
+    "argent-3": { "depth": 1, "breadth": 4, "replyBreadth": 3, "accuracy": 0.8, "minDelaySeconds": 2.5, "maxDelaySeconds": 6.5 },
+    "argent-2": { "depth": 1, "breadth": 7, "replyBreadth": 5, "accuracy": 0.94, "minDelaySeconds": 2.5, "maxDelaySeconds": 6.5 },
+    "argent-1": { "depth": 2, "breadth": 5, "replyBreadth": 4, "accuracy": 0.85, "minDelaySeconds": 2.5, "maxDelaySeconds": 6 },
+    "or-3":     { "smartEquipment": true, "depth": 2, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
+    "or-2":     { "smartEquipment": true, "depth": 3, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
+    "or-1":     { "smartEquipment": true, "depth": 3, "breadth": 9, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5.5 },
+    "master":   { "smartEquipment": true, "depth": 4, "breadth": 10, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5 }
   }
 }

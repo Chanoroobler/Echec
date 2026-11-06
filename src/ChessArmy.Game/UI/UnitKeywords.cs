@@ -84,6 +84,13 @@ public static class UnitKeywords
     /// </summary>
     public static Keyword Ephemeral => FromKey("kw.ephemere");
 
+    /// <summary>
+    /// Couleur du nom d'un trait affiché en RAPPEL (cité par la description d'un autre trait, cf.
+    /// <see cref="ChessArmy.Core.Battle.Trait.ReferencedBy"/>) : distincte du cyan d'un trait porté et du
+    /// jaune d'un trait d'équipement, pour qu'on ne le prenne pas pour un trait de plus.
+    /// </summary>
+    public static Microsoft.Xna.Framework.Color ReminderColor => ChessArmy.Engine.UI.Palette.Brown2;
+
     /// <summary>Libellé + description d'un trait ; repli sobre si le trait n'est pas répertorié.</summary>
     public static Keyword For(string trait) =>
         KeyByTrait.TryGetValue(trait, out var key)

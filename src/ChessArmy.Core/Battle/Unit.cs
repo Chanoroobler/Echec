@@ -28,6 +28,47 @@ public sealed class Unit
         Hp = MaxHp;   // PV pleins, bonus d'équipement et d'arbre inclus
     }
 
+    /// <summary>Copie de tout l'état (cf. <see cref="Match.Clone"/>) ; les unités référencées (tueur, assaillants)
+    /// pointent encore vers les originales jusqu'à <see cref="RemapUnits"/>.</summary>
+    private Unit(Unit s)
+    {
+        Domaine = s.Domaine;
+        Faction = s.Faction;
+        Class = s.Class;
+        _equipment.AddRange(s._equipment);
+        Buffs = s.Buffs;
+        Hp = s.Hp;
+        Kills = s.Kills;
+        TimesHit = s.TimesHit;
+        HitSinceOwnTurn = s.HitSinceOwnTurn;
+        RangedHits = s.RangedHits;
+        ObstacleJumps = s.ObstacleJumps;
+        DamageDealt = s.DamageDealt;
+        DamageTaken = s.DamageTaken;
+        KilledBy = s.KilledBy;
+        _damagedBy.AddRange(s._damagedBy);
+        RagePower = s.RagePower;
+        VengeancePower = s.VengeancePower;
+        RoquePower = s.RoquePower;
+        InheritedPower = s.InheritedPower;
+        IsEssential = s.IsEssential;
+        IsCompanion = s.IsCompanion;
+        AiKind = s.AiKind;
+        BonusMaxHp = s.BonusMaxHp;
+        UltimateReviveUsed = s.UltimateReviveUsed;
+        Charmed = s.Charmed;
+    }
+
+    internal Unit CopyState() => new(this);
+
+    internal void RemapUnits(System.Func<Unit, Unit> map)
+    {
+        if (KilledBy is { } killer)
+            KilledBy = map(killer);
+        for (var i = 0; i < _damagedBy.Count; i++)
+            _damagedBy[i] = map(_damagedBy[i]);
+    }
+
     public Domaine Domaine { get; }
 
     /// <summary>

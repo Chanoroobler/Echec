@@ -50,7 +50,8 @@ public sealed class BdfFont : ITextFont
     // Latin de base + étendu (jusqu'à U+017F : accents FR/PL/TR/DE/ES) : rendu par la PixelFont 7px pour que
     // chiffres et lettres gardent leur taille normale au lieu de grossir en glyphe CJK. Au-delà (idéogrammes,
     // ponctuation pleine chasse) : police BDF. Seuil de plage = pas de coût de normalisation sur les CJK.
-    private bool UseLatin(char ch) => _latin != null && ch < 'ƀ';
+    // « … » (troncature) et « › » (écran de fin multi) passent aussi par la PixelFont : même chasse que le latin.
+    private bool UseLatin(char ch) => _latin != null && (ch < 'ƀ' || ch == '…' || ch == '›');
 
     /// <summary>Charge un BDF depuis le disque. <paramref name="latin"/> (recommandé) rend le latin/chiffres
     /// via la PixelFont (police COMPOSITE). <paramref name="only"/> limite le parsing aux codepoints donnés.</summary>

@@ -31,6 +31,51 @@ public static class PvpUi
         return $"{s / 60}:{s % 60:00}";
     }
 
+    /// <summary>
+    /// Texte en capitales (descriptions de traits de strings.csv) remis en casse de phrase, plus lisible : tout en
+    /// minuscules, une majuscule en début de texte et après « . ! ? ». Les sigles sans voyelle (« PV », « LP »)
+    /// restent en capitales. Minuscules de la langue courante (i sans point en turc).
+    /// </summary>
+    public static string SentenceCase(string text)
+    {
+        var culture = Loc.Current == Language.Turkce
+            ? System.Globalization.CultureInfo.GetCultureInfo("tr-TR")
+            : System.Globalization.CultureInfo.InvariantCulture;
+        var chars = text.ToLower(culture).ToCharArray();
+        // Sigles : mots de 2-3 lettres sans voyelle dans l'original.
+        for (var i = 0; i < text.Length;)
+        {
+            if (!char.IsLetter(text[i]))
+            {
+                i++;
+                continue;
+            }
+            var start = i;
+            while (i < text.Length && char.IsLetter(text[i]))
+                i++;
+            var len = i - start;
+            if (len is >= 2 and <= 3 && text.IndexOfAny("AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜaeiouy".ToCharArray(), start, len) < 0
+                && char.IsUpper(text[start]))
+                for (var k = start; k < i; k++)
+                    chars[k] = text[k];
+        }
+        var capital = true;
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var c = chars[i];
+            if (capital && char.IsLetter(c))
+            {
+                chars[i] = char.ToUpper(c, culture);
+                capital = false;
+            }
+            else if (c is '.' or '!' or '?')
+                capital = true;
+            else if (capital && char.IsDigit(c))
+                capital = false;   // « 5 dégâts… » : pas de majuscule plus loin dans la phrase
+        }
+        return new string(chars);
+    }
+
     public static string CommanderName(string id) => Loc.TOr("commander." + id, id).ToUpperInvariant();
 
     public static string UnitName(UnitClass cls) => UnitCardRenderer.NameOf(cls);

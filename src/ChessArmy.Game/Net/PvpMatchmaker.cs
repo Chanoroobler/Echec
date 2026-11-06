@@ -41,6 +41,8 @@ public sealed class PvpMatchmaker : IDisposable
 
     private CSteamID _ownLobby = CSteamID.Nil;   // lobby créé par nous, en attente d'un adversaire
     private bool _requestPending;
+    private bool _joinPending;      // entrée dans le lobby d'un autre joueur en vol
+    private bool _handlesDisposed;
     private float _rescanTimer;
     private bool _friendMode;
     private bool _disposed;
@@ -61,6 +63,9 @@ public sealed class PvpMatchmaker : IDisposable
 
     /// <summary>Échec définitif (Steam absent, création de lobby refusée, invitation impossible).</summary>
     public bool Failed { get; private set; }
+
+    /// <summary>Une entrée dans le lobby d'un autre joueur est en vol : un adversaire est peut-être à une frame.</summary>
+    public bool Joining => _joinPending;
 
     /// <summary>Temps passé à chercher (recherche classée).</summary>
     public float SearchTime { get; private set; }
@@ -113,6 +118,7 @@ public sealed class PvpMatchmaker : IDisposable
         }
         _enterResult.Set(SteamMatchmaking.JoinLobby(lobby));
         _requestPending = true;
+        _joinPending = true;
     }
 
     /// <summary>À appeler chaque frame tant qu'aucun adversaire n'est trouvé : relance le balayage des lobbies.</summary>
@@ -159,7 +165,12 @@ public sealed class PvpMatchmaker : IDisposable
     private void OnLobbyList(LobbyMatchList_t result, bool ioFailure)
     {
         _requestPending = false;
-        if (_disposed || Session != null)
+        if (_disposed)
+        {
+            DisposeHandles();
+            return;
+        }
+        if (Session != null)
             return;
         if (!ioFailure)
         {
@@ -179,6 +190,7 @@ public sealed class PvpMatchmaker : IDisposable
                 }
                 _enterResult.Set(SteamMatchmaking.JoinLobby(lobby));
                 _requestPending = true;
+                _joinPending = true;
                 return;
             }
         }
@@ -196,6 +208,7 @@ public sealed class PvpMatchmaker : IDisposable
         {
             if (!ioFailure && result.m_eResult == EResult.k_EResultOK)
                 SteamMatchmaking.LeaveLobby(new CSteamID(result.m_ulSteamIDLobby));
+            DisposeHandles();
             return;
         }
         if (ioFailure || result.m_eResult != EResult.k_EResultOK)
@@ -217,12 +230,16 @@ public sealed class PvpMatchmaker : IDisposable
     private void OnLobbyEntered(LobbyEnter_t result, bool ioFailure)
     {
         _requestPending = false;
+        _joinPending = false;
         var lobby = new CSteamID(result.m_ulSteamIDLobby);
         var ok = !ioFailure
                  && result.m_EChatRoomEnterResponse == (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess;
         if (_disposed)
         {
+            // Recherche abandonnée (bot, annulation) pendant l'entrée : on ressort aussitôt, l'hôte en face voit
+            // un départ et recherche à nouveau au lieu d'attendre une poignée de main qui ne viendra jamais.
             if (ok) SteamMatchmaking.LeaveLobby(lobby);
+            DisposeHandles();
             return;
         }
         var owner = ok ? SteamMatchmaking.GetLobbyOwner(lobby) : CSteamID.Nil;
@@ -273,9 +290,20 @@ public sealed class PvpMatchmaker : IDisposable
         if (_ownLobby != CSteamID.Nil)
             SteamMatchmaking.LeaveLobby(_ownLobby);
         _ownLobby = CSteamID.Nil;
+        _chatUpdate.Dispose();
+        // Création ou entrée de lobby en vol : on garde les résultats d'appel vivants pour que leur réponse quitte
+        // le lobby obtenu (sinon on y resterait : lobby fantôme, hôte d'en face bloqué en poignée de main).
+        if (!_requestPending)
+            DisposeHandles();
+    }
+
+    private void DisposeHandles()
+    {
+        if (_handlesDisposed)
+            return;
+        _handlesDisposed = true;
         _listResult.Dispose();
         _createResult.Dispose();
         _enterResult.Dispose();
-        _chatUpdate.Dispose();
     }
 }

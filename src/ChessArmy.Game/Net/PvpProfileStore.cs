@@ -52,11 +52,36 @@ public static class PvpProfileStore
         return PvpProfile.CreateNew();
     }
 
+#if DEBUG
+    /// <summary>Tests du dev (F9 sur l'écran multi) : supprime la sauvegarde multi et repart d'un profil neuf
+    /// (armée de départ, points et cote de départ).</summary>
+    internal static void ResetToDefault()
+    {
+        if (File.Exists(FilePath))
+            File.Delete(FilePath);
+        s_profile = PvpProfile.CreateNew();
+        WasReset = false;
+    }
+
+    private static bool s_memoryOnly;
+
+    /// <summary>Captures d'écran de développement : profil en mémoire seulement (le vrai fichier n'est ni lu ni écrit).</summary>
+    internal static void UseInMemory(PvpProfile profile)
+    {
+        s_profile = profile;
+        s_memoryOnly = true;
+    }
+#endif
+
     /// <summary>Enregistre le profil (écriture atomique). Refusé si une valeur a été trafiquée en mémoire.</summary>
     public static void Save()
     {
         if (s_profile == null || PvpProfile.Tampered)
             return;
+#if DEBUG
+        if (s_memoryOnly)
+            return;
+#endif
         var path = FilePath;
         var temp = path + ".tmp";
         File.WriteAllBytes(temp, s_profile.Encode(OwnerId));

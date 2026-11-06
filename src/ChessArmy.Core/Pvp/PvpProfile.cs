@@ -15,6 +15,11 @@ public enum PvpOutcome { Win, Loss, Draw }
 /// <summary>Ce qu'une partie a rapporté (affiché sur le panneau de fin).</summary>
 public readonly record struct PvpReward(int Points, int RatingBefore, int RatingAfter, bool Ranked);
 
+/// <summary>Une partie de l'historique (DERNIÈRES PARTIES) : issue, adversaire (bot ou non, cote), pions tués,
+/// variation de cote et date (secondes Unix UTC).</summary>
+public sealed record PvpGameRecord(PvpOutcome Outcome, string Opponent, bool Bot, int OpponentRating, int Kills,
+    int RatingDelta, long When);
+
 /// <summary>
 /// Profil MULTIJOUEUR, séparé du solo : points de coffre, cote, statistiques, déblocages et les 3 builds.
 /// Les valeurs sensibles sont obscurcies en mémoire (<see cref="ObscuredInt"/>, <see cref="ObscuredSet"/>) et
@@ -24,7 +29,21 @@ public sealed class PvpProfile
 {
     public const int BuildSlots = 3;
 
+    /// <summary>Parties gardées par historique (classées d'un côté, défis entre amis de l'autre).</summary>
+    public const int HistorySize = 20;
+
+    /// <summary>Jours comptés dans la variation « cette semaine ».</summary>
+    public const int WeekDays = 7;
+
+    /// <summary>Version du contenu du fichier : 1 = sans historique (migré à la lecture), 2 = actuel.</summary>
+    private const int FormatVersion = 2;
+
     private ObscuredInt _points;
+    private ObscuredInt _best;
+    private ObscuredInt _streak;
+    private readonly List<PvpGameRecord> _ranked = new();
+    private readonly List<PvpGameRecord> _friendly = new();
+    private readonly List<(int Day, int Delta)> _days = new();   // variation de cote par jour (classées), 7 derniers jours
     private ObscuredInt _rating;
     private ObscuredInt _games;
     private ObscuredInt _wins;
@@ -40,14 +59,57 @@ public sealed class PvpProfile
     public int Draws => _draws;
     public PvpRank Rank => PvpRanks.FromRating(Rating);
 
+    /// <summary>Meilleure cote atteinte (jamais sous la cote actuelle).</summary>
+    public int BestRating => Math.Max(_best, Rating);
+
+    /// <summary>Série en cours sur les parties classées : +3 = trois victoires d'affilée, −2 = deux défaites ;
+    /// une nulle la remet à zéro.</summary>
+    public int Streak => _streak;
+
+    /// <summary>Dernières parties classées, la plus récente en tête (<see cref="HistorySize"/> au plus).</summary>
+    public IReadOnlyList<PvpGameRecord> RankedHistory => _ranked;
+
+    /// <summary>Derniers défis entre amis (non classés), le plus récent en tête.</summary>
+    public IReadOnlyList<PvpGameRecord> FriendlyHistory => _friendly;
+
+    /// <summary>Variation de cote sur les <see cref="WeekDays"/> derniers jours (aujourd'hui compris).</summary>
+    public int WeekDelta(DateTime nowUtc)
+    {
+        var today = DayOf(nowUtc);
+        var sum = 0;
+        foreach (var (day, delta) in _days)
+            if (day > today - WeekDays)
+                sum += delta;
+        return sum;
+    }
+
+    private static int DayOf(DateTime utc) => (int)(utc.Ticks / TimeSpan.TicksPerDay);
+
     /// <summary>Les 3 builds sauvegardés (jamais null).</summary>
     public PvpBuild[] Builds { get; } = new PvpBuild[BuildSlots];
 
     /// <summary>Build sélectionné par défaut (0..2).</summary>
     public int SelectedBuild { get; set; }
 
-    /// <summary>Le tuto multi (présentation des coffres) a été vu.</summary>
+    /// <summary>Ancien tuto multi (un seul panneau) vu ; gardé pour relire les anciens fichiers.</summary>
     public bool TutorialDone { get; set; }
+
+    /// <summary>Version du tuto multi actuel (bulles de l'interface + règles). À monter quand le tuto change
+    /// assez pour être remontré à tout le monde.</summary>
+    public const int CurrentTutorialVersion = 1;
+
+    /// <summary>Dernière version du tuto multi vue jusqu'au bout ou passée (0 : jamais, ancien fichier compris).</summary>
+    public int TutorialVersion { get; set; }
+
+    /// <summary>Le tuto doit s'ouvrir tout seul à l'arrivée sur l'écran multi.</summary>
+    public bool TutorialPending => TutorialVersion < CurrentTutorialVersion;
+
+    /// <summary>Tuto vu jusqu'au bout ou passé : il ne se rouvrira plus tout seul.</summary>
+    public void MarkTutorialSeen()
+    {
+        TutorialVersion = CurrentTutorialVersion;
+        TutorialDone = true;
+    }
 
     /// <summary>Vrai si une valeur a été trafiquée en mémoire : le profil ne doit plus être enregistré.</summary>
     public static bool Tampered => ObscuredInt.Tampered;
@@ -59,7 +121,7 @@ public sealed class PvpProfile
     public static PvpProfile CreateNew()
     {
         var config = PvpConfig.Current;
-        var profile = new PvpProfile { _points = config.StartPoints, _rating = config.StartRating };
+        var profile = new PvpProfile { _points = config.StartPoints, _rating = config.StartRating, _best = config.StartRating };
         foreach (var id in config.StartingCommanders)
             profile._unlocked.Add("c:" + id);
         for (var i = 0; i < BuildSlots; i++)
@@ -67,9 +129,11 @@ public sealed class PvpProfile
         return profile;
     }
 
-    /// <summary>Build de départ : 8 Soldats devant, Lancier Cavalier Mage Soldat [roi] Mage Cavalier Lancier au fond.</summary>
+    /// <summary>Build de départ : pvp.json « startingArmy » (à défaut, une armée codée en dur).</summary>
     public static PvpBuild DefaultBuild()
     {
+        if (PvpConfig.Current.StartingArmy is { } configured)
+            return configured.Clone();   // pvp.json « startingArmy » (composée par l'outil d'équilibrage)
         var build = new PvpBuild { CommanderId = PvpConfig.Current.StartingCommanders.FirstOrDefault() ?? "commandant" };
         string[] back = { Domaines.Tour.BaseClass.Asset, Domaines.Cavalier.BaseClass.Asset, Domaines.Fou.BaseClass.Asset,
             Domaines.Dame.BaseClass.Asset, "", Domaines.Fou.BaseClass.Asset, Domaines.Cavalier.BaseClass.Asset,
@@ -110,6 +174,11 @@ public sealed class PvpProfile
     /// Ouvre un coffre : paie son prix et débloque un élément tiré au hasard parmi ceux qu'on n'a pas encore
     /// (jamais de doublon). Null si le coffre est vide ou trop cher.
     /// </summary>
+    /// <summary>Vrai si un coffre de ce type peut s'ouvrir maintenant : assez de points ET quelque chose à gagner.</summary>
+    public bool CanOpenChest(bool units) =>
+        Points >= (units ? PvpConfig.Current.UnitChestCost : PvpConfig.Current.EquipmentChestCost)
+        && (units ? LockedUnits() : LockedEquipment()).Count > 0;
+
     public string? OpenChest(bool units, Random rng)
     {
         var cost = units ? PvpConfig.Current.UnitChestCost : PvpConfig.Current.EquipmentChestCost;
@@ -131,7 +200,47 @@ public sealed class PvpProfile
     /// nouvelle cote (Elo contre <paramref name="opponentRating"/>). Les défis entre amis rapportent des points
     /// mais ne sont pas classés.
     /// </summary>
-    public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked)
+    public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked) =>
+        RecordResult(outcome, kills, opponentRating, ranked, "", bot: false, DateTime.UtcNow);
+
+    /// <summary>Même chose, et la partie entre dans l'historique (classées ou défis), avec la série, la meilleure
+    /// cote et la variation du jour.</summary>
+    public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked, string opponent,
+        bool bot, DateTime nowUtc)
+    {
+        var reward = ApplyResult(outcome, kills, opponentRating, ranked);
+        var delta = reward.RatingAfter - reward.RatingBefore;
+        var history = ranked ? _ranked : _friendly;
+        history.Insert(0, new PvpGameRecord(outcome, opponent, bot, opponentRating, kills, delta,
+            new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc)).ToUnixTimeSeconds()));
+        if (history.Count > HistorySize)
+            history.RemoveRange(HistorySize, history.Count - HistorySize);
+        if (ranked)
+        {
+            _best = Math.Max(_best, Rating);
+            var s = Streak;
+            _streak = outcome switch
+            {
+                PvpOutcome.Win => s > 0 ? s + 1 : 1,
+                PvpOutcome.Loss => s < 0 ? s - 1 : -1,
+                _ => 0,
+            };
+            AddDayDelta(DayOf(nowUtc), delta);
+        }
+        return reward;
+    }
+
+    private void AddDayDelta(int today, int delta)
+    {
+        _days.RemoveAll(d => d.Day <= today - WeekDays);
+        var i = _days.FindIndex(d => d.Day == today);
+        if (i >= 0)
+            _days[i] = (today, _days[i].Delta + delta);
+        else
+            _days.Add((today, delta));
+    }
+
+    private PvpReward ApplyResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked)
     {
         var config = PvpConfig.Current;
         var gained = kills * config.PointsPerKill + outcome switch
@@ -167,7 +276,36 @@ public sealed class PvpProfile
         public List<string>? B { get; set; }
         public int S { get; set; }
         public bool T { get; set; }
+        // Version 2 (absents d'un ancien fichier : migrés à la lecture, réécrits à la prochaine sauvegarde).
+        public int V { get; set; }
+        public int BR { get; set; }
+        public int ST { get; set; }
+        public List<GameDto>? HR { get; set; }   // classées
+        public List<GameDto>? HF { get; set; }   // défis entre amis
+        public List<int[]>? WK { get; set; }     // [jour, variation]
+        public int TV { get; set; }              // version du tuto vue (absent d'un ancien fichier : 0)
     }
+
+    private sealed class GameDto
+    {
+        public int O { get; set; }
+        public string? N { get; set; }
+        public bool B { get; set; }
+        public int R { get; set; }
+        public int K { get; set; }
+        public int D { get; set; }
+        public long W { get; set; }
+
+        public static GameDto From(PvpGameRecord g) =>
+            new() { O = (int)g.Outcome, N = g.Opponent, B = g.Bot, R = g.OpponentRating, K = g.Kills, D = g.RatingDelta, W = g.When };
+
+        public PvpGameRecord ToRecord() =>
+            new(Enum.IsDefined(typeof(PvpOutcome), O) ? (PvpOutcome)O : PvpOutcome.Draw, N ?? "", B, R, K, D, W);
+    }
+
+    /// <summary>Tests : profil au format 1 (avant l'historique), pour vérifier la migration.</summary>
+    internal static byte[] EncodeLegacyV1(string ownerId, int points, int rating, int games, int wins) =>
+        Seal(JsonSerializer.SerializeToUtf8Bytes(new { P = points, R = rating, G = games, W = wins, L = games - wins, D = 0, S = 0, T = true }), ownerId);
 
     // Secret embarqué : ce n'est PAS une sécurité absolue (tout ce qui est sur le PC du joueur finit par être lisible),
     // seulement de quoi rendre le fichier illisible et toute retouche détectable.
@@ -185,8 +323,16 @@ public sealed class PvpProfile
             P = Points, R = Rating, G = Games, W = Wins, L = Losses, D = Draws,
             U = _unlocked.Items.OrderBy(x => x, StringComparer.Ordinal).ToList(),
             B = Builds.Select(b => b.ToJson()).ToList(), S = SelectedBuild, T = TutorialDone,
+            V = FormatVersion, BR = BestRating, ST = Streak,
+            HR = _ranked.Select(GameDto.From).ToList(), HF = _friendly.Select(GameDto.From).ToList(),
+            WK = _days.Select(d => new[] { d.Day, d.Delta }).ToList(),
+            TV = TutorialVersion,
         };
-        var plain = JsonSerializer.SerializeToUtf8Bytes(dto);
+        return Seal(JsonSerializer.SerializeToUtf8Bytes(dto), ownerId);
+    }
+
+    private static byte[] Seal(byte[] plain, string ownerId)
+    {
         var (encKey, macKey) = Keys(ownerId);
         using var aes = Aes.Create();
         aes.Key = encKey;
@@ -225,8 +371,17 @@ public sealed class PvpProfile
             var profile = new PvpProfile
             {
                 _points = dto.P, _rating = dto.R, _games = dto.G, _wins = dto.W, _losses = dto.L, _draws = dto.D,
-                SelectedBuild = Math.Clamp(dto.S, 0, BuildSlots - 1), TutorialDone = dto.T,
+                SelectedBuild = Math.Clamp(dto.S, 0, BuildSlots - 1), TutorialDone = dto.T, TutorialVersion = Math.Max(0, dto.TV),
+                // Format 1 : pas de meilleure cote connue → la cote actuelle ; historique et série vides.
+                _best = Math.Max(dto.BR, dto.R), _streak = dto.ST,
             };
+            foreach (var g in (dto.HR ?? new List<GameDto>()).Take(HistorySize))
+                profile._ranked.Add(g.ToRecord());
+            foreach (var g in (dto.HF ?? new List<GameDto>()).Take(HistorySize))
+                profile._friendly.Add(g.ToRecord());
+            foreach (var d in dto.WK ?? new List<int[]>())
+                if (d is { Length: 2 })
+                    profile._days.Add((d[0], d[1]));
             foreach (var id in dto.U ?? new List<string>())
                 profile._unlocked.Add(id);
             for (var i = 0; i < BuildSlots; i++)

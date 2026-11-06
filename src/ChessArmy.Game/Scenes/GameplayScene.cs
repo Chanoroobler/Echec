@@ -4661,8 +4661,13 @@ public sealed partial class GameplayScene : Scene
         var cx = (int)top.X + size / 2 + move.X;
         var y = (int)top.Y - spriteLift - s - 2 + move.Y;        // juste au-dessus du sommet du sprite
         var count = System.Math.Max(1, slots);
+        var i = System.Math.Clamp(slot, 0, count - 1);
+        // Pas la place au-dessus (rangée du HAUT d'un plateau qui occupe toute la hauteur, ex. le 8×8 du multi) :
+        // le badge sortirait de l'écran. On le pose alors À DROITE de la tête, au niveau du sommet du sprite.
+        if (y < 0)
+            return new Rectangle(cx + size / 4 + i * s, System.Math.Max(0, (int)top.Y - spriteLift + move.Y), s, s);
         var left = cx - count * s / 2;
-        return new Rectangle(left + System.Math.Clamp(slot, 0, count - 1) * s, y, s, s);
+        return new Rectangle(left + i * s, y, s, s);
     }
 
     /// <summary>
@@ -12393,7 +12398,8 @@ public sealed partial class GameplayScene : Scene
             zx + (size - tiw) / 2,
             spriteTop + (int)(size * SocleTierAnchor) - tih,
             tiw, tih);
-        DrawTierIcon(sb, unit.Class.Tier, socleIcon, introA);
+        if (_pvpInfo == null)   // multi : pas de tier (les pions n'y ont pas le même rapport de force)
+            DrawTierIcon(sb, unit.Class.Tier, socleIcon, introA);
 
         // La barre de vie est dessinée dans une passe SÉPARÉE (DrawUnitHpBars), APRÈS les buissons,
         // pour qu'elle reste toujours visible (même quand le feuillage passe devant le pion).
@@ -15818,12 +15824,24 @@ public sealed partial class GameplayScene : Scene
     {
         foreach (var (cell, unit) in _match.Units())
         {
-            if (unit.Faction != Faction.Enemy || unit.Equipments.Count == 0)
+            if (!ShowsEquipBadges(unit))
                 continue;
             for (var i = 0; i < unit.Equipments.Count; i++)
-                DrawEquipIcon(sb, unit.Equipments[i], EquipBadgeRect(cell, layout, i, unit.Equipments.Count));
+                DrawEquipIcon(sb, unit.Equipments[i],
+                    CarriedBadgeRect(cell, layout, i, unit.Equipments.Count)   // pion porté au glisser (multi : les nôtres)
+                    ?? EquipBadgeRect(cell, layout, i, unit.Equipments.Count));
         }
     }
+
+    /// <summary>
+    /// Pion dont les objets s'affichent en icône au-dessus de la tête, hors sous-phase Équipement : les ENNEMIS
+    /// équipés, et en MULTI aussi les nôtres (pas de sous-phase Équipement : l'armée arrive équipée du build, et
+    /// chaque camp doit lire d'un coup d'œil qui porte quoi). Le multi n'a pas d'objet de sacoche : aucun doublon
+    /// avec <see cref="DrawSatchelBadges"/>.
+    /// </summary>
+    private bool ShowsEquipBadges(Unit unit) =>
+        unit.Equipments.Count > 0
+        && (unit.Faction == Faction.Enemy || (_pvpInfo != null && unit.Faction == Faction.Player));
 
     /// <summary>
     /// OBJET À LANCER porté par un pion du JOUEUR (commandant DUO) : icône au-dessus de sa tête, en TOUTE
@@ -16161,9 +16179,24 @@ public sealed partial class GameplayScene : Scene
     /// une ligne « +N stat » crème (repliée si besoin). Effet de TRAIT = son NOM en BLEU puis, À LA LIGNE, sa
     /// description crème (repliée). Sert à la fois au calcul de hauteur et au rendu (pour rester synchronisés).
     /// </summary>
-    private List<(string Text, Color Color)> EquipEffectLines(Equipment equip, int innerWidth)
+    private List<(string Text, Color Color)> EquipEffectLines(Equipment equip, int innerWidth, bool reminders = false)
     {
         var lines = new List<(string, Color)>();
+        if (reminders)
+        {
+            lines = EquipEffectLines(equip, innerWidth);
+            // Rappel des traits CITÉS par la description d'un trait de l'objet (Aura de rempart → Rempart).
+            foreach (var t in equip.Traits)
+                foreach (var r in Trait.ReferencedBy(t))
+                    if (!equip.Traits.Contains(r))
+                    {
+                        var rk = UnitKeywords.For(r);
+                        lines.Add((rk.Label, UnitKeywords.ReminderColor));
+                        foreach (var line in WrapText(SentenceCase(KeywordDisplay(rk).Desc), innerWidth, 1))
+                            lines.Add((line, Palette.Blue1));
+                    }
+            return lines;
+        }
         var title = EquipName(equip).ToUpperInvariant();   // titre du cadre : ne pas le répéter en nom de trait
         foreach (var e in equip.Effects)
         {
@@ -16302,12 +16335,24 @@ public sealed partial class GameplayScene : Scene
     {
         var inner = EquipTooltipMaxWidth - 2 * EquipTooltipPad;
         var w = Context.Font.Measure(EquipName(equip).ToUpperInvariant(), 1);
-        foreach (var (text, _) in EquipEffectLines(equip, inner))
+        foreach (var (text, _) in EquipEffectLines(equip, inner, TooltipReminders(equip)))
             w = System.Math.Max(w, Context.Font.Measure(text, 1));
         if (EquipRestriction(equip) is { } r)
             foreach (var line in WrapText(r, inner, 1))
                 w = System.Math.Max(w, Context.Font.Measure(line, 1));
         return System.Math.Min(EquipTooltipMaxWidth, w + 2 * EquipTooltipPad);
+    }
+
+    /// <summary>
+    /// La tooltip rappelle les traits cités (Aura de rempart → Rempart) seulement s'il y a la place : au plus la
+    /// moitié de l'écran, pour qu'elle tienne toujours au-dessus ou à côté de l'élément survolé.
+    /// </summary>
+    private bool TooltipReminders(Equipment equip)
+    {
+        var hasRef = false;
+        foreach (var t in equip.Traits)
+            hasRef |= Trait.ReferencedBy(t).Count > 0;
+        return hasRef && EquipPanelHeight(equip, EquipTooltipMaxWidth - 2 * EquipTooltipPad, true) <= VirtualViewport.Height / 2;
     }
 
     /// <summary>Tooltip d'un équipement (nom + description), ancré à GAUCHE de l'élément survolé (repli à droite).</summary>
@@ -16338,7 +16383,7 @@ public sealed partial class GameplayScene : Scene
 
     /// <summary>Hauteur du cadre tooltip : nom + effet replié, plus l'éventuelle restriction (espacée), largeur fixe.</summary>
     private int EquipTooltipHeight(Equipment equip) =>
-        EquipPanelHeight(equip, EquipTooltipMaxWidth - 2 * EquipTooltipPad);
+        EquipPanelHeight(equip, EquipTooltipMaxWidth - 2 * EquipTooltipPad, TooltipReminders(equip));
 
     // ── Équipement ENNEMI : la tooltip du badge SURVOLÉ (placement ET combat) ──────────────────────
     // Au placement on compose son armée FACE à celle de l'IA, en combat on choisit sa cible : savoir ce
@@ -16364,7 +16409,7 @@ public sealed partial class GameplayScene : Scene
         var layout = BuildLayout();
         foreach (var (cell, unit) in _match.Units())
         {
-            if (unit.Faction != Faction.Enemy || unit.Equipments.Count == 0)
+            if (!ShowsEquipBadges(unit))
                 continue;
             if (EnemyBadgeAt(cell, unit, layout) is not { } hit)
                 continue;
@@ -16424,7 +16469,7 @@ public sealed partial class GameplayScene : Scene
         // resserre sur la ligne la plus longue.
         // Le REPLI des lignes se fait au gabarit MAXIMAL ; seule la BOÎTE se resserre sur la ligne la plus longue.
         DrawEquipPanelAt(sb, equip, new Rectangle(x, y, EquipTooltipWidth(equip), EquipTooltipHeight(equip)),
-            EquipTooltipMaxWidth - 2 * EquipTooltipPad);
+            EquipTooltipMaxWidth - 2 * EquipTooltipPad, TooltipReminders(equip));
     }
 
     /// <summary>
@@ -16433,14 +16478,14 @@ public sealed partial class GameplayScene : Scene
     /// flottante replie au gabarit maximal puis resserre son cadre, alors que la pile de la carte détaillée
     /// replie à sa propre largeur. Pendant de <see cref="EquipPanelHeight"/> — les deux doivent rester d'accord.
     /// </summary>
-    private void DrawEquipPanelAt(SpriteBatch sb, Equipment equip, Rectangle box, int wrapInner)
+    private void DrawEquipPanelAt(SpriteBatch sb, Equipment equip, Rectangle box, int wrapInner, bool reminders = false)
     {
         int pad = EquipTooltipPad, lineH = EquipTooltipLineH;
         Context.Style.DrawPanel(sb, box);
         Context.Font.Draw(sb, EquipName(equip).ToUpperInvariant(), new Vector2(box.X + pad, box.Y + pad), 1, Palette.Yellow2);
 
         var ly = box.Y + pad + EquipTooltipTitleH;
-        foreach (var (text, color) in EquipEffectLines(equip, wrapInner))
+        foreach (var (text, color) in EquipEffectLines(equip, wrapInner, reminders))
         {
             Context.Font.Draw(sb, text, new Vector2(box.X + pad, ly), 1, color, preserveCase: true);
             ly += lineH;
@@ -16457,9 +16502,9 @@ public sealed partial class GameplayScene : Scene
     }
 
     /// <summary>Hauteur d'un cadre d'équipement dont les lignes sont repliées sur <paramref name="wrapInner"/>.</summary>
-    private int EquipPanelHeight(Equipment equip, int wrapInner)
+    private int EquipPanelHeight(Equipment equip, int wrapInner, bool reminders = false)
     {
-        var h = EquipTooltipPad + EquipTooltipTitleH + EquipEffectLines(equip, wrapInner).Count * EquipTooltipLineH;
+        var h = EquipTooltipPad + EquipTooltipTitleH + EquipEffectLines(equip, wrapInner, reminders).Count * EquipTooltipLineH;
         if (EquipRestriction(equip) is { } r)
             h += EquipTooltipGap + WrapText(r, wrapInner, 1).Count * EquipTooltipLineH;
         return h + EquipTooltipPad;
@@ -16471,9 +16516,10 @@ public sealed partial class GameplayScene : Scene
     // + leur écart, puis 10 px avant le sprite 64 centré. L'icône d'équipement, à droite du sprite,
     // vient alors buter exactement sur la marge droite.
     private const int CombatCardW = 248;
-    // 336 = les 330 d'origine + 6 : le grand plateau 7×7 (115 px) remplace la bande sprite + domaine. Hauteur
+    // 342 = les 330 d'origine + 6 (le grand plateau 7×7 remplace la bande sprite + domaine) + 6 (la ligne de stat
+    // PV, 36 px, remplace la barre de PV + « pv/max », 30 px). Hauteur
     // SANS rangée d'icônes : la vraie hauteur d'une carte détaillée passe par DetailedCardH.
-    private const int CombatCardH = 336;
+    private const int CombatCardH = 342;
     private const int CombatCardGap = 24;
 
     // Carte CONDENSÉE de combat : icônes de stats (valeurs effectives, sans « +N »), PV en texte, traits
@@ -16998,8 +17044,7 @@ public sealed partial class GameplayScene : Scene
 
     /// <summary>
     /// Corps d'une carte d'unité : plateau de déplacement / tir (avec le sprite à gauche si <paramref name="compact"/>),
-    /// barre de PV (1 carré = 1 PV)
-    /// + « pv/max », puis les caractéristiques (icône 32×32 + libellé + valeur). Les mots-clés sont
+    /// puis les caractéristiques (PV en tête, icône 32×32 + libellé + valeur). Les mots-clés sont
     /// dessinés à part (popups) par l'appelant. <paramref name="hp"/> = PV courants à afficher.
     /// </summary>
     private void DrawCardLayout(SpriteBatch sb, Rectangle rect, UnitClass c, Faction faction,
@@ -17088,26 +17133,13 @@ public sealed partial class GameplayScene : Scene
             y = bandTop + MoveAttackGrid.BoardOuter + 10;
         }
 
-        // Barre de PV (une rangée, carrés ajustés à la largeur) + texte « pv/max » (+ bonus d'équipement).
-        // Évolution NON DÉCOUVERTE (méta) : on masque tout l'effectif — barre neutre + « ??? » au lieu des PV,
-        // et « ??? » à la place de chaque caractéristique (en plus de la silhouette du sprite et du nom).
-        var barRect = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
-        if (revealed)
-        {
-            DrawHpBar(sb, barRect, hp, maxHp, hpPreviewDamage);
-            y = barRect.Bottom + 2;
-            DrawHpText(sb, rect.X, y, rect.Width, hp, maxHp, hpBonus);
-        }
-        else
-        {
-            DrawRect(sb, barRect, Palette.Purple2);   // barre « inconnue » : ne révèle pas le nombre de PV
-            y = barRect.Bottom + 2;
-            Context.Font.DrawCentered(sb, unknown, new Rectangle(rect.X, y, rect.Width, 8), 1, Palette.White);
-        }
-        y += 14;
-
         // Caractéristiques : icône 32×32 + libellé + valeur (effective, équipement inclus) + « +N ».
+        // PV en tête, « pv/max » : violet si blessé, blanc sinon ; aperçu de dégâts « -N » accolé si visée.
+        // Évolution NON DÉCOUVERTE (méta) : « ??? » à la place de chaque caractéristique (PV compris).
         // Portée = MAX seulement (le « min » / zone morte est expliqué par le mot-clé ZONE MORTE).
+        y = DrawStatRow(sb, rect, y, "pv", Loc.T("stat.hp"), revealed ? $"{hp}/{maxHp}" : unknown,
+            revealed && hp < maxHp ? Palette.Purple5 : Palette.White, revealed ? hpBonus : 0,
+            revealed ? hpPreviewDamage : 0);
         y = DrawStatRow(sb, rect, y, "deg", Loc.T("stat.power"), revealed ? $"{c.Damage + dmgBonus}" : unknown, Palette.Brown3, revealed ? dmgBonus : 0);
         y = DrawStatRow(sb, rect, y, "dep", Loc.T("stat.movement"), revealed ? $"{c.MoveRange + moveBonus}" : unknown, Palette.Cyan2, revealed ? moveBonus : 0);
         DrawStatRow(sb, rect, y, "tir", Loc.T("stat.range"), revealed ? $"{c.AttackRange + rangeBonus}" : unknown, Palette.Yellow2, revealed ? rangeBonus : 0);
@@ -17373,9 +17405,11 @@ public sealed partial class GameplayScene : Scene
     /// <summary>
     /// Une ligne de caractéristique : icône 32×32 à gauche, libellé, valeur alignée à droite. Si
     /// <paramref name="bonus"/> &gt; 0 (équipement), un « +N » bleu clair est affiché à gauche de la valeur.
+    /// <paramref name="previewDamage"/> &gt; 0 (PV, attaque visée) : « -N » jaune accolé à droite de la
+    /// valeur, qui se décale d'autant vers la gauche.
     /// </summary>
     private int DrawStatRow(SpriteBatch sb, Rectangle card, int y, string iconKey, string label,
-        string value, Color valueColor, int bonus = 0)
+        string value, Color valueColor, int bonus = 0, int previewDamage = 0)
     {
         const int iconSize = 32;
         var icon = new Rectangle(card.X + CardPad, y, iconSize, iconSize);
@@ -17385,72 +17419,23 @@ public sealed partial class GameplayScene : Scene
         var midBig = rowH.Y + (iconSize - 7 * 2) / 2;   // ligne de base des textes scale 2 (14 px), centrée
         // Libellé en scale 1 (l'icône identifie déjà la stat) → laisse la place à un bonus BIEN visible.
         Context.Font.Draw(sb, label, new Vector2(rowH.X, rowH.Y + (iconSize - 7) / 2), 1, Palette.White);
+        var right = rowH.Right;
+        if (previewDamage > 0)
+        {
+            var dmg = $" -{previewDamage}";
+            right -= Context.Font.Measure(dmg, 2);
+            Context.Font.Draw(sb, dmg, new Vector2(right, midBig), 2, Palette.Yellow2);
+        }
         var vw = Context.Font.Measure(value, 2);
-        Context.Font.Draw(sb, value, new Vector2(rowH.Right - vw, midBig), 2, valueColor);
+        Context.Font.Draw(sb, value, new Vector2(right - vw, midBig), 2, valueColor);
         if (bonus > 0)
         {
             // Bonus d'équipement BIEN visible : grand (scale 2) et jaune vif, entre (), à gauche de la valeur.
             var tag = $"(+{bonus})";
             var tw = Context.Font.Measure(tag, 2);
-            Context.Font.Draw(sb, tag, new Vector2(rowH.Right - vw - 8 - tw, midBig), 2, Palette.Yellow2);
+            Context.Font.Draw(sb, tag, new Vector2(right - vw - 8 - tw, midBig), 2, Palette.Yellow2);
         }
         return y + iconSize + 4;
-    }
-
-    /// <summary>Texte « pv/max » centré, avec un « +N » jaune vif accolé (MÊME taille que les PV) si l'équipement augmente les PV.</summary>
-    private void DrawHpText(SpriteBatch sb, int x, int y, int width, int hp, int maxHp, int hpBonus)
-    {
-        var hpText = $"{hp}/{maxHp}";
-        if (hpBonus <= 0)
-        {
-            Context.Font.DrawCentered(sb, hpText, new Rectangle(x, y, width, 8), 1, Palette.White);
-            return;
-        }
-        // « pv/max » blanc puis « (+N) » jaune vif, MÊME taille (scale 1), sur une seule ligne centrée.
-        var bonusText = $"(+{hpBonus})";
-        var wMain = Context.Font.Measure(hpText, 1);
-        var wBonus = Context.Font.Measure(bonusText, 1);
-        const int gap = 5;
-        var startX = x + (width - (wMain + gap + wBonus)) / 2;
-        Context.Font.Draw(sb, hpText, new Vector2(startX, y), 1, Palette.White);
-        Context.Font.Draw(sb, bonusText, new Vector2(startX + wMain + gap, y), 1, Palette.Yellow2);
-    }
-
-    /// <summary>
-    /// Barre de PV : la barre occupe TOUTE la zone (taille fixe, hauteur indépendante du nombre de PV)
-    /// et se découpe en un segment par point de vie. PV restants = rouge, PV manquants = rouge foncé.
-    /// </summary>
-    /// <summary>
-    /// Barre de PV en carrés (1 carré = 1 PV). <paramref name="previewDamage"/> &gt; 0 : les
-    /// <paramref name="previewDamage"/> derniers PV pleins CLIGNOTENT (prévisualisation des dégâts d'une
-    /// attaque visée) entre plein et vide.
-    /// </summary>
-    private void DrawHpBar(SpriteBatch sb, Rectangle area, int hp, int maxHp, int previewDamage = 0)
-    {
-        if (maxHp <= 0)
-            return;
-
-        var doomedFrom = System.Math.Max(0, hp - previewDamage);          // 1er PV menacé (borne basse)
-        var blink = 0.5f + 0.5f * MathF.Sin(_time * 12f);                 // clignotement des PV menacés
-
-        const int gap = 1;
-        // Bornes PARTAGÉES entre segments voisins : on arrondit une seule fois chaque frontière, puis
-        // on retire 1 px à droite pour l'espace. Gap toujours constant, largeurs à ±1 px près.
-        for (var i = 0; i < maxHp; i++)
-        {
-            var left = area.X + (int)System.Math.Round((double)i * area.Width / maxHp);
-            var right = area.X + (int)System.Math.Round((double)(i + 1) * area.Width / maxHp);
-            var w = System.Math.Max(1, right - left - (i < maxHp - 1 ? gap : 0));
-
-            Color col;
-            if (i >= hp)
-                col = Palette.Purple2;                                    // PV manquant
-            else if (previewDamage > 0 && i >= doomedFrom)
-                col = Color.Lerp(Palette.Purple2, Palette.Purple5, blink);// PV menacé : clignote plein↔vide
-            else
-                col = Palette.Purple5;                                    // PV plein
-            DrawRect(sb, new Rectangle(left, area.Y, w, area.Height), col);
-        }
     }
 
     // ── Icônes (placeholders dessinés ; brancher un PNG = déposer le fichier nommé ci-dessous) ───
@@ -17513,6 +17498,12 @@ public sealed partial class GameplayScene : Scene
     private void DrawCardTierAndDomaine(SpriteBatch sb, int tier, Domaine domaine, Rectangle rect)
     {
         var name = Loc.TOr($"domaine.{domaine}".ToLowerInvariant(), domaine.ToString().ToUpperInvariant());
+        if (_pvpInfo != null)
+        {
+            // Multi : pas de tier, seulement le domaine (les tiers n'y disent rien du rapport de force).
+            Context.Font.DrawCentered(sb, name, new Rectangle(rect.X, rect.Y + 3, rect.Width, Context.Font.LineHeight(1)), 1, Palette.Cyan1);
+            return;
+        }
         const int gap = 5;
         var nameW = Context.Font.Measure(name, 1);
         var startX = rect.X + (rect.Width - (TierIconW + gap + nameW)) / 2;
@@ -17716,7 +17707,7 @@ public sealed partial class GameplayScene : Scene
     /// carte (330) + pile (200) = toute la hauteur du canvas.
     /// </summary>
     private void DrawKeywordPopupsBelow(SpriteBatch sb, UnitClass c, Rectangle card, IReadOnlyList<Equipment>? equip = null,
-        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player, int bottomLimit = int.MaxValue)
     {
         var h = KeywordStackHeight(c, card.Width, equip, buffs, granted, faction);
         if (h == 0)
@@ -17725,7 +17716,7 @@ public sealed partial class GameplayScene : Scene
         // Ordonnée qu'aurait la pile une fois remontée : si elle mord sur la carte, on passe à côté.
         if (VirtualViewport.Height - KwScreenMargin - h >= card.Bottom)
         {
-            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs, granted, faction);
+            DrawKeywordPopupStack(sb, c, new Point(card.X, card.Bottom + 10), card.Width, equip, buffs, granted, faction, bottomLimit);
             return;
         }
 
@@ -17749,22 +17740,52 @@ public sealed partial class GameplayScene : Scene
     private int KwTitleH => Context.Font.GlyphHeight + 4;
 
     /// <summary>Popups d'une classe pré-calculés (lignes repliées + hauteur) pour une largeur donnée.</summary>
-    private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight)> KeywordBoxes(
+    private List<(UnitKeywords.Keyword Kw, List<string> Lines, int H, bool Reinforced, string? Highlight, bool Reminder)> KeywordBoxes(
         UnitClass c, int width, IReadOnlyList<Equipment>? equip, CommandBuffs? buffs, IReadOnlyList<string>? granted = null,
-        Faction faction = Faction.Player)
+        Faction faction = Faction.Player, bool reminders = false)
     {
-        var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?)>();
+        var boxes = new List<(UnitKeywords.Keyword, List<string>, int, bool, string?, bool)>();
+        void AddBox(UnitKeywords.Keyword kw, bool reminder)
+        {
+            // Le renforcement d'arbre ne s'affiche que pour les unités du JOUEUR (l'ennemi n'en profite pas).
+            var (desc, highlight, reinforced) = KeywordDisplay(kw, faction == Faction.Player);
+            var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);
+            boxes.Add((kw, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad, reinforced, highlight, reminder));   // titre + lignes
+        }
+        // Rappels (facultatifs) : traits CITÉS par la description d'un trait porté (Aura de rempart → Rempart)
+        // que le pion n'a pas lui-même, chacun une seule fois, juste sous le trait qui le cite.
+        HashSet<string>? present = null;
+        void AddReminders(string trait)
+        {
+            if (!reminders)
+                return;
+            foreach (var r in Trait.ReferencedBy(trait))
+            {
+                present ??= new HashSet<string>(c.Traits.Concat(equip.TraitsOf())
+                    .Concat((buffs ?? CommandBuffs.None).Traits).Concat(granted ?? (IEnumerable<string>)System.Array.Empty<string>()));
+                if (present.Add(r))
+                    AddBox(UnitKeywords.For(r), true);
+            }
+        }
         // Les traits VENUS D'UN OBJET sont déjà décrits en tête de pile par le cadre de cet objet
         // (cf. DrawKeywordPopupStack) : leur redonner un popup affichait deux fois la même description.
-        var fromEquip = new HashSet<string>(equip.TraitsOf().Select(t => UnitKeywords.For(t).Label));
+        // Leurs rappels ouvrent donc la liste, juste sous les cadres d'objets.
+        var fromEquip = new HashSet<string>();
+        foreach (var t in equip.TraitsOf())
+        {
+            fromEquip.Add(UnitKeywords.For(t).Label);
+            AddReminders(t);
+        }
+        var traitByLabel = new Dictionary<string, string>();
+        foreach (var t in c.Traits.Concat((buffs ?? CommandBuffs.None).Traits))
+            traitByLabel.TryAdd(UnitKeywords.For(t).Label, t);
         foreach (var kw in KeywordsFor(c, equip, buffs, granted))
         {
             if (fromEquip.Contains(kw.Label))
                 continue;
-            // Le renforcement d'arbre ne s'affiche que pour les unités du JOUEUR (l'ennemi n'en profite pas).
-            var (desc, highlight, reinforced) = KeywordDisplay(kw, faction == Faction.Player);
-            var lines = WrapText(SentenceCase(desc), width - 2 * KwPad, 1);
-            boxes.Add((kw, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad, reinforced, highlight));   // titre + lignes
+            AddBox(kw, false);
+            if (traitByLabel.TryGetValue(kw.Label, out var trait))
+                AddReminders(trait);
         }
         return boxes;
     }
@@ -17788,19 +17809,23 @@ public sealed partial class GameplayScene : Scene
 
     /// <summary>Hauteur totale de la pile : cadres d'équipement puis popups de mots-clés (0 si les deux sont vides).</summary>
     private int KeywordStackHeight(UnitClass c, int width, IReadOnlyList<Equipment>? equip = null, CommandBuffs? buffs = null,
-        IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
+        IReadOnlyList<string>? granted = null, Faction faction = Faction.Player, bool reminders = false)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction, reminders);
         var kw = boxes.Count == 0 ? 0 : boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
         var eq = EquipPanelsHeight(equip, width);
         return eq == 0 ? kw : kw == 0 ? eq - KwGap : eq + kw;   // sans popup derrière, l'écart final ne sert plus
     }
 
     private void DrawKeywordPopupStack(SpriteBatch sb, UnitClass c, Point origin, int width, IReadOnlyList<Equipment>? equip = null,
-        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player)
+        CommandBuffs? buffs = null, IReadOnlyList<string>? granted = null, Faction faction = Faction.Player, int bottomLimit = int.MaxValue)
     {
-        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction);
-        var total = KeywordStackHeight(c, width, equip, buffs, granted, faction);
+        // Rappels de traits cités : seulement si la pile, eux compris, tient sous son point d'ancrage sans remonter.
+        var total = KeywordStackHeight(c, width, equip, buffs, granted, faction, reminders: true);
+        var reminders = origin.Y + total <= System.Math.Min(bottomLimit, VirtualViewport.Height - KwScreenMargin);
+        if (!reminders)
+            total = KeywordStackHeight(c, width, equip, buffs, granted, faction);
+        var boxes = KeywordBoxes(c, width, equip, buffs, granted, faction, reminders);
         if (total == 0)
             return;
 
@@ -17825,13 +17850,13 @@ public sealed partial class GameplayScene : Scene
             return;
 
         var addedLabels = AddedKeywordLabels(c, equip, buffs, granted);
-        foreach (var (kw, lines, h, reinforced, highlight) in boxes)
+        foreach (var (kw, lines, h, reinforced, highlight, reminder) in boxes)
         {
             var box = new Rectangle(origin.X, y, width, h);
             Context.Style.DrawPanel(sb, box);
 
             // Nom du trait : ROUGE si renforcé par l'arbre, sinon JAUNE si non natif (équipement/arbre/aura), sinon bleu.
-            var labelColor = reinforced ? ReinforcedTraitColor
+            var labelColor = reminder ? UnitKeywords.ReminderColor : reinforced ? ReinforcedTraitColor
                 : addedLabels != null && addedLabels.Contains(kw.Label) ? GrantedKeywordColor : Palette.Cyan1;
             Context.Font.Draw(sb, kw.Label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, labelColor);
             var ly = box.Y + KwPad + KwTitleH;
@@ -17840,7 +17865,7 @@ public sealed partial class GameplayScene : Scene
             {
                 // Description : la valeur MONTÉE (highlight) ressort en rouge quand le trait est renforcé.
                 if (highlight == null)
-                    Context.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                    Context.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, reminder ? Palette.Blue1 : Palette.White, preserveCase: true);
                 else
                     highlightDrawn = DrawHighlightedLine(sb, line, box.X + KwPad, ly, highlight, highlightDrawn);
                 ly += KwLineH;
@@ -18811,8 +18836,8 @@ public sealed partial class GameplayScene : Scene
     private const int PostCombatTitleH = 72;                                   // titre (échelle 3) + sous-titre (échelle 1)
     private const int PostCombatGap = 8;
     private const int PostCombatBtnH = 30;
-    // 336 = 330 d'origine + 6 : la rangée sprite + plateau 7×7 (115 px) remplace la bande sprite + domaine.
-    private const int DraftCardH = 336;
+    // 342 = 330 d'origine + 6 (la rangée sprite + plateau 7×7 remplace la bande sprite + domaine) + 6 (ligne de stat PV).
+    private const int DraftCardH = 342;
 
     /// <summary>
     /// Haut de la rangée de cartes : centrée verticalement, mais JAMAIS sous le cadre de titre. En 1440p le
@@ -18899,7 +18924,7 @@ public sealed partial class GameplayScene : Scene
         {
             for (var i = 0; i < cards.Count; i++)
                 if (cards[i] is { } c)
-                    DrawKeywordPopupsBelow(sb, c, DraftCardRect(i, cards.Count, rowW, vpH, topY));
+                    DrawKeywordPopupsBelow(sb, c, DraftCardRect(i, cards.Count, rowW, vpH, topY), bottomLimit: bottomLimit);
             return;
         }
 
@@ -20156,6 +20181,10 @@ public sealed partial class GameplayScene : Scene
         var topSlack = tile;
         float centerX = (centerWidth - pxW) / 2f;
         float centerY = (viewport.Height - pxH) / 2f;
+        // Multi : le plateau descend du débord des sprites (ils dépassent AU-DESSUS de leur case) pour que les
+        // pièces de la rangée du haut soient entières au cadrage par défaut ; pan, zoom et dézoom restent libres.
+        if (_pvpInfo != null)
+            centerY += spriteHeight - tile;
         float ox = ClampAxis(centerX, _camera.X, pxW, centerWidth, margin, slack, out float cx);
         float oy = ClampAxis(centerY, _camera.Y, pxH, viewport.Height, margin, slack, out float cy, topSlack);
         _camera = new Vector2(cx, cy);          // ré-écrit le pan borné (pas de dérive hors limites)

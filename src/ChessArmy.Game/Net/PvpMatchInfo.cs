@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using ChessArmy.Core.Battle;
 using ChessArmy.Core.Pvp;
+using ChessArmy.Engine.Localization;
 
 namespace ChessArmy.Game.Net;
 
@@ -46,7 +47,7 @@ public sealed class PvpMatchInfo
 
     /// <summary>Nom affiché de l'adversaire : celui d'un bot porte « (BOT) », et l'armée copiée s'il y en a une.</summary>
     public string DisplayName => IsBot
-        ? BotCopiedFrom == null ? $"{OpponentName} (BOT)" : $"{OpponentName} (BOT, {BotCopiedFrom})"
+        ? BotCopiedFrom == null ? $"{OpponentName} ({Loc.T("pvp.bot_tag")})" : $"{OpponentName} ({Loc.T("pvp.bot_tag")}, {BotCopiedFrom})"
         : OpponentName;
 
     private static readonly string[] BotNames =
@@ -59,14 +60,22 @@ public sealed class PvpMatchInfo
     public static PvpMatchInfo ForBot(PvpBuild localBuild, int rating, Random rng)
     {
         var config = PvpConfig.Current;
-        var key = PvpRanks.BotKey(rating);
-        var bot = config.Bots.TryGetValue(key, out var def) ? def
-            : config.Bots.Values.FirstOrDefault() ?? new PvpBotDef(0.75, false, Array.Empty<PvpBuild>());
-        var army = bot.Armies.Count > 0 ? bot.Armies[rng.Next(bot.Armies.Count)].Clone() : PvpProfile.DefaultBuild();
+        var bot = PvpRanks.BotFor(rating);   // un niveau d'IA par division
+        var pool = bot.Armies.Count > 0 ? bot.Armies : config.BotArmies;
+        var army = pool.Count > 0 ? bot.ArmyFor(pool[rng.Next(pool.Count)], rng) : PvpProfile.DefaultBuild();   // équipements tirés à chaque partie (Argent+)
+        // En priorité, la formation EXACTE d'un vrai joueur du même rang (classement Steam) ; peu de joueurs =
+        // souvent une armée habituelle, pour ne pas croiser toujours la même.
+        if (PvpLeaderboard.PickPlayerFormation(PvpLeaderboardService.Entries, PvpRanks.BotKey(rating),
+                PvpLeaderboardService.LocalId, rng) is { } copied)
+            army = copied;
+        // Un nom = toujours le même style de jeu (agressif, prudent, garde du commandant…).
+        var styles = config.BotStyles.Where(s => s.Names.Count > 0).ToList();
+        var style = styles.Count > 0 ? styles[rng.Next(styles.Count)] : null;
+        var name = style != null ? style.Names[rng.Next(style.Names.Count)] : BotNames[rng.Next(BotNames.Length)];
         return new PvpMatchInfo
         {
-            Bot = bot,
-            OpponentName = BotNames[rng.Next(BotNames.Length)],
+            Bot = bot with { Style = style },
+            OpponentName = name,
             OpponentRating = rating,
             LocalRating = rating,
             Seed = rng.Next(),

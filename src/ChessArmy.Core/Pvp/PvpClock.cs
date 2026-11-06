@@ -22,6 +22,10 @@ public sealed class PvpClock
 
     public float MoveSeconds { get; }
 
+    /// <summary>Durée de jeu cumulée : seul le temps où la pendule a tourné compte (ni animations, ni
+    /// déconnexion).</summary>
+    public float Elapsed { get; private set; }
+
     /// <summary>Temps restant pour le coup en cours.</summary>
     public float MoveLeft { get; private set; }
 
@@ -45,6 +49,7 @@ public sealed class PvpClock
     {
         if (Flagged != null)
             return false;
+        Elapsed += dt;
         _reserve[(int)_turn] -= dt;
         MoveLeft -= dt;
         if (_reserve[(int)_turn] > 0f && MoveLeft > 0f)

@@ -22,7 +22,7 @@ public static class PvpSetup
     /// <paramref name="localStarts"/> = le joueur local joue le premier coup (tirage au sort).</summary>
     public static Match CreateMatch(bool mirrored, bool localStarts, int seed, Battlefield? terrain = null,
         IEnumerable<Cell>? cover = null) =>
-        new(Size, Size, terrain, cover, rng: new System.Random(seed),
+        new(Size, Size, terrain, cover, rng: new SeededRandom(seed),
             firstTurn: localStarts ? Faction.Player : Faction.Enemy, mirrorRows: mirrored, pvpRules: true);
 
     /// <summary>Tirage au sort du premier joueur, dérivé de la graine de l'hôte (les deux clients le connaissent).</summary>
@@ -38,9 +38,11 @@ public static class PvpSetup
         var front = faction == Faction.Player ? Size - 2 : 1;
         if (PvpCatalog.SpawnCommander(build.CommanderId, faction) is { } king)
             match.Place(new Cell(PvpBuild.KingColumn, back), king);
+        if (PvpCatalog.SpawnCompanion(build.CommanderId, faction) is { } companion)
+            match.Place(new Cell(PvpBuild.CompanionColumn, back), companion);   // DUO : Basile, à côté du commandant
         foreach (var slot in build.Slots)
         {
-            if (PvpBuild.IsKingCell(slot.Column, slot.Line) || slot.Column is < 0 or >= Size)
+            if (build.IsReserved(slot.Column, slot.Line) || slot.Column is < 0 or >= Size)
                 continue;
             var cell = new Cell(slot.Column, slot.Line == PvpBuild.BackLine ? back : front);
             if (match.UnitAt(cell) == null && PvpCatalog.Spawn(slot, faction) is { } unit)
@@ -59,7 +61,7 @@ public static class PvpSetup
         if (!match.IsOver && match.CurrentTurn != actor)
             hits = match.ApplySeismes(match.CurrentTurn);
         if (!match.IsOver && match.IsDeadPosition())
-            match.EndInDraw();
+            match.EndInDraw(MatchEndReason.DeadPosition);
         return hits;
     }
 

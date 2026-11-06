@@ -265,6 +265,24 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             _input, _scenes, Window, _settings, _audio, _sounds, _music, this, _saves, Exit);
 
         ConfigureVirtualScreen();
+#if DEBUG
+        // Captures de l'écran Armée du multi (-pvpshots <dossier>) : aucune scène normale, le jeu se ferme à la fin.
+        _pvpShots = Scenes.PvpShots.FromArgs(_context, Exit);
+        if (_pvpShots != null)
+            return;
+        // Captures des cartes d'information d'unité (-cardshots <dossier>).
+        _cardShots = Scenes.CardShots.FromArgs(_context, Exit);
+        if (_cardShots != null)
+            return;
+        // Capture d'un combat multi contre un bot Argent équipé (-pvpbattleshot <fichier.png>).
+        _battleShot = Scenes.PvpBattleShot.FromArgs(_context);
+        if (_battleShot != null)
+            return;
+        // Captures de l'écran de fin multi, données simulées (-pvpendshots <dossier> [filtre]).
+        _pvpEndShots = Scenes.PvpEndShots.FromArgs(_context, Exit);
+        if (_pvpEndShots != null)
+            return;
+#endif
         _scenes.Change(new SplashScene(_context));   // logo du studio, qui enchaîne sur le menu principal
     }
 
@@ -287,6 +305,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         _input.Update(gameTime, IsActive);   // hors focus : entrée gelée (pas de clic « à travers » une fenêtre devant)
         if (_input.WasKeyPressed(Keys.F3))
             _showFps = !_showFps;   // bascule l'overlay de diagnostic FPS / ms
+#if DEBUG
+        if (_pvpShots == null && _cardShots == null && _pvpEndShots == null)
+#endif
         _scenes.Update(gameTime);
         _music.Update(gameTime);   // fondus + enchaînement de playlist, indépendants de la scène
         SteamService.Update();     // callbacks Steam (stats reçues → succès en attente)
@@ -308,8 +329,35 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         InactiveSleepTime = overWindow ? InactiveHoverSleep : InactiveBackgroundSleep;
     }
 
+#if DEBUG
+    private Scenes.PvpShots? _pvpShots;
+    private Scenes.PvpEndShots? _pvpEndShots;
+    private Scenes.CardShots? _cardShots;
+    private Scenes.PvpBattleShot? _battleShot;
+#endif
+
     protected override void Draw(GameTime gameTime)
     {
+#if DEBUG
+        if (_cardShots != null)
+        {
+            _cardShots.Tick(gameTime);
+            base.Draw(gameTime);
+            return;
+        }
+        if (_pvpShots != null)
+        {
+            _pvpShots.Tick(gameTime);
+            base.Draw(gameTime);
+            return;
+        }
+        if (_pvpEndShots != null)
+        {
+            _pvpEndShots.Tick(gameTime);
+            base.Draw(gameTime);
+            return;
+        }
+#endif
         UpdateFrameStats();   // mesure la cadence réelle (chronomètre) même sous fixed timestep
 
         // 1. Les scènes dessinent dans la cible virtuelle (résolution logique fixe).
@@ -385,6 +433,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
             _context.Font.Draw(_spriteBatch, _fpsText, new Vector2(6, 6), 2, Color.Lime);
         }
         _spriteBatch.End();
+#if DEBUG
+        _battleShot?.AfterDraw(GraphicsDevice, Exit);
+#endif
 
         base.Draw(gameTime);
     }

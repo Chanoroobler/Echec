@@ -36,7 +36,7 @@ public sealed partial class GameplayScene
     private bool _pvpDrawPending;
     private float _pvpDrawRefused;
     private float _pvpEnemyFlagTimer;
-    private Rectangle _pvpMenuRect, _pvpDrawRect, _pvpAcceptRect, _pvpRefuseRect;
+    private Rectangle _pvpDrawRect, _pvpAcceptRect, _pvpRefuseRect;
 
     private PvpSession? PvpNet => _pvpInfo?.Session;
 
@@ -69,7 +69,11 @@ public sealed partial class GameplayScene
         PvpSetup.PlaceArmy(_match, info.OpponentBuild, Faction.Enemy);
         _enemyController = info.Session is { } session
             ? new RemoteBattleController(session)
-            : new PvpBotController(info.Bot ?? new PvpBotDef(0.75, false, Array.Empty<PvpBuild>()), info.Seed + 1);
+            : new PvpBotController(info.Bot ?? PvpBotDef.Default, info.Seed + 1,
+                // Copies de la partie pour les bots qui calculent : même graine, mêmes armées, même terrain, et le
+                // journal des coups tenu par la scène (le bot joue toujours dans le repère de l'hôte).
+                new PvpForker(info.Seed, info.LocalStarts, _battlefield, _bushCells, info.LocalBuild, info.OpponentBuild),
+                _battleLog);
         var config = PvpConfig.Current;
         _pvpClock = new PvpClock(config.ReserveSeconds, config.MoveSeconds);
         _pvpClock.BeginTurn(_match.CurrentTurn);
@@ -123,9 +127,9 @@ public sealed partial class GameplayScene
             if (session != null)
             {
                 if (session.OpponentLeft)
-                    _match.Concede(Faction.Enemy);   // abandon de l'adversaire
+                    _match.Concede(Faction.Enemy, MatchEndReason.Resign);   // abandon de l'adversaire
                 else if (session.Silence > PvpDisconnectAfter + PvpConfig.Current.ReconnectSeconds)
-                    _match.Concede(Faction.Enemy);   // pas revenu à temps
+                    _match.Concede(Faction.Enemy, MatchEndReason.Disconnect);   // pas revenu à temps
                 if (session.DrawAnswer is { } answer)
                 {
                     session.DrawAnswer = null;
@@ -140,7 +144,7 @@ public sealed partial class GameplayScene
             {
                 _pvpEnemyFlagTimer += dt;
                 if (_pvpEnemyFlagTimer > PvpOpponentFlagGrace)
-                    _match.Concede(Faction.Enemy);   // l'adversaire ne s'est pas déclaré perdant : on conclut
+                    _match.Concede(Faction.Enemy, MatchEndReason.Timeout);   // l'adversaire ne s'est pas déclaré perdant : on conclut
             }
             if (_match.IsOver)
                 return false;   // l'issue sera traitée par CheckBattleEnd, une fois le plateau posé
@@ -152,12 +156,7 @@ public sealed partial class GameplayScene
         _sparks.Update(dt);
         if (_damagePopups.HasActive)
             _damagePopups.Update(dt, BuildLayout(), _sparks);
-        if (Context.Input.WasConfirmPressed || Context.Input.WasKeyPressed(Keys.Enter)
-            || (Context.Input.WasLeftClicked && _pvpMenuRect.Contains(Context.Input.MousePosition)))
-        {
-            Context.Sounds.Play("menu_click");
-            Context.Scenes.Change(new PvpLobbyScene(Context));   // Unload libère la session (on quitte le lobby)
-        }
+        UpdatePvpEndScreen(dt);   // fenêtre de fin (GameplayScene.PvpEnd.cs)
         return true;
     }
 
@@ -245,9 +244,13 @@ public sealed partial class GameplayScene
 
         if (_pvpValid && !PvpProfile.Tampered)
         {
-            _pvpReward = PvpProfileStore.Current.RecordResult(outcome, KillsByPlayer(), info.OpponentRating, info.Ranked);
+            _pvpReward = PvpProfileStore.Current.RecordResult(outcome, KillsByPlayer(), info.OpponentRating, info.Ranked,
+                info.OpponentName, info.IsBot, DateTime.UtcNow);
             PvpProfileStore.Save();
+            if (info.Ranked)
+                PvpLeaderboardService.Upload(PvpProfileStore.Current, info.LocalBuild);   // classement Steam : cote, bilan, formation
         }
+        BeginPvpEndScreen(outcome);
         Context.Sounds.Play(outcome == PvpOutcome.Win ? "victory" : outcome == PvpOutcome.Loss ? "defeat" : "reward");
     }
 
@@ -261,8 +264,11 @@ public sealed partial class GameplayScene
         if (!_pvpRecorded && _match != null && !_match.IsOver && !PvpProfile.Tampered)
         {
             _pvpRecorded = true;
-            PvpProfileStore.Current.RecordResult(PvpOutcome.Loss, KillsByPlayer(), _pvpInfo.OpponentRating, _pvpInfo.Ranked);
+            PvpProfileStore.Current.RecordResult(PvpOutcome.Loss, KillsByPlayer(), _pvpInfo.OpponentRating, _pvpInfo.Ranked,
+                _pvpInfo.OpponentName, _pvpInfo.IsBot, DateTime.UtcNow);
             PvpProfileStore.Save();
+            if (_pvpInfo.Ranked)
+                PvpLeaderboardService.Upload(PvpProfileStore.Current, _pvpInfo.LocalBuild);
         }
         PvpNet?.Dispose();
     }
@@ -281,128 +287,96 @@ public sealed partial class GameplayScene
         sb.End();
     }
 
+    /// <summary>
+    /// HUD du combat multi, RIEN devant le plateau (centré, entier) : la colonne de GAUCHE est la nôtre (en bas,
+    /// près de nos pièces), celle de DROITE l'adversaire (en haut, près des siennes) avec en dessous les alertes,
+    /// la proposition d'égalité reçue et, en bas, le bouton pour en proposer une. Chaque panneau donne le nom, la
+    /// réserve de temps et, pour le camp qui a la main, le temps restant pour ce coup.
+    /// </summary>
     private void DrawPvpTopBar(SpriteBatch sb, Viewport viewport, PvpMatchInfo info)
     {
         var font = Context.Font;
+        // Colonnes fixes de part et d'autre du plateau AU CADRAGE par défaut (elles ne bougent pas avec la caméra).
+        var boardW = Columns * ChessArmy.Engine.Rendering.GridLayout.DefaultTileSize * FitZoom();
+        var boardLeft = (viewport.Width - boardW) / 2;
+        var boardRight = boardLeft + boardW;
+        const int pad = 8;
+        var leftCol = new Rectangle(pad, pad, Math.Max(40, boardLeft - 2 * pad), viewport.Height - 2 * pad);
+        var rightCol = new Rectangle(boardRight + pad, pad, Math.Max(40, viewport.Width - boardRight - 2 * pad), viewport.Height - 2 * pad);
         var mine = _match.CurrentTurn == Faction.Player;
-        var turn = mine ? Loc.T("pvp.your_turn") : Loc.T("pvp.their_turn", info.DisplayName);
-        var center = $"{turn}  {PvpUi.Clock(_pvpClock.MoveLeft)}";
-        var w = font.Measure(center, 2) + 40;
-        var box = new Rectangle((viewport.Width - w) / 2, 10, w, 30);
-        Context.Style.DrawPanel(sb, box);
-        var urgent = _pvpClock.MoveLeft < 10f;
-        font.DrawCentered(sb, center, box, 2, urgent ? Palette.Purple5 : mine ? Palette.Yellow2 : Palette.Blue1);
 
-        // Réserves : la nôtre à gauche, celle de l'adversaire à droite.
-        DrawReserve(sb, new Rectangle(box.X - 150, 12, 140, 26), Loc.T("pvp.you"), _pvpClock.Reserve(Faction.Player), mine);
-        DrawReserve(sb, new Rectangle(box.Right + 10, 12, 140, 26), info.DisplayName, _pvpClock.Reserve(Faction.Enemy), !mine);
+        // Notre panneau : en bas à gauche ; celui de l'adversaire : en haut à droite.
+        var mePanel = SidePanel(leftCol, mine, fromBottom: true);
+        DrawSide(sb, mePanel, Loc.T("pvp.you"), _pvpClock.Reserve(Faction.Player), mine);
+        var themPanel = SidePanel(rightCol, !mine, fromBottom: false);
+        DrawSide(sb, themPanel, info.DisplayName, _pvpClock.Reserve(Faction.Enemy), !mine);
 
-        var y = box.Bottom + 6;
+        var y = themPanel.Bottom + 8;
         if (PvpOpponentDisconnected && PvpNet is { } s)
         {
             var left = PvpDisconnectAfter + PvpConfig.Current.ReconnectSeconds - s.Silence;
-            font.DrawCentered(sb, Loc.T("pvp.disconnected", PvpUi.Clock(left)), new Rectangle(0, y, viewport.Width, 7), 1, Palette.Purple5);
-            y += 14;
+            y = DrawSideLine(sb, Loc.T("pvp.disconnected", PvpUi.Clock(left)), rightCol, y);
         }
         if (_pvpDesync)
-        {
-            font.DrawCentered(sb, Loc.T("pvp.desync"), new Rectangle(0, y, viewport.Width, 7), 1, Palette.Purple5);
-            y += 14;
-        }
+            y = DrawSideLine(sb, Loc.T("pvp.desync"), rightCol, y);
 
         if (_match.IsOver)
             return;
-        // Bouton d'égalité (l'indice suit le périphérique : Y à la manette).
-        var label = _pvpDrawPending ? Loc.T("pvp.draw_sent")
-            : _pvpDrawRefused > 0f ? Loc.T("pvp.draw_refused")
-            : (Context.Input.UsingGamepad ? "(Y) " : "") + Loc.T("pvp.offer_draw");
-        var bw = font.Measure(label, 1) + 24;
-        _pvpDrawRect = new Rectangle(viewport.Width - bw - 10, viewport.Height - 34, bw, 24);
-        PvpUi.Button(Context, sb, _pvpDrawRect, label, focused: false, enabled: !_pvpDrawPending && _pvpDrawRefused <= 0f);
 
+        // Proposition d'égalité reçue : dans la colonne de l'adversaire, boutons l'un sous l'autre.
         if (PvpNet is { DrawOffered: true })
         {
             var gp = Context.Input.UsingGamepad;
-            var title = Loc.T("pvp.draw_offered", info.DisplayName);
-            var accept = (gp ? "(A) " : "") + Loc.T("pvp.accept");
-            var refuse = (gp ? "(B) " : "") + Loc.T("pvp.refuse");
-            var pw = Math.Max(font.Measure(title, 1) + 40, 300);
-            var panel = new Rectangle((viewport.Width - pw) / 2, viewport.Height / 2 - 40, pw, 80);
+            var title = PvpArt.Fit(font, Loc.T("pvp.draw_offered", info.DisplayName), rightCol.Width - 12, 1);
+            var panel = new Rectangle(rightCol.X, y, rightCol.Width, 92);
             Context.Style.DrawPanel(sb, panel);
-            font.DrawCentered(sb, title, new Rectangle(panel.X, panel.Y + 12, panel.Width, 7), 1, Palette.Yellow2);
-            var half = (pw - 48) / 2;
-            _pvpAcceptRect = new Rectangle(panel.X + 16, panel.Bottom - 40, half, 26);
-            _pvpRefuseRect = new Rectangle(_pvpAcceptRect.Right + 16, panel.Bottom - 40, half, 26);
-            PvpUi.Button(Context, sb, _pvpAcceptRect, accept, focused: false);
-            PvpUi.Button(Context, sb, _pvpRefuseRect, refuse, focused: false);
+            font.DrawCentered(sb, title, new Rectangle(panel.X, panel.Y + 10, panel.Width, 7), 1, Palette.Yellow2);
+            _pvpAcceptRect = new Rectangle(panel.X + 10, panel.Y + 28, panel.Width - 20, 24);
+            _pvpRefuseRect = new Rectangle(panel.X + 10, _pvpAcceptRect.Bottom + 6, panel.Width - 20, 24);
+            PvpUi.Button(Context, sb, _pvpAcceptRect, (gp ? "(A) " : "") + Loc.T("pvp.accept"), focused: false);
+            PvpUi.Button(Context, sb, _pvpRefuseRect, (gp ? "(B) " : "") + Loc.T("pvp.refuse"), focused: false);
         }
+
+        // Bouton d'égalité, en bas de la colonne de droite (l'indice suit le périphérique : Y à la manette).
+        var label = _pvpDrawPending ? Loc.T("pvp.draw_sent")
+            : _pvpDrawRefused > 0f ? Loc.T("pvp.draw_refused")
+            : (Context.Input.UsingGamepad ? "(Y) " : "") + Loc.T("pvp.offer_draw");
+        label = PvpArt.Fit(font, label, rightCol.Width - 16, 1);
+        _pvpDrawRect = new Rectangle(rightCol.X, rightCol.Bottom - 24, rightCol.Width, 24);
+        PvpUi.Button(Context, sb, _pvpDrawRect, label, focused: false, enabled: !_pvpDrawPending && _pvpDrawRefused <= 0f);
     }
 
-    private void DrawReserve(SpriteBatch sb, Rectangle box, string who, float seconds, bool active)
+    /// <summary>Panneau d'un camp dans sa colonne (plus haut s'il a la main : il affiche aussi le temps du coup).</summary>
+    private static Rectangle SidePanel(Rectangle column, bool active, bool fromBottom)
     {
-        Context.Style.DrawPanel(sb, box);
-        var color = seconds < 60f ? Palette.Purple5 : active ? Palette.Yellow2 : Palette.Blue1;
-        Context.Font.DrawCentered(sb, $"{who} {PvpUi.Clock(seconds)}", box, 1, color);
+        var height = active ? 92 : 52;
+        var width = Math.Min(column.Width, 220);
+        var x = column.X + (column.Width - width) / 2;
+        return new Rectangle(x, fromBottom ? column.Bottom - height : column.Y, width, height);
     }
 
-    private void DrawPvpEndPanel(SpriteBatch sb, Viewport viewport, PvpMatchInfo info)
+    private void DrawSide(SpriteBatch sb, Rectangle panel, string who, float reserve, bool active)
     {
-        DrawDim(sb, viewport);
         var font = Context.Font;
-        string title;
-        Color color;
-        if (_match.IsDraw)
-        {
-            title = Loc.T("pvp.draw");
-            color = Palette.Blue1;
-        }
-        else if (_match.Winner == Faction.Player)
-        {
-            title = PvpNet is { OpponentLeft: true } ? Loc.T("pvp.opponent_left") : Loc.T("pvp.victory");
-            color = Palette.Yellow2;
-        }
-        else
-        {
-            title = Loc.T("pvp.defeat");
-            color = Palette.Purple5;
-        }
-
-        var lines = new System.Collections.Generic.List<(string Text, Color Color)>();
-        if (!_pvpValid)
-            lines.Add((Loc.T("pvp.not_validated"), Palette.Purple5));
-        else if (_pvpReward is { } reward)
-        {
-            lines.Add((Loc.T("pvp.reward_points", reward.Points, PvpProfileStore.Current.Points), Palette.Yellow2));
-            if (reward.Ranked)
-                lines.Add((Loc.T("pvp.reward_rating", reward.RatingBefore, reward.RatingAfter,
-                    PvpUi.RankName(reward.RatingAfter)), Palette.White));
-            else
-                lines.Add((Loc.T("pvp.unranked"), Palette.Blue1));
-        }
-
-        var label = Loc.T("pvp.back_hub");
-        var prompt = Loc.T(Context.Input.UsingGamepad ? "recap.run_back_gp" : "recap.run_back");
-        const int Gap = 12;
-        var btnW = font.Measure(label, 1) + 40;
-        var contentW = new[] { font.Measure(title, 3), btnW, font.Measure(prompt, 1) }
-            .Concat(lines.Select(l => font.Measure(l.Text, 1))).Max();
-        var boxW = contentW + 2 * ModalPadH;
-        var boxH = ModalPadV + 21 + Gap + lines.Count * 14 + Gap + RecapBtnH + Gap + 7 + ModalPadV;
-        var panel = new Rectangle((viewport.Width - boxW) / 2, (viewport.Height - boxH) / 2, boxW, boxH);
         Context.Style.DrawPanel(sb, panel);
-        var y = panel.Y + ModalPadV;
-        font.DrawCentered(sb, title, new Rectangle(panel.X, y, panel.Width, 21), 3, color);
-        y += 21 + Gap;
-        foreach (var (text, c) in lines)
-        {
-            font.DrawCentered(sb, text, new Rectangle(panel.X, y, panel.Width, 7), 1, c);
-            y += 14;
-        }
-        y += Gap;
-        _pvpMenuRect = new Rectangle(panel.X + (panel.Width - btnW) / 2, y, btnW, RecapBtnH);
-        DrawRecapButton(sb, _pvpMenuRect, label);
-        y += RecapBtnH + Gap;
-        var a = 0.5f + 0.5f * MathF.Abs(MathF.Sin(_time * 3f));
-        font.DrawCentered(sb, prompt, new Rectangle(panel.X, y, panel.Width, 7), 1, Palette.Cyan1 * a);
+        var nameColor = active ? Palette.Yellow2 : Palette.Blue1;
+        font.DrawCentered(sb, PvpArt.Fit(font, who, panel.Width - 12, 1), new Rectangle(panel.X, panel.Y + 9, panel.Width, 7), 1, nameColor);
+        // Réserve de temps de la partie.
+        var reserveColor = reserve < 60f ? Palette.Purple5 : active ? Palette.White : Palette.Blue1;
+        font.DrawCentered(sb, PvpUi.Clock(reserve), new Rectangle(panel.X, panel.Y + 24, panel.Width, 14), 2, reserveColor);
+        if (!active)
+            return;
+        // Le camp qui a la main : son tour et le temps qu'il lui reste pour ce coup.
+        font.DrawCentered(sb, PvpArt.Fit(font, Loc.T("pvp.this_move"), panel.Width - 12, 1),
+            new Rectangle(panel.X, panel.Y + 50, panel.Width, 7), 1, Palette.Blue1);
+        var urgent = _pvpClock.MoveLeft < 10f;
+        font.DrawCentered(sb, PvpUi.Clock(_pvpClock.MoveLeft), new Rectangle(panel.X, panel.Y + 64, panel.Width, 14), 2,
+            urgent ? Palette.Purple5 : Palette.Yellow2);
+    }
+
+    private int DrawSideLine(SpriteBatch sb, string text, Rectangle column, int y)
+    {
+        Context.Font.DrawCentered(sb, PvpArt.Fit(Context.Font, text, column.Width, 1), new Rectangle(column.X, y, column.Width, 7), 1, Palette.Purple5);
+        return y + 14;
     }
 }

@@ -967,6 +967,7 @@ pvp.no_steam,STEAM N'EST PAS DISPONIBLE,STEAM IS NOT AVAILABLE,STEAM NON È DISP
 pvp.failed,LA RECHERCHE A ÉCHOUÉ,SEARCH FAILED,RICERCA FALLITA,SUCHE FEHLGESCHLAGEN,LA BUSQUEDA HA FALLADO,WYSZUKIWANIE NIEUDANE,ARAMA BASARISIZ,搜索失败
 pvp.cancel,ANNULER,CANCEL,ANNULLA,ABBRECHEN,CANCELAR,ANULUJ,IPTAL,取消
 pvp.your_turn,À TOI DE JOUER,YOUR TURN,TOCCA A TE,DU BIST DRAN,TU TURNO,TWOJA TURA,SIRA SENDE,轮到你了
+pvp.this_move,TEMPS DU COUP,MOVE TIME,TEMPO MOSSA,ZUGZEIT,TIEMPO DE JUGADA,CZAS RUCHU,HAMLE SÜRESİ,本步时间
 pvp.their_turn,TOUR DE {0},{0}'S TURN,TURNO DI {0},{0} IST DRAN,TURNO DE {0},TURA: {0},SIRA: {0},{0} 的回合
 pvp.victory,VICTOIRE,VICTORY,VITTORIA,SIEG,VICTORIA,ZWYCIESTWO,ZAFER,胜利
 pvp.defeat,DÉFAITE,DEFEAT,SCONFITTA,NIEDERLAGE,DERROTA,PORAZKA,YENILGI,失败
@@ -990,11 +991,42 @@ pvp.profile_reset,PROFIL MULTI ILLISIBLE : REMIS À ZÉRO,MULTIPLAYER PROFILE UN
 pvp.offline,HORS LIGNE : PARTIES CONTRE UN BOT,OFFLINE: MATCHES AGAINST A BOT,OFFLINE: PARTITE CONTRO UN BOT,OFFLINE: SPIELE GEGEN EINEN BOT,SIN CONEXION: PARTIDAS CONTRA UN BOT,OFFLINE: GRY PRZECIW BOTOWI,CEVRIMDISI: BOTA KARSI MACLAR,离线：与机器人对战
 pvp.bot_in,UN BOT PREND LE RELAIS DANS {0} S,A BOT TAKES OVER IN {0} S,UN BOT SUBENTRA TRA {0} S,EIN BOT UBERNIMMT IN {0} S,UN BOT TOMA EL RELEVO EN {0} S,BOT PRZEJMIE ZA {0} S,{0} SN SONRA BOT DEVREYE GIRER,{0} 秒后由机器人接替
 pvp.ok,C'EST PARTI,LET'S GO,ANDIAMO,LOS GEHTS,VAMOS,DO DZIELA,HADI BAKALIM,开始
-pvp.tuto_title,BIENVENUE EN MULTI,WELCOME TO MULTIPLAYER,BENVENUTO NEL MULTIGIOCATORE,WILLKOMMEN IM MEHRSPIELER,BIENVENIDO AL MULTIJUGADOR,WITAJ W TRYBIE WIELOOSOBOWYM,COK OYUNCULUYA HOS GELDIN,欢迎来到多人模式
-pvp.tuto_1,TU COMMENCES AVEC LES PIONS T1 ET TROIS COMMANDANTS,YOU START WITH THE T1 PIECES AND THREE COMMANDERS,INIZI CON LE PEDINE T1 E TRE COMANDANTI,DU BEGINNST MIT DEN T1 FIGUREN UND DREI KOMMANDANTEN,EMPIEZAS CON LAS PIEZAS T1 Y TRES COMANDANTES,ZACZYNASZ Z PIONAMI T1 I TRZEMA DOWODCAMI,T1 PIYONLARI VE UC KOMUTANLA BASLARSIN,你从 T1 棋子和三位指挥官开始
-pvp.tuto_2,TU AS {0} POINTS POUR OUVRIR TES PREMIERS COFFRES,YOU HAVE {0} POINTS TO OPEN YOUR FIRST CHESTS,HAI {0} PUNTI PER APRIRE I TUOI PRIMI FORZIERI,DU HAST {0} PUNKTE FUR DEINE ERSTEN TRUHEN,TIENES {0} PUNTOS PARA ABRIR TUS PRIMEROS COFRES,MASZ {0} PUNKTOW NA PIERWSZE SKRZYNIE,ILK SANDIKLARIN ICIN {0} PUANIN VAR,你有 {0} 点数来打开首批宝箱
-pvp.tuto_3,CHAQUE PION TUÉ ET CHAQUE VICTOIRE RAPPORTENT DES POINTS,EVERY PIECE KILLED AND EVERY WIN EARNS POINTS,OGNI PEDINA UCCISA E OGNI VITTORIA DANNO PUNTI,JEDE GESCHLAGENE FIGUR UND JEDER SIEG BRINGT PUNKTE,CADA PIEZA ELIMINADA Y CADA VICTORIA DAN PUNTOS,KAZDY ZBITY PION I KAZDA WYGRANA DAJA PUNKTY,HER OLDURULEN PIYON VE HER ZAFER PUAN KAZANDIRIR,每击杀一枚棋子和每次胜利都会获得点数
-pvp.tuto_4,COMPOSE TES ARMÉES DANS MES ARMÉES AVANT DE JOUER,BUILD YOUR ARMIES IN MY ARMIES BEFORE PLAYING,COMPONI LE TUE ARMATE IN LE MIE ARMATE PRIMA DI GIOCARE,STELLE DEINE ARMEEN UNTER MEINE ARMEEN ZUSAMMEN,FORMA TUS EJERCITOS EN MIS EJERCITOS ANTES DE JUGAR,ZLOZ ARMIE W MOJE ARMIE PRZED GRA,OYNAMADAN ONCE ORDULARIMDA ORDUNU KUR,开战前在我的军队中组建军队
+# Tuto de l'écran multi (PvpArmyScene.Tutorial.cs) : une bulle par zone puis les règles du combat. Bouton « ? » pour le relancer.
+pvp.tuto.prev,PRÉCÉDENT,BACK,INDIETRO,ZURUCK,ATRAS,WSTECZ,GERI,上一步
+pvp.tuto.skip,PASSER,SKIP,SALTA,UBERSPRINGEN,SALTAR,POMIN,ATLA,跳过
+pvp.tuto.next,SUIVANT,NEXT,AVANTI,WEITER,SIGUIENTE,DALEJ,ILERI,下一步
+pvp.tuto.done,C'EST PARTI,LET'S GO,ANDIAMO,LOS GEHTS,VAMOS,DO DZIELA,HADI BAKALIM,开始
+pvp.tuto.welcome.title,BIENVENUE EN MULTI,WELCOME TO MULTIPLAYER,BENVENUTO NEL MULTIGIOCATORE,WILLKOMMEN IM MEHRSPIELER,BIENVENIDO AL MULTIJUGADOR,WITAJ W TRYBIE WIELOOSOBOWYM,COK OYUNCULUYA HOS GELDIN,多人对战
+pvp.tuto.welcome.text,"Ici, tu affrontes de vrais joueurs. Chaque partie compte pour ton rang.",Here you face real players. Every match counts toward your rank.,Qui affronti giocatori veri. Ogni partita conta per il tuo grado.,Hier triffst du auf echte Spieler. Jedes Spiel zählt für deinen Rang.,Aquí te enfrentas a jugadores de verdad. Cada partida cuenta para tu rango.,Tu grasz z prawdziwymi graczami. Każda gra liczy się do twojej rangi.,Burada gerçek oyunculara karşı oynarsın. Her maç rütbeni etkiler.,这里的对手都是真人。每一局都影响你的段位。
+pvp.tuto.profile.title,TON RANG,YOUR RANK,IL TUO GRADO,DEIN RANG,TU RANGO,TWOJA RANGA,RUTBEN,你的段位
+pvp.tuto.profile.text,"Gagne pour faire monter ta cote, et grimpe de Bronze jusqu'à Master.",Win to raise your rating and climb from Bronze all the way to Master.,Vinci per alzare il punteggio e sali dal Bronzo fino al Master.,"Gewinne, um deine Wertung zu steigern, und steig von Bronze bis zum Meister auf.",Gana para subir tu puntuación y escala de Bronce hasta Maestro.,"Wygrywaj, by podnieść ranking i wspiąć się od Brązu aż do Mistrza.",Puanını yükseltmek için kazan ve Bronz'dan Usta'ya kadar tırman.,赢下对战来提升分数。从初级一路升到大师！
+pvp.tuto.armies.title,TES ARMÉES,YOUR ARMIES,LE TUE ARMATE,DEINE ARMEEN,TUS EJERCITOS,TWOJE ARMIE,ORDULARIN,你的军队
+pvp.tuto.armies.text,Prépare jusqu'à 3 armées. Celle qui est sélectionnée part au combat.,Set up to 3 armies. The selected one goes into battle.,Prepara fino a 3 armate. Quella selezionata scende in campo.,Bereite bis zu 3 Armeen vor. Die ausgewählte zieht in den Kampf.,Prepara hasta 3 ejércitos. El seleccionado sale a combatir.,Przygotuj do 3 armii. Do walki rusza ta wybrana.,En fazla 3 ordu hazırla. Seçili olan savaşa çıkar.,最多可以准备三支军队。选中的军队会出战。
+pvp.tuto.commander.title,TON COMMANDANT,YOUR COMMANDER,IL TUO COMANDANTE,DEIN KOMMANDANT,TU COMANDANTE,TWOJ DOWODCA,KOMUTANIN,你的指挥官
+pvp.tuto.commander.text,"Choisis-le avec les flèches. Protège-le bien : s'il tombe, la partie est perdue.","Pick one with the arrows. Keep them safe: if they fall, you lose.","Sceglilo con le frecce. Proteggilo bene: se cade, hai perso.","Wähle ihn mit den Pfeilen. Pass gut auf ihn auf: Fällt er, hast du verloren.","Elígelo con las flechas. Protégelo bien: si cae, pierdes.","Wybierz go strzałkami. Pilnuj go: jeśli padnie, przegrywasz.",Oklarla seç. Onu iyi koru: düşerse kaybedersin.,用箭头选择指挥官。保护好他：他阵亡你就输了。
+pvp.tuto.board.title,LE PLATEAU,THE BOARD,LA SCACCHIERA,DAS BRETT,EL TABLERO,PLANSZA,TAHTA,棋盘
+pvp.tuto.board.text,Fais glisser tes pions de la réserve jusqu'à tes deux lignes bleues.,Drag your pieces from the reserve onto your two blue rows.,Trascina le pedine dalla riserva sulle tue due file blu.,Zieh deine Figuren aus der Reserve auf deine zwei blauen Reihen.,Arrastra tus piezas de la reserva a tus dos filas azules.,Przeciągnij piony z rezerwy na swoje dwa niebieskie rzędy.,Piyonlarını yedekten iki mavi sırana sürükle.,把棋子从预备区拖到你下方的 2 行格子上。
+pvp.tuto.board.text_pad,"Prends un pion avec A, puis pose-le sur une de tes deux lignes bleues.","Pick up a piece with A, then drop it on one of your two blue rows.","Prendi una pedina con A, poi posala su una delle tue due file blu.",Nimm eine Figur mit A und setz sie auf eine deiner zwei blauen Reihen.,Coge una pieza con A y colócala en una de tus dos filas azules.,Weź piona przyciskiem A i postaw go w jednym z twoich niebieskich rzędów.,A ile bir piyon al ve iki mavi sırandan birine koy.,按 A 拿起棋子。再放到你下方的 2 行格子上。
+pvp.tuto.reserve.title,LA RÉSERVE,THE RESERVE,LA RISERVA,DIE RESERVE,LA RESERVA,REZERWA,YEDEK,预备区
+pvp.tuto.reserve.text,Survole un pion pour voir ce qu'il sait faire. Les cadenas s'ouvrent avec les coffres.,Hover a piece to see what it can do. Locked ones open up through chests.,Passa sopra una pedina per vedere cosa sa fare. I lucchetti si aprono con i forzieri.,"Zeig auf eine Figur, um zu sehen, was sie kann. Schlösser öffnest du mit Truhen.",Pasa sobre una pieza para ver lo que sabe hacer. Los candados se abren con los cofres.,"Najedź na piona, by zobaczyć, co potrafi. Kłódki otwierasz skrzyniami.",Neler yapabildiğini görmek için bir piyonun üzerine gel. Kilitler sandıklarla açılır.,指向棋子就能看到它的能力。锁住的棋子要用宝箱解锁。
+pvp.tuto.budget.title,LE BUDGET,THE BUDGET,IL BUDGET,DAS BUDGET,EL PRESUPUESTO,BUDZET,BUTCE,预算
+pvp.tuto.budget.text,"Ton armée a {0} points à dépenser. Chaque pion a son prix, commandant compris.","Your army has {0} points to spend. Every piece has a price, commander included.","La tua armata ha {0} punti da spendere. Ogni pedina ha un prezzo, comandante compreso.","Deine Armee hat {0} Punkte. Jede Figur kostet etwas, auch der Kommandant.","Tu ejército tiene {0} puntos para gastar. Cada pieza tiene su precio, comandante incluido.","Twoja armia ma {0} punktów do wydania. Każdy pion ma swoją cenę, dowódca też.",Ordunun harcayacak {0} puanı var. Komutan dahil her piyonun bir fiyatı var.,你的军队有 {0} 点可以用。每个棋子都要花点数。指挥官也一样。
+pvp.tuto.equipment.title,LES ÉQUIPEMENTS,EQUIPMENT,EQUIPAGGIAMENTO,AUSRUSTUNG,EQUIPO,EKWIPUNEK,EKIPMAN,装备
+pvp.tuto.equipment.text,"Ils ont leur propre budget de {0} points. Un par pion, jamais sur le commandant. Et pas plus de {1} fois le même.","It has its own budget of {0} points. One per piece, never on the commander. And no more than {1} of the same item.","Ha un budget tutto suo di {0} punti. Uno per pedina, mai sul comandante. E non più di {1} uguali.","Sie hat ihr eigenes Budget von {0} Punkten. Eine pro Figur, nie für den Kommandanten. Und höchstens {1}-mal dieselbe.","Tiene su propio presupuesto de {0} puntos. Uno por pieza, nunca en el comandante. Y como mucho {1} iguales.","Ma własny budżet: {0} punktów. Jeden na piona, nigdy dla dowódcy. I najwyżej {1} takie same.","Kendi {0} puanlık bütçesi var. Piyon başına bir tane, komutana asla. Aynısından en fazla {1} tane.",装备另有 {0} 点。每个棋子一件。指挥官不能装备。同一件最多 {1} 个。
+pvp.tuto.points.title,GAGNER DES POINTS,EARN POINTS,GUADAGNA PUNTI,PUNKTE SAMMELN,GANA PUNTOS,ZDOBYWAJ PUNKTY,PUAN KAZAN,获得点数
+pvp.tuto.points.text,"+{0} par pion adverse éliminé, +{1} par victoire, +{2} pour un nul.","+{0} for each enemy piece taken, +{1} per win, +{2} for a draw.","+{0} per ogni pedina nemica eliminata, +{1} per vittoria, +{2} per un pareggio.","+{0} pro geschlagener Figur, +{1} pro Sieg, +{2} für ein Remis.","+{0} por cada pieza rival eliminada, +{1} por victoria, +{2} por empate.","+{0} za każdego zbitego piona, +{1} za wygraną, +{2} za remis.","Her rakip piyon için +{0}, zafer için +{1}, beraberlik için +{2}.",每杀一个敌方棋子 +{0}。胜利 +{1}。和局 +{2}。
+pvp.tuto.chests.title,LES COFFRES,CHESTS,FORZIERI,TRUHEN,COFRES,SKRZYNIE,SANDIKLAR,宝箱
+pvp.tuto.chests.text,Dépense tes points pour débloquer des pions et des équipements. Jamais de doublon ! Tu démarres avec {0} points.,Spend your points to unlock pieces and equipment. Never a duplicate! You start with {0} points.,Spendi i punti per sbloccare pedine ed equipaggiamenti. Mai doppioni! Parti con {0} punti.,"Gib deine Punkte aus, um Figuren und Ausrüstung freizuschalten. Nie doppelt! Du startest mit {0} Punkten.",Gasta tus puntos para desbloquear piezas y equipo. Nunca salen repetidos. Empiezas con {0} puntos.,"Wydawaj punkty, by odblokować piony i ekwipunek. Bez duplikatów! Na start masz {0} punktów.",Puanlarını harcayıp piyon ve ekipman aç. Asla aynısı çıkmaz! {0} puanla başlıyorsun.,用点数开宝箱。解锁棋子和装备。不会重复！你一开始就有 {0} 点。
+pvp.tuto.ranking.title,LE CLASSEMENT,THE RANKING,LA CLASSIFICA,DIE RANGLISTE,LA CLASIFICACIÓN,RANKING,SIRALAMA,名次
+pvp.tuto.ranking.text,"Compare-toi aux meilleurs, à tes amis et aux joueurs de ton niveau.","Compare yourself with the best, your friends and players at your level.","Confrontati con i migliori, con i tuoi amici e con chi è al tuo livello.","Miss dich mit den Besten, deinen Freunden und Spielern auf deinem Niveau.","Compárate con los mejores, con tus amigos y con jugadores de tu nivel.","Porównaj się z najlepszymi, ze znajomymi i z graczami na twoim poziomie.","Kendini en iyilerle, arkadaşlarınla ve seviyendeki oyuncularla karşılaştır.",看看最强的人。看看你的好友。还有段位相近的对手。
+pvp.tuto.launch.title,LANCER UNE PARTIE,START A MATCH,AVVIA UNA PARTITA,PARTIE STARTEN,INICIAR PARTIDA,ROZPOCZNIJ GRE,MAC BASLAT,开始对战
+pvp.tuto.launch.text,"On te cherche un adversaire de ton niveau. Personne au bout de {0} s ? Un bot prend sa place, et la partie compte quand même.","We find you an opponent at your level. Nobody after {0} s? A bot steps in, and the match still counts.","Ti cerchiamo un avversario del tuo livello. Nessuno dopo {0} s? Entra un bot, e la partita conta lo stesso.","Wir suchen dir einen Gegner auf deinem Niveau. Nach {0} s niemand da? Dann springt ein Bot ein, und das Spiel zählt trotzdem.","Te buscamos un rival de tu nivel. Si nadie aparece en {0} s, entra un bot y la partida cuenta igual.","Szukamy ci przeciwnika na twoim poziomie. Nikogo po {0} s? Wchodzi bot, a gra i tak się liczy.",Sana seviyende bir rakip buluyoruz. {0} sn içinde kimse yoksa bir bot gelir ve maç yine sayılır.,会为你找段位相近的对手。{0} s 后仍无人：机器人会来。这局也算分。
+pvp.tuto.friend.title,DÉFIER UN AMI,CHALLENGE A FRIEND,SFIDA UN AMICO,FREUND HERAUSFORDERN,DESAFIAR A UN AMIGO,WYZWIJ ZNAJOMEGO,ARKADASINA MEYDAN OKU,好友对战
+pvp.tuto.friend.text,"Une partie entre amis rapporte des points, mais ne touche pas à ton rang.",A match between friends earns points but leaves your rank alone.,"Una partita tra amici dà punti, ma non tocca il tuo grado.","Ein Spiel unter Freunden bringt Punkte, ändert aber nichts an deinem Rang.","Una partida entre amigos da puntos, pero no afecta a tu rango.","Gra ze znajomym daje punkty, ale nie zmienia twojej rangi.",Arkadaşlar arası maç puan kazandırır ama rütbeni değiştirmez.,和好友对战能获得点数。但不会影响段位。
+pvp.tuto.clock.title,LA PENDULE,THE CLOCK,L'OROLOGIO,DIE UHR,EL RELOJ,ZEGAR,SAAT,时间
+pvp.tuto.clock.text,"Tu as {0} minutes pour toute la partie, et {1} secondes max par coup. Si le temps tombe, c'est perdu.",You get {0} minutes for the whole match and {1} seconds max per move. Run out of time and you lose.,"Hai {0} minuti per tutta la partita e {1} secondi al massimo per mossa. Se il tempo scade, perdi.","Du hast {0} Minuten für das ganze Spiel und höchstens {1} Sekunden pro Zug. Läuft die Zeit ab, verlierst du.","Tienes {0} minutos para toda la partida y {1} segundos como mucho por jugada. Si se acaba el tiempo, pierdes.","Masz {0} minut na całą grę i najwyżej {1} sekund na ruch. Gdy czas się skończy, przegrywasz.",Tüm maç için {0} dakikan ve hamle başına en fazla {1} saniyen var. Süre biterse kaybedersin.,整局你有 {0} min。每步最多 {1} s。时间用完就输了。
+pvp.tuto.rules.title,BON À SAVOIR,GOOD TO KNOW,BUONO A SAPERSI,GUT ZU WISSEN,CONVIENE SABER,DOBRZE WIEDZIEC,BILMEKTE FAYDA VAR,提示
+pvp.tuto.rules.text,Le premier joueur est tiré au sort. Tu peux proposer la nulle. Déconnecté ? Tu as {0} s pour revenir.,The first player is drawn at random. You can offer a draw. Disconnected? You have {0} s to come back.,Chi inizia è sorteggiato. Puoi proporre il pareggio. Disconnesso? Hai {0} s per tornare.,"Wer anfängt, wird ausgelost. Du kannst ein Remis anbieten. Verbindung weg? Du hast {0} s, um zurückzukommen.","Quién empieza se sortea. Puedes proponer empate. Si te desconectas, tienes {0} s para volver.",Pierwszy gracz jest losowany. Możesz zaproponować remis. Rozłączyło cię? Masz {0} s na powrót.,İlk oynayan kurayla belirlenir. Beraberlik önerebilirsin. Bağlantın koparsa geri dönmek için {0} saniyen var.,先手随机。你可以提出和局。离线后有 {0} s 可以回来。
 pvp.versus,CONTRE {0},VERSUS {0},CONTRO {0},GEGEN {0},CONTRA {0},PRZECIW {0},RAKIP {0},对手 {0}
 pvp.map_default,ÉCHIQUIER,CHESSBOARD,SCACCHIERA,SCHACHBRETT,TABLERO,SZACHOWNICA,SATRANC TAHTASI,棋盘
 pvp.army_n,ARMÉE {0},ARMY {0},ARMATA {0},ARMEE {0},EJERCITO {0},ARMIA {0},ORDU {0},军队 {0}
@@ -1028,8 +1060,140 @@ pvp.chest_left,{0} À DÉBLOQUER,{0} TO UNLOCK,{0} DA SBLOCCARE,{0} FREIZUSCHALT
 pvp.chest_empty,TOUT EST DÉBLOQUÉ,EVERYTHING UNLOCKED,TUTTO SBLOCCATO,ALLES FREIGESCHALTET,TODO DESBLOQUEADO,WSZYSTKO ODBLOKOWANE,HER SEY ACIK,已全部解锁
 pvp.chest_open,OUVRIR ({0} POINTS),OPEN ({0} POINTS),APRI ({0} PUNTI),OFFNEN ({0} PUNKTE),ABRIR ({0} PUNTOS),OTWORZ ({0} PKT),AC ({0} PUAN),打开（{0} 点）
 pvp.chest_got,OBTENU : {0},OBTAINED: {0},OTTENUTO: {0},ERHALTEN: {0},OBTENIDO: {0},ZDOBYTO: {0},ELDE EDILDI: {0},获得：{0}
-pvp.rank.bronze,BRONZE,BRONZE,BRONZO,BRONZE,BRONCE,BRAZ,BRONZ,青铜
-pvp.rank.fer,FER,IRON,FERRO,EISEN,HIERRO,ZELAZO,DEMIR,黑铁
-pvp.rank.argent,ARGENT,SILVER,ARGENTO,SILBER,PLATA,SREBRO,GUMUS,白银
-pvp.rank.or,OR,GOLD,ORO,GOLD,ORO,ZLOTO,ALTIN,黄金
+pvp.rank.bronze,BRONZE,BRONZE,BRONZO,BRONZE,BRONCE,BRAZ,BRONZ,初级
+pvp.rank.fer,FER,IRON,FERRO,EISEN,HIERRO,ZELAZO,DEMIR,中级
+pvp.rank.argent,ARGENT,SILVER,ARGENTO,SILBER,PLATA,SREBRO,GUMUS,高级
+pvp.rank.or,OR,GOLD,ORO,GOLD,ORO,ZLOTO,ALTIN,金级
 pvp.rank.master,MASTER,MASTER,MASTER,MEISTER,MAESTRO,MISTRZ,USTA,大师
+# ── Multijoueur : écran Armée et Coffres (2026-11-05) ──
+pvp.to_reserve,REMETTRE EN RÉSERVE,BACK TO RESERVE,RIMETTI IN RISERVA,ZURUCK IN DIE RESERVE,DEVOLVER A LA RESERVA,ODLOZ DO REZERWY,YEDEGE GERI KOY,放回
+pvp.commander,COMMANDANT,COMMANDER,COMANDANTE,KOMMANDANT,COMANDANTE,DOWODCA,KOMUTAN,指挥官
+pvp.free_fixed,GRATUIT · CASE FIXE,FREE · FIXED SQUARE,GRATIS · CASELLA FISSA,GRATIS · FESTES FELD,GRATIS · CASILLA FIJA,DARMOWY · STALE POLE,UCRETSIZ · SABIT KARE,免费 · 固定
+pvp.cost_fixed,{0} PTS · CASE FIXE,{0} PTS · FIXED SQUARE,{0} PT · CASELLA FISSA,{0} PKT · FESTES FELD,{0} PTS · CASILLA FIJA,{0} PKT · STALE POLE,{0} P · SABIT KARE,{0} 点 · 固定
+pvp.movement,DÉPLACEMENT,MOVEMENT,MOVIMENTO,BEWEGUNG,MOVIMIENTO,RUCH,HAREKET,移动
+pvp.move.dame,DAME · 8 DIRECTIONS,QUEEN · 8 DIRECTIONS,DONNA · 8 DIREZIONI,DAME · 8 RICHTUNGEN,DAMA · 8 DIRECCIONES,HETMAN · 8 KIERUNKOW,VEZIR · 8 YON,后 · 8 方向
+pvp.move.tour,TOUR · LIGNES,ROOK · LINES,TORRE · LINEE,TURM · LINIEN,TORRE · LINEAS,WIEZA · LINIE,KALE · DUZ,车 · 直线
+pvp.move.fou,FOU · DIAGONALES,BISHOP · DIAGONALS,ALFIERE · DIAGONALI,LAUFER · DIAGONALEN,ALFIL · DIAGONALES,GONIEC · PRZEKATNE,FIL · CAPRAZ,象 · 斜线
+pvp.move.cavalier,CAVALIER · SAUT EN L,KNIGHT · L JUMP,CAVALLO · SALTO A L,SPRINGER · L-SPRUNG,CABALLO · SALTO EN L,SKOCZEK · SKOK L,AT · L ATLAYIS,马 · L 跳
+pvp.budget_army,ARMÉE,ARMY,ARMATA,ARMEE,EJERCITO,ARMIA,ORDU,军队
+pvp.launch,LANCER UNE PARTIE,START A MATCH,AVVIA UNA PARTITA,PARTIE STARTEN,INICIAR PARTIDA,ROZPOCZNIJ GRE,MAC BASLAT,开始对战
+pvp.search_btn,RECHERCHE {0},SEARCHING {0},RICERCA {0},SUCHE {0},BUSCANDO {0},SZUKANIE {0},ARANIYOR {0},搜索 {0}
+pvp.search_hint,annule pour modifier ton armée,cancel to edit your army,annulla per modificare la tua armata,zum Ändern der Armee abbrechen,cancela para modificar tu ejército,anuluj by zmienić armię,ordunu değiştirmek için iptal et,取消后可修改军队
+pvp.found_btn,PARTIE TROUVÉE,MATCH FOUND,PARTITA TROVATA,SPIEL GEFUNDEN,PARTIDA ENCONTRADA,ZNALEZIONO GRE,MAC BULUNDU,已找到对战
+pvp.fight_in,combat dans {0} s,battle in {0} s,battaglia tra {0} s,Kampf in {0} s,combate en {0} s,bitwa za {0} s,{0} sn sonra savaş,{0} 秒后开始
+pvp.opponent,ADVERSAIRE : {0},OPPONENT: {0},AVVERSARIO: {0},GEGNER: {0},RIVAL: {0},PRZECIWNIK: {0},RAKIP: {0},对手：{0}
+pvp.empty_army,pose au moins un pion,place at least one piece,schiera almeno una pedina,stelle mindestens eine Figur auf,coloca al menos una pieza,postaw co najmniej jeden pion,en az bir piyon yerleştir,至少放置一个棋子
+pvp.invite,INVITER,INVITE,INVITA,EINLADEN,INVITAR,ZAPROS,DAVET ET,邀请
+pvp.waiting,EN ATTENTE,WAITING,IN ATTESA,WARTEN,ESPERANDO,CZEKANIE,BEKLENIYOR,等待
+pvp.searching_s,Recherche d'un adversaire…,Searching for an opponent…,Ricerca di un avversario…,Gegnersuche…,Buscando un rival…,Szukanie przeciwnika…,Rakip aranıyor…,正在寻找对手…
+pvp.bot_in_s,bot dans {0} s si personne,bot in {0} s if nobody,bot tra {0} s se nessuno,Bot in {0} s falls niemand,bot en {0} s si no hay nadie,bot za {0} s jeśli nikogo,{0} sn içinde kimse yoksa bot,{0} 秒后无人则由机器人接替
+pvp.wait_friend_s,En attente de ton ami…,Waiting for your friend…,In attesa del tuo amico…,Warte auf deinen Freund…,Esperando a tu amigo…,Czekanie na znajomego…,Arkadaşın bekleniyor…,等待好友…
+pvp.overlay_open,invite-le depuis l'overlay Steam,invite them from the Steam overlay,invitalo dall'overlay di Steam,lade ihn über das Steam-Overlay ein,invítalo desde el overlay de Steam,zaproś go z nakładki Steam,Steam arayüzünden davet et,从 STEAM 界面邀请
+pvp.joining_s,Connexion à la partie de ton ami…,Joining your friend's game…,Connessione alla partita del tuo amico…,Verbinde mit dem Spiel deines Freundes…,Uniéndote a la partida de tu amigo…,Dołączanie do gry znajomego…,Arkadaşının oyununa bağlanılıyor…,正在加入好友的对战…
+pvp.waiting_army,en attente de l'armée adverse,waiting for the opponent's army,in attesa dell'armata avversaria,warte auf die gegnerische Armee,esperando al ejército rival,czekanie na armię przeciwnika,rakip ordu bekleniyor,等待对手的军队
+pvp.new,NOUVEAU !,NEW!,NUOVO!,NEU!,NUEVO!,NOWOSC!,YENI!,新！
+pvp.missing,IL MANQUE {0} POINTS,{0} POINTS SHORT,MANCANO {0} PUNTI,ES FEHLEN {0} PUNKTE,FALTAN {0} PUNTOS,BRAKUJE {0} PKT,{0} PUAN EKSIK,还差 {0} 点
+pvp.complete,COMPLET,COMPLETE,COMPLETO,KOMPLETT,COMPLETO,KOMPLET,TAMAM,已全部获得
+pvp.open,OUVRIR · {0},OPEN · {0},APRI · {0},OFFNEN · {0},ABRIR · {0},OTWORZ · {0},AC · {0},打开 · {0}
+pvp.gains,GAGNE DES POINTS EN PARTIE : +{0} PAR PION TUÉ · +{1} PAR VICTOIRE · +{2} PAR NULLE,EARN POINTS IN MATCHES: +{0} PER PIECE KILLED · +{1} PER WIN · +{2} PER DRAW,GUADAGNA PUNTI IN PARTITA: +{0} PER PEDINA UCCISA · +{1} PER VITTORIA · +{2} PER PAREGGIO,PUNKTE IM SPIEL: +{0} PRO GESCHLAGENE FIGUR · +{1} PRO SIEG · +{2} PRO REMIS,GANA PUNTOS EN PARTIDA: +{0} POR PIEZA ELIMINADA · +{1} POR VICTORIA · +{2} POR EMPATE,ZDOBYWAJ PUNKTY W GRZE: +{0} ZA ZBITEGO PIONA · +{1} ZA WYGRANA · +{2} ZA REMIS,MACTA PUAN KAZAN: OLDURULEN PIYON BASINA +{0} · ZAFER +{1} · BERABERLIK +{2},对战得点：每击杀一个棋子 +{0} · 胜利 +{1} · 和局 +{2}
+pvp.chests_sub,Jamais de doublon · tout ce que tu obtiens est jouable tout de suite,Never a duplicate · everything you get is playable right away,Mai un doppione · tutto ciò che ottieni è subito giocabile,Nie doppelt · alles Erhaltene ist sofort spielbar,Nunca repetido · todo lo que obtienes se puede jugar ya,Nigdy duplikatów · wszystko jest od razu grywalne,Asla tekrar yok · aldığın her şey hemen oynanabilir,不会重复 · 获得的内容立即可用
+pvp.chest_units_desc,Nouveaux pions et commandants,New pieces and commanders,Nuove pedine e comandanti,Neue Figuren und Kommandanten,Nuevas piezas y comandantes,Nowe piony i dowódcy,Yeni piyonlar ve komutanlar,新棋子和指挥官
+pvp.chest_equip_desc,Un équipement par pion · commandant exclu,One item per piece · commander excluded,Un equipaggiamento per pedina · comandante escluso,Ein Gegenstand pro Figur · ohne Kommandant,Un equipo por pieza · comandante excluido,Jeden przedmiot na piona · bez dowódcy,Piyon başına bir ekipman · komutan hariç,每个棋子一件装备 · 指挥官除外
+pvp.content,CONTENU,CONTENTS,CONTENUTO,INHALT,CONTENIDO,ZAWARTOSC,ICERIK,内容
+pvp.kind_unit,PION,PIECE,PEDINA,FIGUR,PIEZA,PION,PIYON,棋子
+pvp.kind_equipment,ÉQUIPEMENT · {0},EQUIPMENT · {0},EQUIPAGGIAMENTO · {0},AUSRUSTUNG · {0},EQUIPO · {0},EKWIPUNEK · {0},EKIPMAN · {0},装备 · {0}
+pvp.continue,CONTINUER,CONTINUE,CONTINUA,WEITER,CONTINUAR,DALEJ,DEVAM,继续
+pvp.help_units,Glisse un pion sur une case bleue. Glisse un pion posé hors du plateau pour l'enlever.,Drag a piece onto a blue square. Drag a placed piece off the board to remove it.,Trascina una pedina su una casella blu. Trascinala fuori dalla scacchiera per toglierla.,Ziehe eine Figur auf ein blaues Feld. Ziehe sie vom Brett um sie zu entfernen.,Arrastra una pieza a una casilla azul. Sácala del tablero para quitarla.,Przeciągnij piona na niebieskie pole. Wyciągnij go poza planszę by go usunąć.,Bir piyonu mavi kareye sürükle. Kaldırmak için tahtanın dışına sürükle.,把棋子拖到蓝色格子上。拖出棋盘即可移除。
+pvp.help_equipment,Glisse un équipement sur un de tes pions. Un seul par pion · commandant exclu.,Drag an item onto one of your pieces. One per piece · commander excluded.,Trascina un equipaggiamento su una tua pedina. Uno per pedina · comandante escluso.,Ziehe einen Gegenstand auf eine deiner Figuren. Einer pro Figur · ohne Kommandant.,Arrastra un equipo a una de tus piezas. Uno por pieza · comandante excluido.,Przeciągnij przedmiot na swojego piona. Jeden na piona · bez dowódcy.,Bir ekipmanı piyonlarından birine sürükle. Piyon başına bir · komutan hariç.,把装备拖到你的棋子上。每个棋子一件 · 指挥官除外。
+pvp.trait,TRAIT,TRAIT,TRATTO,EIGENSCHAFT,RASGO,CECHA,OZELLIK,特性
+pvp.reveal_tier,TIER {0},TIER {0},LIVELLO {0},STUFE {0},NIVEL {0},POZIOM {0},SEVIYE {0},{0}阶
+pvp.reveal_bonus,BONUS DU PION ÉQUIPÉ,EQUIPPED PIECE BONUS,BONUS DELLA PEDINA EQUIPAGGIATA,BONUS DER AUSGERUSTETEN FIGUR,BONUS DE LA PIEZA EQUIPADA,PREMIA WYPOSAZONEGO PIONA,DONANIMLI PIYONUN BONUSU,装备棋子的加成
+pvp.reveal_stats,STATISTIQUES,STATS,STATISTICHE,WERTE,ESTADISTICAS,STATYSTYKI,ISTATISTIKLER,属性
+pvp.reveal_trait_given,TRAIT DONNÉ AU PION,TRAIT GIVEN TO THE PIECE,TRATTO DATO ALLA PEDINA,EIGENSCHAFT FUR DIE FIGUR,RASGO PARA LA PIEZA,CECHA DLA PIONA,PIYONA VERILEN OZELLIK,给棋子的特性
+pvp.reveal_traits_given,TRAITS DONNÉS AU PION,TRAITS GIVEN TO THE PIECE,TRATTI DATI ALLA PEDINA,EIGENSCHAFTEN FUR DIE FIGUR,RASGOS PARA LA PIEZA,CECHY DLA PIONA,PIYONA VERILEN OZELLIKLER,给棋子的特性
+pvp.reveal_traits,TRAITS,TRAITS,TRATTI,EIGENSCHAFTEN,RASGOS,CECHY,OZELLIKLER,特性
+pvp.trait_line,{0} : {1},{0}: {1},{0}: {1},{0}: {1},{0}: {1},{0}: {1},{0}: {1},{0}：{1}
+pvp.band_help,Glisse un pion sur une case bleue · hors du plateau pour l'enlever.,Drag a piece onto a blue square · off the board to remove it.,Trascina una pedina su una casella blu · fuori per toglierla.,Ziehe eine Figur auf ein blaues Feld · vom Brett um sie zu entfernen.,Arrastra una pieza a una casilla azul · fuera para quitarla.,Przeciągnij piona na niebieskie pole · poza planszę by usunąć.,Piyonu mavi kareye sürükle · kaldırmak için dışarı sürükle.,把棋子拖到蓝色格子上 · 拖出棋盘即可移除。
+pvp.band_help_pad,A : prendre et poser · LB RB : page · gâchettes : pions ou équipements,A: pick up and place · LB RB: page · triggers: pieces or items,A: prendi e posa · LB RB: pagina · grilletti: pedine o equipaggiamento,A: nehmen und setzen · LB RB: Seite · Trigger: Figuren oder Ausrüstung,A: coger y colocar · LB RB: página · gatillos: piezas o equipo,A: weź i połóż · LB RB: strona · spusty: piony lub przedmioty,A: al ve koy · LB RB: sayfa · tetikler: piyon veya ekipman,A：拿起放下 · LB RB：翻页 · 扳机：棋子或装备
+pvp.holding_mouse,Clic droit ou Échap : lâcher ce que tu tiens.,Right click or Esc: drop what you hold.,Clic destro o Esc: lascia ciò che tieni.,Rechtsklick oder Esc: loslassen.,Clic derecho o Esc: soltar lo que tienes.,Prawy klik lub Esc: puść to co trzymasz.,Sağ tık veya Esc: tuttuğunu bırak.,右键或 ESC：放下手中的物品。
+pvp.holding_pad,B : lâcher ce que tu tiens.,B: drop what you hold.,B: lascia ciò che tieni.,B: loslassen.,B: soltar lo que tienes.,B: puść to co trzymasz.,B: tuttuğunu bırak.,B：放下手中的物品。
+pvp.err_budget,Pas assez de points pour {0}.,Not enough points for {0}.,Punti insufficienti per {0}.,Nicht genug Punkte für {0}.,No hay puntos suficientes para {0}.,Za mało punktów na {0}.,{0} için yeterli puan yok.,点数不足：{0}。
+pvp.err_copies,{0} exemplaires du même équipement au plus.,At most {0} copies of the same item.,Al massimo {0} copie dello stesso equipaggiamento.,Höchstens {0} Exemplare desselben Gegenstands.,Como máximo {0} copias del mismo equipo.,Najwyżej {0} egzemplarze tego samego przedmiotu.,Aynı ekipmandan en fazla {0} tane.,同一装备最多 {0} 件。
+pvp.err_king,Case fixe du commandant.,The commander's square is fixed.,Casella fissa del comandante.,Festes Feld des Kommandanten.,Casilla fija del comandante.,Stałe pole dowódcy.,Komutanın sabit karesi.,指挥官的固定格子。
+pvp.err_commander_equip,Le commandant ne porte pas d'équipement.,The commander cannot carry equipment.,Il comandante non porta equipaggiamento.,Der Kommandant trägt keine Ausrüstung.,El comandante no lleva equipo.,Dowódca nie nosi ekwipunku.,Komutan ekipman taşımaz.,指挥官不能装备。
+pvp.err_no_unit,Pose l'équipement sur un de tes pions.,Put the item on one of your pieces.,Posa l'equipaggiamento su una tua pedina.,Lege den Gegenstand auf eine deiner Figuren.,Pon el equipo en una de tus piezas.,Połóż przedmiot na swoim pionie.,Ekipmanı piyonlarından birine koy.,把装备放到你的棋子上。
+pvp.err_zone,Pose tes pions sur les cases bleues.,Place your pieces on the blue squares.,Posa le tue pedine sulle caselle blu.,Setze deine Figuren auf die blauen Felder.,Coloca tus piezas en las casillas azules.,Stawiaj piony na niebieskich polach.,Piyonlarını mavi karelere koy.,把棋子放在蓝色格子上。
+pvp.locked_unit,À débloquer dans le coffre de pions.,Unlock it in the piece chest.,Da sbloccare nel forziere di pedine.,In der Figurentruhe freischalten.,Se desbloquea en el cofre de piezas.,Do odblokowania w skrzyni pionów.,Piyon sandığından açılır.,在棋子宝箱中解锁。
+pvp.locked_equip,À débloquer dans le coffre d'équipements.,Unlock it in the equipment chest.,Da sbloccare nel forziere di equipaggiamento.,In der Ausrüstungstruhe freischalten.,Se desbloquea en el cofre de equipo.,Do odblokowania w skrzyni ekwipunku.,Ekipman sandığından açılır.,在装备宝箱中解锁。
+pvp.err_army,Armée injouable : budget dépassé ou élément non débloqué.,Army not playable: over budget or locked element.,Armata non giocabile: budget superato o elemento bloccato.,Armee nicht spielbar: Budget überschritten oder gesperrt.,Ejército no jugable: presupuesto superado o elemento bloqueado.,Armia niegrywalna: budżet przekroczony lub zablokowany element.,Ordu oynanamaz: bütçe aşıldı veya kilitli öğe.,军队无法使用：超出预算或含未解锁内容。
+pvp.rating_short,COTE {0},RATING {0},PUNTEGGIO {0},WERTUNG {0},PUNTOS {0},RANKING {0},PUAN {0},积分 {0}
+pvp.record_short,{0}V {1}D {2}N,{0}W {1}L {2}D,{0}V {1}S {2}P,{0}S {1}N {2}R,{0}V {1}D {2}E,{0}W {1}P {2}R,{0}G {1}M {2}B,{0}胜 {1}负 {2}和
+pvp.ranking,CLASSEMENT,RANKING,CLASSIFICA,RANGLISTE,CLASIFICACIÓN,RANKING,SIRALAMA,名次
+pvp.ranking_offline,CLASSEMENT INDISPONIBLE HORS LIGNE,RANKING UNAVAILABLE OFFLINE,CLASSIFICA NON DISPONIBILE OFFLINE,RANGLISTE OFFLINE NICHT VERFÜGBAR,CLASIFICACIÓN NO DISPONIBLE SIN CONEXIÓN,RANKING NIEDOSTĘPNY OFFLINE,SIRALAMA ÇEVRİMDIŞI KULLANILAMAZ,离线时无法查看名次
+pvp.ranking_unranked,JOUE UNE PARTIE CLASSÉE POUR ENTRER AU CLASSEMENT,PLAY A RANKED GAME TO ENTER THE RANKING,GIOCA UNA PARTITA CLASSIFICATA PER ENTRARE IN CLASSIFICA,SPIELE EIN GEWERTETES SPIEL FÜR DIE RANGLISTE,JUEGA UNA PARTIDA CLASIFICATORIA PARA ENTRAR,ZAGRAJ GRĘ RANKINGOWĄ ABY TRAFIĆ DO RANKINGU,SIRALAMAYA GİRMEK İÇİN DERECELİ OYNA,完成一场对局后显示名次
+pvp.tab_world,MONDIAL,WORLD,MONDO,WELT,MUNDIAL,ŚWIAT,DÜNYA,全部
+pvp.tab_friends,AMIS,FRIENDS,AMICI,FREUNDE,AMIGOS,ZNAJOMI,ARKADAŞLAR,好友
+pvp.tab_around,AUTOUR DE MOI,AROUND ME,VICINO A ME,UM MICH,CERCA DE MÍ,WOKÓŁ MNIE,ÇEVREMDE,我附近
+pvp.my_rank,MON RANG,MY RANK,IL MIO GRADO,MEIN RANG,MI RANGO,MOJA RANGA,RÜTBEM,当前段位
+pvp.tiers,PALIERS,TIERS,LIVELLI,STUFEN,NIVELES,POZIOMY,KADEMELER,段位
+pvp.world_place,#{0} MONDIAL,#{0} WORLD,#{0} MONDO,#{0} WELTWEIT,#{0} MUNDIAL,#{0} NA ŚWIECIE,DÜNYADA #{0},第 {0} 名
+pvp.towards,VERS {0},TO {0},VERSO {0},BIS {0},HACIA {0},DO {0},HEDEF {0},距离 {0}
+pvp.stat_games,PARTIES,GAMES,PARTITE,SPIELE,PARTIDAS,GRY,OYUN,场次
+pvp.stat_wins,VICTOIRES,WINS,VITTORIE,SIEGE,VICTORIAS,WYGRANE,GALİBİYET,胜
+pvp.stat_losses,DÉFAITES,LOSSES,SCONFITTE,NIEDERLAGEN,DERROTAS,PRZEGRANE,YENİLGİ,败
+pvp.stat_draws,NULLES,DRAWS,PAREGGI,REMIS,EMPATES,REMISY,BERABERLİK,和
+pvp.stat_rate,TAUX,WIN RATE,TASSO,QUOTE,TASA,PROCENT,ORAN,胜率
+pvp.stat_streak,SÉRIE,STREAK,SERIE,SERIE,RACHA,SERIA,SERİ,当前
+pvp.stat_best,MEILLEURE,BEST,MIGLIORE,BESTWERT,MEJOR,NAJLEPSZY,EN İYİ,最高
+pvp.stat_week,CETTE SEMAINE,THIS WEEK,SETTIMANA,WOCHE,SEMANA,TYDZIEŃ,BU HAFTA,本周
+pvp.streak_win,{0} V,{0} W,{0} V,{0} S,{0} V,{0} W,{0} G,{0} 胜
+pvp.streak_loss,{0} D,{0} L,{0} S,{0} N,{0} D,{0} P,{0} M,{0} 败
+pvp.col_vdn,V · D · N,W · L · D,V · S · P,S · N · R,V · D · E,W · P · R,G · M · B,胜 · 败 · 和
+pvp.vdn,{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2},{0} · {1} · {2}
+pvp.last_games,DERNIÈRES PARTIES,LAST GAMES,ULTIME PARTITE,LETZTE SPIELE,ÚLTIMAS PARTIDAS,OSTATNIE GRY,SON OYUNLAR,最近对局
+pvp.hist_ranked,CLASSÉES,RANKED,CLASSIFICATE,GEWERTET,CLASIFICATORIAS,RANKINGOWE,DERECELİ,名次
+pvp.hist_friendly,DÉFIS,CHALLENGES,SFIDE,DUELLE,RETOS,WYZWANIA,DÜELLO,好友
+pvp.result_draw,NULLE,DRAW,PAREGGIO,REMIS,EMPATE,REMIS,BERABERE,和局
+pvp.bot_tag,BOT,BOT,BOT,BOT,BOT,BOT,BOT,机器人
+pvp.kills,{0} PIONS TUÉS,{0} PAWNS KILLED,{0} PEDINE ELIMINATE,{0} FIGUREN BESIEGT,{0} PIEZAS ELIMINADAS,{0} ZBITYCH PIONÓW,{0} PİYON ALINDI,击杀 {0} 个
+pvp.no_games,AUCUNE PARTIE,NO GAMES YET,NESSUNA PARTITA,NOCH KEINE SPIELE,NINGUNA PARTIDA,BRAK GIER,HENÜZ OYUN YOK,暂无对局
+pvp.ago_now,À L'INSTANT,JUST NOW,ORA,GERADE EBEN,AHORA,PRZED CHWILĄ,ŞİMDİ,刚刚
+pvp.ago_min,IL Y A {0} MIN,{0} MIN AGO,{0} MIN FA,VOR {0} MIN,HACE {0} MIN,{0} MIN TEMU,{0} DK ÖNCE,{0} 分前
+pvp.ago_hour,IL Y A {0} H,{0} H AGO,{0} ORE FA,VOR {0} STD,HACE {0} H,{0} GODZ. TEMU,{0} SA ÖNCE,{0} 时前
+pvp.yesterday,HIER,YESTERDAY,IERI,GESTERN,AYER,WCZORAJ,DÜN,{0} 时前
+pvp.ago_day,IL Y A {0} J,{0} D AGO,{0} G FA,VOR {0} T,HACE {0} D,{0} DNI TEMU,{0} GÜN ÖNCE,{1} 时前
+pvp.ranking_loading,CHARGEMENT,LOADING,CARICAMENTO,LADEN,CARGANDO,ŁADOWANIE,YÜKLENİYOR,等待中
+pvp.ranking_failed,Classement indisponible pour l'instant,Ranking unavailable for now,Classifica non disponibile per ora,Rangliste derzeit nicht verfügbar,Clasificación no disponible por ahora,Ranking chwilowo niedostępny,Sıralama şu an kullanılamıyor,名次暂时无法使用
+pvp.ranking_empty,Aucun joueur classé pour l'instant,No ranked player yet,Ancora nessun giocatore in classifica,Noch kein gewerteter Spieler,Aún no hay jugadores clasificados,Brak graczy w rankingu,Henüz sıralamada oyuncu yok,暂无名次
+pvp.col_player,JOUEUR,PLAYER,GIOCATORE,SPIELER,JUGADOR,GRACZ,OYUNCU,玩者
+pvp.col_rank,RANG,RANK,GRADO,RANG,RANGO,RANGA,RÜTBE,段位
+pvp.col_rating,COTE,RATING,PUNTEGGIO,WERTUNG,PUNTOS,PUNKTY,PUAN,分数
+pvp.army_cost,{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1},{0}/{1}
+pvp.budget_equip,ÉQUIP.,EQUIP.,EQUIP.,AUSR.,EQUIPO,EKW.,EKIP.,装备
+pvp.unranked_on,PARTIE PRIVÉE · SANS EFFET SUR LE RANG,PRIVATE MATCH · NO EFFECT ON RANK,PARTITA PRIVATA · NESSUN EFFETTO SUL RANGO,PRIVATES SPIEL · KEIN EINFLUSS AUF DEN RANG,PARTIDA PRIVADA · SIN EFECTO EN EL RANGO,PRYWATNA GRA · BEZ WPLYWU NA RANGE,OZEL MAC · RUTBEYI ETKILEMEZ,私人对战 · 不影响段位
+# ── Multi : écran de fin de partie ───────────────────────────────────────────
+pvp.end.reason_leader_win,COMMANDANT ADVERSE ÉLIMINÉ,ENEMY COMMANDER DEFEATED,COMANDANTE NEMICO ELIMINATO,GEGNERISCHER KOMMANDANT BESIEGT,COMANDANTE RIVAL ELIMINADO,DOWÓDCA WROGA POKONANY,RAKİP KOMUTAN DÜŞTÜ,敌方指挥官被击败
+pvp.end.reason_leader_loss,TON COMMANDANT EST TOMBÉ,YOUR COMMANDER HAS FALLEN,IL TUO COMANDANTE È CADUTO,DEIN KOMMANDANT IST GEFALLEN,TU COMANDANTE HA CAÍDO,TWÓJ DOWÓDCA POLEGŁ,KOMUTANIN DÜŞTÜ,你的指挥官阵亡
+pvp.end.reason_timeout,TEMPS ÉCOULÉ,TIME IS UP,TEMPO SCADUTO,ZEIT ABGELAUFEN,TIEMPO AGOTADO,CZAS MINĄŁ,SÜRE DOLDU,时间耗尽
+pvp.end.reason_resign_win,ABANDON DE L'ADVERSAIRE,YOUR OPPONENT RESIGNED,L'AVVERSARIO SI È ARRESO,DER GEGNER HAT AUFGEGEBEN,EL RIVAL SE HA RENDIDO,PRZECIWNIK SIĘ PODDAŁ,RAKİP PES ETTİ,对手认输
+pvp.end.reason_resign_loss,TU AS ABANDONNÉ,YOU RESIGNED,TI SEI ARRESO,DU HAST AUFGEGEBEN,TE HAS RENDIDO,PODDAŁEŚ SIĘ,PES ETTİN,你已认输
+pvp.end.reason_disconnect,ADVERSAIRE DÉCONNECTÉ,OPPONENT DISCONNECTED,AVVERSARIO DISCONNESSO,GEGNER GETRENNT,RIVAL DESCONECTADO,PRZECIWNIK ROZŁĄCZONY,RAKİBİN BAĞLANTISI KOPTU,对手已离线
+pvp.end.reason_agreed,ÉGALITÉ ACCEPTÉE,DRAW ACCEPTED,PAREGGIO ACCETTATO,REMIS ANGENOMMEN,EMPATE ACEPTADO,REMIS PRZYJĘTY,BERABERLİK KABUL EDİLDİ,和局已接受
+pvp.end.reason_dead,PLUS AUCUN CONTACT POSSIBLE,NO CONTACT POSSIBLE ANYMORE,NESSUN CONTATTO POSSIBILE,KEIN KONTAKT MEHR MÖGLICH,YA NO HAY CONTACTO POSIBLE,KONTAKT JUŻ NIEMOŻLIWY,ARTIK TEMAS MÜMKÜN DEĞİL,已无法接触
+pvp.end.reason_mutual,DESTRUCTION MUTUELLE,MUTUAL DESTRUCTION,DISTRUZIONE RECIPROCA,GEGENSEITIGE VERNICHTUNG,DESTRUCCIÓN MUTUA,WZAJEMNE ZNISZCZENIE,KARŞILIKLI YOK OLUŞ,同时阵亡
+pvp.end.vs,VS,VS,VS,VS,VS,VS,VS,VS
+pvp.end.rating,COTE,RATING,PUNTEGGIO,WERTUNG,PUNTUACIÓN,RANKING,PUAN,分数
+pvp.end.promoted,PROMU {0} !,PROMOTED TO {0}!,PROMOSSO A {0}!,AUFGESTIEGEN: {0}!,ASCENDIDO A {0}!,AWANS: {0}!,{0} RÜTBESİNE YÜKSELDİN!,升至 {0}！
+pvp.end.demoted,RÉTROGRADÉ {0},DEMOTED TO {0},RETROCESSO A {0},ABGESTIEGEN: {0},DESCENDIDO A {0},SPADEK: {0},{0} RÜTBESİNE DÜŞTÜN,降至 {0}
+pvp.end.friendly,PARTIE AMICALE,FRIENDLY MATCH,PARTITA AMICHEVOLE,FREUNDSCHAFTSSPIEL,PARTIDA AMISTOSA,MECZ TOWARZYSKI,DOSTLUK MAÇI,好友对局
+pvp.end.friendly_sub,SANS EFFET SUR LE RANG,NO EFFECT ON RANK,NESSUN EFFETTO SUL RANGO,KEIN EINFLUSS AUF DEN RANG,SIN EFECTO EN EL RANGO,BEZ WPŁYWU NA RANGĘ,RÜTBEYİ ETKİLEMEZ,不影响段位
+pvp.end.points,POINTS DE COFFRE,CHEST POINTS,PUNTI FORZIERE,TRUHENPUNKTE,PUNTOS DE COFRE,PUNKTY SKRZYŃ,SANDIK PUANI,宝箱点数
+pvp.end.kills,{0} PIONS TUÉS × {1},{0} PAWNS KILLED × {1},{0} PEDINE ELIMINATE × {1},{0} FIGUREN BESIEGT × {1},{0} PIEZAS ELIMINADAS × {1},{0} ZBITYCH PIONÓW × {1},{0} PİYON ALINDI × {1},击杀 {0} 个 × {1}
+pvp.end.total,TOTAL,TOTAL,TOTALE,GESAMT,TOTAL,RAZEM,TOPLAM,总分
+pvp.end.chest,UN COFFRE PEUT ÊTRE OUVERT,A CHEST CAN BE OPENED,PUOI APRIRE UN FORZIERE,EINE TRUHE KANN GEÖFFNET WERDEN,PUEDES ABRIR UN COFRE,MOŻESZ OTWORZYĆ SKRZYNIĘ,BİR SANDIK AÇILABİLİR,可以打开宝箱
+pvp.end.turns,TOURS,TURNS,TURNI,RUNDEN,TURNOS,TURY,TUR,回合
+pvp.end.duration,DURÉE,DURATION,DURATA,DAUER,DURACIÓN,CZAS,SÜRE,时长
+pvp.end.killed,PIONS TUÉS,PAWNS KILLED,PEDINE ELIMINATE,FIGUREN BESIEGT,PIEZAS ELIMINADAS,ZBITE PIONY,ALINAN PİYON,击杀
+pvp.end.lost,PIONS PERDUS,PAWNS LOST,PEDINE PERSE,FIGUREN VERLOREN,PIEZAS PERDIDAS,STRACONE PIONY,KAYBEDİLEN PİYON,损失
+pvp.end.back,RETOUR À L'ARMÉE,BACK TO THE ARMY,TORNA ALL'ESERCITO,ZURÜCK ZUR ARMEE,VOLVER AL EJÉRCITO,POWRÓT DO ARMII,ORDUYA DÖN,返回军队
+pvp.end.replay,REJOUER,PLAY AGAIN,RIGIOCA,NOCHMAL SPIELEN,VOLVER A JUGAR,ZAGRAJ PONOWNIE,TEKRAR OYNA,再来一局

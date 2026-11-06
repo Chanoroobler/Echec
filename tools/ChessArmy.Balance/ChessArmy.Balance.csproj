@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Outil d'ÉQUILIBRAGE du multijoueur : mesure la force de chaque classe et de chaque équipement en faisant
+    s'affronter des bots (ChessArmy.Core.Pvp.PvpBalance), puis réécrit les coûts et le budget dans
+    src/ChessArmy.Game/Assets/Config/pvp.json. À relancer après chaque changement de stats.
+    N'EST PAS référencé par ChessArmy.Game.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ChessArmy.Tools.Balance</RootNamespace>
+    <AssemblyName>ChessArmy.Balance</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ChessArmy.Core\ChessArmy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

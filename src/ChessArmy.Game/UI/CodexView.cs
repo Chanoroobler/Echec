@@ -678,8 +678,8 @@ public sealed class CodexView
     private const int CardPad = 12;
     private const int CardTierW = 23, CardTierH = 9;
     // Même largeur que la carte de jeu (CombatCardW) ; hauteur = 340 d'origine + 6 : le plateau 7×7 (115 px)
-    // remplace la bande sprite + icône de domaine (64 + 6 + 39).
-    private const int CardW = 248, CardH = 346;
+    // remplace la bande sprite + icône de domaine (64 + 6 + 39) ; + 6 : la ligne de stat PV (36) remplace la barre + « pv/max » (30).
+    private const int CardW = 248, CardH = 352;
     private const int KwBoxW = 168;                // largeur des popups de traits (indépendante de la carte)
 
     /// <summary>Pose la carte du pion à côté de la tuile, TOUJOURS rabattue dans <paramref name="bounds"/>.</summary>
@@ -710,40 +710,45 @@ public sealed class CodexView
 
     /// <summary>Popups d'une classe (libellé + description repliée + hauteur). Hors run : valeurs de BASE
     /// des traits renforçables (aucun bonus d'arbre).</summary>
-    private List<(string Label, List<string> Lines, int H)> KeywordBoxes(UnitClass c) => KeywordBoxes(UnitKeywordList(c));
+    private List<(string Label, List<string> Lines, int H, bool Reminder)> KeywordBoxes(UnitClass c) => KeywordBoxes(UnitKeywordList(c));
 
-    private List<(string Label, List<string> Lines, int H)> KeywordBoxes(IEnumerable<UnitKeywords.Keyword> keywords)
+    private List<(string Label, List<string> Lines, int H, bool Reminder)> KeywordBoxes(IEnumerable<UnitKeywords.Keyword> keywords)
     {
-        var boxes = new List<(string Label, List<string> Lines, int H)>();
+        var boxes = new List<(string Label, List<string> Lines, int H, bool Reminder)>();
         foreach (var kw in keywords)
-        {
-            var lines = Wrap(SentenceCase(KeywordDescription(kw)), KwBoxW - 2 * KwPad, 1);
-            boxes.Add((kw.Label, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad));
-        }
+            AddKeywordBox(boxes, kw, false);
         return boxes;
+    }
+
+    private void AddKeywordBox(List<(string Label, List<string> Lines, int H, bool Reminder)> boxes, UnitKeywords.Keyword kw, bool reminder)
+    {
+        var lines = Wrap(SentenceCase(KeywordDescription(kw)), KwBoxW - 2 * KwPad, 1);
+        boxes.Add((kw.Label, lines, KwPad + KwTitleH + lines.Count * KwLineH + KwPad, reminder));
     }
 
     /// <summary>
     /// Empile un popup par trait COLLÉ à la carte, côté extérieur (loin de la tuile survolée) ; rabattu dans
     /// le cadre si la place manque.
     /// </summary>
-    private void DrawKeywordPopups(SpriteBatch sb, List<(string Label, List<string> Lines, int H)> boxes,
+    private void DrawKeywordPopups(SpriteBatch sb, List<(string Label, List<string> Lines, int H, bool Reminder)> boxes,
         Rectangle card, bool outwardRight, Rectangle bounds)
     {
         var total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
+        if (total > bounds.Height && boxes.RemoveAll(b => b.Reminder) > 0)   // rappels de traits cités : seulement s'ils tiennent
+            total = boxes.Sum(b => b.H) + (boxes.Count - 1) * KwGap;
         var x = outwardRight ? card.Right + KwSideGap : card.X - KwSideGap - KwBoxW;
         x = Math.Clamp(x, bounds.X, Math.Max(bounds.X, bounds.Right - KwBoxW));
         var y = Math.Clamp(card.Y, bounds.Y, Math.Max(bounds.Y, bounds.Bottom - total));
 
-        foreach (var (label, lines, h) in boxes)
+        foreach (var (label, lines, h, reminder) in boxes)
         {
             var box = new Rectangle(x, y, KwBoxW, h);
             _ctx.Style.DrawPanel(sb, box);
-            _ctx.Font.Draw(sb, label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, Palette.Cyan1);
+            _ctx.Font.Draw(sb, label, new Vector2(box.X + KwPad, box.Y + KwPad), 1, reminder ? UnitKeywords.ReminderColor : Palette.Cyan1);
             var ly = box.Y + KwPad + KwTitleH;
             foreach (var line in lines)
             {
-                _ctx.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, Palette.White, preserveCase: true);
+                _ctx.Font.Draw(sb, line, new Vector2(box.X + KwPad, ly), 1, reminder ? Palette.Blue1 : Palette.White, preserveCase: true);
                 ly += KwLineH;
             }
             y += h + KwGap;
@@ -782,6 +787,12 @@ public sealed class CodexView
         return new string(chars);
     }
 
+#if DEBUG
+    /// <summary>Captures (-cardshots) : la carte du codex seule.</summary>
+    internal void DebugDrawCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect) => DrawUnitCard(sb, c, domaine, rect);
+    internal void DebugDrawEquipTooltip(SpriteBatch sb, Equipment e, Rectangle anchor, Rectangle bounds) => DrawEquipTooltip(sb, e, anchor, bounds);
+#endif
+
     private void DrawUnitCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect)
     {
         _ctx.Style.DrawPanel(sb, rect);
@@ -807,12 +818,7 @@ public sealed class CodexView
             Math.Max(c.MinAttackRange, c.Traits.Contains(Trait.ZoneMorte) ? 2 : 1));
         y = board.Bottom + 10;
 
-        var bar = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
-        DrawCardHpBar(sb, bar, c.MaxHp);
-        y = bar.Bottom + 2;
-        _ctx.Font.DrawCentered(sb, $"{c.MaxHp}/{c.MaxHp}", new Rectangle(rect.X, y, rect.Width, 8), 1, Palette.White);
-        y += 14;
-
+        y = DrawCardStat(sb, rect, y, "pv", Loc.T("stat.hp"), c.MaxHp.ToString(), Palette.White);
         y = DrawCardStat(sb, rect, y, "deg", Loc.T("stat.power"), c.Damage.ToString(), Palette.Brown3);
         y = DrawCardStat(sb, rect, y, "dep", Loc.T("stat.movement"), c.MoveRange.ToString(), Palette.Cyan2);
         DrawCardStat(sb, rect, y, "tir", Loc.T("stat.range"), c.AttackRange.ToString(), Palette.Yellow2);
@@ -873,20 +879,6 @@ public sealed class CodexView
         return y + iconSize + 4;
     }
 
-    private void DrawCardHpBar(SpriteBatch sb, Rectangle area, int maxHp)
-    {
-        if (maxHp <= 0)
-            return;
-        const int gap = 1;
-        for (var i = 0; i < maxHp; i++)
-        {
-            var left = area.X + (int)Math.Round((double)i * area.Width / maxHp);
-            var right = area.X + (int)Math.Round((double)(i + 1) * area.Width / maxHp);
-            var w = Math.Max(1, right - left - (i < maxHp - 1 ? gap : 0));
-            Fill(sb, new Rectangle(left, area.Y, w, area.Height), Palette.Purple5);   // pion neutre : PV pleins
-        }
-    }
-
     /// <summary>Découpe un texte en lignes tenant dans <paramref name="maxWidth"/> px (échelle donnée).</summary>
     private List<string> Wrap(string text, int maxWidth, int scale)
     {
@@ -945,6 +937,11 @@ public sealed class CodexView
         if (e.IsThrown)
             keywords.Add(UnitKeywords.Ephemeral);
         var boxes = KeywordBoxes(keywords);
+        foreach (var eff in e.Effects)   // rappel des traits cités (Aura de rempart → Rempart), juste après
+            if (eff.Trait is { } t)
+                foreach (var r in Trait.ReferencedBy(t))
+                    if (seen.Add(UnitKeywords.For(r).Label))
+                        AddKeywordBox(boxes, UnitKeywords.For(r), true);
         if (boxes.Count > 0)
             DrawKeywordPopups(sb, boxes, box, box.Right + KwSideGap + KwBoxW <= bounds.Right, bounds);
     }

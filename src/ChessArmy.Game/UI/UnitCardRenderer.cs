@@ -25,8 +25,8 @@ namespace ChessArmy.Game.UI;
 public sealed class UnitCardRenderer
 {
     // Même largeur que la carte de jeu ; hauteur = 340 d'origine + 6 : le plateau 7×7 (115 px) remplace la
-    // bande sprite + icône de domaine (64 + 6 + 39).
-    public const int CardW = 248, CardH = 346;
+    // bande sprite + icône de domaine (64 + 6 + 39) ; + 6 : la ligne de stat PV (36 px) remplace la barre + « pv/max » (30).
+    public const int CardW = 248, CardH = 352;
     public const int TileW = 96, TileH = 92;
 
     private const int CardPad = 12;
@@ -58,7 +58,7 @@ public sealed class UnitCardRenderer
     public static int TitleScale(ITextFont font, string name, int cardWidth, int pad) =>
         font.Measure(name, 2) <= cardWidth - 2 * pad ? 2 : 1;
 
-    /// <summary>Carte complète : tier, nom, plateau de déplacement / tir, barre de PV, stats, mots-clés.
+    /// <summary>Carte complète : tier, nom, plateau de déplacement / tir, stats (PV en tête), mots-clés.
     /// <paramref name="allowNative"/> faux si quelque chose sera dessiné PAR-DESSUS la carte cette frame : le pion
     /// du plateau reste alors dans le canvas au lieu de passer par la couche écran (cf. NativeSprites).</summary>
     public void DrawCard(SpriteBatch sb, UnitClass c, Domaine domaine, Rectangle rect, bool allowNative = true)
@@ -83,12 +83,7 @@ public sealed class UnitCardRenderer
         DrawMoveBoard(sb, c, domaine, board, revealed: true, allowNative);
         y = board.Bottom + 10;
 
-        var bar = new Rectangle(rect.X + CardPad, y, rect.Width - 2 * CardPad, 14);
-        DrawHpBar(sb, bar, c.MaxHp);
-        y = bar.Bottom + 2;
-        _ctx.Font.DrawCentered(sb, $"{c.MaxHp}/{c.MaxHp}", new Rectangle(rect.X, y, rect.Width, 8), 1, Palette.White);
-        y += 14;
-
+        y = DrawStat(sb, rect, y, "pv", Loc.T("stat.hp"), c.MaxHp.ToString(), Palette.White);
         y = DrawStat(sb, rect, y, "deg", Loc.T("stat.power"), c.Damage.ToString(), Palette.Brown3);
         y = DrawStat(sb, rect, y, "dep", Loc.T("stat.movement"), c.MoveRange.ToString(), Palette.Cyan2);
         DrawStat(sb, rect, y, "tir", Loc.T("stat.range"), c.AttackRange.ToString(), Palette.Yellow2);
@@ -156,9 +151,6 @@ public sealed class UnitCardRenderer
             c.Traits.Contains(Trait.RepositionnementStrategique),
             c.Traits.Contains(Trait.AttaqueLibre) ? Domaine.Dame : c.AttackDomaine ?? domaine, c.AttackRange,
             Math.Max(c.MinAttackRange, c.Traits.Contains(Trait.ZoneMorte) ? 2 : 1), allowNative);
-
-    /// <summary>Barre de PV « 1 carré = 1 PV », comme sur la carte de jeu.</summary>
-    public void DrawHp(SpriteBatch sb, Rectangle area, int maxHp) => DrawHpBar(sb, area, maxHp);
 
     /// <summary>
     /// Ligne de stat « icône 32×32 + libellé + valeur alignée à droite », sur toute la largeur de
@@ -236,20 +228,6 @@ public sealed class UnitCardRenderer
         var vw = _ctx.Font.Measure(value, 2);
         _ctx.Font.Draw(sb, value, new Vector2(card.Right - CardPad - vw, y + (iconSize - 14) / 2), 2, valueColor);
         return y + iconSize + 4;
-    }
-
-    private void DrawHpBar(SpriteBatch sb, Rectangle area, int maxHp)
-    {
-        if (maxHp <= 0)
-            return;
-        const int gap = 1;
-        for (var i = 0; i < maxHp; i++)
-        {
-            var left = area.X + (int)Math.Round((double)i * area.Width / maxHp);
-            var right = area.X + (int)Math.Round((double)(i + 1) * area.Width / maxHp);
-            var w = Math.Max(1, right - left - (i < maxHp - 1 ? gap : 0));
-            Fill(sb, new Rectangle(left, area.Y, w, area.Height), Palette.Purple5);   // pion neutre : PV pleins
-        }
     }
 
     /// <summary>Libellés des mots-clés (traits) d'une classe, sans doublon (mêmes règles que la carte de jeu).</summary>

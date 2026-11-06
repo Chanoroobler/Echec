@@ -206,6 +206,10 @@ public sealed class InputManager
     public bool WasLeftTriggerPressed =>
         _currentPad.Triggers.Left > TriggerThreshold && _previousPad.Triggers.Left <= TriggerThreshold;
 
+    /// <summary>Gâchette DROITE : front d'appui uniquement — ex. onglet suivant.</summary>
+    public bool WasRightTriggerPressed =>
+        _currentPad.Triggers.Right > TriggerThreshold && _previousPad.Triggers.Right <= TriggerThreshold;
+
     /// <summary>Clics de stick (L3 / R3) — ex. crans de zoom du plateau.</summary>
     public bool WasLeftStickPressed => PadEdge(Buttons.LeftStick);
     public bool WasRightStickPressed => PadEdge(Buttons.RightStick);

@@ -245,7 +245,7 @@ public sealed class MainMenuScene : Scene
         // on rejoint directement la partie de l'ami.
         if (PvpAvailable && PvpInvites.TryTake(out var invite))
         {
-            Context.Scenes.Change(new PvpLobbyScene(Context, invite));
+            Context.Scenes.Change(new PvpArmyScene(Context, invite));
             return;
         }
 
@@ -392,11 +392,11 @@ public sealed class MainMenuScene : Scene
         Context.Sounds.Play("menu_click"); Store.OpenWishlist();   // wishlist (démo seulement)
     }
 
-    /// <summary>Écran de recherche d'adversaire (POC multijoueur).</summary>
+    /// <summary>Écran Armée du multijoueur (build, recherche, coffres).</summary>
     private void OpenPvp()
     {
         Context.Sounds.Play("menu_click");
-        Context.Scenes.Change(new PvpLobbyScene(Context));
+        Context.Scenes.Change(new PvpArmyScene(Context));
     }
 
     /// <summary>Rectangle de l'élément racine focus (surbrillance / pointeur synthétique manette).</summary>

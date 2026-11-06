@@ -121,7 +121,7 @@ public sealed class PvpPrepScene : Scene
         {
             if (Context.Input.WasConfirmPressed || Context.Input.WasCancelPressed || Context.Input.WasLeftClicked
                 || Context.Input.WasKeyPressed(Keys.Enter) || Context.Input.WasKeyPressed(Keys.Escape))
-                Context.Scenes.Change(new PvpLobbyScene(Context));
+                Context.Scenes.Change(new PvpArmyScene(Context));
             return;
         }
 
