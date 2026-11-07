@@ -96,7 +96,7 @@ public sealed class PvpProfile
 
     /// <summary>Version du tuto multi actuel (bulles de l'interface + règles). À monter quand le tuto change
     /// assez pour être remontré à tout le monde.</summary>
-    public const int CurrentTutorialVersion = 1;
+    public const int CurrentTutorialVersion = 2;   // 2 : étape « le sol s'effondre » (pendule basse)
 
     /// <summary>Dernière version du tuto multi vue jusqu'au bout ou passée (0 : jamais, ancien fichier compris).</summary>
     public int TutorialVersion { get; set; }

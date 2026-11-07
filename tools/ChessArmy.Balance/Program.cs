@@ -167,6 +167,52 @@ if (args.Contains("--beginner-armies"))
     return;
 }
 
+if (args.Contains("--chase-trace"))
+{
+    // Diagnostic : UNE poursuite (commandant seul --commander contre commandant + 4 pièces), plateau à chaque coup.
+    var rng = new Random(17 + ArgInt("--seed", 0) * 104729);
+    var units = PvpCatalog.AllUnitClasses().Select(c => (c.Class.Asset, PvpConfig.Current.UnitCost.GetValueOrDefault(c.Class.Asset, PvpConfig.DefaultCost)))
+        .Where(u => u.Item2 <= 6).ToList();
+    var strong = PvpBalance.RandomArmy(rng, 24, new[] { ("commandant", 0) }, units, new List<(string, int)>(), 0);
+    while (strong.Slots.Count > 4)
+        strong.Remove(strong.Slots[^1].Column, strong.Slots[^1].Line);
+    var lone = new PvpBuild { CommanderId = ArgString("--commander") is { Length: > 0 } c ? c : "Commandant_cavalier" };
+    var match = PvpSetup.CreateMatch(mirrored: false, true, rng.Next());
+    PvpSetup.PlaceArmy(match, strong, Faction.Player);
+    PvpSetup.PlaceArmy(match, lone, Faction.Enemy);
+    var r = new Random(1);
+    for (var ply = 0; ply < ArgInt("--plies", 60) && !match.IsOver; ply++)
+    {
+        var actor = match.CurrentTurn;
+        var top = PvpBotAi.ScoreActions(match, actor, 1.0, r);
+        var action = PvpBotAi.Choose(match, actor, 1.0, r) ?? BattleAction.Pass;
+        Console.WriteLine($"{ply,3} {actor,-6} {action.Kind,-6} {action.From.Column},{action.From.Row}>{action.Target.Column},{action.Target.Row}   top: "
+            + string.Join(" | ", top.Take(4).Select(t => $"{t.Action.Kind} {t.Action.From.Column},{t.Action.From.Row}>{t.Action.Target.Column},{t.Action.Target.Row} {t.Score:0.0}")));
+        if (match.Apply(action) == MoveKind.Invalid) match.Apply(BattleAction.Pass);
+        if (!match.IsOver && match.CurrentTurn != actor) match.ApplySeismes(match.CurrentTurn);
+        PvpSetup.ResolvePending(match);
+        if (ply % 2 == 1 || match.IsOver)
+            for (var row = 0; row < PvpSetup.Size; row++)
+            {
+                var sb = new StringBuilder("      ");
+                for (var col = 0; col < PvpSetup.Size; col++)
+                    sb.Append(match.UnitAt(new ChessArmy.Core.Map.Cell(col, row)) is { } u
+                        ? (u.IsEssential ? (u.Faction == Faction.Player ? 'K' : 'k') : (u.Faction == Faction.Player ? char.ToUpper(u.Class.Asset[0]) : char.ToLower(u.Class.Asset[0])))
+                        : '.');
+                Console.WriteLine(sb + $"   {(row == 0 ? string.Join(" ", match.Units().Select(x => $"{x.Unit.Class.Asset}:{x.Unit.Hp}")) : "")}");
+            }
+    }
+    Console.WriteLine($"Fin : vainqueur {match.Winner}");
+    return;
+}
+
+if (args.Contains("--stall"))
+{
+    // Diagnostic : parties qui s'éternisent, par commandant (aucune écriture dans pvp.json).
+    StallReport(ArgInt("--battles", 4000), ArgInt("--chases", 1000), ArgInt("--max-plies", 300), ArgInt("--chase-plies", 120));
+    return;
+}
+
 if (args.Contains("--tune-stats"))
 {
     TuneStats();
@@ -249,7 +295,12 @@ void RunBattles()
     var minCost = ArgInt("--min-cost", 3);     // coût de la pièce la plus faible : fixe l'échelle
     var battles = ArgInt("--battles", 20000);
     var passes = ArgInt("--passes", 2);
-    var equipChance = 0.35;
+    var equipChance = ArgInt("--equip-pct", 35) / 100.0;   // part des pions équipés dans les armées tirées
+    // --equipment-only : pions et commandants gardent leurs coûts ; seuls les équipements sont mesurés et réécrits.
+    var equipmentOnly = args.Contains("--equipment-only");
+    // Les équipements ont leur PROPRE budget en jeu : leur échelle se compresse pour que le plus fort coûte au plus
+    // --max-equipment points (les simulations, elles, les paient sur le budget d'armée, à l'échelle des pions).
+    var maxEquipment = ArgInt("--max-equipment", 5);
 
     var classes = PvpCatalog.AllUnitClasses().Select(c => c.Class.Asset).ToList();
     var equipment = PvpCatalog.AllEquipment().Select(e => e.Id).ToList();
@@ -298,14 +349,14 @@ void RunBattles()
         // Échelle : la pièce la plus FAIBLE coûte minCost points (moins de pions sur le plateau qu'à 1 ou 2 points).
         var weakestUnit = classes.Min(a => weights[classes.IndexOf(a)]);
         scale = weakestUnit > 0 ? minCost / weakestUnit : 1;
-        foreach (var a in classes)
+        foreach (var a in classes.Where(_ => !equipmentOnly))
             unitCost[a] = Math.Max(minCost, (int)Math.Round(weights[classes.IndexOf(a)] * scale, MidpointRounding.AwayFromZero));
         foreach (var e in equipment)
             equipCost[e] = Math.Max(1, (int)Math.Round(weights[classes.Count + equipment.IndexOf(e)] * scale, MidpointRounding.AwayFromZero));
         // Commandants : leur force ne se mesure que LES UNS PAR RAPPORT AUX AUTRES (une armée en a toujours un). Le plus
         // faible coûte 0, chacun coûte son écart avec lui.
         var weakest = commanders.Min(c => weights[CommanderIndex(c)]);
-        foreach (var c in commanders)
+        foreach (var c in commanders.Where(_ => !equipmentOnly))
             commanderCost[c] = (int)Math.Round((weights[CommanderIndex(c)] - weakest) * scale, MidpointRounding.AwayFromZero);
         var draws = samples.Count(s => Math.Abs(s.Y - 0.5) < 1e-9);
         Console.WriteLine($"  passe {pass} terminée : {draws} nulles sur {battles}, avantage du premier coup {weights[^1] * scale:+0.0;-0.0} pt");
@@ -346,11 +397,29 @@ void RunBattles()
     if (dryRun)
         return;
     var measuredUnits = classes.ToDictionary(a => a, a => weights[classes.IndexOf(a)] * scale);
-    var measuredItems = equipment.ToDictionary(e => e, e => weights[classes.Count + equipment.IndexOf(e)] * scale);
+    // Équipements : valeur mesurée (en points de pion) ramenée à l'échelle du budget d'équipement, le plus fort à
+    // maxEquipment. Le « mesuré » écrit en commentaire est déjà à cette échelle.
+    var rawItems = equipment.ToDictionary(e => e, e => weights[classes.Count + equipment.IndexOf(e)] * scale);
+    // Échelle fixée par le DEUXIÈME plus fort : un seul objet hors norme ne doit pas écraser tous les autres à 1 point.
+    // Ce qui dépasse le plafond est plafonné et signalé : on l'affaiblit en multi (pvp.json « equipmentStats »).
+    var ranked = rawItems.Values.OrderByDescending(v => v).ToList();
+    var squeeze = Math.Min(1.0, maxEquipment / Math.Max(1e-9, ranked.Count > 1 ? ranked[1] : ranked[0]));
+    var measuredItems = rawItems.ToDictionary(kv => kv.Key, kv => kv.Value * squeeze);
+    var shippedItems = measuredItems.ToDictionary(kv => kv.Key,
+        kv => Math.Clamp((int)Math.Round(kv.Value, MidpointRounding.AwayFromZero), 1, maxEquipment));
+    Console.WriteLine($"Équipements : échelle × {squeeze:0.00} (le deuxième plus fort à {maxEquipment} pt).");
+    foreach (var (id, v) in measuredItems.Where(kv => kv.Value >= maxEquipment + 0.5).OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  TROP FORT : {id} vaut {v:0.0} pt, plafonné à {maxEquipment} : à affaiblir (equipmentStats).");
     var text = File.ReadAllText(pvpPath);
+    text = ReplaceObject(text, "equipmentCost", shippedItems, measuredItems);
+    if (equipmentOnly)
+    {
+        File.WriteAllText(pvpPath, text, new UTF8Encoding(false));
+        Console.WriteLine($"pvp.json mis à jour (équipements seulement) : {pvpPath}");
+        return;
+    }
     text = ReplaceNumber(text, "budget", budget);
     text = ReplaceObject(text, "unitCost", unitCost, measuredUnits);
-    text = ReplaceObject(text, "equipmentCost", equipCost, measuredItems);
     var weakestValue = commanders.Min(c => weights[CommanderIndex(c)]);
     text = ReplaceObject(text, "commanderCost", commanderCost,
         commanders.ToDictionary(c => c, c => (weights[CommanderIndex(c)] - weakestValue) * scale));
@@ -654,4 +723,120 @@ static string ReplaceObject(string text, string key, Dictionary<string, int> cos
         else if (text[close] == '}' && --depth == 0) break;
     }
     return text[..open] + sb + text[(close + 1)..];
+}
+
+// ── Parties qui s'éternisent (diagnostic, --stall) ───────────────────────────
+//
+// 1) Batailles complètes au même budget, commandants tirés au hasard : par commandant, part des parties qui
+//    atteignent la limite de coups (personne n'a tué l'autre commandant), nulles, victoires, durée moyenne.
+// 2) Poursuite : le commandant SEUL contre le commandant de départ + 4 pièces au hasard. Part des poursuites
+//    où le camp fort tue le commandant seul avant --chase-plies coups.
+void StallReport(int battles, int chases, int maxPlies, int chasePlies)
+{
+    var budget = PvpConfig.Current.Budget;
+    var commanders = PvpCatalog.Commanders().Select(c => c.Id).ToList();
+    var units = PvpCatalog.AllUnitClasses().Select(c => (c.Class.Asset, PvpConfig.Current.UnitCost.GetValueOrDefault(c.Class.Asset, PvpConfig.DefaultCost))).ToList();
+    var items = PvpCatalog.AllEquipment().Select(e => (e.Id, PvpConfig.Current.EquipmentCost.GetValueOrDefault(e.Id, 1))).ToList();
+    var noItems = new List<(string, int)>();
+
+    // (commandant, gagne, perd, nulle, limite, coups, coups du commandant, coups joués par ce camp)
+    var stats = commanders.ToDictionary(c => c, _ => new long[8]);
+    var gate = new object();
+    var limitKinds = new long[3];   // à la limite : commandants seuls, un camp sans pièce, pièces des deux côtés
+    Console.WriteLine($"Batailles : {battles}, budget {budget}, limite {maxPlies} coups.");
+    Parallel.For(0, battles, i =>
+    {
+        var rng = new Random(91 + i * 7919);
+        var ca = commanders[rng.Next(commanders.Count)];
+        var cb = commanders[rng.Next(commanders.Count)];
+        var a = PvpBalance.RandomArmy(rng, budget, new[] { (ca, PvpConfig.Current.CommanderCostOf(ca)) }, units, items, 0.35);
+        var b = PvpBalance.RandomArmy(rng, budget, new[] { (cb, PvpConfig.Current.CommanderCostOf(cb)) }, units, items, 0.35);
+        var (winner, draw, plies, cmdMoves, left) = PlayCounted(a, b, rng.Next(), i % 2 == 0, maxPlies);
+        lock (gate)
+        {
+            Record(stats[ca], Faction.Player, winner, draw, plies, cmdMoves[0], maxPlies);
+            Record(stats[cb], Faction.Enemy, winner, draw, plies, cmdMoves[1], maxPlies);
+            if (winner == null && !draw)
+                limitKinds[left[0] == 0 && left[1] == 0 ? 0 : left[0] == 0 || left[1] == 0 ? 1 : 2]++;
+        }
+    });
+
+    static void Record(long[] s, Faction me, Faction? winner, bool draw, int plies, int cmdMoves, int maxPlies)
+    {
+        if (draw) s[3]++;
+        else if (winner == me) s[1]++;
+        else if (winner != null) s[2]++;
+        else s[4]++;
+        s[0]++;
+        s[5] += plies;
+        s[6] += cmdMoves;
+        s[7] += (plies + 1) / 2;
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"  {"Commandant",-22} {"parties",7} {"gagne",6} {"perd",6} {"nulle",6} {"limite",7} {"coups moy.",10} {"coups du cdt",12}");
+    foreach (var c in commanders.OrderByDescending(c => stats[c][4] / (double)Math.Max(1, stats[c][0])))
+    {
+        var s = stats[c];
+        double P(long v) => 100.0 * v / Math.Max(1, s[0]);
+        Console.WriteLine($"  {c,-22} {s[0],7} {P(s[1]),5:0}% {P(s[2]),5:0}% {P(s[3]),5:0}% {P(s[4]),6:0.0}% {s[5] / (double)Math.Max(1, s[0]),10:0} {100.0 * s[6] / Math.Max(1, s[7]),11:0}%");
+    }
+    var limitTotal = Math.Max(1, limitKinds.Sum());
+    Console.WriteLine($"  À la limite ({limitKinds.Sum()} parties) : commandants seuls {100.0 * limitKinds[0] / limitTotal:0}%, "
+                      + $"un camp sans pièce {100.0 * limitKinds[1] / limitTotal:0}%, pièces des deux côtés {100.0 * limitKinds[2] / limitTotal:0}%");
+
+    Console.WriteLine();
+    Console.WriteLine($"Poursuite : commandant SEUL contre {PvpConfig.Current.StartingCommanders.FirstOrDefault() ?? "commandant"} + 4 pièces, {chases} par commandant, limite {chasePlies} coups.");
+    var hunter = PvpConfig.Current.StartingCommanders.FirstOrDefault() ?? "commandant";
+    foreach (var c in commanders)
+    {
+        long caught = 0, totalPlies = 0, counter = 0, wiped = 0;
+        Parallel.For(0, chases, i =>
+        {
+            var rng = new Random(17 + i * 104729);
+            var strong = PvpBalance.RandomArmy(rng, 4 * 6, new[] { (hunter, 0) }, units.Where(u => u.Item2 <= 6).ToList(), noItems, 0);
+            while (strong.Slots.Count > 4)
+                strong.Remove(strong.Slots[^1].Column, strong.Slots[^1].Line);
+            var lone = new PvpBuild { CommanderId = c };
+            var (winner, _, plies, _, left) = PlayCounted(strong, lone, rng.Next(), i % 2 == 0, chasePlies);
+            if (winner == null && left[0] == 0) Interlocked.Increment(ref wiped);
+            if (winner == Faction.Player)
+            {
+                Interlocked.Increment(ref caught);
+                Interlocked.Add(ref totalPlies, plies);
+            }
+            else if (winner == Faction.Enemy)
+                Interlocked.Increment(ref counter);
+        });
+        Console.WriteLine($"  {c,-22} attrapé {100.0 * caught / chases,5:0.0}%   (en {totalPlies / (double)Math.Max(1, caught):0} coups en moyenne)"
+                          + $"   gagne seul {100.0 * counter / chases,5:0.0}%   chasseurs tous morts {100.0 * wiped / chases,5:0.0}%   s'échappe vraiment {100.0 * (chases - caught - counter - wiped) / chases,5:0.0}%");
+    }
+    Console.WriteLine($"Durée : {clock.Elapsed:mm\\:ss}");
+}
+
+static (Faction? Winner, bool Draw, int Plies, int[] CommanderMoves, int[] Left) PlayCounted(PvpBuild a, PvpBuild b, int seed, bool aStarts, int maxPlies)
+{
+    var rng = new Random(seed);
+    var match = PvpSetup.CreateMatch(mirrored: false, aStarts, seed);
+    PvpSetup.PlaceArmy(match, a, Faction.Player);
+    PvpSetup.PlaceArmy(match, b, Faction.Enemy);
+    var cmd = new int[2];
+    var ply = 0;
+    for (; ply < maxPlies && !match.IsOver; ply++)
+    {
+        var actor = match.CurrentTurn;
+        var action = PvpBotAi.Choose(match, actor, 1.0, rng) ?? BattleAction.Pass;
+        if (match.UnitAt(action.From) is { IsEssential: true })
+            cmd[actor == Faction.Player ? 0 : 1]++;
+        if (match.Apply(action) == MoveKind.Invalid)
+            match.Apply(BattleAction.Pass);
+        if (!match.IsOver && match.CurrentTurn != actor)
+            match.ApplySeismes(match.CurrentTurn);
+        PvpSetup.ResolvePending(match);
+    }
+    var left = new int[2];
+    foreach (var (_, u) in match.Units())
+        if (!u.IsEssential && u.Class.Asset != "Basile")
+            left[u.Faction == Faction.Player ? 0 : 1]++;
+    return (match.Winner, match.IsDraw, ply, cmd, left);
 }

@@ -61,9 +61,9 @@ public sealed class PvpPrepScene : Scene
         else
             _seed = _session.Seed;
 
-        _map = PvpSetup.PickMap(LoadMultiMaps(), _seed);
+        _map = PvpSetup.PickMap(LoadMultiMaps(out var catalog), _seed);
         if (_map != null)
-            _preview = PvpSetup.BuildBattlefield(_map, isHost: _session?.IsHost ?? true, out _bushes);
+            _preview = PvpSetup.BuildBattlefield(_map, isHost: _session?.IsHost ?? true, out _bushes, catalog);
         _selected = Math.Clamp(Profile.SelectedBuild, 0, PvpProfile.BuildSlots - 1);
         if (!IsPlayable(_selected))
             _selected = Enumerable.Range(0, PvpProfile.BuildSlots).FirstOrDefault(IsPlayable);
@@ -78,13 +78,14 @@ public sealed class PvpPrepScene : Scene
     }
 
     /// <summary>Maps Multi livrées (même règle que le combat : brouillons exclus) pour tirer la même que lui.</summary>
-    private static List<MapData> LoadMultiMaps()
+    private static List<MapData> LoadMultiMaps(out TileCatalog? catalog)
     {
         var maps = new List<MapData>();
+        catalog = null;
         try
         {
             var root = AppContext.BaseDirectory;
-            var catalog = TileCatalog.FromJson(File.ReadAllText(Path.Combine(root, "Assets/Tiles/tiles.json")));
+            catalog = TileCatalog.FromJson(File.ReadAllText(Path.Combine(root, "Assets/Tiles/tiles.json")));
             foreach (var file in Directory.GetFiles(Path.Combine(root, "Assets/Maps"), "*.json"))
             {
                 try
@@ -263,6 +264,9 @@ public sealed class PvpPrepScene : Scene
         sb.End();
     }
 
+    private static readonly Color[] ErrorVeil = { Palette.Black1 * 0.62f };   // = voile de l'erreur (Draw)
+
     public override void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale) =>
-        _backdrop.DrawBands(Context.SpriteBatch, realScreen, canvasOffset, canvasScale, Context.VirtualResolution);
+        _backdrop.DrawBands(Context.SpriteBatch, realScreen, canvasOffset, canvasScale, Context.VirtualResolution,
+            _error != null ? ErrorVeil : Array.Empty<Color>());
 }

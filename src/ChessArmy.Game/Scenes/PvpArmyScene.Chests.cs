@@ -330,7 +330,7 @@ public sealed partial class PvpArmyScene
         _unlockVersion++;   // réserve, flèches du commandant, contenu des coffres : relus maintenant que c'est révélé
         _focus.Index = 0;
         Context.Sounds.Play("reward");
-        if (!_rewardUnits && _reward != null && Equipments.ById(_reward) is { Rarity: EquipmentRarity.Legendary })
+        if (!_rewardUnits && _reward != null && PvpCatalog.FindEquipment(_reward) is { Rarity: EquipmentRarity.Legendary })
             Context.Sounds.Play("reward_legendary");
     }
 
@@ -486,7 +486,7 @@ public sealed partial class PvpArmyScene
         if (item.Equipment)
         {
             var bg = Tex("Equipment/background");
-            var icon = Equipments.ById(item.Id) is { } eq ? EquipIcon(eq) : null;
+            var icon = PvpCatalog.FindEquipment(item.Id) is { } eq ? EquipIcon(eq) : null;
             var scale = box.Width >= 64 ? 2 : 1;
             if (bg != null)
                 sb.Draw(bg, new Rectangle(box.Center.X - bg.Width * scale / 2, box.Center.Y - bg.Height * scale / 2, bg.Width * scale, bg.Height * scale), owned ? Color.White : Color.White * 0.3f);
@@ -563,7 +563,7 @@ public sealed partial class PvpArmyScene
         var innerW = RevealInnerW;
         _revValueScale = full ? 2 : 1;
 
-        var eq = _rewardUnits ? null : Equipments.ById(_reward!);
+        var eq = _rewardUnits ? null : PvpCatalog.FindEquipment(_reward!);
         var unit = _rewardUnits ? PvpCatalog.FindClass(_reward!) : null;
         _revEquipment = eq != null;
         string kindTemplate, word = "";
@@ -762,7 +762,7 @@ public sealed partial class PvpArmyScene
 
         // L'objet : équipement = fond + icône (×6 / ×4) ; pion / commandant = sprite de face (×3 / ×2).
         var artRect = new Rectangle(panel.Center.X - art / 2, y, art, art);
-        if (_revEquipment && Equipments.ById(_reward) is { } eq)
+        if (_revEquipment && PvpCatalog.FindEquipment(_reward) is { } eq)
         {
             var scale = art / 32;
             if (Tex("Equipment/background") is { } bg)

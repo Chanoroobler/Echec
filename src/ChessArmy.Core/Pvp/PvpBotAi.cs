@@ -41,6 +41,10 @@ public sealed class PvpBotController : IBattleController
         _log = log;
     }
 
+    /// <summary>Pendule basse du bot : son tour a commencé sous le seuil, donc la case <see cref="Match.NextCollapse"/>
+    /// derrière lui tombera après son coup avec ce qui s'y trouve. Tenu à jour par la scène (seule à voir la pendule).</summary>
+    public bool CollapseArmed { get; set; }
+
     public bool TryGetAction(Match match, out BattleAction action)
     {
         // Un coup préparé pour une autre position (la partie a bougé entre-temps) est oublié.
@@ -55,21 +59,24 @@ public sealed class PvpBotController : IBattleController
             // possible, commandant adverse à prendre, prise qui sauve le sien) : bien plus court, s'il le joue.
             var delay = Draw(_def.MinDelaySeconds, _def.MaxDelaySeconds);
             var quick = Draw(_def.ObviousMinDelaySeconds, _def.ObviousMaxDelaySeconds);
-            _obvious = PvpBotAi.Obvious(match, Faction.Enemy, _delayRng, out var certain);
+            _obvious = PvpBotAi.Obvious(match, Faction.Enemy, _delayRng, out var certain,
+                CollapseArmed ? match.NextCollapse(Faction.Enemy) : null);
             var now = System.Diagnostics.Stopwatch.GetTimestamp();
             _slowReadyAt = now + (long)(delay * System.Diagnostics.Stopwatch.Frequency);
             _readyAt = _obvious != null ? now + (long)(Math.Min(quick, delay) * System.Diagnostics.Stopwatch.Frequency) : _slowReadyAt;
+            var doomed = CollapseArmed ? match.NextCollapse(Faction.Enemy) : null;   // tombe après ce coup
+            var collapse = CollapseArmed;
             if (certain && _obvious is { } sure)
                 _pending = sure;   // rien à calculer
             else if (_def.Depth <= 0 || _forker == null || _log == null)
-                _pending = PvpBotAi.Choose(match, Faction.Enemy, _def, _weights, _rng) ?? BattleAction.Pass;
+                _pending = PvpBotAi.Choose(match, Faction.Enemy, _def, _weights, _rng, doomed) ?? BattleAction.Pass;
             else
             {
                 var log = new List<BattleAction>(_log);   // instantané : la scène ne joue rien pendant la réflexion
                 var forker = _forker;
                 var rng = new Random(_rng.Next());   // propre à cette réflexion : une réflexion abandonnée ne gêne pas la suivante
                 var budget = Math.Max(_def.ThinkSeconds, delay);   // il calcule vraiment pendant sa « réflexion »
-                _thinking = Task.Run(() => PvpBotAi.Search(forker, log, Faction.Enemy, _def, _weights, rng, budget)
+                _thinking = Task.Run(() => PvpBotAi.Search(forker, log, Faction.Enemy, _def, _weights, rng, budget, collapse)
                                            ?? BattleAction.Pass);
             }
         }
@@ -150,13 +157,14 @@ public static class PvpBotAi
     /// d'erreur. S'il « attaque toujours » et qu'une attaque existe, il attaque : la meilleure (souvent une mise à
     /// mort) avec la probabilité <see cref="PvpBotDef.KillChance"/>, sinon une attaque au hasard.
     /// </summary>
-    public static BattleAction? Choose(Match match, Faction side, PvpBotDef def, PvpAiWeights? weights, Random rng)
+    public static BattleAction? Choose(Match match, Faction side, PvpBotDef def, PvpAiWeights? weights, Random rng,
+        Cell? doomed = null)
     {
         var caution = def.Recklessness > 0 && rng.NextDouble() < def.Recklessness ? 0 : def.Caution;   // coup imprudent
-        var scored = ScoreActions(match, side, caution, rng, def.Style);
+        var scored = ScoreActions(match, side, caution, rng, def.Style, doomed);
         if (scored.Count == 0)
             return null;
-        if (def.ForceAttack && FirstAttack(scored) is var first && first >= 0)
+        if (def.ForceAttack && !MustRescue(match, side, doomed) && FirstAttack(scored) is var first && first >= 0)
         {
             if (rng.NextDouble() < def.KillChance)
                 return scored[first].Action;
@@ -176,12 +184,12 @@ public static class PvpBotAi
     /// possible ou la mise à mort du commandant adverse (<paramref name="certain"/> : rien à calculer), ou la prise
     /// qui supprime une menace sur son propre commandant. Null sinon.
     /// </summary>
-    public static BattleAction? Obvious(Match match, Faction side, Random rng, out bool certain)
+    public static BattleAction? Obvious(Match match, Faction side, Random rng, out bool certain, Cell? doomed = null)
     {
         certain = false;
         if (match.IsOver || match.CurrentTurn != side)
             return null;
-        var scored = ScoreActions(match, side, 1.0, rng);
+        var scored = ScoreActions(match, side, 1.0, rng, null, doomed);
         if (scored.Count <= 1)
         {
             certain = true;
@@ -219,13 +227,13 @@ public static class PvpBotAi
     /// rangs bas ; l'imprécision fait parfois jouer le deuxième meilleur coup calculé.
     /// </summary>
     public static BattleAction? Search(PvpForker forker, IReadOnlyList<BattleAction> log, Faction side, PvpBotDef def,
-        PvpAiWeights weights, Random rng, double maxSeconds = 0)
+        PvpAiWeights weights, Random rng, double maxSeconds = 0, bool collapse = false)
     {
         weights = def.Style?.Apply(weights) ?? weights;   // style du bot nommé
         var root = forker.Fork(log, log.Count);
         if (root is null || root.IsOver || root.CurrentTurn != side)
             return null;
-        var candidates = Candidates(root, side, def.Breadth, def, rng, def.Style);
+        var candidates = Candidates(root, side, def.Breadth, def, rng, def.Style, collapse ? root.NextCollapse(side) : null);
         if (candidates.Count == 0)
             return null;
         if (candidates.Count == 1)
@@ -240,7 +248,7 @@ public static class PvpBotAi
         var table = new SearchTable();
         for (var depth = maxSeconds > 0 ? 0 : def.Depth; depth <= def.Depth; depth++)
         {
-            var results = SearchRoot(root, candidates, depth, side, def, weights, rng, deadline, table);
+            var results = SearchRoot(root, candidates, depth, side, def, weights, rng, deadline, table, collapse);
             if (results == null)
                 break;   // temps écoulé pendant cette profondeur : on garde la précédente
             best = results;
@@ -259,7 +267,8 @@ public static class PvpBotAi
     /// deuxième (imprécision).
     /// </summary>
     private static List<(double Score, BattleAction Action)>? SearchRoot(Match root, List<BattleAction> candidates,
-        int depth, Faction side, PvpBotDef def, PvpAiWeights weights, Random rng, long deadline, SearchTable table)
+        int depth, Faction side, PvpBotDef def, PvpAiWeights weights, Random rng, long deadline, SearchTable table,
+        bool collapse)
     {
         var count = candidates.Count;
         var values = new double[count];
@@ -270,6 +279,8 @@ public static class PvpBotAi
         double Run(int i, double alpha)
         {
             var child = Child(root, candidates[i]);
+            if (collapse && child != null)
+                PvpSetup.CollapseAfterTurn(child, side, 0f);   // pendule basse : sa case tombe après le coup, comme en jeu
             return child is null ? double.NegativeInfinity
                 : AlphaBeta(child, depth, alpha, double.PositiveInfinity, side, def, weights, new Random(seeds[i]), deadline, table);
         }
@@ -385,11 +396,11 @@ public static class PvpBotAi
     /// (jamais élaguées). À la racine d'un bot qui « attaque toujours », seules les attaques restent s'il y en a.
     /// </summary>
     private static List<BattleAction> Candidates(Match match, Faction side, int breadth, PvpBotDef? root, Random rng,
-        PvpBotStyle? style = null)
+        PvpBotStyle? style = null, Cell? doomed = null)
     {
-        var scored = ScoreActions(match, side, 1.0, rng, style);
+        var scored = ScoreActions(match, side, 1.0, rng, style, doomed);
         var result = new List<BattleAction>(breadth + 4);
-        var onlyAttacks = root is { ForceAttack: true } && FirstAttack(scored) >= 0;
+        var onlyAttacks = root is { ForceAttack: true } && !MustRescue(match, side, doomed) && FirstAttack(scored) >= 0;
         for (var i = 0; i < scored.Count; i++)
         {
             var (score, action) = scored[i];
@@ -407,8 +418,13 @@ public static class PvpBotAi
     private const double KillBonus = 20;
     private const double CommanderKillBonus = 10_000;
     private const double SavingKillBonus = 300;
+    private const double CollapseLossBonus = 100;      // laisser une pièce sur la case qui tombe (pendule basse)
     private const double KillThreshold = KillBonus;   // une attaque notée au moins autant tue sa cible
     private const int GuardRadius = 2;                 // style « garde » : distance au commandant jugée sûre
+    private const double KingReachBonus = 40;          // coup qui met le commandant adverse à portée
+    // Réglés par mesure (tools/ChessArmy.Balance --stall) : sans eux, un tiers des parties de bots n'en finissait pas.
+    private const double KingHitBonus = 30;            // frapper le commandant sans le tuer (sinon se replacer passait avant)
+    private const double UndoPenalty = 25;             // défaire son propre dernier déplacement (aller-retour sans fin)
 
     /// <summary>
     /// Note RAPIDE de chaque coup possible de <paramref name="side"/> (qui doit avoir la main), du meilleur au moins
@@ -416,7 +432,45 @@ public static class PvpBotAi
     /// <paramref name="caution"/>, menaces sur les deux commandants, avance vers le commandant adverse.
     /// </summary>
     public static List<(double Score, BattleAction Action)> ScoreActions(Match match, Faction side, double caution,
-        Random rng, PvpBotStyle? style = null)
+        Random rng, PvpBotStyle? style = null, Cell? doomed = null)
+    {
+        var scored = ScoreActionsCore(match, side, caution, rng, style);
+        if (doomed is { } d)
+            PenalizeCollapse(match, side, d, scored);
+        return scored;
+    }
+
+    /// <summary>
+    /// Pendule basse : la case <paramref name="doomed"/> tombera après ce coup, avec ce qui s'y tient. Y laisser une
+    /// de ses pièces ou y en poser une coûte cette pièce (la partie pour le commandant) ; l'en sortir rapporte autant.
+    /// </summary>
+    /// <summary>Une pièce de <paramref name="side"/> se tient sur la case qui va tomber : l'attaque obligatoire
+    /// cède, la sortir de là passe avant.</summary>
+    private static bool MustRescue(Match match, Faction side, Cell? doomed) =>
+        doomed is { } d && match.UnitAt(d) is { } u && u.Faction == side;
+
+    private static void PenalizeCollapse(Match match, Faction side, Cell doomed,
+        List<(double Score, BattleAction Action)> scored)
+    {
+        // Une pièce perdue POUR RIEN : plus cher que tout coup de placement ou prise ordinaire, moins que sauver
+        // son commandant (SavingKillBonus) ou prendre celui d'en face.
+        static double Cost(Unit u) => u.IsEssential ? CommanderKillBonus : CollapseLossBonus + Value(u);
+        var stuck = match.UnitAt(doomed) is { } u && u.Faction == side ? Cost(u) : 0.0;
+        for (var i = 0; i < scored.Count; i++)
+        {
+            var (score, action) = scored[i];
+            if (action.Kind == BattleActionKind.Move && action.From == doomed)
+                continue;                                     // la pièce menacée s'en va : sauvée
+            score -= stuck;                                   // elle reste dessus : perdue
+            if (action.Kind == BattleActionKind.Move && action.Target == doomed && match.UnitAt(action.From) is { } mover)
+                score -= Cost(mover);                         // s'y poser : perdue aussi
+            scored[i] = (score, action);
+        }
+        scored.Sort((a, b) => b.Score.CompareTo(a.Score));
+    }
+
+    private static List<(double Score, BattleAction Action)> ScoreActionsCore(Match match, Faction side, double caution,
+        Random rng, PvpBotStyle? style)
     {
         var scored = new List<(double Score, BattleAction Action)>();
         if (match.IsOver || match.CurrentTurn != side)
@@ -452,6 +506,16 @@ public static class PvpBotAi
             if (entry.Unit.Faction == side)
                 mine.Add(entry);
 
+        // En avance au matériel, nos pièces échangent sans frilosité : se laisser toucher pour approcher le
+        // commandant adverse vaut mieux que tourner autour de lui jusqu'à la pendule.
+        var myMaterial = Material(match, side);
+        var theirMaterial = Material(match, opponent);
+        var lead = myMaterial <= 0 ? 1.0 : Math.Clamp(theirMaterial / myMaterial, 0.25, 1.0);
+        var lastMove = match.LastMoveOf(side);
+        var kingHunts = theirMaterial <= 0 && myKing is { } mk && theirKing is { } ok2
+            && match.UnitAt(mk) is { } me && match.UnitAt(ok2) is { } him
+            && (myMaterial > 0 || HitsToKill(me, him) < HitsToKill(him, me));
+
         foreach (var (from, unit) in mine)
         {
             var value = Value(unit);
@@ -466,6 +530,8 @@ public static class PvpBotAi
                 var score = damage * 0.5 + (kill ? KillBonus + Value(victim) : Value(victim) * damage / Math.Max(1.0, victim.MaxHp));
                 if (victim.IsEssential && kill)
                     score += CommanderKillBonus;   // mise à mort du commandant : partie gagnée
+                else if (victim.IsEssential)
+                    score += KingHitBonus;
                 if (kingInDanger && myKing is { } kc && kill)
                 {
                     match.ThreatenedCells(target, buffer);
@@ -487,15 +553,26 @@ public static class PvpBotAi
                 // enlever) contre ce qu'on pourra frapper depuis elle. Un commandant ne prend presque aucun risque.
                 var riskNow = Math.Min(1.0, incoming.GetValueOrDefault(from) / (double)Math.Max(1, unit.Hp));
                 var riskThen = Math.Min(1.0, incoming.GetValueOrDefault(to) / (double)Math.Max(1, unit.Hp));
-                var cautionFactor = (unit.IsEssential ? 8.0 : 0.6) * caution;
+                var cautionFactor = (unit.IsEssential ? 8.0 : 0.6 * lead) * caution;
                 var score = (riskNow - riskThen) * value * cautionFactor;
 
-                var best = 0.0;
-                foreach (var t in match.TargetsAfterMove(from, to))
-                    if (match.UnitAt(t) is { } enemy)
-                        best = Math.Max(best, enemy.IsEssential ? 40
-                            : Value(enemy) * Math.Min(1.0, unit.Damage / (double)Math.Max(1, enemy.Hp)));
-                score += best * 0.8 * style.Aggression;
+                // Défaire son propre dernier coup (A→B puis B→A) : sans mémoire, le bot tourne en rond à l'infini.
+                // Un commandant menacé fuit quand même par là : son risque pèse bien plus que la pénalité.
+                if (lastMove is { } lm && lm.To == from && lm.From == to)
+                    score -= UndoPenalty;
+
+                // Le commandant ne va PAS chercher de cible (sauf à la chasse) : il frappe ce qui vient à lui. Mesuré
+                // (--stall, duels miroir) : le commandant qui partait au contact se faisait encercler, et la mesure
+                // des coûts pénalisait les commandants mobiles à tort.
+                if (!unit.IsEssential || kingHunts)
+                {
+                    var best = 0.0;
+                    foreach (var t in match.TargetsAfterMove(from, to))
+                        if (match.UnitAt(t) is { } enemy)
+                            best = Math.Max(best, enemy.IsEssential ? KingReachBonus
+                                : Value(enemy) * Math.Min(1.0, unit.Damage / (double)Math.Max(1, enemy.Hp)));
+                    score += best * 0.8 * style.Aggression;
+                }
 
                 // Avance vers le commandant adverse, ou vers l'ennemi le plus proche s'il n'y en a pas
                 // (prudemment pour son propre commandant) : sans ça, deux bots prudents tourneraient en rond.
@@ -508,6 +585,10 @@ public static class PvpBotAi
                     if (style.Guard > 0 && myKing is { } home && Distance(from, home) > GuardRadius)
                         score += (Distance(from, home) - Distance(to, home)) * 2.0 * style.Guard;
                 }
+                // Le commandant part à l'assaut quand l'adversaire n'a plus que le sien et qu'il gagne le duel
+                // (ou qu'il a encore des pièces pour l'appuyer) : sinon deux commandants se regardent jusqu'à la pendule.
+                else if (kingHunts && theirKing is { } prey2)
+                    score += (Distance(from, prey2) - Distance(to, prey2)) * 2.0 * style.Advance;
                 scored.Add((score + rng.NextDouble() * 0.01, BattleAction.Move(from, to)));
             }
         }
@@ -614,6 +695,9 @@ public static class PvpBotAi
     /// <summary>Perte de valeur d'une pièce qui encaisse <paramref name="damage"/> : toute sa valeur si elle meurt.</summary>
     private static double Loss(Unit u, int damage, PvpAiWeights w) =>
         damage >= u.Hp ? PieceValue(u, w) : w[PvpAiWeights.PieceHp] * damage;
+
+    private static int HitsToKill(Unit attacker, Unit victim) =>
+        attacker.Damage <= 0 ? int.MaxValue : (victim.Hp + attacker.Damage - 1) / attacker.Damage;
 
     private static Cell? Nearest(Cell from, List<Cell> cells)
     {

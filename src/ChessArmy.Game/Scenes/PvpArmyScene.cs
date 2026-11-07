@@ -62,7 +62,7 @@ public sealed partial class PvpArmyScene : Scene
         public bool FromBoard => FromColumn >= 0;
     }
 
-    private const int CardsPerPageMax = 8;
+    private const int CardsPerPageMax = 32;
     private const float DragThreshold = 4f;
     private const float MessageSeconds = 2.6f;
 
@@ -107,7 +107,8 @@ public sealed partial class PvpArmyScene : Scene
 
     private static PvpProfile Profile => PvpProfileStore.Current;
     private PvpBuild Build => Profile.Builds[_tab];
-    private int Page => _page[_reserveEquip ? 1 : 0];
+    // La grille peut changer de taille (canevas compact / complet) : la page reste dans les bornes.
+    private int Page => _lay.CardCount > 0 ? Math.Min(_page[_reserveEquip ? 1 : 0], PageCount - 1) : _page[_reserveEquip ? 1 : 0];
     private bool Locked => _locked != null;   // adversaire trouvé : armée verrouillée
     private bool ArmyFrozen => Locked || _mode != SearchMode.Idle;   // recherche lancée : plus aucune modification d'armée
 
@@ -127,6 +128,33 @@ public sealed partial class PvpArmyScene : Scene
         }
         else if (_entry == Entry.Chests && !_tutorialOpen)
             OpenChests();
+    }
+
+    /// <summary>
+    /// Bandes du letterbox (écran ultra-large / non 16:9) : même fond uni que le canvas et mêmes voiles,
+    /// empilés dans l'ordre de <see cref="Draw"/>, pour un fond continu sur toute la fenêtre.
+    /// </summary>
+    public override void DrawLetterboxBackground(Point realScreen, Point canvasOffset, int canvasScale)
+    {
+        var sb = Context.SpriteBatch;
+        var full = new Rectangle(0, 0, realScreen.X, realScreen.Y);
+        var veil = Palette.Black1 * 0.8f;   // = DrawReel / DrawReveal / DrawTutorial / DrawError
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(Px, full, Palette.Black3);
+        if (_view == View.Chests && _rolling)
+            sb.Draw(Px, full, veil);
+        if (_view == View.Chests && _revealOpen && _reward != null)
+        {
+            sb.Draw(Px, full, veil);
+            var step = (int)(_revealT / 0.06f);   // = DrawRevealFlash
+            if (step < 2)
+                sb.Draw(Px, full, Color.White * (step == 0 ? 0.75f : 0.35f));
+        }
+        if (_tutorialOpen)
+            sb.Draw(Px, full, veil);
+        if (_error != null)
+            sb.Draw(Px, full, veil);
+        sb.End();
     }
 
     public override void Unload()
@@ -538,7 +566,7 @@ public sealed partial class PvpArmyScene : Scene
 
     private static string HeldName(Held h) =>
         h.IsEquip
-            ? Equipments.ById(h.Id) is { } e ? EquipmentNames.Localized(e) : h.Id
+            ? PvpCatalog.FindEquipment(h.Id) is { } e ? EquipmentNames.Localized(e) : h.Id
             : PvpCatalog.FindClass(h.Id) is { } c ? Loc.TOr("unit." + c.Class.Asset, c.Class.Name) : h.Id;
 
     private void Say(string text, bool error)
@@ -618,8 +646,8 @@ public sealed partial class PvpArmyScene : Scene
     private void TurnPage(int dir)
     {
         var i = _reserveEquip ? 1 : 0;
-        var next = Math.Clamp(_page[i] + dir, 0, PageCount - 1);
-        if (next == _page[i])
+        var next = Math.Clamp(Page + dir, 0, PageCount - 1);   // depuis la page AFFICHÉE (déjà ramenée dans les bornes)
+        if (next == Page)
             return;
         _page[i] = next;
         Context.Sounds.Play("menu_click");

@@ -34,8 +34,8 @@ public sealed partial class PvpArmyScene
         public readonly Rectangle[] Cards = new Rectangle[CardsPerPageMax];
         public int Cols, CardCount, CardW, CardH;
         public Rectangle PagePrev, PageNext, PageCounter;
-        public int SepY;
-        public Rectangle Sheet;
+        public Rectangle SheetFrame;         // fiche : panneau posé sur les rangées vides au-dessus des lignes du joueur
+        public Rectangle Sheet;              // intérieur de ce panneau
         public Rectangle Friend, Launch, Cancel, Center;
         // Coffres
         public Rectangle ChestTitle;
@@ -94,6 +94,7 @@ public sealed partial class PvpArmyScene
         var rows = Math.Clamp((midBottom - midTop - PvpBoardRenderer.Thickness) / PvpBoardRenderer.Tile, 2, PvpBoardRenderer.Size);
         L.FirstRow = PvpBoardRenderer.Size - rows;
         L.Board = new Rectangle(boardX, midTop, boardW, rows * PvpBoardRenderer.Tile + PvpBoardRenderer.Thickness);
+        LayoutSheet(L);
 
         L.Res = new Rectangle(resX, midTop, resW, L.Cmd.Bottom - midTop);
         LayoutReserve(L, font);
@@ -140,20 +141,25 @@ public sealed partial class PvpArmyScene
         var inset = PvpArt.PanelFrame + (full ? 13 : 6);
         L.CmdInner = new Rectangle(p.X + inset, p.Y + inset - 2, p.Width - 2 * inset, p.Height - 2 * inset + 2);
         var inner = L.CmdInner;
-        L.PortraitScale = full ? 3 : 2;
-        var size = 64 * L.PortraitScale;
         var headerH = Context.Font.LineHeight(1);
+        var nameH = Context.Font.LineHeight(full ? 3 : 2);
+        L.BarStep = full ? 31 : 15;
+        L.BarH = full ? 12 : 7;
+        // Portrait ×3 (×2 en compact), réduit d'un cran si le plateau animé du déplacement ne tient plus dessous.
+        int Needed(int scale) => headerH + (full ? 8 : 4) + 64 * scale + (full ? 6 : 4) + nameH + (full ? 8 : 6) + 4
+                                 + (full ? 16 : 10) + 4 * L.BarStep + (full ? 4 : 2) + MoveAttackGrid.BoardOuter;
+        L.PortraitScale = full ? 3 : 2;
+        if (Needed(L.PortraitScale) > inner.Height)
+            L.PortraitScale--;
+        var size = 64 * L.PortraitScale;
         var py = inner.Y + headerH + (full ? 8 : 4);
         L.Portrait = new Rectangle(inner.Center.X - size / 2, py, size, size);
         var arrowW = full ? 40 : 20;
         var arrowH = full ? 48 : 36;
         L.CmdPrev = new Rectangle(inner.X, L.Portrait.Center.Y - arrowH / 2 + (full ? 12 : 6), arrowW, arrowH);
         L.CmdNext = new Rectangle(inner.Right - arrowW, L.CmdPrev.Y, arrowW, arrowH);
-        var nameH = Context.Font.LineHeight(full ? 3 : 2);
         L.CmdName = new Rectangle(inner.X, L.Portrait.Bottom + (full ? 6 : 4), inner.Width, nameH);
         L.CmdDots = new Rectangle(inner.X, L.CmdName.Bottom + (full ? 8 : 6), inner.Width, 4);
-        L.BarStep = full ? 31 : 15;
-        L.BarH = full ? 12 : 7;
         L.BarsY = L.CmdDots.Bottom + (full ? 16 : 10);
     }
 
@@ -188,14 +194,35 @@ public sealed partial class PvpArmyScene
         L.CardW = full ? 84 : 66;
         L.CardH = full ? 94 : 80;
         var gap = (inner.Width - L.Cols * L.CardW) / (L.Cols - 1);
-        L.CardCount = L.Cols * 2;
+        var rowGap = full ? 6 : 5;
         var gy = ty + tabH + (full ? 8 : 6);
+        // La fiche est passée sur le plateau : la grille descend jusqu'en bas du panneau (autant de rangées qu'il en tient).
+        var cardRows = Math.Max(1, (inner.Bottom - gy + rowGap) / (L.CardH + rowGap));
+        cardRows = Math.Min(cardRows, CardsPerPageMax / L.Cols);
+        L.CardCount = L.Cols * cardRows;
+        if (cardRows > 1)   // rangées réparties sur toute la hauteur : pas de vide sous la dernière
+            rowGap = (inner.Bottom - gy - cardRows * L.CardH) / (cardRows - 1);
         for (var k = 0; k < L.CardCount; k++)
-            L.Cards[k] = new Rectangle(inner.X + k % L.Cols * (L.CardW + gap), gy + k / L.Cols * (L.CardH + (full ? 6 : 5)), L.CardW, L.CardH);
+            L.Cards[k] = new Rectangle(inner.X + k % L.Cols * (L.CardW + gap), gy + k / L.Cols * (L.CardH + rowGap), L.CardW, L.CardH);
+    }
 
-        // La grille et la fiche se partagent le panneau : tout ce qui suit la grille est pour la fiche.
-        L.SepY = gy + 2 * L.CardH + (full ? 6 : 5) + (full ? 4 : 3);
-        L.Sheet = new Rectangle(inner.X, L.SepY + (full ? 10 : 6), inner.Width, inner.Bottom - L.SepY - (full ? 10 : 6));
+    /// <summary>Lift maximal d'un pion survolé (cf. DrawBoard) : la fiche s'arrête au-dessus de sa tête.</summary>
+    private const int SheetHeadroom = 16;
+
+    /// <summary>
+    /// Fiche (pion, commandant, équipement) : panneau posé sur les 4 rangées juste au-dessus des deux lignes du
+    /// joueur (vides pendant la composition), sur toute la largeur du plateau. Bien plus de place que sous la réserve.
+    /// </summary>
+    private void LayoutSheet(Lay L)
+    {
+        var full = L.Full;
+        var tile = PvpBoardRenderer.Tile;
+        var playerTop = PvpBoardRenderer.Size - 2;
+        var sheetRows = Math.Max(1, Math.Min(4, playerTop - L.FirstRow));
+        var top = L.Board.Y + (playerTop - sheetRows - L.FirstRow) * tile;
+        L.SheetFrame = new Rectangle(L.Board.X + 4, top + 4, L.Board.Width - 8, sheetRows * tile - 4 - SheetHeadroom);
+        var ins = PvpArt.PanelFrame + (full ? 10 : 6);
+        L.Sheet = new Rectangle(L.SheetFrame.X + ins, L.SheetFrame.Y + ins, L.SheetFrame.Width - 2 * ins, L.SheetFrame.Height - 2 * ins);
     }
 
     private const int DotW = 8, DotActiveW = 16, DotH = 4, DotGap = 4;

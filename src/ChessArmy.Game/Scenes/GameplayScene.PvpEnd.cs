@@ -84,6 +84,11 @@ public sealed partial class GameplayScene
         public Color TowardsColor;
         public int Segments, Reference;
         public bool HasNext;
+
+        // Changement de rang (+1 promotion, -1 rétrogradation, 0 aucun) : la cote compte jusqu'à Edge (dernière
+        // valeur de l'ancien rang), temps fort, puis repart de Boundary (première du nouveau) jusqu'à RatingAfter.
+        public int Change, Edge, Boundary;
+        public string[] NamePrefix = Array.Empty<string>();   // nom du nouveau rang lettre par lettre (préparé une fois)
     }
 
     private PvpEndScreen? _pvpEnd;
@@ -94,10 +99,28 @@ public sealed partial class GameplayScene
 
     private PvpRankIcon PvpEndRankIcon => _pvpEndRankIcon ??= new PvpRankIcon(Context.GraphicsDevice);
 
+    // Changement de rang : montée de la cote jusqu'au bord (barre pleine / vide), temps fort, fin de la montée.
+    private const float PvpRankRise = 0.9f, PvpRankPromo = 0.8f, PvpRankDemo = 0.5f, PvpRankTail = 0.6f;
+    private const float PvpRankSwap = 0.08f;   // ancien blason éteint, puis le nouveau arrive
+    private const float PvpRankPop = 0.1f;   // nouveau blason doublé (×2 entier) avant de retomber
+    private const float PvpRankFlash = 0.25f, PvpRankLetter = 0.035f, PvpRankGlow = 0.35f, PvpRankDrop = 0.2f;
+
     private static float PvpEndProgress(float time) =>
         Math.Clamp((time - PvpEndAnimDelay) / PvpEndAnimLength, 0f, 1f);
 
-    private bool PvpEndAnimating => PvpEndProgress(_pvpEndTime) < 1f;
+    private static float PvpEndEase(float t) => 1f - (1f - t) * (1f - t) * (1f - t);   // ralentit à l'arrivée
+
+    /// <summary>Début du temps fort du changement de rang (en secondes depuis l'ouverture).</summary>
+    private static float PvpRankBeatStart => PvpEndAnimDelay + PvpRankRise;
+
+    private static float PvpRankBeatLength(PvpEndScreen e) => e.Change > 0 ? PvpRankPromo : PvpRankDemo;
+
+    /// <summary>Fin de toutes les animations de l'écran.</summary>
+    private static float PvpEndAnimEnd(PvpEndScreen e) => e.Change == 0
+        ? PvpEndAnimDelay + PvpEndAnimLength
+        : Math.Max(PvpEndAnimDelay + PvpEndAnimLength, PvpRankBeatStart + PvpRankBeatLength(e) + PvpRankTail);
+
+    private bool PvpEndAnimating => _pvpEnd is { } e && _pvpEndTime < PvpEndAnimEnd(e);
 
     /// <summary>Prépare l'écran de fin (une seule fois, quand la partie vient d'être enregistrée).</summary>
     private void BeginPvpEndScreen(PvpOutcome outcome)
@@ -183,9 +206,34 @@ public sealed partial class GameplayScene
         e.Back = Loc.T("pvp.end.back");
         e.Replay = Loc.T("pvp.end.replay");
 
+        PreparePvpRankChange(e, e.Rewarded && !e.Friendly);
         _pvpEnd = e;
         _pvpEndTime = 0f;
         RefreshPvpEndValues(e, 0f);
+    }
+
+    /// <summary>
+    /// Détecte un changement de rang (promotion ou rétrogradation) entre la cote d'avant et celle d'après, et repère
+    /// la frontière franchie. Le nom du nouveau rang est découpé lettre par lettre ici, une seule fois.
+    /// </summary>
+    private static void PreparePvpRankChange(PvpEndScreen e, bool ranked)
+    {
+        e.Change = 0;
+        e.NamePrefix = Array.Empty<string>();
+        var order = RankOrder(PvpRanks.FromRating(e.RatingAfter)).CompareTo(RankOrder(e.RankBefore));
+        if (!ranked || order == 0)
+            return;
+        var step = order > 0 ? 1 : -1;
+        var r = e.RatingBefore;
+        while (r != e.RatingAfter && PvpRanks.FromRating(r) == e.RankBefore)
+            r += step;
+        e.Change = step;
+        e.Boundary = r;
+        e.Edge = r - step;
+        var name = PvpUi.RankName(PvpRanks.FromRating(r));
+        e.NamePrefix = new string[name.Length + 1];
+        for (var i = 0; i <= name.Length; i++)
+            e.NamePrefix[i] = name.Substring(0, i);
     }
 
     private int LostByPlayer()
@@ -197,16 +245,32 @@ public sealed partial class GameplayScene
         return n;
     }
 
-    /// <summary>Valeurs animées pour l'avancement <paramref name="t"/> (0 → 1, adouci) ; ne formate que ce qui change.</summary>
-    private static void RefreshPvpEndValues(PvpEndScreen e, float t)
+    /// <summary>Valeurs animées au temps <paramref name="time"/> (secondes depuis l'ouverture) ; ne formate que ce qui change.</summary>
+    private static void RefreshPvpEndValues(PvpEndScreen e, float time)
     {
-        var k = 1f - (1f - t) * (1f - t) * (1f - t);   // ralentit à l'arrivée
-        var rating = (int)MathF.Round(e.RatingBefore + (e.RatingAfter - e.RatingBefore) * k);
+        var k = PvpEndEase(PvpEndProgress(time));
         var points = (int)MathF.Round(e.PointsBefore + (e.PointsAfter - e.PointsBefore) * k);
         if (points != e.ShownPoints)
         {
             e.ShownPoints = points;
             e.PointsText = points.ToString();
+        }
+        int rating;
+        if (e.Change == 0)
+            rating = (int)MathF.Round(e.RatingBefore + (e.RatingAfter - e.RatingBefore) * k);
+        else
+        {
+            // Changement de rang : la cote s'arrête au bord de l'ancien rang (barre pleine ou vide), bascule au
+            // milieu du temps fort, puis finit sa course dans le nouveau rang.
+            var beat = time - PvpRankBeatStart;
+            if (beat < 0f)
+                rating = (int)MathF.Round(e.RatingBefore
+                    + (e.Edge - e.RatingBefore) * PvpEndEase(Math.Clamp((time - PvpEndAnimDelay) / PvpRankRise, 0f, 1f)));
+            else if (beat < PvpRankSwap)
+                rating = e.Edge;
+            else
+                rating = (int)MathF.Round(e.Boundary + (e.RatingAfter - e.Boundary)
+                    * PvpEndEase(Math.Clamp((beat - PvpRankBeatLength(e)) / PvpRankTail, 0f, 1f)));
         }
         if (rating == e.ShownRating)
             return;
@@ -216,6 +280,8 @@ public sealed partial class GameplayScene
         var (next, done, needed) = PvpRanks.Progress(rating);
         e.HasNext = next != null;
         e.Segments = next == null ? 10 : Segments(done, needed);
+        if (e.Change != 0 && rating == e.Edge)
+            e.Segments = e.Change > 0 ? 10 : 0;   // la barre va jusqu'au bout avant la bascule
         if (rank != e.ShownRank || e.RankName.Length == 0)
         {
             e.ShownRank = rank;
@@ -248,6 +314,7 @@ public sealed partial class GameplayScene
     {
         if (_pvpEnd is not { } e)
             return;
+        var previous = _pvpEndTime;
         _pvpEndTime += dt;
         var input = Context.Input;
         var mouse = input.MousePosition;
@@ -264,11 +331,14 @@ public sealed partial class GameplayScene
         {
             // Clic ou A pendant l'animation : valeurs finales tout de suite, rien d'autre.
             if (click || confirm)
-                _pvpEndTime = PvpEndAnimDelay + PvpEndAnimLength;
-            RefreshPvpEndValues(e, PvpEndProgress(_pvpEndTime));
+                _pvpEndTime = PvpEndAnimEnd(e);
+            // Le son du changement de rang part au temps fort (aussi quand on passe l'animation avant lui).
+            if (e.Change != 0 && previous < PvpRankBeatStart && _pvpEndTime >= PvpRankBeatStart)
+                Context.Sounds.Play(e.Change > 0 ? "reward_legendary" : "equip_lost");
+            RefreshPvpEndValues(e, _pvpEndTime);
             return;
         }
-        RefreshPvpEndValues(e, 1f);
+        RefreshPvpEndValues(e, _pvpEndTime);
 
         PvpArmyScene.Entry? go = null;
         if (confirm || (click && hover == 2))
@@ -285,13 +355,16 @@ public sealed partial class GameplayScene
 
     // ── Dessin ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Voile du panneau de fin multi, partagé avec <see cref="FullScreenDim"/> (bandes du letterbox).</summary>
+    private const float PvpEndDim = 0.72f;
+
     private void DrawPvpEndPanel(SpriteBatch sb, Viewport viewport, PvpMatchInfo info)
     {
         if (_pvpEnd is not { } e)
             return;
         var font = Context.Font;
         var px = Context.Pixel;
-        DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * 0.72f);
+        DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * PvpEndDim);   // bandes : FullScreenDim
 
         var small = font.LineHeight(1);
         var full = viewport.Width >= 1280 && viewport.Height >= PvpEndFull.Height(font.LineHeight(PvpEndFull.Title), font.LineHeight(2), small) + 8;
@@ -467,11 +540,36 @@ public sealed partial class GameplayScene
         var small = font.LineHeight(1);
         var tier = e.ShownRank.Id;
 
-        // Rang : icône ×2 + nom dans la couleur claire du palier.
+        // Temps fort du changement de rang (beat < 0 : pas encore ; sinon secondes écoulées depuis son début).
+        var beat = e.Change != 0 ? _pvpEndTime - PvpRankBeatStart : -1f;
+        var live = beat >= 0f && beat < PvpRankBeatLength(e);
+        var swapped = live && beat >= PvpRankSwap;
+        var since = beat - PvpRankSwap;   // depuis l'arrivée du nouveau blason
+
+        // Rang : icône ×2 + nom dans la couleur claire du palier. Promotion : l'ancien blason s'éteint, le nouveau
+        // arrive doublé (×2 entier) puis retombe, son nom s'écrit lettre par lettre en blanc. Rétrogradation : le
+        // nouveau blason descend de quelques pixels, nom en violet, sans flash.
         var y = col.Y;
-        PvpEndRankIcon.Draw(sb, tier, new Point(col.X, y + (m.RowH - PvpRankIcon.H * 2) / 2), 2);
+        var iconAt = new Point(col.X, y + (m.RowH - PvpRankIcon.H * 2) / 2);
+        if (!live || swapped)
+        {
+            if (swapped && e.Change > 0 && since < PvpRankPop)
+                PvpEndRankIcon.DrawPop(sb, tier, new Point(iconAt.X + PvpRankIcon.W, iconAt.Y + PvpRankIcon.H));
+            else
+            {
+                var drop = swapped && e.Change < 0 && since < PvpRankDrop ? (int)MathF.Ceiling(4f * (1f - since / PvpRankDrop)) : 0;
+                PvpEndRankIcon.Draw(sb, tier, new Point(iconAt.X, iconAt.Y - drop), 2);
+            }
+        }
         var nx = col.X + PvpRankIcon.W * 2 + 8;
-        font.Draw(sb, PvpArt.Fit(font, e.RankName, col.Right - nx, b), new Vector2(nx, y + (m.RowH - body) / 2), b, PvpRankIcon.LightColor(tier));
+        var name = e.RankName;
+        var nameColor = PvpRankIcon.LightColor(tier);
+        if (swapped && since < PvpRankGlow)
+            nameColor = e.Change > 0 ? Color.White : Palette.Purple5;
+        if (swapped && e.Change > 0 && e.NamePrefix.Length > 0)
+            name = e.NamePrefix[Math.Min(e.NamePrefix.Length - 1, 1 + (int)(since / PvpRankLetter))];
+        if (!live || swapped)
+            font.Draw(sb, PvpArt.Fit(font, name, col.Right - nx, b), new Vector2(nx, y + (m.RowH - body) / 2), b, nameColor);
         y += m.RowH + 2;
 
         // Encadré COTE : « 950 › 966  +16 ».
@@ -518,6 +616,13 @@ public sealed partial class GameplayScene
                 PvpArt.Fill(sb, px, r, Palette.Purple5);
             else
                 PvpArt.Fill(sb, px, r, Palette.Black1);
+        }
+
+        // Promotion : flash blanc bref sur la barre, qui s'éteint pendant qu'elle repart à zéro.
+        if (e.Change > 0 && beat >= 0f && beat < PvpRankFlash)
+        {
+            var flash = Color.White * (1f - beat / PvpRankFlash);
+            PvpArt.Fill(sb, px, new Rectangle(col.X, y, col.Width, m.BarH), flash);
         }
     }
 

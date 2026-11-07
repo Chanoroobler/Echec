@@ -49,7 +49,7 @@ public sealed partial class PvpArmyScene
 
     /// <summary>Couleur de l'objet gagné : rareté pour un équipement, or pour un pion ou un commandant.</summary>
     private Color RewardColor() =>
-        !_rewardUnits && _reward != null && Equipments.ById(_reward) is { } eq
+        !_rewardUnits && _reward != null && PvpCatalog.FindEquipment(_reward) is { } eq
             ? (eq.Rarity == EquipmentRarity.Common ? Palette.Yellow2 : PvpArt.RarityColor(eq.Rarity))
             : Palette.Yellow1;
 
@@ -57,7 +57,7 @@ public sealed partial class PvpArmyScene
     private bool RewardIsBig() =>
         _reward != null && (_rewardUnits
             ? PvpCatalog.FindClass(_reward) is not { } u || u.Class.Tier >= 3
-            : Equipments.ById(_reward) is { Rarity: EquipmentRarity.Legendary });
+            : PvpCatalog.FindEquipment(_reward) is { Rarity: EquipmentRarity.Legendary });
 
     /// <summary>Gerbe de <paramref name="count"/> particules depuis (<paramref name="x"/>, <paramref name="y"/>).</summary>
     private void WowBurst(float x, float y, int count, float speed, Color main, bool coins)

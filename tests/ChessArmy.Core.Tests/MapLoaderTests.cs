@@ -466,6 +466,30 @@ public class MapLoaderTests
         Assert.False(guest[new Cell(2, 3)].BlocksMovement);
     }
 
+    /// <summary>Chez l'invité, une map retournée prend les tuiles JUMELLES : chemins et berges raccordés, mêmes
+    /// règles case pour case que la case miroir de l'hôte.</summary>
+    [Fact]
+    public void Multi_GuestMap_UsesMirrorTwins_WithSameRules()
+    {
+        var catalog = ShippedCatalog();
+        Assert.Equal("chemin_angle_bg", catalog.MirrorOf(catalog.Get("chemin_angle_hg")).Id);
+        Assert.Equal("chemin_haut_v", catalog.MirrorOf(catalog.Get("chemin_bas_v")).Id);
+        Assert.Equal("herbe", catalog.MirrorOf(catalog.Get("herbe")).Id);   // sans orientation : elle-même
+
+        foreach (var map in ShippedMaps().Where(m => m.Type == CombatType.Multi && !Battle.PvpSetup.IsMirrorSymmetric(m)))
+        {
+            var host = Battle.PvpSetup.BuildBattlefield(map, isHost: true, out _, catalog);
+            var guest = Battle.PvpSetup.BuildBattlefield(map, isHost: false, out _, catalog);
+            foreach (var cell in host.Cells())
+            {
+                var a = host[Battle.PvpSetup.Mirror(cell)].Def;
+                var b = guest[cell].Def;
+                Assert.Equal((a.BlocksMove, a.BlocksFire, a.Slides, a.RangeBonus, a.Trait),
+                    (b.BlocksMove, b.BlocksFire, b.Slides, b.RangeBonus, b.Trait));
+            }
+        }
+    }
+
     [Fact]
     public void Multi_ArmyRowBlocked_IsUnplayable_AndNeverPicked()
     {

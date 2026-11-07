@@ -12,108 +12,108 @@
   "equipmentBudget": 10,
   "maxSameEquipment": 2,   // exemplaires d'un même équipement dans une armée, au plus
   "unitCost": {
+    "cavalier": 3,   // mesuré : 3.39
     "soldat": 3,   // mesuré : 3.00
-    "cavalier": 4,   // mesuré : 4.25
-    "forteresse": 4,   // mesuré : 3.78
-    "garde": 4,   // mesuré : 3.76
-    "javelinier": 4,   // mesuré : 4.41
-    "lancier": 4,   // mesuré : 3.88
-    "mage": 4,   // mesuré : 4.12
-    "spadassin": 4,   // mesuré : 4.11
-    "archer": 5,   // mesuré : 4.56
-    "archer_monte": 5,   // mesuré : 4.68
-    "barde": 5,   // mesuré : 5.19
-    "cavalier_griffon": 5,   // mesuré : 5.44
-    "cavalier_lourd": 5,   // mesuré : 4.75
-    "clerc": 5,   // mesuré : 4.50
-    "sorcier": 5,   // mesuré : 4.98
-    "arbaletrier_monte": 6,   // mesuré : 6.16
-    "barbare": 6,   // mesuré : 6.00
-    "phalange": 6,   // mesuré : 5.83
-    "pretresse": 6,   // mesuré : 6.03
-    "Dragoon": 7,   // mesuré : 7.26
-    "archimage": 7,   // mesuré : 6.52
-    "demoniste": 7,   // mesuré : 7.07
-    "rodeur": 7,   // mesuré : 6.65
-    "archer_griffon": 8,   // mesuré : 8.15
-    "maitre_arme": 8,   // mesuré : 7.79
-    "paladin": 8,   // mesuré : 7.83
-    "voltigeur": 8,   // mesuré : 8.04
-    "arbaletrier": 8   // mesuré : 8.66 (plafonné à 8, règle des 3 à 8 points)
+    "cavalier_lourd": 4,   // mesuré : 3.86
+    "clerc": 4,   // mesuré : 4.17
+    "javelinier": 4,   // mesuré : 4.43
+    "lancier": 4,   // mesuré : 4.44
+    "mage": 4,   // mesuré : 3.71
+    "spadassin": 4,   // mesuré : 4.45
+    "archer": 5,   // mesuré : 5.04
+    "archer_monte": 5,   // mesuré : 4.71
+    "barde": 5,   // mesuré : 4.62
+    "cavalier_griffon": 5,   // mesuré : 4.90
+    "forteresse": 5,   // mesuré : 4.54
+    "garde": 5,   // mesuré : 4.65
+    "arbaletrier_monte": 6,   // mesuré : 6.19
+    "pretresse": 6,   // mesuré : 6.00
+    "sorcier": 6,   // mesuré : 5.62
+    "archimage": 7,   // mesuré : 7.08
+    "barbare": 7,   // mesuré : 7.45
+    "phalange": 7,   // mesuré : 6.89
+    "rodeur": 7,   // mesuré : 6.98
+    "archer_griffon": 8,   // mesuré : 7.75
+    "demoniste": 8,   // mesuré : 8.30
+    "maitre_arme": 8,   // mesuré : 8.42
+    "paladin": 8,   // mesuré : 8.44
+    "Dragoon": 8,   // mesuré : 8.66 (plafonné à 8, règle des 3 à 8 points)
+    "arbaletrier": 8,   // mesuré : 9.99 (plafonné à 8, règle des 3 à 8 points)
+    "voltigeur": 8   // mesuré : 10.08 (plafonné à 8, règle des 3 à 8 points)
   },
   "equipmentCost": {
-    "Balistique": 1,   // mesuré : 1.35
-    "EpineRare": 1,   // mesuré : 1.25
-    "Recule": 1,   // mesuré : 0.37
-    "auraCeleriteRare": 1,   // mesuré : -0.02
-    "auraPuissanceRare": 1,   // mesuré : 0.57
-    "auraRempartRare": 1,   // mesuré : 0.76
-    "berserkLegendaire": 1,   // mesuré : -0.71
-    "botteRare": 1,   // mesuré : 1.44
-    "bouclier": 1,   // mesuré : 0.65
-    "formation": 1,   // mesuré : -0.17
-    "franchissement": 1,   // mesuré : 0.98
-    "lance": 1,   // mesuré : 1.46
-    "lienPuissanceLegendaire": 1,   // mesuré : 1.37
-    "lienPuissanceRare": 1,   // mesuré : -0.11
-    "orageRare": 1,   // mesuré : 0.67
-    "phenix": 1,   // mesuré : 1.26
-    "rageRare": 1,   // mesuré : 0.74
-    "soinRare": 1,   // mesuré : -0.02
-    "static": 1,   // mesuré : -0.46
-    "volLegendaire": 1,   // mesuré : 0.89
-    "volRare": 1,   // mesuré : 0.19
-    "Loup": 2,   // mesuré : 1.67
-    "TranspercerRare": 2,   // mesuré : 1.72
-    "armure": 2,   // mesuré : 2.15
-    "auraCeleriteLegendaire": 2,   // mesuré : 1.74
-    "casque": 2,   // mesuré : 1.98
-    "casqueRare": 2,   // mesuré : 1.52
-    "duelliste": 2,   // mesuré : 1.65
+    "Balistique": 1,   // mesuré : 1.20
+    "Loup": 1,   // mesuré : 1.47
+    "Recule": 1,   // mesuré : -0.11
+    "TranspercerRare": 1,   // mesuré : 0.96
+    "auraCeleriteRare": 1,   // mesuré : -0.36
+    "auraPuissanceRare": 1,   // mesuré : 0.19
+    "auraRempartRare": 1,   // mesuré : 0.05
+    "berserkLegendaire": 1,   // mesuré : -0.18
+    "botteRare": 1,   // mesuré : 0.05
+    "bouclier": 1,   // mesuré : 0.93
+    "duelliste": 1,   // mesuré : 0.08
+    "esquive": 1,   // mesuré : 1.44
+    "formation": 1,   // mesuré : -0.09
+    "formationRare": 1,   // mesuré : 1.24
+    "franchissement": 1,   // mesuré : 0.68
+    "franchissementRare": 1,   // mesuré : 1.07
+    "lance": 1,   // mesuré : 0.49
+    "lienPuissanceRare": 1,   // mesuré : 0.13
+    "orageRare": 1,   // mesuré : 1.02
+    "rageRare": 1,   // mesuré : 0.79
+    "soinRare": 1,   // mesuré : -0.40
+    "static": 1,   // mesuré : -0.17
+    "staticRare": 1,   // mesuré : 1.06
+    "tueurGeantLegendaire": 1,   // mesuré : 1.07
+    "volLegendaire": 1,   // mesuré : 0.29
+    "volRare": 1,   // mesuré : 1.06
+    "BalistiqueRare": 2,   // mesuré : 2.40
+    "EpineRare": 2,   // mesuré : 1.79
+    "ReculeRare": 2,   // mesuré : 1.72
+    "armure": 2,   // mesuré : 2.03
+    "auraCeleriteLegendaire": 2,   // mesuré : 2.17
+    "bouclierRare": 2,   // mesuré : 2.29
+    "casque": 2,   // mesuré : 1.61
+    "duellisteRare": 2,   // mesuré : 1.95
     "epee": 2,   // mesuré : 1.93
-    "franchissementRare": 2,   // mesuré : 2.21
-    "riposteRare": 2,   // mesuré : 2.42
-    "staticRare": 2,   // mesuré : 1.98
-    "tueurGeantLegendaire": 2,   // mesuré : 1.93
-    "volVieLegendaire": 2,   // mesuré : 2.46
-    "BalistiqueRare": 3,   // mesuré : 3.48
-    "InterceptionLegendaire": 3,   // mesuré : 2.84
-    "ReculeRare": 3,   // mesuré : 2.68
-    "armureRare": 3,   // mesuré : 2.50
-    "casqueLegendaire": 3,   // mesuré : 2.76
-    "duellisteRare": 3,   // mesuré : 2.81
-    "esquive": 3,   // mesuré : 2.70
-    "esquiveRare": 3,   // mesuré : 2.69
-    "hache": 3,   // mesuré : 3.29
-    "hacheRare": 3,   // mesuré : 2.89
-    "lanceRare": 3,   // mesuré : 2.88
-    "soinLegendaire": 3,   // mesuré : 2.68
-    "auraPuissanceLegendaire": 4,   // mesuré : 4.15
-    "auraRempartLegendaire": 4,   // mesuré : 3.55
-    "botteLegendaire": 4,   // mesuré : 4.01
-    "bouclierLegendaire": 4,   // mesuré : 3.94
-    "bouclierRare": 4,   // mesuré : 4.38
-    "formationRare": 4,   // mesuré : 3.72
-    "hacheLegendaire": 4,   // mesuré : 4.19
-    "EpineLegendaire": 5,   // mesuré : 4.57
-    "armureLegendaire": 5,   // mesuré : 5.41
-    "epeeLegendaire": 5,   // mesuré : 4.59
-    "epeeRare": 5,   // mesuré : 4.77
-    "orageLegendaire": 5,   // mesuré : 5.41
-    "LoupRare": 6,   // mesuré : 6.40
-    "TempeteLegendaire": 6,   // mesuré : 6.29
-    "esquiveLegendaire": 6,   // mesuré : 6.00
-    "rageLegendaire": 6,   // mesuré : 6.04
-    "LoupLegendaire": 7   // mesuré : 7.07
+    "hache": 2,   // mesuré : 1.92
+    "lanceRare": 2,   // mesuré : 2.25
+    "lienPuissanceLegendaire": 2,   // mesuré : 1.96
+    "riposteRare": 2,   // mesuré : 1.68
+    "InterceptionLegendaire": 3,   // mesuré : 3.00
+    "armureRare": 3,   // mesuré : 3.35
+    "auraPuissanceLegendaire": 3,   // mesuré : 2.70
+    "auraRempartLegendaire": 3,   // mesuré : 2.74
+    "casqueLegendaire": 3,   // mesuré : 3.23
+    "casqueRare": 3,   // mesuré : 2.59
+    "epeeRare": 3,   // mesuré : 2.84
+    "esquiveRare": 3,   // mesuré : 2.62
+    "hacheRare": 3,   // mesuré : 3.15
+    "phenix": 3,   // mesuré : 2.98
+    "soinLegendaire": 3,   // mesuré : 2.80
+    "volVieLegendaire": 3,   // mesuré : 2.64
+    "EpineLegendaire": 4,   // mesuré : 4.31
+    "LoupRare": 4,   // mesuré : 4.09
+    "botteLegendaire": 4,   // mesuré : 3.89
+    "bouclierLegendaire": 4,   // mesuré : 3.73
+    "epeeLegendaire": 4,   // mesuré : 3.79
+    "orageLegendaire": 4,   // mesuré : 4.26
+    "rageLegendaire": 4,   // mesuré : 4.18
+    "LoupLegendaire": 5,   // mesuré : 5.22
+    "TempeteLegendaire": 5,   // mesuré : 4.81
+    "armureLegendaire": 5,   // mesuré : 4.63
+    "esquiveLegendaire": 5,   // mesuré : 4.52
+    "hacheLegendaire": 5   // mesuré : 5.00
   },
   "commanderCost": {
-    "Commandant_fou": 0,   // mesuré : 0.00
-    "Commandant_duo": 1,   // mesuré : 1.18
-    "Commandant_cavalier": 2,   // mesuré : 2.14
-    "Commandant_brute": 3,   // mesuré : 3.10
-    "Commandant_lancier": 3,   // mesuré : 2.55
-    "commandant": 3,   // mesuré : 3.06
-    "Commandant_marchand": 4   // mesuré : 3.52
+    "Commandant_brute": 0,   // mesuré : 0.00
+    "Commandant_duo": 1,   // mesuré : 1.20
+    "commandant": 1,   // mesuré : 1.06
+    "Commandant_fou": 5,   // mesuré : 5.46
+    "Commandant_lancier": 5,   // mesuré : 5.09
+    "Commandant_cavalier": 6,   // mesuré : 6.17
+    "Commandant_marchand": 7   // mesuré : 6.78
   },
 
 
@@ -128,6 +128,8 @@
   "reserveSeconds": 600,
   "moveSeconds": 60,
   "reconnectSeconds": 60,
+  // Réserve sous laquelle chaque tour joué fait tomber une tuile des 2 lignes derrière le joueur.
+  "collapseBelowSeconds": 240,
   "buildChoiceSeconds": 30,
   // Recherche classée : personne au bout de « botAfterSeconds » → bot du niveau du joueur (partie classée).
   "botAfterSeconds": 10,
@@ -146,6 +148,12 @@
 
   // Équipements RETIRÉS du multi (le solo les garde) : ni posables, ni dans les coffres multi.
   "excludedEquipment": [ "seisme", "arcLegendaire", "ImpactRare" ],
+
+  // Bonus de stats d'équipement PROPRES AU MULTI (stat → montant, remplace celui d'equipment.json ; traits inchangés).
+  // Pour un objet que l'outil signale « TROP FORT » au-dessus du plafond de coût ; relancer ensuite la mesure.
+  "equipmentStats": {
+    "LoupLegendaire": { "Damage": 2, "Hp": 4 }   // solo : +4 / +6
+  },
 
   // Stats de pions PROPRES AU MULTI : chaque valeur remplace celle de units.json en multi seulement (le solo ne
   // bouge pas). Sert à recadrer une pièce trop forte ou trop faible ; relancer ensuite l'outil d'équilibrage.
@@ -181,7 +189,7 @@
   // Commandants : stats PROPRES au multi, SANS POUVOIR pour l'instant (ni arbre ni trait) ; l'archétype passe par les stats.
   // Armée de DÉPART (écrite par l'outil d'équilibrage) : premier build de tout nouveau profil.
   "startingArmy": { "commander": "commandant",
-    "back":  [ "", "cavalier", "lancier", "mage", "*", "mage", "cavalier", "" ],
+    "back":  [ "", "cavalier", "lancier", "mage", "*", "mage", "lancier", "cavalier" ],
     "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
   "startingCommanders": [ "commandant", "Commandant_lancier", "Commandant_cavalier" ],
   "commanders": {
@@ -201,125 +209,125 @@
   // d'Argent, ils sont tirés au hasard à CHAQUE partie dans le budget d'équipement (« equipment » des bots).
   "botArmies": [
     { "commander": "Commandant_brute",
-      "back":  [ "", "arbaletrier_monte", "arbaletrier_monte", "arbaletrier_monte", "*", "arbaletrier_monte", "forteresse", "forteresse" ],
+      "back":  [ "", "arbaletrier_monte", "arbaletrier_monte", "arbaletrier_monte", "*", "arbaletrier_monte", "forteresse", "arbaletrier_monte" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_cavalier",
-      "back":  [ "garde", "archimage", "archer_monte", "forteresse", "*", "forteresse", "archer_monte", "garde" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "", "cavalier", "barde", "", "*", "rodeur", "barde", "cavalier_lourd" ],
-      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
-    { "commander": "Commandant_fou",
-      "back":  [ "javelinier", "javelinier", "javelinier", "demoniste", "*", "demoniste", "javelinier", "clerc" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_lancier",
-      "back":  [ "", "sorcier", "archer_griffon", "sorcier", "*", "sorcier", "garde", "sorcier" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_marchand",
-      "back":  [ "", "sorcier", "Dragoon", "Dragoon", "*", "Dragoon", "archer", "" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "commandant",
-      "back":  [ "", "", "arbaletrier", "archimage", "*", "clerc", "lancier", "" ],
-      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
-    { "commander": "Commandant_brute",
-      "back":  [ "", "cavalier_griffon", "clerc", "mage", "*", "arbaletrier", "clerc", "clerc" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "", "cavalier_lourd", "archimage", "archimage", "*", "archimage", "archimage", "" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "", "archer", "clerc", "", "*", "cavalier", "archer_griffon", "cavalier" ],
-      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] },
-    { "commander": "Commandant_fou",
-      "back":  [ "", "", "cavalier_lourd", "cavalier_lourd", "*", "rodeur", "pretresse", "" ],
-      "front": [ "", "", "spadassin", "spadassin", "spadassin", "", "", "" ] },
-    { "commander": "Commandant_lancier",
-      "back":  [ "cavalier_griffon", "javelinier", "javelinier", "cavalier_griffon", "*", "cavalier_griffon", "cavalier_griffon", "javelinier" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_marchand",
-      "back":  [ "", "cavalier_griffon", "phalange", "cavalier_griffon", "*", "cavalier_lourd", "phalange", "" ],
-      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
-    { "commander": "commandant",
-      "back":  [ "", "", "mage", "Dragoon", "*", "archer_griffon", "archimage", "" ],
-      "front": [ "", "", "", "barbare", "", "", "", "" ] },
-    { "commander": "Commandant_brute",
-      "back":  [ "", "", "sorcier", "lancier", "*", "lancier", "garde", "" ],
-      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "", "cavalier_lourd", "javelinier", "archer_griffon", "*", "archer_griffon", "javelinier", "javelinier" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "", "javelinier", "mage", "", "*", "garde", "garde", "mage" ],
-      "front": [ "", "", "spadassin", "spadassin", "barbare", "", "", "" ] },
-    { "commander": "Commandant_fou",
-      "back":  [ "", "", "rodeur", "javelinier", "*", "demoniste", "archer", "" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_lancier",
-      "back":  [ "", "", "", "sorcier", "*", "sorcier", "", "" ],
-      "front": [ "", "", "barbare", "maitre_arme", "maitre_arme", "", "", "" ] },
-    { "commander": "Commandant_marchand",
-      "back":  [ "forteresse", "forteresse", "barde", "forteresse", "*", "barde", "forteresse", "barde" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "commandant",
-      "back":  [ "javelinier", "javelinier", "javelinier", "javelinier", "*", "lancier", "javelinier", "javelinier" ],
-      "front": [ "", "", "", "javelinier", "", "", "", "" ] },
-    { "commander": "Commandant_brute",
-      "back":  [ "", "archer", "archimage", "archimage", "*", "archer", "voltigeur", "" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "garde", "forteresse", "forteresse", "forteresse", "*", "garde", "cavalier_lourd", "garde" ],
-      "front": [ "", "", "", "forteresse", "", "", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "cavalier_lourd", "javelinier", "cavalier_lourd", "", "*", "javelinier", "cavalier_lourd", "rodeur" ],
-      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
-    { "commander": "Commandant_fou",
-      "back":  [ "javelinier", "javelinier", "javelinier", "cavalier", "*", "javelinier", "rodeur", "javelinier" ],
-      "front": [ "", "", "", "cavalier", "", "", "", "" ] },
-    { "commander": "Commandant_lancier",
-      "back":  [ "", "sorcier", "forteresse", "forteresse", "*", "archer", "paladin", "" ],
-      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
-    { "commander": "Commandant_marchand",
-      "back":  [ "", "sorcier", "sorcier", "lancier", "*", "archer_monte", "lancier", "" ],
-      "front": [ "", "", "", "spadassin", "spadassin", "", "", "" ] },
-    { "commander": "commandant",
-      "back":  [ "", "archimage", "archimage", "archimage", "*", "archimage", "forteresse", "" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_brute",
-      "back":  [ "cavalier", "sorcier", "cavalier", "sorcier", "*", "sorcier", "cavalier", "sorcier" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "", "", "barde", "cavalier_griffon", "*", "cavalier_griffon", "", "" ],
+      "back":  [ "", "", "", "demoniste", "*", "", "", "" ],
       "front": [ "", "", "barbare", "barbare", "barbare", "", "", "" ] },
     { "commander": "Commandant_duo",
-      "back":  [ "sorcier", "lancier", "arbaletrier", "", "*", "mage", "mage", "sorcier" ],
-      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+      "back":  [ "", "", "barde", "", "*", "barde", "barde", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "barbare", "soldat", "", "" ] },
     { "commander": "Commandant_fou",
-      "back":  [ "mage", "mage", "sorcier", "cavalier", "*", "mage", "sorcier", "cavalier" ],
-      "front": [ "", "", "", "sorcier", "", "", "", "" ] },
+      "back":  [ "", "cavalier", "barde", "barde", "*", "cavalier_lourd", "paladin", "barde" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_lancier",
-      "back":  [ "", "forteresse", "forteresse", "forteresse", "*", "forteresse", "forteresse", "" ],
-      "front": [ "", "", "spadassin", "spadassin", "spadassin", "", "", "" ] },
+      "back":  [ "", "", "cavalier_griffon", "mage", "*", "cavalier_griffon", "cavalier_griffon", "" ],
+      "front": [ "", "", "", "spadassin", "barbare", "", "", "" ] },
     { "commander": "Commandant_marchand",
-      "back":  [ "", "javelinier", "voltigeur", "archer_monte", "*", "demoniste", "demoniste", "" ],
+      "back":  [ "", "arbaletrier", "javelinier", "archimage", "*", "archer_monte", "javelinier", "" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "commandant",
-      "back":  [ "", "arbaletrier_monte", "archer_monte", "cavalier_lourd", "*", "arbaletrier_monte", "cavalier_lourd", "archer" ],
-      "front": [ "", "", "", "", "", "", "", "" ] },
+      "back":  [ "", "phalange", "mage", "mage", "*", "javelinier", "javelinier", "mage" ],
+      "front": [ "", "", "", "spadassin", "soldat", "", "", "" ] },
     { "commander": "Commandant_brute",
-      "back":  [ "", "", "javelinier", "garde", "*", "garde", "", "" ],
-      "front": [ "", "soldat", "soldat", "spadassin", "soldat", "spadassin", "soldat", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "", "javelinier", "Dragoon", "sorcier", "*", "sorcier", "sorcier", "Dragoon" ],
+      "back":  [ "archer", "archer", "forteresse", "archer_monte", "*", "forteresse", "forteresse", "archer" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "", "cavalier_griffon", "cavalier_griffon", "", "*", "pretresse", "arbaletrier", "demoniste" ],
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier_lourd", "archer_griffon", "garde", "*", "javelinier", "garde", "" ],
       "front": [ "", "", "", "soldat", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "arbaletrier", "lancier", "lancier", "", "*", "rodeur", "rodeur", "lancier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_fou",
-      "back":  [ "", "", "cavalier_lourd", "cavalier_lourd", "*", "paladin", "cavalier_lourd", "" ],
+      "back":  [ "", "pretresse", "cavalier_griffon", "cavalier_griffon", "*", "pretresse", "cavalier_lourd", "cavalier_lourd" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "lancier", "lancier", "lancier", "cavalier", "*", "cavalier", "lancier", "arbaletrier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "", "lancier", "lancier", "*", "voltigeur", "", "" ],
+      "front": [ "", "", "spadassin", "spadassin", "spadassin", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "paladin", "forteresse", "forteresse", "*", "forteresse", "rodeur", "" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "cavalier_griffon", "cavalier_lourd", "javelinier", "cavalier_griffon", "*", "javelinier", "cavalier_griffon", "voltigeur" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "", "mage", "cavalier_lourd", "*", "demoniste", "phalange", "" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "archer_griffon", "cavalier_lourd", "archer_monte", "", "*", "cavalier_lourd", "archer_griffon", "archer_monte" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "clerc", "clerc", "*", "clerc", "clerc", "" ],
       "front": [ "", "", "", "barbare", "barbare", "", "", "" ] },
     { "commander": "Commandant_lancier",
-      "back":  [ "", "", "archimage", "cavalier_lourd", "*", "archimage", "cavalier_lourd", "" ],
-      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] }
+      "back":  [ "", "cavalier_griffon", "arbaletrier_monte", "lancier", "*", "lancier", "archimage", "" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "forteresse", "forteresse", "javelinier", "*", "javelinier", "rodeur", "" ],
+      "front": [ "", "", "", "soldat", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "sorcier", "cavalier_griffon", "paladin", "*", "garde", "garde", "garde" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "barde", "arbaletrier", "arbaletrier", "*", "sorcier", "barde", "" ],
+      "front": [ "", "", "", "soldat", "", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "", "javelinier", "javelinier", "*", "rodeur", "sorcier", "" ],
+      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "arbaletrier_monte", "cavalier", "arbaletrier_monte", "", "*", "clerc", "mage", "clerc" ],
+      "front": [ "", "", "", "rodeur", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "sorcier", "archer", "archer", "*", "cavalier", "archer", "" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "", "voltigeur", "archer_griffon", "*", "cavalier_griffon", "cavalier_griffon", "" ],
+      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "", "", "cavalier_lourd", "*", "voltigeur", "", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "spadassin", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "Dragoon", "archer", "Dragoon", "*", "arbaletrier", "archer", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "", "Dragoon", "pretresse", "*", "mage", "", "" ],
+      "front": [ "", "spadassin", "soldat", "soldat", "soldat", "spadassin", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier_lourd", "rodeur", "clerc", "*", "clerc", "clerc", "" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "phalange", "archer_monte", "", "*", "phalange", "phalange", "" ],
+      "front": [ "", "", "", "maitre_arme", "", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "pretresse", "mage", "mage", "*", "garde", "mage", "archimage" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "", "rodeur", "lancier", "lancier", "*", "lancier", "rodeur", "lancier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "barde", "mage", "mage", "*", "barde", "barde", "barde" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "", "", "archer_monte", "clerc", "*", "mage", "clerc", "" ],
+      "front": [ "", "", "soldat", "soldat", "maitre_arme", "soldat", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "", "sorcier", "Dragoon", "*", "Dragoon", "", "" ],
+      "front": [ "", "", "soldat", "soldat", "barbare", "", "", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "cavalier", "arbaletrier", "cavalier_lourd", "*", "rodeur", "rodeur", "" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "", "", "archer_griffon", "", "*", "archer_griffon", "mage", "" ],
+      "front": [ "", "", "", "barbare", "barbare", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "cavalier", "archer_griffon", "*", "arbaletrier_monte", "arbaletrier_monte", "" ],
+      "front": [ "", "", "", "barbare", "", "", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "garde", "cavalier", "garde", "clerc", "*", "cavalier", "cavalier", "archimage" ],
+      "front": [ "", "", "", "", "", "", "", "" ] }
   ],
 
   // Poids de l'évaluation des bots qui calculent, ENTRAÎNÉS par auto-jeu (outil : --ai-train).
@@ -340,64 +348,64 @@
   // pions de BASE et au plus UNE pièce différente, pour qu'un nouveau joueur ne soit pas perdu. Budget plein, sans équipement.
   "botArmiesBeginner": [
     { "commander": "Commandant_brute",
-      "back":  [ "cavalier", "cavalier", "cavalier", "lancier", "*", "cavalier", "lancier", "cavalier" ],
-      "front": [ "", "", "", "lancier", "", "", "", "" ] },
+      "back":  [ "lancier", "lancier", "lancier", "lancier", "*", "cavalier", "cavalier", "lancier" ],
+      "front": [ "", "", "cavalier", "cavalier", "cavalier", "", "", "" ] },
     { "commander": "Commandant_cavalier",
-      "back":  [ "", "lancier", "cavalier", "lancier", "*", "mage", "cavalier", "cavalier" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
+      "back":  [ "cavalier", "lancier", "lancier", "mage", "*", "cavalier", "lancier", "mage" ],
+      "front": [ "", "", "", "soldat", "", "", "", "" ] },
     { "commander": "Commandant_duo",
-      "back":  [ "mage", "cavalier", "lancier", "", "*", "cavalier", "lancier", "mage" ],
-      "front": [ "", "", "mage", "soldat", "soldat", "", "", "" ] },
+      "back":  [ "lancier", "cavalier", "mage", "", "*", "cavalier", "mage", "lancier" ],
+      "front": [ "", "", "cavalier", "soldat", "soldat", "cavalier", "", "" ] },
     { "commander": "Commandant_fou",
-      "back":  [ "", "", "cavalier", "paladin", "*", "cavalier", "cavalier", "" ],
+      "back":  [ "", "", "lancier", "cavalier", "*", "clerc", "mage", "" ],
       "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
     { "commander": "Commandant_lancier",
-      "back":  [ "lancier", "mage", "cavalier", "mage", "*", "lancier", "cavalier", "mage" ],
-      "front": [ "", "", "", "spadassin", "", "", "", "" ] },
+      "back":  [ "mage", "cavalier", "lancier", "cavalier", "*", "cavalier", "cavalier", "cavalier" ],
+      "front": [ "", "", "", "cavalier", "mage", "", "", "" ] },
     { "commander": "Commandant_marchand",
-      "back":  [ "", "", "archer_monte", "cavalier", "*", "cavalier", "", "" ],
-      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "" ] },
-    { "commander": "commandant",
-      "back":  [ "", "mage", "lancier", "mage", "*", "mage", "mage", "" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_brute",
-      "back":  [ "", "", "cavalier", "sorcier", "*", "cavalier", "mage", "" ],
-      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_cavalier",
-      "back":  [ "", "mage", "mage", "archer_monte", "*", "mage", "mage", "" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_duo",
-      "back":  [ "cavalier", "voltigeur", "cavalier", "", "*", "mage", "cavalier", "cavalier" ],
-      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
-    { "commander": "Commandant_fou",
-      "back":  [ "", "", "lancier", "mage", "*", "mage", "sorcier", "" ],
-      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "" ] },
-    { "commander": "Commandant_lancier",
-      "back":  [ "", "lancier", "cavalier", "cavalier", "*", "mage", "lancier", "" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
-    { "commander": "Commandant_marchand",
-      "back":  [ "", "", "cavalier", "rodeur", "*", "cavalier", "lancier", "" ],
+      "back":  [ "", "", "lancier", "lancier", "*", "lancier", "lancier", "" ],
       "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
     { "commander": "commandant",
-      "back":  [ "", "rodeur", "mage", "cavalier", "*", "cavalier", "mage", "" ],
+      "back":  [ "lancier", "cavalier", "mage", "cavalier", "*", "cavalier", "cavalier_lourd", "lancier" ],
       "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
     { "commander": "Commandant_brute",
-      "back":  [ "", "mage", "mage", "archimage", "*", "cavalier", "cavalier", "" ],
+      "back":  [ "cavalier", "lancier", "archer", "cavalier", "*", "cavalier", "lancier", "mage" ],
       "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
     { "commander": "Commandant_cavalier",
-      "back":  [ "", "cavalier", "cavalier", "mage", "*", "sorcier", "lancier", "" ],
-      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+      "back":  [ "", "mage", "cavalier_griffon", "cavalier", "*", "mage", "mage", "cavalier" ],
+      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
     { "commander": "Commandant_duo",
-      "back":  [ "mage", "rodeur", "cavalier", "", "*", "lancier", "mage", "lancier" ],
-      "front": [ "", "", "", "soldat", "lancier", "", "", "" ] },
+      "back":  [ "mage", "cavalier", "lancier", "", "*", "mage", "cavalier", "lancier" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
     { "commander": "Commandant_fou",
-      "back":  [ "cavalier_lourd", "cavalier", "cavalier", "mage", "*", "mage", "lancier", "cavalier" ],
+      "back":  [ "", "lancier", "cavalier", "cavalier", "*", "lancier", "sorcier", "mage" ],
       "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
     { "commander": "Commandant_lancier",
-      "back":  [ "", "mage", "arbaletrier_monte", "mage", "*", "lancier", "lancier", "lancier" ],
-      "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
+      "back":  [ "barde", "cavalier", "mage", "mage", "*", "cavalier", "cavalier", "mage" ],
+      "front": [ "", "", "", "mage", "", "", "", "" ] },
     { "commander": "Commandant_marchand",
-      "back":  [ "", "sorcier", "cavalier", "mage", "*", "cavalier", "mage", "lancier" ],
+      "back":  [ "", "cavalier", "cavalier", "demoniste", "*", "cavalier", "mage", "lancier" ],
+      "front": [ "", "", "", "soldat", "", "", "", "" ] },
+    { "commander": "commandant",
+      "back":  [ "cavalier", "lancier", "lancier", "lancier", "*", "cavalier", "rodeur", "cavalier" ],
+      "front": [ "", "", "", "cavalier", "cavalier", "", "", "" ] },
+    { "commander": "Commandant_brute",
+      "back":  [ "", "cavalier", "cavalier", "cavalier", "*", "cavalier_griffon", "cavalier", "" ],
+      "front": [ "", "soldat", "soldat", "soldat", "soldat", "soldat", "soldat", "" ] },
+    { "commander": "Commandant_cavalier",
+      "back":  [ "", "lancier", "lancier", "mage", "*", "cavalier", "lancier", "" ],
+      "front": [ "", "", "", "barbare", "soldat", "", "", "" ] },
+    { "commander": "Commandant_duo",
+      "back":  [ "cavalier", "cavalier", "lancier", "", "*", "lancier", "arbaletrier", "cavalier" ],
+      "front": [ "", "", "soldat", "soldat", "soldat", "", "", "" ] },
+    { "commander": "Commandant_fou",
+      "back":  [ "", "", "lancier", "cavalier", "*", "cavalier", "", "" ],
+      "front": [ "", "soldat", "soldat", "maitre_arme", "soldat", "soldat", "", "" ] },
+    { "commander": "Commandant_lancier",
+      "back":  [ "arbaletrier", "cavalier", "lancier", "mage", "*", "cavalier", "lancier", "lancier" ],
+      "front": [ "", "", "", "", "", "", "", "" ] },
+    { "commander": "Commandant_marchand",
+      "back":  [ "", "arbaletrier_monte", "mage", "mage", "*", "lancier", "mage", "" ],
       "front": [ "", "", "", "soldat", "soldat", "", "", "" ] }
   ],
 

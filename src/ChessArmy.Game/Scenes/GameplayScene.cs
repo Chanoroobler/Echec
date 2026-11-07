@@ -5778,7 +5778,12 @@ public sealed partial class GameplayScene : Scene
             foreach (var c in _chuteJustLanded)
             {
                 _fallenCells.Add(c);
-                _battlefield[c] = new Tile(BuiltInTiles.Hole);
+                // Multi : le trou est déjà dans le moteur (Match.IsCollapsed) ; le terrain, partagé avec les copies
+                // des bots et le rejeu de validation, ne doit jamais changer.
+                if (_pvpInfo == null)
+                    _battlefield[c] = new Tile(BuiltInTiles.Hole);
+                else
+                    OnCollapseLanded(c);
             }
             _chuteJustLanded.Clear();
         }
@@ -5806,6 +5811,8 @@ public sealed partial class GameplayScene : Scene
         // l'attaquant AVANCE dessus (le moteur l'y place instantanément), la révélation s'ouvrirait AVANT que
         // l'animation d'attaque n'ait fini de jouer. On attend donc la fin des FX : l'attaque se joue, PUIS la
         // découverte. La détection est basée sur l'état (occupation courante) : rien n'est manqué, juste différé.
+        if (_pvpInfo != null)
+            StartPendingCollapses();   // multi : le coup a fini de se jouer, la tuile de pendule basse tombe
         if (BattleSettled)
         {
             if (AiCapturesPaysans)
@@ -6193,7 +6200,11 @@ public sealed partial class GameplayScene : Scene
     /// est le seul moyen de ne pas conclure sur un coup que le joueur n'a pas encore vu. Sert à la fin de
     /// combat comme aux découvertes de terrain (coffres, tuiles recrue).
     /// </summary>
-    private bool BattleSettled =>
+    private bool BattleSettled => FxSettled && _pendingCollapses.Count == 0;
+
+    /// <summary><see cref="BattleSettled"/> sans les tuiles de pendule basse en attente (multi) : c'est le moment
+    /// où elles commencent à tomber (cf. <see cref="StartPendingCollapses"/>).</summary>
+    private bool FxSettled =>
         !_fx.Active && !_storm.Active && !_bounce.Active && !_chain.Active && _chainCorpseCount == 0
         && !_tremor.Active && !_slideGlide.Active && !_chuteFall.Active
         && _pendingSlide is null && _pendingRiposte is null && _pendingInterceptions.Count == 0
@@ -10742,6 +10753,8 @@ public sealed partial class GameplayScene : Scene
             return Palette.Black1 * 0.62f; // fusion / arbre / morph évo long / révélation recrue / coffre / briefing : = DrawDim
         if (_bossIntroCell != null)
             return Palette.Black1 * (0.62f * BossIntroDimFactor);   // = voile de DrawBossIntro (s'efface pendant le vol)
+        if (_pvpInfo != null && _pvpEnd != null && _match is { IsOver: true } && _pvpRecorded)
+            return Palette.Black1 * PvpEndDim;   // panneau de fin multi (= DrawPvpEndPanel), la run reste en phase Combat
         return _run.Phase is RunPhase.Recruitment or RunPhase.Victory or RunPhase.Defeat
             ? Palette.Black1 * 0.62f       // = DrawDim
             : null;
@@ -11086,6 +11099,10 @@ public sealed partial class GameplayScene : Scene
     /// Appliqué à la tuile (DrawTerrain), au marqueur et au pion (DrawUnit) pour qu'ils vibrent ensemble.</summary>
     private int ChuteTrembleY(Cell cell)
     {
+        // Multi, pendule basse : la tuile qui va s'effondrer secoue franchement (créneau ±2 px, pas un sinus arrondi
+        // à ±1 px qui ne se voit pas), pendant tout le tour et jusqu'à sa chute.
+        if (_pvpInfo != null && IsCollapseDoomed(cell))
+            return MathF.Sin(_time * CollapseShakeFreq) >= 0f ? CollapseShakeAmp : -CollapseShakeAmp;
         if (_chuteCells.Count == 0 || !_chuteCells.Contains(cell) || _match.UnitAt(cell) is null)
             return 0;
         return (int)MathF.Round(MathF.Sin(_time * ChuteTrembleFreq) * ChuteTrembleAmp);
@@ -11102,6 +11119,8 @@ public sealed partial class GameplayScene : Scene
             foreach (var cell in _battlefield.Cells())
                 if (_chuteFall.IsFalling(cell))
                     DrawChuteMarkerAt(sb, layout, cell, size, _chuteFall.Progress(cell));
+        if (_pvpInfo != null)
+            DrawCollapseWarnings(sb, layout);   // multi : tuile(s) de pendule basse qui vont tomber
     }
 
     private void DrawChuteMarkerAt(SpriteBatch sb, GridLayout layout, Cell cell, int size, float fallProgress)
@@ -12277,6 +12296,9 @@ public sealed partial class GameplayScene : Scene
         // par-dessus les pions qu'il saute, pas se glisser dessous au hasard de l'ordre de parcours.
         if (_chain.Active && _chainHome is { } home && _match.UnitAt(home) is { } jumper)
             DrawUnit(sb, layout, home, jumper);
+
+        if (_pvpInfo != null)
+            DrawCollapseVictims(sb, layout);   // multi : pions emportés par une tuile de pendule basse
     }
 
     /// <summary>
@@ -12309,6 +12331,13 @@ public sealed partial class GameplayScene : Scene
         var top = layout.CellToScreen(cell.Column, cell.Row);
         var size = layout.TileSize;
         var (introY, introA) = BoardIntroAnim(cell, layout);   // émerge avec sa tuile
+        if (_chuteFall.IsFalling(cell))
+        {
+            // Pion emporté par sa tuile (pendule basse en multi) : il descend et s'estompe avec elle.
+            var p = _chuteFall.Progress(cell);
+            introY += (int)(p * p * ChuteFallDrop);
+            introA *= 1f - p;
+        }
         var zx = (int)top.X;
         var zy = (int)top.Y + introY;
         var zone = new Rectangle(zx, zy, size, size);

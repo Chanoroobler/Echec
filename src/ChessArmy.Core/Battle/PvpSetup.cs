@@ -65,6 +65,25 @@ public static class PvpSetup
         return hits;
     }
 
+    /// <summary>
+    /// Règle de la PENDULE BASSE, après un coup de <paramref name="actor"/> (et ses règles de fin de coup) : si
+    /// la main vient de passer et que sa réserve (<paramref name="actorReserve"/>, la valeur annoncée avec le coup,
+    /// donc la même sur les deux clients) est sous <see cref="PvpConfig.CollapseBelowSeconds"/>, une tuile s'effondre
+    /// derrière lui (cf. <see cref="Match.CollapseTile"/>), jusqu'à ce que ses <see cref="Match.CollapseRows"/> lignes
+    /// arrière aient disparu. Renvoie la case effondrée (à ajouter au journal sous
+    /// <see cref="BattleAction.Collapse"/> : le rejeu la refait via <see cref="Match.Apply"/>), ou null.
+    /// </summary>
+    public static Cell? CollapseAfterTurn(Match match, Faction actor, float actorReserve)
+    {
+        if (match.IsOver || match.CurrentTurn == actor || !match.CanCollapse(actor)
+            || actorReserve >= PvpConfig.Current.CollapseBelowSeconds)
+            return null;
+        var cell = match.CollapseTile(actor);
+        if (cell != null)
+            AfterAction(match, match.CurrentTurn);   // comme le rejeu après un coup journalisé (position morte)
+        return cell;
+    }
+
     /// <summary>Résout les effets en chaîne (réaction en chaîne, balle rebondissante) que la scène déroule
     /// pendant ses animations : le rejeu les vide d'un coup.</summary>
     public static void ResolvePending(Match match)
@@ -118,8 +137,8 @@ public static class PvpSetup
     /// <summary>
     /// Vrai si la map est SYMÉTRIQUE haut/bas pour le JEU : chaque case et sa case miroir ont les mêmes règles
     /// (blocage, tir, glisse, portée, trait prêté, buisson). L'invité joue alors la map telle quelle, avec le
-    /// même rendu que l'hôte. Sinon il la joue retournée (règles justes, mais les tuiles orientées, falaises,
-    /// escaliers, peuvent paraître à l'envers).
+    /// même rendu que l'hôte. Sinon il la joue retournée, ses tuiles orientées remplacées par leurs jumelles
+    /// (cf. <see cref="BuildBattlefield"/>).
     /// </summary>
     public static bool IsMirrorSymmetric(MapData map)
     {
@@ -141,14 +160,19 @@ public static class PvpSetup
 
     /// <summary>
     /// Terrain local d'un client (et ses buissons, qui donnent du couvert) : la map telle quelle pour l'hôte, ou
-    /// pour l'invité si elle est symétrique ; retournée sinon, pour que chaque case garde ses règles.
+    /// pour l'invité si elle est symétrique ; retournée sinon, pour que chaque case garde ses règles. Retournée,
+    /// chaque tuile orientée est remplacée par sa JUMELLE du <paramref name="catalog"/> (cf.
+    /// <see cref="TileCatalog.MirrorOf"/>) : l'invité voit une map différente mais cohérente (chemins raccordés,
+    /// berges du bon côté), aux mêmes règles case pour case.
     /// </summary>
-    public static Battlefield BuildBattlefield(MapData map, bool isHost, out List<Cell> bushes)
+    public static Battlefield BuildBattlefield(MapData map, bool isHost, out List<Cell> bushes,
+        TileCatalog? catalog = null)
     {
         var flip = !isHost && !IsMirrorSymmetric(map);
         var battlefield = new Battlefield(map.Width, map.Height);
         foreach (var cell in battlefield.Cells())
-            battlefield[cell] = new Tile(map.TileAt(flip ? Mirror(cell) : cell));
+            battlefield[cell] = new Tile(!flip ? map.TileAt(cell)
+                : catalog?.MirrorOf(map.TileAt(Mirror(cell))) ?? map.TileAt(Mirror(cell)));
         bushes = map.Objects.Where(o => o.Kind == MapObjectKind.Bush)
             .Select(o => flip ? Mirror(o.Cell) : o.Cell).ToList();
         return battlefield;
@@ -173,6 +197,7 @@ public static class PvpSetup
     public static BattleAction Mirror(in BattleAction action) => action.Kind switch
     {
         BattleActionKind.Resign => BattleAction.Resign(((Faction)action.From.Column).Opponent()),
+        BattleActionKind.Collapse => BattleAction.Collapse(((Faction)action.From.Column).Opponent()),
         BattleActionKind.AgreeDraw or BattleActionKind.Pass => action,
         _ => new(action.Kind, Mirror(action.From), Mirror(action.Target)),
     };

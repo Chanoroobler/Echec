@@ -64,8 +64,28 @@ public sealed class TileCatalog
             if (!string.IsNullOrEmpty(t.Key) && !string.IsNullOrEmpty(t.Id))
                 legend[t.Key] = t.Id!;
 
-        return new TileCatalog(tiles, legend);
+        var catalog = new TileCatalog(tiles, legend);
+        foreach (var t in dto.Tiles)
+            if (!string.IsNullOrEmpty(t.Id) && !string.IsNullOrEmpty(t.Miroir))
+                catalog._mirror[t.Id!] = t.Miroir!;
+        return catalog;
     }
+
+    private readonly Dictionary<string, string> _mirror = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Tuile JUMELLE de <paramref name="def"/> sur un plateau retourné haut/bas (<c>miroir</c> dans tiles.json) :
+    /// mêmes raccords une fois le nord et le sud échangés (coin haut-gauche ↔ coin bas-gauche, berge rocheuse du
+    /// haut ↔ berge du bas…), dessinée dans la même perspective. Sert à l'invité d'une partie PvP, dont le plateau
+    /// est retourné : sa map reste cohérente à l'œil. Une jumelle aux RÈGLES différentes est ignorée (la case
+    /// doit garder les siennes) ; sans jumelle, la tuile elle-même (herbe, rocher, tuile symétrique).
+    /// </summary>
+    public TileDef MirrorOf(TileDef def) =>
+        _mirror.TryGetValue(def.Id, out var id) && _byId.TryGetValue(id, out var twin)
+        && twin.BlocksMove == def.BlocksMove && twin.BlocksFire == def.BlocksFire && twin.Slides == def.Slides
+        && twin.RangeBonus == def.RangeBonus && twin.Trait == def.Trait
+            ? twin
+            : def;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -96,5 +116,8 @@ public sealed class TileCatalog
 
         /// <summary>Trait de combat prêté à l'unité postée dessus (cf. Battle.Trait) ; absent → aucun.</summary>
         public string? Trait { get; set; }
+
+        /// <summary>Id de la tuile jumelle sur un plateau retourné haut/bas (cf. <see cref="MirrorOf"/>) ; absent → elle-même.</summary>
+        public string? Miroir { get; set; }
     }
 }

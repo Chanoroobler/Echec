@@ -78,6 +78,7 @@ public sealed class Match
         Width = width;
         Height = height;
         _units = new Unit?[width, height];
+        _collapsed = new bool[width, height];
         _terrain = terrain;
         _cover = coverCells is null ? new HashSet<Cell>() : new HashSet<Cell>(coverCells);
         _rng = rng ?? new System.Random();
@@ -86,6 +87,14 @@ public sealed class Match
         RempartBonus = rempartBonus;
         TueurDeGeantsBonus = tueurGeantsBonus;
         FormationBonus = formationBonus;
+        if (pvpRules)
+        {
+            // Pendule basse : la prochaine tuile de chaque camp est tirée D'AVANCE pour que la scène la montre
+            // (elle tremble pendant le tour, puis tombe après). Le premier joueur d'abord : c'est le même camp
+            // physique sur les deux clients, donc le même tirage (cf. CollapseTile).
+            _nextCollapse[(int)firstTurn] = RollCollapse(firstTurn);
+            _nextCollapse[(int)firstTurn.Opponent()] = RollCollapse(firstTurn.Opponent());
+        }
     }
 
     /// <summary>Bonus d'arbre « Rempart renforcé » (points de réduction en PLUS de <see cref="BaseRempartReduction"/>).
@@ -139,11 +148,11 @@ public sealed class Match
         BaseRempartReduction + (victim.Faction == Faction.Player ? RempartBonus : 0);
 
     /// <summary>Vrai si la case offre un COUVERT (buisson) : l'unité dessus reçoit moins de dégâts.</summary>
-    private bool IsCover(Cell cell) => _cover.Contains(cell);
+    private bool IsCover(Cell cell) => _cover.Contains(cell) && !IsCollapsed(cell);
 
-    /// <summary>Vrai si la tuile interdit le déplacement (mur, eau).</summary>
+    /// <summary>Vrai si la tuile interdit le déplacement (mur, eau, tuile effondrée).</summary>
     private bool BlocksMovement(Cell cell) =>
-        _terrain != null && _terrain[cell].BlocksMovement;
+        (_terrain != null && _terrain[cell].BlocksMovement) || IsCollapsed(cell);
 
     /// <summary>Vrai si la tuile arrête une ligne de tir (mur).</summary>
     private bool BlocksLineOfFire(Cell cell) =>
@@ -160,7 +169,7 @@ public sealed class Match
     /// (cf. <see cref="Map.TileDef.Trait"/>), ou null. PUBLIQUE : l'UI l'affiche sur la carte du pion, pour ne
     /// pas laisser un trait agir en combat sans que rien ne le dise.
     /// </summary>
-    public string? TileTraitAt(Cell cell) => _terrain?[cell].GrantedTrait;
+    public string? TileTraitAt(Cell cell) => IsCollapsed(cell) ? null : _terrain?[cell].GrantedTrait;
 
     /// <summary>
     /// Vrai si <paramref name="unit"/>, postée en <paramref name="from"/>, a <paramref name="trait"/> — par
@@ -178,7 +187,7 @@ public sealed class Match
     /// PUBLIQUE : l'UI l'affiche sur la carte du pion, pour ne pas annoncer une portée inférieure à la vraie.
     /// </summary>
     public int AttackRangeBonus(Cell cell) =>
-        _terrain != null && UnitAt(cell) is { } u && u.AttackRange >= RangedAttackRange
+        _terrain != null && !IsCollapsed(cell) && UnitAt(cell) is { } u && u.AttackRange >= RangedAttackRange
             ? _terrain[cell].RangeBonus
             : 0;
 
@@ -616,6 +625,12 @@ public sealed class Match
         }
     }
 
+    /// <summary>Dernier déplacement simple de chaque camp (départ, arrivée demandée) ; null s'il n'a pas encore bougé.
+    /// Mémoire des bots : ne pas défaire son propre coup et tourner en rond.</summary>
+    private readonly (Cell From, Cell To)?[] _lastMove = new (Cell From, Cell To)?[2];
+
+    public (Cell From, Cell To)? LastMoveOf(Faction faction) => _lastMove[(int)faction];
+
     /// <summary>Déplace l'unité vers une case vide légale. Passe le tour en cas de succès.</summary>
     public MoveKind TryMove(Cell from, Cell to)
     {
@@ -642,6 +657,7 @@ public sealed class Match
         }
 
         MoveUnit(from, to);
+        _lastMove[(int)unit.Faction] = (from, to);
         // « Glace » : si la case d'arrivée est glissante, l'unité glisse au-delà (peut dépasser sa portée). Les
         // traits (interception/impact) se déclenchent depuis sa case de REPOS réelle.
         var landing = SlideOnIce(unit, from, to);
@@ -1706,7 +1722,7 @@ public sealed class Match
 
     /// <summary>Vrai si la case porte une tuile glissante (glace). Faux hors terrain.</summary>
     private bool Slippery(Cell cell) =>
-        _terrain != null && _terrain[cell].Slippery;
+        _terrain != null && _terrain[cell].Slippery && !IsCollapsed(cell);
 
     /// <summary>Vide les résultats de feedback (« Impact »/« Recule »/« Esquive »/« Riposte ») avant de résoudre une nouvelle action.</summary>
     private void ResetActionFx()
@@ -2664,6 +2680,10 @@ public sealed class Match
                     return MoveKind.Invalid;
                 EndInDraw();
                 return MoveKind.Moved;
+            case BattleActionKind.Collapse:
+                if (action.From.Column is not (0 or 1))
+                    return MoveKind.Invalid;
+                return CollapseTile((Faction)action.From.Column) != null ? MoveKind.Moved : MoveKind.Invalid;
             default: return MoveKind.Invalid;
         }
     }
@@ -2701,6 +2721,11 @@ public sealed class Match
         Width = s.Width;
         Height = s.Height;
         _units = new Unit?[Width, Height];
+        _collapsed = (bool[,])s._collapsed.Clone();
+        _collapsedCount[0] = s._collapsedCount[0];
+        _collapsedCount[1] = s._collapsedCount[1];
+        _nextCollapse[0] = s._nextCollapse[0];
+        _nextCollapse[1] = s._nextCollapse[1];
         for (var c = 0; c < Width; c++)
             for (var r = 0; r < Height; r++)
                 if (s._units[c, r] is { } u)
@@ -2719,6 +2744,8 @@ public sealed class Match
         _lastPierce = s._lastPierce;
         _interceptions.AddRange(s._interceptions);
         _lastSlide = s._lastSlide;   // remplacé en bloc, jamais modifié
+        _lastMove[0] = s._lastMove[0];
+        _lastMove[1] = s._lastMove[1];
         _rng = rng;
         _eliminationEndsGame = s._eliminationEndsGame;
         _playerBlocked = new HashSet<Cell>(s._playerBlocked);
@@ -2786,6 +2813,8 @@ public sealed class Match
         for (var c = 0; c < Width; c++)
             for (var r = 0; r < Height; r++)
             {
+                if (_collapsed[c, mirrored ? Height - 1 - r : r])
+                    h = Mix(h, -1 - (r * Width + c));   // tuile effondrée (repère de l'hôte)
                 if (_units[c, mirrored ? Height - 1 - r : r] is not { } u)
                     continue;
                 h = Mix(h, c);
@@ -2960,6 +2989,78 @@ public sealed class Match
         Handovers++;
         if (CurrentTurn == Faction.Player)
             _extraTurnUsed = false;   // la main revient au joueur : son tour bonus est de nouveau disponible
+    }
+
+    // ── Effondrement (PvP, pendule basse) ─────────────────────────────────────────
+
+    /// <summary>Lignes arrière qui peuvent s'effondrer derrière chaque camp.</summary>
+    public const int CollapseRows = 2;
+
+    // Tuiles effondrées : trou infranchissable (le tir passe), propre à CETTE partie. Le terrain partagé
+    // (copies des bots, rejeu de validation) n'est jamais modifié.
+    private readonly bool[,] _collapsed;
+    private readonly int[] _collapsedCount = new int[2];
+
+    /// <summary>Vrai si la tuile de <paramref name="cell"/> s'est effondrée (cf. <see cref="CollapseTile"/>).</summary>
+    public bool IsCollapsed(Cell cell) => InBounds(cell) && _collapsed[cell.Column, cell.Row];
+
+    /// <summary>Vrai s'il reste au moins une tuile à effondrer derrière <paramref name="side"/>.</summary>
+    public bool CanCollapse(Faction side) => _collapsedCount[(int)side] < CollapseRows * Width;
+
+    /// <summary>Pion emporté par le DERNIER <see cref="CollapseTile"/> (null s'il n'y en avait pas), pour le rendu.</summary>
+    public Unit? LastCollapseVictim { get; private set; }
+
+    // Prochaine tuile qui s'effondrera derrière chaque camp, tirée d'avance (parties PvP) : la scène la fait
+    // trembler pendant le tour de ce camp quand sa pendule est basse. Null = plus rien à effondrer (ou campagne).
+    private readonly Cell?[] _nextCollapse = new Cell?[2];
+
+    /// <summary>Case que le prochain <see cref="CollapseTile"/> de <paramref name="side"/> effondrera (PvP), ou null.</summary>
+    public Cell? NextCollapse(Faction side) => _nextCollapse[(int)side];
+
+    /// <summary>
+    /// Effondre UNE tuile derrière <paramref name="side"/> : d'abord sa ligne du fond, puis celle juste devant,
+    /// case tirée au hasard (<see cref="_rng"/>, colonnes dans l'ordre : même tirage sur les deux clients). En PvP
+    /// la case est celle tirée d'avance (<see cref="NextCollapse"/>), et la suivante est tirée aussitôt. Le pion
+    /// qui s'y tient, quel que soit son camp, tombe avec et meurt (aucune résurrection, aucun kill crédité) ; un
+    /// commandant emporté décide la partie. Renvoie la case effondrée, ou null s'il n'y en a plus (ou partie finie).
+    /// </summary>
+    public Cell? CollapseTile(Faction side)
+    {
+        LastCollapseVictim = null;
+        if (IsOver || !CanCollapse(side))
+            return null;
+        if ((_nextCollapse[(int)side] ?? RollCollapse(side)) is not { } cell)
+            return null;
+        _collapsed[cell.Column, cell.Row] = true;
+        _collapsedCount[(int)side]++;
+        if (PvpRules)
+            _nextCollapse[(int)side] = RollCollapse(side);   // connue dès maintenant : tremblera au prochain tour
+        if (_units[cell.Column, cell.Row] is { } victim)
+        {
+            victim.TakeDamage(victim.Hp);
+            _units[cell.Column, cell.Row] = null;
+            LastCollapseVictim = victim;
+            OnUnitDied(victim, cell);
+        }
+        UpdateWinner();
+        return cell;
+    }
+
+    /// <summary>Tire la prochaine case à effondrer derrière <paramref name="side"/> (ligne du fond d'abord), ou null.</summary>
+    private Cell? RollCollapse(Faction side)
+    {
+        System.Span<int> columns = stackalloc int[Width];
+        for (var line = 0; line < CollapseRows; line++)
+        {
+            var row = side == Faction.Player ? Height - 1 - line : line;
+            var count = 0;
+            for (var c = 0; c < Width; c++)
+                if (!_collapsed[c, row])
+                    columns[count++] = c;
+            if (count > 0)
+                return new Cell(columns[_rng.Next(count)], row);
+        }
+        return null;
     }
 
     private void UpdateWinner()

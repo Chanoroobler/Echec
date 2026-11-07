@@ -282,6 +282,9 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
         _pvpEndShots = Scenes.PvpEndShots.FromArgs(_context, Exit);
         if (_pvpEndShots != null)
             return;
+        // Combat multi de test contre un bot qui commence, pendule courte (-pvpbot [minutes], 5 par défaut).
+        if (Scenes.PvpBotTest.TryStart(_context))
+            return;
 #endif
         _scenes.Change(new SplashScene(_context));   // logo du studio, qui enchaîne sur le menu principal
     }

@@ -211,6 +211,7 @@ public sealed partial class PvpArmyScene
         DrawCommander(sb);
         DrawBoard(sb);
         DrawReserve(sb);
+        DrawSheet(sb);   // par-dessus le plateau (rangées vides au-dessus des lignes du joueur)
         DrawBand(sb);
     }
 
@@ -246,7 +247,7 @@ public sealed partial class PvpArmyScene
     // ── Commandant ───────────────────────────────────────────────────────────────
 
     private (string Id, Language Lang, bool Full) _cmdKey;
-    private string _cmdName = "", _cmdCostLabel = "", _cmdMove = "";
+    private string _cmdName = "", _cmdCostLabel = "", _cmdMove = "", _cmdDomIcon = "";
     private int _cmdNameScale = 1;
     private readonly string[] _cmdValues = new string[4];
     private readonly List<string> _cmdTraits = new();
@@ -264,6 +265,7 @@ public sealed partial class PvpArmyScene
         var cost = PvpConfig.Current.CommanderCostOf(Build.CommanderId);
         _cmdCostLabel = cost == 0 ? Loc.T("pvp.free_fixed") : Loc.T("pvp.cost_fixed", cost);
         _cmdMove = def == null ? "" : Loc.T("pvp.move." + def.Movement.ToString().ToLowerInvariant());
+        _cmdDomIcon = def == null ? "" : "Icons/domaine_" + def.Movement.ToString().ToLowerInvariant();
         if (cls != null)
         {
             _cmdValues[0] = Num(cls.MaxHp);
@@ -349,11 +351,75 @@ public sealed partial class PvpArmyScene
             }
         }
 
-        // 5. Déplacement : icône du domaine (39×39 natif) + libellé.
+        // 5. Déplacement : plateau 7×7 ANIMÉ (le commandant y parcourt ses cases, comme sur la fiche des pions),
+        //    avec à sa droite l'icône du domaine + le libellé quand la place le permet. Repli : icône + libellé seuls.
         var domY = L.BarsY + 4 * L.BarStep + (L.Full ? 4 : 2);
-        if (def != null)
+        if (def != null && cls != null && PvpCatalog.CommanderClass(Build.CommanderId) is { } kc
+            && domY + MoveAttackGrid.BoardOuter <= inner.Bottom)
         {
-            var icon = Tex("Icons/domaine_" + def.Movement.ToString().ToLowerInvariant());
+            var (kdom, kcls) = kc;
+            bool Has(string t) => kcls.Traits.Contains(t);
+            var sideX = inner.X + MoveAttackGrid.BoardOuter + (L.Full ? 12 : 8);
+            var side = inner.Right - sideX >= 90;   // assez large pour l'icône et le libellé à côté
+            var gx = side ? inner.X : inner.Center.X - MoveAttackGrid.BoardOuter / 2;
+            var grid = new Rectangle(gx, domY, MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
+            MoveAttackGrid.DrawBoardWithPawn(sb, Px, grid, UnitFront(cls.Asset), revealed: true, kdom, cls.MoveRange,
+                Has(ChessArmy.Core.Battle.Trait.RepositionnementStrategique),
+                Has(ChessArmy.Core.Battle.Trait.AttaqueLibre) ? Domaine.Dame : cls.AttackDomaine ?? kdom,
+                cls.AttackRange, Math.Max(cls.MinAttackRange, Has(ChessArmy.Core.Battle.Trait.ZoneMorte) ? 2 : 1),
+                allowNative: !_tutorialOpen && _error == null);
+            if (side)
+            {
+                var tw = inner.Right - sideX;
+                var y = domY;
+                if (Tex(_cmdDomIcon) is { } dIcon)
+                {
+                    sb.Draw(dIcon, new Vector2(sideX, y), Color.White);
+                    y += dIcon.Height + 6;
+                }
+                Font.Draw(sb, PvpArt.Fit(Font, Loc.T("pvp.movement"), tw, 1), new Vector2(sideX, y), 1, Palette.Blue1);
+                y += Font.LineHeight(1) + 6;
+                var mScale = L.Full ? 2 : 1;
+                foreach (var line in WrapCached(_cmdMove, tw / mScale))   // « CAVALIER · SAUT EN L » sur deux lignes si besoin
+                {
+                    Font.Draw(sb, line, new Vector2(sideX, y), mScale, Palette.White);
+                    y += Font.LineHeight(mScale) + 4;
+                }
+                domY = grid.Bottom + (L.Full ? 8 : 6);
+            }
+            else
+            {
+                // Panneau étroit (compact) : « DÉPLACEMENT  DAME · 8 DIRECTIONS » sous le plateau, sur une ligne si
+                // elle tient, sinon libellé puis motif ; motif seul s'il ne reste qu'une ligne.
+                var lh = Font.LineHeight(1);
+                var y = grid.Bottom + 4;
+                var label = Loc.T("pvp.movement");
+                var gap = 6;
+                var oneLine = Font.Measure(label, 1) + gap + Font.Measure(_cmdMove, 1) <= inner.Width;
+                if (oneLine && y + lh <= inner.Bottom + 2)
+                {
+                    var w = Font.Measure(label, 1) + gap + Font.Measure(_cmdMove, 1);
+                    var x0 = inner.Center.X - w / 2;
+                    Font.Draw(sb, label, new Vector2(x0, y), 1, Palette.Blue1);
+                    Font.Draw(sb, _cmdMove, new Vector2(x0 + Font.Measure(label, 1) + gap, y), 1, Palette.White);
+                    y += lh + 4;
+                }
+                else
+                {
+                    if (y + 2 * lh + 3 <= inner.Bottom + 2)
+                    {
+                        Font.DrawCentered(sb, PvpArt.Fit(Font, label, inner.Width, 1), new Rectangle(inner.X, y, inner.Width, lh), 1, Palette.Blue1);
+                        y += lh + 3;
+                    }
+                    Font.DrawCentered(sb, PvpArt.Fit(Font, _cmdMove, inner.Width, 1), new Rectangle(inner.X, y, inner.Width, lh), 1, Palette.White);
+                    y += lh + 4;
+                }
+                domY = y;
+            }
+        }
+        else if (def != null)
+        {
+            var icon = Tex(_cmdDomIcon);
             var iconW = icon?.Width ?? 39;
             if (icon != null)
                 sb.Draw(icon, new Vector2(inner.X, domY), Color.White);
@@ -475,7 +541,7 @@ public sealed partial class PvpArmyScene
         // Badges d'équipement (par-dessus tous les pions).
         foreach (var slot in Build.Slots)
         {
-            if (slot.EquipmentId == null || Equipments.ById(slot.EquipmentId) is not { } eq)
+            if (slot.EquipmentId == null || PvpCatalog.FindEquipment(slot.EquipmentId) is not { } eq)
                 continue;
             var idx = CellIndex(slot.Column, slot.Line);
             var away = _held.Active && _held.FromBoard && (idx == heldCell);
@@ -483,7 +549,7 @@ public sealed partial class PvpArmyScene
                 !_held.Active && HoveredKind(Hit.Badge, idx));
         }
         if (_held.Active && _held.IsEquip && aimed >= 0 && CellOf(aimed) is var (ec, el) && el >= 0
-            && !PvpBuild.IsKingCell(ec, el) && Build.SlotAt(ec, el) != null && Equipments.ById(_held.Id) is { } heq)
+            && !PvpBuild.IsKingCell(ec, el) && Build.SlotAt(ec, el) != null && PvpCatalog.FindEquipment(_held.Id) is { } heq)
             DrawBadge(sb, BadgeRect(ec, el), heq, GhostAlpha, false);
 
         _board.DrawBushes(sb, b.Location, L.FirstRow);
@@ -510,7 +576,7 @@ public sealed partial class PvpArmyScene
             return;
         if (_held.IsEquip)
         {
-            if (Equipments.ById(_held.Id) is { } eq)
+            if (PvpCatalog.FindEquipment(_held.Id) is { } eq)
                 DrawBadge(sb, new Rectangle(p.X - 16, p.Y - 16, 32, 32), eq, 0.9f, false);
             return;
         }
@@ -560,9 +626,6 @@ public sealed partial class PvpArmyScene
             else
                 DrawUnitCard(sb, r, _units[first + k], hover, k, remainingPts);
         }
-
-        PvpArt.Fill(sb, Px, new Rectangle(inner.X, L.SepY, inner.Width, 1), Palette.Black5);
-        DrawSheet(sb);
     }
 
     private Rectangle ToReserveRect => new(_lay.ResInner.X, _lay.TabUnits.Y, _lay.ResInner.Width, _lay.TabUnits.Height);
@@ -655,11 +718,12 @@ public sealed partial class PvpArmyScene
             PvpArt.RarityColor(e.Equipment.Rarity) * Math.Max(alpha, 0.7f));
     }
 
-    // ── Fiche (sous la pagination) ───────────────────────────────────────────────
+    // ── Fiche (panneau sur le plateau, au survol) ────────────────────────────────
 
     private void DrawSheet(SpriteBatch sb)
     {
         var area = _lay.Sheet;
+        var frame = _lay.SheetFrame;
         // Ce qu'on survole (ou tient) : carte de la réserve, pion posé, badge.
         UnitClass? cls = null;
         Domaine dom = Domaine.Dame;
@@ -667,15 +731,16 @@ public sealed partial class PvpArmyScene
         var isCommander = false;
         Equipment? lone = null;   // équipement seul (carte de la réserve ou badge)
         var lockedLone = false;
+        UnitClass? carrier = null;   // badge survolé : le pion qui porte l'objet (« sur ce pion : PV 13 → 18 »)
         var t = _hover >= 0 ? _targets[_hover] : default;
         if (_held.Active)
         {
-            if (_held.IsEquip) lone = Equipments.ById(_held.Id);
+            if (_held.IsEquip) lone = PvpCatalog.FindEquipment(_held.Id);
             else if (PvpCatalog.FindClass(_held.Id) is { } hc)
             {
                 (dom, cls) = hc;
                 if (_held.FromBoard && Build.SlotAt(_held.FromColumn, _held.FromLine)?.EquipmentId is { } he)
-                    eq = Equipments.ById(he);
+                    eq = PvpCatalog.FindEquipment(he);
             }
         }
         else if (t.Kind == Hit.Card)
@@ -686,8 +751,11 @@ public sealed partial class PvpArmyScene
         else if (t.Kind == Hit.Badge)
         {
             var (c, line) = CellOf(t.Index);
-            if (Build.SlotAt(c, line)?.EquipmentId is { } be)
-                lone = Equipments.ById(be);
+            if (Build.SlotAt(c, line) is { EquipmentId: { } be } bs)
+            {
+                lone = PvpCatalog.FindEquipment(be);
+                carrier = PvpCatalog.FindClass(bs.ClassAsset)?.Class;
+            }
         }
         else if (t.Kind == Hit.Cell)
         {
@@ -701,40 +769,26 @@ public sealed partial class PvpArmyScene
             {
                 (dom, cls) = sc;
                 if (slot.EquipmentId != null)
-                    eq = Equipments.ById(slot.EquipmentId);
+                    eq = PvpCatalog.FindEquipment(slot.EquipmentId);
             }
         }
 
-        // Souris posée SUR la fiche (pour la faire défiler) : elle garde ce qu'on survolait juste avant.
-        if (lone == null && cls == null && !_held.Active && !Context.Input.UsingGamepad && area.Contains(_pointer))
-            (cls, dom, eq, isCommander, lone, lockedLone) = _sheetSubject;
-        _sheetSubject = (cls, dom, eq, isCommander, lone, lockedLone);
+        // Souris posée SUR la fiche ouverte (pour la lire) : elle garde ce qu'on survolait juste avant.
+        if (lone == null && cls == null && !_held.Active && !Context.Input.UsingGamepad && frame.Contains(_pointer))
+            (cls, dom, eq, isCommander, lone, lockedLone, carrier) = _sheetSubject;
+        _sheetSubject = (cls, dom, eq, isCommander, lone, lockedLone, carrier);
 
+        // Rien de survolé : pas de fiche, le plateau reste dégagé (l'aide est dans la bande du bas).
+        if (lone == null && cls == null)
+            return;
+        PvpArt.Panel(sb, Px, frame);
         if (lone != null)
-            DrawEquipSheet(sb, area, lone, lockedLone);
-        else if (cls != null)
-            DrawUnitSheet(sb, area, cls, dom, eq, isCommander);
+            DrawEquipSheet(sb, area, lone, lockedLone, carrier);
         else
-        {
-            DrawWrapped(sb, Loc.T(_reserveEquip ? "pvp.help_equipment" : "pvp.help_units"), area, Palette.Blue1);
-        }
+            DrawUnitSheet(sb, area, cls!, dom, eq, isCommander);
     }
 
-    private (UnitClass? Cls, Domaine Dom, Equipment? Eq, bool Cmd, Equipment? Lone, bool Locked) _sheetSubject;
-
-    private int DrawWrapped(SpriteBatch sb, string text, Rectangle area, Color color, int y = -1)
-    {
-        var lh = Font.LineHeight(1) + 4;
-        y = y < 0 ? area.Y : y;
-        foreach (var line in WrapCached(text, area.Width))
-        {
-            if (y + Font.LineHeight(1) > area.Bottom)
-                break;
-            Font.Draw(sb, line, new Vector2(area.X, y), 1, color, preserveCase: true);
-            y += lh;
-        }
-        return y;
-    }
+    private (UnitClass? Cls, Domaine Dom, Equipment? Eq, bool Cmd, Equipment? Lone, bool Locked, UnitClass? Carrier) _sheetSubject;
 
     private readonly Dictionary<(string, int), List<string>> _wraps = new();
 
@@ -764,30 +818,23 @@ public sealed partial class PvpArmyScene
         return lines;
     }
 
-    // ── Fiche d'un pion / du commandant ─────────────────────────────────────────
-    //  Ni nom ni coût (déjà sur la carte de la réserve). En haut, côte à côte : le plateau 7×7 animé
-    //  (MoveAttackGrid, tel quel) et les 4 stats empilées (icône 32×32 native, libellé gris, « +5 » doré, valeur
-    //  à droite, dorée si un équipement la modifie). Dessous, sur toute la largeur : l'encart de l'équipement
-    //  porté puis chaque trait (nom + fonctionnement complet), « NOM : fonctionnement », sans défilement (interligne resserré si ça ne tient pas).
+    // ── Fiche : outils communs (pion, commandant, équipement ; mise en page dans PvpArmyScene.Sheet.cs) ──────
+    //  Chaque trait : « NOM : fonctionnement » d'un seul tenant, sans défilement (interligne resserré si besoin).
 
-    private const int StatPitch = 32;      // une ligne de stat par icône 32×32 (fond de 28 px centré dessus)
-    private const int StatRowH = 28;
     private const int SheetGapPx = 5;      // espace entre deux traits
 
     private int SheetStep => Font.LineHeight(1) + 4;
-    private int SheetHeadH => 4 * StatPitch;
-    private int SheetColX(Rectangle area) => area.X + MoveAttackGrid.BoardOuter + (_lay.Full ? 12 : 6);
-    private int SheetBodyY(Rectangle area) => area.Y + SheetHeadH + (_lay.Full ? 8 : 6);
 
-    private (string A, string? B, int Kind, Language Lang, bool Full, Rectangle Area) _sheetKey;
+    private (string A, string? B, string? C, int Kind, Language Lang, bool Full, Rectangle Area) _sheetKey;
     private int _sheetValueScale = 1, _sheetEquipH;
+    private Rectangle _sheetEquipBox;
     private bool _sheetLabels;
     private readonly string[] _sheetLabel = new string[4];
     private readonly string[] _sheetValues = new string[4];
     private readonly string[] _sheetBonus = new string[4];   // « +5 » ; vide sans bonus d'équipement
     private readonly bool[] _sheetBoosted = new bool[4];
     private (int Move, bool Reposition, bool FreeAttack, int Range, int MinRange) _sheetGrid;
-    private static readonly string[] StatIcons = { "pv", "deg", "dep", "tir" };
+    private static readonly string[] StatIcons = { "Icons/stat_pv", "Icons/stat_deg", "Icons/stat_dep", "Icons/stat_tir" };
     private static readonly string[] StatKeys = { "stat.hp", "stat.power", "stat.movement", "stat.range" };
     private readonly List<(string Text, Color Color)> _sheetEquipLines = new();
     /// <summary>Lignes de la fiche (« NOM : fonctionnement », rappels) ; Gap = espace avant la ligne ; les Head
@@ -802,75 +849,6 @@ public sealed partial class PvpArmyScene
     // 1 pixel d'écran) puis posée par la couche écran (NativeSprites) : nette, jamais d'échelle fractionnaire.
     private bool _sheetHalf, _sheetSmallDirty;
     private RenderTarget2D? _sheetSmall;
-
-    /// <summary>Recalcule la fiche d'un pion seulement quand le sujet, la langue ou la mise en page change.</summary>
-    private void RefreshUnitSheet(UnitClass cls, Equipment? eq, bool isCommander, Rectangle area)
-    {
-        var key = (cls.Asset, eq?.Id, isCommander ? 1 : 0, Loc.Current, _lay.Full, area);
-        if (key == _sheetKey)
-            return;
-        _sheetKey = key;
-        var full = _lay.Full;
-
-        // Valeurs totales (classe + équipement) ; le bonus est rappelé à part en « +5 ».
-        int[] baseV = { cls.MaxHp, cls.Damage, cls.MoveRange, cls.AttackRange };
-        EquipStat[] stats = { EquipStat.Hp, EquipStat.Damage, EquipStat.MoveRange, EquipStat.AttackRange };
-        for (var i = 0; i < 4; i++)
-        {
-            var bonus = eq?.BonusFor(stats[i]) ?? 0;
-            _sheetValues[i] = Num(Math.Max(0, baseV[i] + bonus));
-            _sheetBonus[i] = bonus == 0 ? "" : EquipmentNames.Signed(bonus);
-            _sheetBoosted[i] = bonus != 0;
-        }
-        bool Has(string t) => cls.Traits.Contains(t) || (eq != null && eq.GrantsTrait(t));
-        _sheetGrid = (cls.MoveRange + (eq?.BonusFor(EquipStat.MoveRange) ?? 0),
-            Has(ChessArmy.Core.Battle.Trait.RepositionnementStrategique), Has(ChessArmy.Core.Battle.Trait.AttaqueLibre),
-            cls.AttackRange + (eq?.BonusFor(EquipStat.AttackRange) ?? 0),
-            Math.Max(cls.MinAttackRange, Has(ChessArmy.Core.Battle.Trait.ZoneMorte) ? 2 : 1));
-
-        // Libellés : en entier s'ils tiennent tous, sinon aucun (pas de « PUIS… » à côté de « PV »).
-        var colW = area.Right - SheetColX(area);
-        _sheetValueScale = full ? 2 : 1;
-        _sheetLabels = true;
-        for (var i = 0; i < 4; i++)
-        {
-            _sheetLabel[i] = Loc.T(StatKeys[i]);
-            if (32 + 6 + Font.Measure(_sheetLabel[i], 1) + 8 + StatValueW(i) + 6 > colW)
-                _sheetLabels = false;
-        }
-
-        // Encart de l'équipement porté (toute la largeur) : nom en couleur de rareté puis son effet.
-        _sheetEquipLines.Clear();
-        _sheetEquipH = 0;
-        var step = SheetStep;
-        if (eq != null)
-        {
-            var textW = area.Width - 12 - 32 - 8;
-            foreach (var line in WrapCached(EquipmentNames.Localized(eq).ToUpperInvariant(), textW))
-                _sheetEquipLines.Add((line, PvpArt.RarityColor(eq.Rarity)));
-            var effect = EquipEffectSummary(eq);
-            if (effect.Length > 0)
-                foreach (var line in WrapCached(effect, textW))
-                    _sheetEquipLines.Add((line, Palette.White));
-            _sheetEquipH = Math.Max(32, _sheetEquipLines.Count * step - 4) + 12;
-        }
-
-        // Fonctionnement de chaque trait (classe, puis équipement en doré), sur toute la largeur.
-        var zoneY = SheetBodyY(area) + (_sheetEquipH > 0 ? _sheetEquipH + 8 : 0);
-        _sheetZone = new Rectangle(area.X, zoneY, area.Width - 6, Math.Max(0, area.Bottom - zoneY));
-        _sheetParas.Clear();
-        _sheetReminders.Clear();
-        var entries = TraitEntries(cls, eq);
-        _sheetShown.Clear();
-        foreach (var (_, trait, _) in entries)
-            _sheetShown.Add(trait);
-        foreach (var (kw, trait, fromEquip) in entries)
-        {
-            AddTraitLines(kw, trait, fromEquip ? Palette.Yellow2 : Palette.Cyan1);
-            AddTraitReminders(trait);
-        }
-        FitSheetLines();
-    }
 
     /// <summary>Largeur de « +5 » + valeur, calés à droite d'une ligne de stat.</summary>
     private int StatValueW(int i) =>
@@ -978,6 +956,9 @@ public sealed partial class PvpArmyScene
 
     // Interlignes essayés, du plus aéré au plus serré (extra sous la ligne, espace entre traits). Pas en dessous
     // de + 2 : à + 1, les jambages (g, p, q) touchent la ligne suivante.
+    /// <summary>Dernier ajustement de la fiche : 0 tient, 1 rappels retirés (ou écran ×1), 2 demi-taille, 3 tronquée.</summary>
+    internal int SheetFit { get; private set; }
+
     private static readonly (int Extra, int Gap)[] SheetSpacings = { (4, SheetGapPx), (3, 4), (3, 3), (2, 3), (2, 2) };
 
     /// <summary>
@@ -988,6 +969,7 @@ public sealed partial class PvpArmyScene
     private void FitSheetLines()
     {
         _sheetHalf = false;
+        SheetFit = 0;
         LayoutSheetLines(_sheetZone.Width);
         if (PickSpacing(_sheetZone.Height))
             return;
@@ -996,16 +978,18 @@ public sealed partial class PvpArmyScene
             for (var i = _sheetReminders.Count - 1; i >= 0; i--)
                 _sheetParas.RemoveAt(_sheetReminders[i]);
             _sheetReminders.Clear();
+            SheetFit = 1;
             LayoutSheetLines(_sheetZone.Width);
             if (PickSpacing(_sheetZone.Height))
                 return;
         }
+        SheetFit = 1;
         if (NativeSprites.Scale < 2)
             return;
         _sheetHalf = true;   // deux fois plus de place, en pixels d'écran
         _sheetSmallDirty = true;
         LayoutSheetLines(_sheetZone.Width * 2);
-        PickSpacing(_sheetZone.Height * 2);
+        SheetFit = PickSpacing(_sheetZone.Height * 2) ? 2 : 3;
     }
 
     private bool PickSpacing(int height)
@@ -1087,18 +1071,6 @@ public sealed partial class PvpArmyScene
         }
     }
 
-    private int PillWidth(string text) => Font.Measure(text, _lay.TextScale) + (_lay.Full ? 12 : 8);
-
-    /// <summary>Coût en pastille <c>Black1</c>, calée à droite sur <paramref name="right"/>, centrée sur <paramref name="centerY"/>.</summary>
-    private void CostPill(SpriteBatch sb, string text, int right, int centerY)
-    {
-        var s = _lay.TextScale;
-        var h = Font.LineHeight(s) + (_lay.Full ? 10 : 6);
-        var r = new Rectangle(right - PillWidth(text), centerY - h / 2, PillWidth(text), h);
-        PvpArt.Fill(sb, Px, r, Palette.Black1);
-        Font.DrawCentered(sb, text, r, s, Palette.Yellow2);
-    }
-
     private static string StatEffectText(EquipEffect effect) =>
         Loc.T("equip.stat_bonus", EquipmentNames.Signed(effect.Amount), effect.Stat switch
         {
@@ -1109,125 +1081,6 @@ public sealed partial class PvpArmyScene
             _ => "",
         });
 
-    private void DrawUnitSheet(SpriteBatch sb, Rectangle area, UnitClass cls, Domaine dom, Equipment? eq, bool isCommander)
-    {
-        RefreshUnitSheet(cls, eq, isCommander, area);
-        var full = _lay.Full;
-        var lh = Font.LineHeight(1);
-
-        // À gauche : plateau 7×7 animé du jeu (tel quel), centré sur la hauteur des 4 stats.
-        var board = new Rectangle(area.X, area.Y + (SheetHeadH - MoveAttackGrid.BoardOuter) / 2,
-            MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
-        var g = _sheetGrid;
-        MoveAttackGrid.DrawBoardWithPawn(sb, Px, board, UnitFront(cls.Asset), revealed: true, dom, g.Move, g.Reposition,
-            g.FreeAttack ? Domaine.Dame : cls.AttackDomaine ?? dom, g.Range, g.MinRange,
-            allowNative: !_tutorialOpen && _error == null);
-
-        // À droite : PV / PUISSANCE / MOUVEMENT / PORTÉE empilées (icône native, libellé gris, « +5 », valeur).
-        var cx = SheetColX(area);
-        var right = area.Right;
-        for (var i = 0; i < 4; i++)
-        {
-            var top = area.Y + i * StatPitch;
-            var row = new Rectangle(cx, top + (StatPitch - StatRowH) / 2, right - cx, StatRowH);
-            PvpArt.Fill(sb, Px, row, Palette.Black3);
-            if (Tex("Icons/stat_" + StatIcons[i]) is { } icon)
-                sb.Draw(icon, new Vector2(cx, top + (StatPitch - icon.Height) / 2), Color.White);
-            var ty = row.Y + (StatRowH - lh) / 2;
-            if (_sheetLabels)
-                Font.Draw(sb, _sheetLabel[i], new Vector2(cx + 32 + 6, ty), 1, Palette.Blue1);
-            var vh = Font.LineHeight(_sheetValueScale);
-            var vy = row.Y + (StatRowH - vh) / 2;
-            var vx = right - (full ? 8 : 5) - Font.Measure(_sheetValues[i], _sheetValueScale);
-            Font.Draw(sb, _sheetValues[i], new Vector2(vx, vy), _sheetValueScale, _sheetBoosted[i] ? Palette.Yellow2 : Palette.White);
-            if (_sheetBonus[i].Length > 0)
-                Font.Draw(sb, _sheetBonus[i], new Vector2(vx - 4 - Font.Measure(_sheetBonus[i], 1), vy + vh - lh), 1, Palette.Yellow2);
-        }
-
-        // Encart de l'équipement porté (fond Black3, bordure Brown1) : badge, nom en couleur de rareté, effet.
-        if (eq != null)
-        {
-            var box = new Rectangle(area.X, SheetBodyY(area), area.Width, _sheetEquipH);
-            PvpArt.Fill(sb, Px, box, Palette.Black3);
-            PvpArt.Border(sb, Px, box, Palette.Brown1, 1);
-            DrawBadge(sb, new Rectangle(box.X + 6, box.Y + 6, 32, 32), eq, 1f, false);
-            var textH = _sheetEquipLines.Count * SheetStep - 4;
-            var ty = box.Y + 6 + Math.Max(0, (32 - textH) / 2);
-            foreach (var (text, color) in _sheetEquipLines)
-            {
-                Font.Draw(sb, text, new Vector2(box.X + 6 + 32 + 8, ty), 1, color);
-                ty += SheetStep;
-            }
-        }
-        DrawSheetLines(sb);
-    }
-
-    // ── Fiche d'un équipement ────────────────────────────────────────────────────
-    //  Case 64×64 (background + icône ×2, liseré de rareté) | NOM, rareté, coût en pastille ;
-    //  une ligne encadrée par effet (« PV  +4 », « TRAIT  Rempart ») ; fonctionnement du trait ; rappel.
-
-    private string _eqName = "", _eqRarity = "", _eqCost = "";
-    private int _eqNameScale = 1;
-    private readonly List<(string Label, string Value)> _eqEffects = new();
-
-    private int EquipEffectRowH => _lay.Full ? 28 : 20;
-
-    private void RefreshEquipSheet(Rectangle area, Equipment eq, bool locked)
-    {
-        var key = ("#eq", (string?)eq.Id, locked ? 3 : 2, Loc.Current, _lay.Full, area);
-        if (key == _sheetKey)
-            return;
-        _sheetKey = key;
-        var full = _lay.Full;
-        _eqCost = Num(PvpConfig.Current.CostOf(eq));
-        var nameX = area.X + 1 + 64 + 9;
-        var room = area.Right - nameX - PillWidth(_eqCost) - 6;
-        _eqName = EquipmentNames.Localized(eq).ToUpperInvariant();
-        _eqNameScale = PvpArt.ScaleToFit(Font, _eqName, room, full ? 2 : 1);
-        _eqName = PvpArt.Fit(Font, _eqName, room, _eqNameScale);
-        _eqRarity = PvpArt.Fit(Font, Loc.T(eq.Rarity switch
-        {
-            EquipmentRarity.Rare => "equip.rarity.rare",
-            EquipmentRarity.Legendary => "equip.rarity.legendary",
-            _ => "equip.rarity.common",
-        }), area.Right - nameX, 1);
-
-        _eqEffects.Clear();
-        foreach (var e in eq.Effects)
-        {
-            if (e.Trait is { } tr)
-                _eqEffects.Add((Loc.T("pvp.trait"), UnitKeywords.For(tr).Label));
-            else
-                _eqEffects.Add((StatLabel(e.Stat), EquipmentNames.Signed(e.Amount)));
-        }
-        for (var i = 0; i < _eqEffects.Count; i++)   // libellé et valeur tiennent dans la ligne encadrée
-        {
-            var (label, value) = _eqEffects[i];
-            var valueW = Font.Measure(value, 1);
-            value = PvpArt.Fit(Font, value, area.Width - 24 - Math.Min(valueW, area.Width / 2), 1);
-            label = PvpArt.Fit(Font, label, area.Width - 24 - Font.Measure(value, 1) - 8, 1);
-            _eqEffects[i] = (label, value);
-        }
-
-        var zoneY = area.Y + 72 + _eqEffects.Count * (EquipEffectRowH + 4) + (full ? 6 : 2);
-        _sheetZone = new Rectangle(area.X, zoneY, area.Width - 6, Math.Max(0, area.Bottom - zoneY));
-        _sheetParas.Clear();
-        _sheetReminders.Clear();
-        if (locked)
-            _sheetParas.Add((Loc.T("pvp.locked_equip"), Palette.Purple5, 0, default));
-        _sheetShown.Clear();
-        foreach (var t in eq.Traits)
-            _sheetShown.Add(t);
-        foreach (var t in eq.Traits)
-        {
-            AddTraitLines(UnitKeywords.For(t), t, Palette.Cyan1);
-            AddTraitReminders(t);
-        }
-        if (eq.IsThrown)
-            AddTraitLines(UnitKeywords.Ephemeral, "", Palette.Cyan1);
-        FitSheetLines();
-    }
-
     private static string StatLabel(EquipStat stat) => Loc.T(stat switch
     {
         EquipStat.Hp => "stat.hp",
@@ -1235,45 +1088,6 @@ public sealed partial class PvpArmyScene
         EquipStat.MoveRange => "stat.movement",
         _ => "stat.range",
     });
-
-    private void DrawEquipSheet(SpriteBatch sb, Rectangle area, Equipment eq, bool locked)
-    {
-        RefreshEquipSheet(area, eq, locked);
-        var rarity = PvpArt.RarityColor(eq.Rarity);
-
-        // Case 64×64 : background ×2 + icône ×2, liseré intérieur 2 px de rareté (comme les cartes).
-        var sq = new Rectangle(area.X + 1, area.Y + 4, 64, 64);
-        if (Tex("Equipment/background") is { } bg)
-            sb.Draw(bg, sq, Color.White);
-        if (EquipIcon(eq) is { } icon)
-            sb.Draw(icon, new Rectangle(sq.Center.X - icon.Width, sq.Center.Y - icon.Height, icon.Width * 2, icon.Height * 2), Color.White);
-        PvpArt.Border(sb, Px, sq, rarity, 2);
-        if (locked)
-            LockVeil(sb, sq);
-
-        var nameX = sq.Right + 9;
-        var nameH = Font.LineHeight(_eqNameScale);
-        var lh = Font.LineHeight(1);
-        var top = sq.Y + (64 - (nameH + 8 + lh)) / 2;
-        Font.Draw(sb, _eqName, new Vector2(nameX, top), _eqNameScale, rarity);
-        Font.Draw(sb, _eqRarity, new Vector2(nameX, top + nameH + 8), 1, rarity);
-        CostPill(sb, _eqCost, area.Right, top + nameH / 2);
-
-        // Une ligne encadrée par effet : libellé à gauche, valeur à droite en doré.
-        var y = area.Y + 72;
-        var rowH = EquipEffectRowH;
-        foreach (var (label, value) in _eqEffects)
-        {
-            var r = new Rectangle(area.X, y, area.Width, rowH);
-            PvpArt.Fill(sb, Px, r, Palette.Black3);
-            PvpArt.Border(sb, Px, r, Palette.Black5, _lay.Full ? 2 : 1);
-            var ty = r.Y + (rowH - lh) / 2;
-            Font.Draw(sb, label, new Vector2(r.X + 10, ty), 1, Palette.Blue1);
-            Font.Draw(sb, value, new Vector2(r.Right - 10 - Font.Measure(value, 1), ty), 1, Palette.Yellow2);
-            y += rowH + 4;
-        }
-        DrawSheetLines(sb);
-    }
 
     // ── Bande du bas ─────────────────────────────────────────────────────────────
 

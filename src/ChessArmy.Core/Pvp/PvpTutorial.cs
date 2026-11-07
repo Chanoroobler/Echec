@@ -31,6 +31,7 @@ public sealed class PvpTutorial
         ("launch", PvpTutorialZone.Launch),
         ("friend", PvpTutorialZone.Friend),
         ("clock", PvpTutorialZone.None),
+        ("collapse", PvpTutorialZone.None),   // pendule basse : une case arrière tremble puis tombe après le coup
         ("rules", PvpTutorialZone.None),
     };
 

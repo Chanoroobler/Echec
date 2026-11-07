@@ -21,6 +21,9 @@ public sealed partial class PvpArmyScene
 
     internal void DebugLayout() => ComputeLayout();
 
+    /// <summary>Une fiche est ouverte sur le plateau à cette frame.</summary>
+    internal bool DebugSheetShown => _view == View.Build && (_sheetSubject.Cls != null || _sheetSubject.Lone != null);
+
     internal Point DebugCellCenter(int column, int line)
     {
         ComputeLayout();
@@ -32,6 +35,24 @@ public sealed partial class PvpArmyScene
     {
         ComputeLayout();
         return _lay.Cards[slot].Center;
+    }
+
+    internal Point DebugBadgeCenter(int column, int line)
+    {
+        ComputeLayout();
+        return BadgeRect(column, line).Center;
+    }
+
+    /// <summary>Survol de la carte n° <paramref name="index"/> de la réserve (page selon la taille de la grille).
+    /// Hors liste : pointeur hors écran (rien de survolé).</summary>
+    internal Point DebugHoverCard(bool equipment, int index)
+    {
+        ComputeLayout();
+        EnsureEntries();
+        if (index >= (equipment ? _equips.Count : _units.Count))
+            return new Point(-100, -100);
+        DebugReserve(equipment, index / _lay.CardCount);
+        return DebugCardCenter(index % _lay.CardCount);
     }
 
     internal void DebugReserve(bool equipment, int page)
@@ -365,20 +386,43 @@ internal sealed class PvpShots
 
         // Fiches : survol de CHAQUE carte de la réserve (pions et équipements), pour vérifier que tout tient
         // sans défilement. Les cartes au-delà de la fin de la liste ne survolent rien.
-        foreach (var (canvas, tag, perPage, lang) in new[] { (small, "960", 6, Language.Francais), (big, "1280", 8, Language.Francais),
-                     (small, "960", 6, Language.Deutsch) })
+        foreach (var (canvas, tag, lang) in new[] { (small, "960", Language.Francais), (big, "1280", Language.Francais),
+                     (small, "960", Language.Deutsch) })
             foreach (var equip in new[] { false, true })
                 for (var i = 0; i < 40; i++)
                 {
                     var index = i;
                     var e = equip;
-                    var pp = perPage;
-                    _steps.Add(new Step($"{tag}-fiche-{lang}-{(equip ? "equip" : "pion")}-{index:00}", canvas, lang, s =>
-                    {
-                        s.DebugReserve(e, index / pp);
-                        s.DebugPointer = s.DebugCardCenter(index % pp);
-                    }));
+                    _steps.Add(new Step($"{tag}-fiche-{lang}-{(equip ? "equip" : "pion")}-{index:00}", canvas, lang,
+                        s => s.DebugPointer = s.DebugHoverCard(e, index)));
                 }
+
+        // Fiche sur le plateau, cas de la maquette, dans les 8 langues aux deux tailles : Arbalétrier (Zone morte,
+        // Recule, Transpercer) porteur de la Bannière du régiment (Formation), le badge de cet objet (« sur ce pion »),
+        // le commandant (case fixe), une carte d'équipement, et le plateau dégagé quand rien n'est survolé.
+        foreach (var lang in Enum.GetValues<Language>())
+            foreach (var (canvas, tag) in new[] { (big, "1280"), (small, "960") })
+            {
+                _steps.Add(new Step($"{tag}-plateau-{lang}-1-arbaletrier", canvas, lang, s =>
+                {
+                    Profile.Builds[0].Set(2, PvpBuild.FrontLine, "arbaletrier", "formationRare");
+                    s.DebugPointer = s.DebugCellCenter(2, PvpBuild.FrontLine) - new Point(18, 18);
+                }));
+                _steps.Add(new Step($"{tag}-plateau-{lang}-2-badge", canvas, lang, s =>
+                {
+                    Profile.Builds[0].Set(2, PvpBuild.FrontLine, "arbaletrier", "formationRare");
+                    s.DebugPointer = s.DebugBadgeCenter(2, PvpBuild.FrontLine);
+                }));
+                _steps.Add(new Step($"{tag}-plateau-{lang}-3-commandant", canvas, lang, s =>
+                {
+                    Profile.Builds[0].CommanderId = "Commandant_cavalier";
+                    s.DebugPointer = s.DebugCellCenter(PvpBuild.KingColumn, PvpBuild.BackLine);
+                }));
+                _steps.Add(new Step($"{tag}-plateau-{lang}-4-equipement", canvas, lang,
+                    s => s.DebugPointer = s.DebugShowEquipCard("auraRempartRare")));
+                _steps.Add(new Step($"{tag}-plateau-{lang}-5-carte-pion", canvas, lang, s => s.DebugPointer = s.DebugHoverCard(false, 2)));
+                _steps.Add(new Step($"{tag}-plateau-{lang}-6-vide", canvas, lang, s => s.DebugPointer = new Point(-100, -100)));
+            }
     }
 
     /// <summary>Fenêtre « NOUVEAU ! » : Fleuret de riposte (+2 puissance, Riposte), Ceinture du karatéka (2 bonus,
@@ -502,6 +546,10 @@ internal sealed class PvpShots
             return;
         using (var file = File.Create(Path.Combine(_dir, step.Name + ".png")))
             _out.SaveAsPng(file, _out.Width, _out.Height);
+        // Rapport des fiches qui ne tiennent pas telles quelles (fiches.txt) : rappels retirés, demi-taille, tronquées.
+        if (_scene.DebugSheetShown && _scene.SheetFit > 0)
+            File.AppendAllText(Path.Combine(_dir, "fiches.txt"),
+                $"{step.Name} : {(_scene.SheetFit switch { 1 => "rappels retires", 2 => "demi-taille", _ => "TRONQUEE" })}\n");
         _frame = 0;
         _index++;
     }

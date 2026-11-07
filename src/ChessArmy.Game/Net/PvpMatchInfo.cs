@@ -27,7 +27,13 @@ public sealed class PvpMatchInfo
     /// <summary>Défi entre amis : rapporte des points, pas de cote.</summary>
     public bool Friendly { get; init; }
 
-    public bool Ranked => !Friendly;
+    public bool Ranked => !Friendly && !Test;
+
+    /// <summary>Partie de TEST (raccourci Debug <c>-pvpbot</c>) : rien n'est enregistré, ni profil ni classement.</summary>
+    public bool Test { get; init; }
+
+    /// <summary>Réserve de la pendule imposée (secondes) ; null = celle de pvp.json.</summary>
+    public float? ReserveSeconds { get; init; }
 
     public string OpponentName { get; init; } = "";
     public int OpponentRating { get; init; }
@@ -90,7 +96,7 @@ public sealed class PvpMatchInfo
     {
         Session = Session, Bot = Bot, BotCopiedFrom = BotCopiedFrom, Friendly = Friendly,
         OpponentName = OpponentName, OpponentRating = OpponentRating, LocalRating = LocalRating,
-        Seed = Seed, Mirrored = Mirrored, LocalStarts = LocalStarts,
+        Seed = Seed, Mirrored = Mirrored, LocalStarts = LocalStarts, Test = Test, ReserveSeconds = ReserveSeconds,
         LocalBuild = build, OpponentBuild = OpponentBuild,
     };
 

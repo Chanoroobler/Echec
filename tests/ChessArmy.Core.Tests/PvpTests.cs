@@ -151,6 +151,134 @@ public class PvpTests : IDisposable
         Assert.Equal(live.ComputeStateHash(), replay.ComputeStateHash());
     }
 
+    /// <summary>Joue un coup puis, comme la scène, la règle de pendule basse (réserve 0 = toujours sous le seuil).</summary>
+    private static void PlayWithCollapse(Match match, in BattleAction action, List<BattleAction>? log = null)
+    {
+        var actor = match.CurrentTurn;
+        var announced = match.NextCollapse(actor);   // la tuile que la scène fait trembler pendant ce tour
+        Play(match, action);
+        log?.Add(action);
+        if (PvpSetup.CollapseAfterTurn(match, actor, 0f) is { } fallen)
+        {
+            Assert.Equal(announced, fallen);         // c'est bien elle qui tombe après le coup
+            log?.Add(BattleAction.Collapse(actor));
+        }
+    }
+
+    /// <summary>Case vue depuis l'autre client (plateau retourné : lignes inversées).</summary>
+    private static Cell? MirrorRow(Cell? cell) =>
+        cell is { } c ? new Cell(c.Column, PvpSetup.Size - 1 - c.Row) : null;
+
+    [Fact]
+    public void Collapse_KeepsMirroredClientsInSync_AndIsReplayed()
+    {
+        var collapses = 0;
+        for (var game = 0; game < 30; game++)
+        {
+            var rng = new Random(1000 + game);
+            var hostBuild = RandomBuild(rng);
+            var guestBuild = RandomBuild(rng);
+            var hostStarts = PvpSetup.HostStarts(game * 31);
+            var host = PvpSetup.CreateMatch(mirrored: false, hostStarts, game);
+            var guest = PvpSetup.CreateMatch(mirrored: true, !hostStarts, game);
+            PvpSetup.PlaceArmy(host, hostBuild, Faction.Player);
+            PvpSetup.PlaceArmy(host, guestBuild, Faction.Enemy);
+            PvpSetup.PlaceArmy(guest, guestBuild, Faction.Player);
+            PvpSetup.PlaceArmy(guest, hostBuild, Faction.Enemy);
+            var hostLog = new List<BattleAction>();
+
+            for (var ply = 0; ply < 120 && !host.IsOver; ply++)
+            {
+                var hostMoves = host.CurrentTurn == Faction.Player;
+                var (mover, other) = hostMoves ? (host, guest) : (guest, host);
+                var action = RandomAction(mover, rng);
+                var hostAction = hostMoves ? action : PvpSetup.Mirror(action);
+                PlayWithCollapse(mover, action, hostMoves ? hostLog : null);
+                PlayWithCollapse(other, PvpSetup.Mirror(action), hostMoves ? null : hostLog);
+                Assert.True(host.ComputeStateHash() == guest.ComputeStateHash(mirrored: true),
+                    $"désynchronisation : partie {game}, coup {ply}, {hostAction}");
+                // Les deux clients annoncent la même tuile qui tremble, pour chaque camp.
+                Assert.Equal(host.NextCollapse(Faction.Player), MirrorRow(guest.NextCollapse(Faction.Enemy)));
+                Assert.Equal(host.NextCollapse(Faction.Enemy), MirrorRow(guest.NextCollapse(Faction.Player)));
+            }
+            collapses += hostLog.Count(a => a.Kind == BattleActionKind.Collapse);
+            var replay = PvpSetup.Replay(game, hostStarts, null, null, hostBuild, guestBuild, hostLog);
+            Assert.Equal(host.ComputeStateHash(), replay.ComputeStateHash());
+            Assert.Equal(host.Winner, guest.Winner?.Opponent());
+        }
+        Assert.True(collapses > 100, "les effondrements doivent vraiment se produire");
+    }
+
+    [Fact]
+    public void Bot_UnderLowClock_MovesItsPieceOffTheTileThatWillFall()
+    {
+        var tested = 0;
+        for (var seed = 0; seed < 60; seed++)
+        {
+            var match = PvpSetup.CreateMatch(mirrored: false, localStarts: false, seed);   // le bot (Enemy) a la main
+            var rng = new Random(seed);
+            PvpSetup.PlaceArmy(match, RandomBuild(rng), Faction.Player);
+            PvpSetup.PlaceArmy(match, RandomBuild(rng), Faction.Enemy);
+            if (match.NextCollapse(Faction.Enemy) is not { } doomed || match.UnitAt(doomed) is null
+                || match.LegalMoves(doomed).Count == 0)
+                continue;
+            tested++;
+            foreach (var def in new[] { new PvpBotDef { Accuracy = 1.0 }, new PvpBotDef { Accuracy = 1.0, ForceAttack = true } })
+            {
+                var action = PvpBotAi.Choose(match, Faction.Enemy, def, null, new Random(seed), doomed);
+                Assert.Equal(BattleActionKind.Move, action!.Value.Kind);
+                Assert.Equal(doomed, action.Value.From);   // il sort la pièce qui allait tomber avec la case
+            }
+        }
+        Assert.True(tested > 5, "assez de positions où une pièce se tient sur la case condamnée");
+    }
+
+    [Fact]
+    public void Collapse_TakesTheBackRowThenTheNext_KillsWhoStandsThere_AndStops()
+    {
+        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: true, seed: 3);
+        PvpSetup.PlaceArmy(match, RandomBuild(new Random(8)), Faction.Enemy);
+        var size = PvpSetup.Size;
+        var back = size - 1;
+        var victim = PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.BackLine,
+            PvpCatalog.AllUnitClasses().First().Class.Asset, null), Faction.Player)!;
+        match.Place(new Cell(3, back - 1), victim);
+        match.Place(new Cell(3, back - 3), PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.BackLine,
+            PvpCatalog.AllUnitClasses().First().Class.Asset, null), Faction.Player)!);   // hors des lignes : la partie continue
+
+        // Sous le seuil mais la main n'a pas passé (le joueur a encore la main) : rien ne tombe.
+        Assert.Null(PvpSetup.CollapseAfterTurn(match, Faction.Player, 0f));
+        // Main passée mais réserve au seuil : rien non plus.
+        Assert.Null(PvpSetup.CollapseAfterTurn(match, Faction.Enemy, _config.CollapseBelowSeconds));
+
+        var fallen = new List<Cell>();
+        for (var i = 0; i < size; i++)
+            fallen.Add(match.CollapseTile(Faction.Player)!.Value);
+        Assert.All(fallen, c => Assert.Equal(back, c.Row));          // la ligne du fond d'abord, en entier
+        Assert.Equal(size, fallen.Distinct().Count());
+        Assert.True(victim.IsAlive);
+        for (var i = 0; i < size; i++)
+            fallen.Add(match.CollapseTile(Faction.Player)!.Value);
+        Assert.All(fallen.Skip(size), c => Assert.Equal(back - 1, c.Row));
+        Assert.False(victim.IsAlive);                                    // emporté avec sa tuile
+        Assert.Null(match.UnitAt(new Cell(3, back - 1)));
+        Assert.False(match.CanCollapse(Faction.Player));
+        Assert.Null(match.CollapseTile(Faction.Player));                 // les deux lignes sont parties : on arrête
+        Assert.True(match.IsCollapsed(new Cell(0, back)));
+        Assert.False(match.IsCollapsed(new Cell(0, back - 2)));
+    }
+
+    [Fact]
+    public void Collapse_UnderTheCommander_LosesTheGame()
+    {
+        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: true, seed: 11);
+        PvpSetup.PlaceArmy(match, RandomBuild(new Random(1)), Faction.Player);
+        PvpSetup.PlaceArmy(match, RandomBuild(new Random(2)), Faction.Enemy);
+        for (var i = 0; i < PvpSetup.Size && !match.IsOver; i++)
+            match.CollapseTile(Faction.Player);
+        Assert.Equal(Faction.Enemy, match.Winner);   // le roi est sur la ligne du fond
+    }
+
     [Fact]
     public void Resign_And_Draw_AreMirroredAndEndTheGame()
     {
@@ -419,10 +547,41 @@ public class PvpTests : IDisposable
             Assert.InRange(PvpConfig.Current.CostOf(cls), 3, 8);
         }
         foreach (var eq in PvpCatalog.AllEquipment())
+        {
             Assert.True(PvpConfig.Current.EquipmentCost.ContainsKey(eq.Id), $"pas de coût pour {eq.Id}");
+            // Règle de l'auteur : un équipement coûte de 1 à 5 points (on affaiblit l'objet en multi, pas la règle).
+            Assert.InRange(PvpConfig.Current.CostOf(eq), 1, 5);
+        }
         foreach (var c in PvpCatalog.Commanders())
             Assert.True(PvpConfig.Current.CommanderCost.ContainsKey(c.Id), $"pas de coût pour le commandant {c.Id}");
         Assert.Equal(0, PvpConfig.Current.CommanderCost.Values.Min());   // le plus faible coûte 0
+    }
+
+    [Fact]
+    public void MultiEquipmentStats_ApplyInMultiOnly()
+    {
+        // pvp.json « equipmentStats » remplace le bonus de la stat en multi ; equipment.json (le solo) ne bouge pas.
+        var config = PvpConfig.Current.WithEquipmentStats(new Dictionary<string, IReadOnlyDictionary<string, int>>
+        {
+            ["LoupLegendaire"] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Damage"] = 1 },
+        });
+        var previous = PvpConfig.Current;
+        PvpConfig.Load(config);
+        try
+        {
+            var solo = Equipments.ById("LoupLegendaire")!;
+            var multi = PvpCatalog.FindEquipment("LoupLegendaire")!;
+            Assert.Equal(1, multi.BonusFor(EquipStat.Damage));
+            Assert.Equal(solo.BonusFor(EquipStat.Hp), multi.BonusFor(EquipStat.Hp));   // stat non citée : inchangée
+            Assert.Equal(solo.Traits, multi.Traits);
+            Assert.NotEqual(1, solo.BonusFor(EquipStat.Damage));
+            var unit = PvpCatalog.Spawn(new PvpBuildSlot(0, 1, "soldat", "LoupLegendaire"), Faction.Player)!;
+            Assert.Equal(1, unit.Equipments!.BonusFor(EquipStat.Damage));
+        }
+        finally
+        {
+            PvpConfig.Load(previous);
+        }
     }
 
     [Fact]
@@ -561,6 +720,25 @@ public class PvpTests : IDisposable
         var forged = (byte[])bytes.Clone();
         forged[forged.Length / 2] ^= 0x40;
         Assert.Null(PvpProfile.Decode(forged, "steam-1"));   // un seul octet retouché
+    }
+
+    [Fact]
+    public void PlaytestSave_IsNotReadByTheFullGame()
+    {
+        // Playtest / Debug : fichier et clé historiques, inchangés (les saves existantes restent lisibles).
+        Assert.Equal("pvp_steam-1.dat", PvpSaveSlot.FileName("steam-1", fullGame: false));
+        Assert.Equal("steam-1", PvpSaveSlot.OwnerKey("steam-1", fullGame: false));
+        Assert.NotEqual(PvpSaveSlot.FileName("steam-1", false), PvpSaveSlot.FileName("steam-1", true));
+
+        var profile = PvpProfile.CreateNew();
+        var playtest = profile.Encode(PvpSaveSlot.OwnerKey("steam-1", fullGame: false));
+        Assert.NotNull(PvpProfile.Decode(playtest, PvpSaveSlot.OwnerKey("steam-1", fullGame: false)));
+        // Un fichier playtest renommé en save du jeu complet est refusé (autre clé) : repart de zéro.
+        Assert.Null(PvpProfile.Decode(playtest, PvpSaveSlot.OwnerKey("steam-1", fullGame: true)));
+
+        var full = profile.Encode(PvpSaveSlot.OwnerKey("steam-1", fullGame: true));
+        Assert.NotNull(PvpProfile.Decode(full, PvpSaveSlot.OwnerKey("steam-1", fullGame: true)));
+        Assert.Null(PvpProfile.Decode(full, PvpSaveSlot.OwnerKey("steam-1", fullGame: false)));
     }
 
     [Fact]

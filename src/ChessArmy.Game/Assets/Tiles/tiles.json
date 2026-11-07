@@ -72,6 +72,7 @@
     },
     {
       "id": "chemin_bas_v",
+      "miroir": "chemin_haut_v",
       "key": "1",
       "blocksMove": false,
       "blocksFire": false,
@@ -81,6 +82,7 @@
     },
     {
       "id": "chemin_haut_v",
+      "miroir": "chemin_bas_v",
       "key": "2",
       "blocksMove": false,
       "blocksFire": false,
@@ -193,6 +195,7 @@
     },
     {
       "id": "chemin_angle_hg",
+      "miroir": "chemin_angle_bg",
       "key": "6",
       "blocksMove": false,
       "blocksFire": false,
@@ -202,6 +205,7 @@
     },
     {
       "id": "chemin_angle_hd",
+      "miroir": "chemin_angle_bd",
       "key": "7",
       "blocksMove": false,
       "blocksFire": false,
@@ -237,6 +241,7 @@
     },
     {
       "id": "chemin_angle_bg",
+      "miroir": "chemin_angle_hg",
       "key": "9",
       "blocksMove": false,
       "blocksFire": false,
@@ -246,6 +251,7 @@
     },
     {
       "id": "chemin_angle_bd",
+      "miroir": "chemin_angle_hd",
       "key": "0",
       "blocksMove": false,
       "blocksFire": false,
@@ -354,6 +360,7 @@
     },
     {
       "id": "murs_32",
+      "miroir": "murs_13",
       "key": "u",
       "blocksMove": false,
       "blocksFire": false,
@@ -399,6 +406,7 @@
     },
     {
       "id": "murs_13",
+      "miroir": "murs_32",
       "key": "z",
       "blocksMove": false,
       "blocksFire": false,
@@ -625,6 +633,7 @@
     {
       "_comment": "--- Tileset 'eaux' (TilesEaux.png), grille 5x5 remplie sur 21 cases (l.0-3 completes + col0/l.4). Defaut = EAU : blocksMove=true, blocksFire=false (cf. tuile 'water'). Exceptions marchables : eau_10 (pont vertical) et eau_02 (ponton horizontal) = tout false. Rochers/blocs a passer en blocksFire=true a la main si voulu. ---",
       "id": "eau_00",
+      "miroir": "eau_41",
       "key": "Z",
       "blocksMove": true,
       "blocksFire": false,
@@ -652,6 +661,7 @@
     },
     {
       "id": "eau_30",
+      "miroir": "eau_13",
       "key": "@",
       "blocksMove": true,
       "blocksFire": false,
@@ -679,6 +689,7 @@
     },
     {
       "id": "eau_11",
+      "miroir": "eau_42",
       "key": "%",
       "blocksMove": true,
       "blocksFire": false,
@@ -706,6 +717,7 @@
     },
     {
       "id": "eau_41",
+      "miroir": "eau_22",
       "key": "(",
       "blocksMove": true,
       "blocksFire": false,
@@ -733,6 +745,7 @@
     },
     {
       "id": "eau_22",
+      "miroir": "eau_41",
       "key": "-",
       "blocksMove": true,
       "blocksFire": false,
@@ -742,6 +755,7 @@
     },
     {
       "id": "eau_32",
+      "miroir": "eau_23",
       "key": "=",
       "blocksMove": true,
       "blocksFire": false,
@@ -751,6 +765,7 @@
     },
     {
       "id": "eau_42",
+      "miroir": "eau_11",
       "key": "<",
       "blocksMove": true,
       "blocksFire": false,
@@ -769,6 +784,7 @@
     },
     {
       "id": "eau_13",
+      "miroir": "eau_42",
       "key": "?",
       "blocksMove": true,
       "blocksFire": false,
@@ -778,6 +794,7 @@
     },
     {
       "id": "eau_23",
+      "miroir": "eau_32",
       "key": ":",
       "blocksMove": true,
       "blocksFire": false,
@@ -787,6 +804,7 @@
     },
     {
       "id": "eau_33",
+      "miroir": "eau_22",
       "key": ";",
       "blocksMove": true,
       "blocksFire": false,
@@ -1122,6 +1140,7 @@
     },
     {
       "id": "eau2_11",
+      "miroir": "eau2_21",
       "key": "_8",
       "blocksMove": true,
       "blocksFire": false,
@@ -1131,6 +1150,7 @@
     },
     {
       "id": "eau2_21",
+      "miroir": "eau2_11",
       "key": "_9",
       "blocksMove": true,
       "blocksFire": false,
@@ -1150,6 +1170,7 @@
     },
     {
       "id": "eau3_10",
+      "miroir": "eau3_11",
       "key": "_B",
       "blocksMove": true,
       "blocksFire": false,
@@ -1168,6 +1189,7 @@
     },
     {
       "id": "eau3_11",
+      "miroir": "eau3_10",
       "key": "_D",
       "blocksMove": true,
       "blocksFire": false,
@@ -1178,6 +1200,7 @@
     {
       "_comment": "--- Tileset 'neige' (TileNeige.png), grille 7x7 (64x80). Theme hiver : blocs de glace (haut) + sols geles/rochers (bas). 43 tuiles reelles : rangees 0-5 pleines (7 col) + une seule case en rangee 6 (col0) ; le RESTE de la rangee 6 (col1-6) est VIDE dans la planche, omis. Cles 2-car prefixees par un backtick (`a..`Q) : le parseur lit 2 caracteres en voyant un `. Tout false par defaut (blocksMove/blocksFire/glisse) : a ajuster par tuile dans l'editeur. Coche 'glisse' = glace glissante.",
       "id": "neige_00",
+      "miroir": "neige_50",
       "key": "`a",
       "blocksMove": false,
       "blocksFire": false,
@@ -1188,6 +1211,7 @@
     },
     {
       "id": "neige_10",
+      "miroir": "neige_60",
       "key": "`b",
       "blocksMove": false,
       "blocksFire": false,
@@ -1218,6 +1242,7 @@
     },
     {
       "id": "neige_40",
+      "miroir": "neige_01",
       "key": "`e",
       "blocksMove": false,
       "blocksFire": false,
@@ -1228,6 +1253,7 @@
     },
     {
       "id": "neige_50",
+      "miroir": "neige_00",
       "key": "`f",
       "blocksMove": false,
       "blocksFire": false,
@@ -1238,6 +1264,7 @@
     },
     {
       "id": "neige_60",
+      "miroir": "neige_41",
       "key": "`g",
       "blocksMove": false,
       "blocksFire": false,
@@ -1248,6 +1275,7 @@
     },
     {
       "id": "neige_01",
+      "miroir": "neige_40",
       "key": "`h",
       "blocksMove": false,
       "blocksFire": false,
@@ -1268,6 +1296,7 @@
     },
     {
       "id": "neige_21",
+      "miroir": "neige_50",
       "key": "`j",
       "blocksMove": false,
       "blocksFire": false,
@@ -1288,6 +1317,7 @@
     },
     {
       "id": "neige_41",
+      "miroir": "neige_62",
       "key": "`l",
       "blocksMove": false,
       "blocksFire": false,
@@ -1338,6 +1368,7 @@
     },
     {
       "id": "neige_22",
+      "miroir": "neige_03",
       "key": "`q",
       "blocksMove": false,
       "blocksFire": false,
@@ -1358,6 +1389,7 @@
     },
     {
       "id": "neige_42",
+      "miroir": "neige_00",
       "key": "`s",
       "blocksMove": false,
       "blocksFire": false,
@@ -1378,6 +1410,7 @@
     },
     {
       "id": "neige_62",
+      "miroir": "neige_41",
       "key": "`u",
       "blocksMove": false,
       "blocksFire": false,
@@ -1388,6 +1421,7 @@
     },
     {
       "id": "neige_03",
+      "miroir": "neige_22",
       "key": "`v",
       "blocksMove": false,
       "blocksFire": false,
@@ -1408,6 +1442,7 @@
     },
     {
       "id": "neige_23",
+      "miroir": "neige_14",
       "key": "`x",
       "blocksMove": false,
       "blocksFire": false,
@@ -1468,6 +1503,7 @@
     },
     {
       "id": "neige_14",
+      "miroir": "neige_23",
       "key": "`D",
       "blocksMove": false,
       "blocksFire": false,
@@ -1478,6 +1514,7 @@
     },
     {
       "id": "neige_24",
+      "miroir": "neige_55",
       "key": "`E",
       "blocksMove": false,
       "blocksFire": false,
@@ -1498,6 +1535,7 @@
     },
     {
       "id": "neige_44",
+      "miroir": "neige_06",
       "key": "`G",
       "blocksMove": false,
       "blocksFire": false,
@@ -1508,6 +1546,7 @@
     },
     {
       "id": "neige_54",
+      "miroir": "neige_45",
       "key": "`H",
       "blocksMove": false,
       "blocksFire": false,
@@ -1568,6 +1607,7 @@
     },
     {
       "id": "neige_45",
+      "miroir": "neige_54",
       "key": "`N",
       "blocksMove": false,
       "blocksFire": false,
@@ -1578,6 +1618,7 @@
     },
     {
       "id": "neige_55",
+      "miroir": "neige_24",
       "key": "`O",
       "blocksMove": false,
       "blocksFire": false,
@@ -1598,6 +1639,7 @@
     },
     {
       "id": "neige_06",
+      "miroir": "neige_44",
       "key": "`Q",
       "blocksMove": false,
       "blocksFire": false,

@@ -55,6 +55,10 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
   L'outil réécrit `unitCost`, `equipmentCost` et `budget` dans `pvp.json` ; à relancer après tout changement de stats :
   `dotnet run --project tools/ChessArmy.Balance -c Release -- --battles 40000 --passes 3` (environ 3 min).
   L'ancienne mesure en escarmouches reste disponible avec `--skirmish`.
+- **Équipements : de 1 à 5 points** (budget d'équipement 10). Mesure dédiée, qui ne réécrit que `equipmentCost` :
+  `dotnet run --project tools/ChessArmy.Balance -c Release -- --equipment-only --equip-pct 80 --battles 60000 --passes 3` (environ 5 min).
+  L'échelle est fixée par le DEUXIÈME objet le plus fort (à 5) ; un objet signalé « TROP FORT » s'affaiblit en multi
+  dans `equipmentStats` (le solo ne bouge pas), puis on remesure.
 - Les armées des bots doivent valoir exactement le budget (test) : relancer `--bot-armies` et `--beginner-armies` après une nouvelle mesure des coûts.
 - Limites : la force mesurée est celle que la même IA tire de chaque pièce ; le modèle additionne les valeurs (les
   synergies et le placement ne sont pas pris en compte séparément).
@@ -78,6 +82,9 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
 
 **En partie**
 - Réserve de **10 min** par joueur + **1 min max par coup** ; dépasser l'un ou l'autre = défaite.
+- **Pendule basse** (ajout 2026-11-07) : sous **4 min** de réserve, chaque tour joué fait tomber une tuile des
+  **2 lignes derrière le joueur** (ligne du fond d'abord, case au hasard). Le pion dessus (quel que soit son camp)
+  tombe et meurt ; le roi emporté = défaite. Les deux lignes parties, plus rien ne tombe. Seuil : `collapseBelowSeconds`.
   Le chrono est **arrêté pendant les animations**.
 - Égalité : **proposition d'égalité** (l'autre accepte ou refuse) et **détection automatique** quand plus aucune
   pièce ne peut en atteindre une autre.
@@ -139,6 +146,24 @@ profil n'est ni lu ni écrit), puis ferme le jeu.
 | `Pvp/PvpBotAi` | IA des bots par rang : heuristique rapide (rangs bas), recherche alpha-bêta sur des copies de la partie (rangs hauts), évaluation aux poids entraînés |
 | `Pvp/PvpForker` | Copies exactes d'une partie (rejouée depuis graine + armées + journal) pour que le bot essaie des coups |
 | `Pvp/PvpLeaderboard` | Classement : bilan + formation encodés dans les détails d'une entrée Steam ; choix d'une formation de joueur pour un bot |
+
+### Playtest et jeu complet : progressions séparées (2026-11-06)
+
+Règle : la progression multi du playtest (cote, points, coffres, collection, armée, historique) n'est JAMAIS
+reprise dans le jeu complet. À la sortie du multi dans le jeu complet, tout le monde repart du profil par défaut.
+Aucune migration.
+
+- **Save** (`Core/Pvp/PvpSaveSlot`, choisie à la COMPILATION dans `PvpProfileStore`, jamais à l'exécution) :
+  - PLAYTEST et Debug gardent `pvp_<steamid>.dat`, signé avec la clé `<steamid>`. C'est le fichier historique,
+    et le reset F9 continue de marcher.
+  - Le jeu complet (FolderProfileFull, et la démo) lit `pvpfull_<steamid>.dat`, signé avec la clé
+    `<steamid>:full`. Un fichier playtest copié ou renommé est donc refusé (`.rejete`), et le jeu repart d'un
+    profil neuf.
+- **Classement, lobbies** : l'app Playtest est une app Steam séparée (`SteamService.PlaytestAppId`), donc ses
+  `pvp_cote` et ses lobbies sont distincts de ceux du jeu complet d'office. Attention : une build Debug utilise
+  l'AppID du jeu complet, donc les parties de test du dev arrivent dans le `pvp_cote` du jeu complet. Il faut
+  vider ce classement dans Steamworks avant la sortie.
+- La save SOLO n'est pas concernée.
 
 ### Classement (2026-11-06)
 
@@ -225,7 +250,7 @@ modeste. En jeu, si le calcul dépasse le délai de réflexion, le bot joue le c
 | `PvpMatchmaker` | Recherche par cote : lobbies triés par proximité, écart toléré qui s'élargit avec l'attente ; lobby privé pour les défis |
 | `PvpSession` | Protocole P2P : bonjour/départ (graine + cotes), armées, coups (+ empreinte + réserve), égalité, battements de cœur, départ |
 | `PvpInvites` | Invitations Steam acceptées (jeu lancé ou `+connect_lobby`) |
-| `PvpProfileStore` | Fichier `%AppData%/Echec/save/pvp_<steamid>.dat` ; un fichier retouché est mis de côté (`.rejete`) |
+| `PvpProfileStore` | Fichier `%AppData%/Echec/save/pvp_<steamid>.dat` (PLAYTEST, Debug) ou `pvpfull_<steamid>.dat` (jeu complet) ; un fichier retouché est mis de côté (`.rejete`) |
 | `PvpMatchInfo` | Description d'une partie (humain ou bot, armées, graine, premier joueur, classée ou non) |
 
 ### Règles appliquées
@@ -234,6 +259,10 @@ modeste. En jeu, si le calcul dépasse le délai de réflexion, le bot joue le c
 - **Pendules** : ne tournent que plateau posé (jamais pendant les animations ni une déconnexion). Chacun fait foi
   pour sa propre pendule et s'annonce perdant (`Resign`) ; la réserve part avec chaque coup pour recaler l'affichage
   adverse. Un adversaire dont la pendule tombe et qui ne se déclare pas est déclaré perdant 15 s plus tard.
+- **Pendule basse** : jamais envoyée sur le réseau. Chaque client la refait après le coup (`PvpSetup.CollapseAfterTurn`)
+  avec la réserve ANNONCÉE (ms entières, même valeur des deux côtés) ; le tirage passe par l'aléa du Match, le trou
+  vit dans le Match (`IsCollapsed`, copié par `Clone`, dans l'empreinte), jamais dans le terrain partagé. Le journal
+  garde un coup `Collapse` pour le rejeu de validation contre les bots.
 - **Égalité** : bouton (ou Y) ; l'adversaire accepte ou refuse. Un bot accepte s'il est nettement en retard au
   matériel. Égalité automatique en position morte ou destruction mutuelle.
 - **Déconnexion** : au-delà de 4 s de silence, compte à rebours de 60 s (pendules arrêtées), puis victoire.

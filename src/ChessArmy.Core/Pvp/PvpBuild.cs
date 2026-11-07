@@ -178,8 +178,39 @@ public static class PvpCatalog
     public static IEnumerable<CommandeDef> Commanders() =>
         Commandes.All.Where(c => c.Role == CommandeRole.Commander);
 
-    /// <summary>Équipements utilisables en multi (hors objets de sacoche du DUO).</summary>
-    public static IEnumerable<Equipment> AllEquipment() => Equipments.All.Where(IsAllowed);
+    /// <summary>Équipements utilisables en multi (hors objets de sacoche du DUO), avec leurs stats MULTI.</summary>
+    public static IEnumerable<Equipment> AllEquipment() => Equipments.All.Where(IsAllowed).Select(WithMultiStats);
+
+    /// <summary>L'équipement <paramref name="id"/> avec ses stats MULTI (pvp.json « equipmentStats »). Null si inconnu.
+    /// Toute création ou affichage d'équipement en multi passe par ici.</summary>
+    public static Equipment? FindEquipment(string? id) =>
+        id != null && Equipments.ById(id) is { } e ? WithMultiStats(e) : null;
+
+    private static PvpConfig? s_equipFor;
+    private static Dictionary<string, Equipment> s_equipCache = new();
+
+    private static Equipment WithMultiStats(Equipment e)
+    {
+        var config = PvpConfig.Current;
+        if (!config.EquipmentStats.TryGetValue(e.Id, out var stats))
+            return e;
+        lock (s_statsLock)
+        {
+            if (!ReferenceEquals(s_equipFor, config))
+            {
+                s_equipCache = new Dictionary<string, Equipment>();
+                s_equipFor = config;
+            }
+            if (!s_equipCache.TryGetValue(e.Id, out var multi))
+            {
+                var effects = e.Effects.Select(fx => !fx.IsTrait && stats.TryGetValue(fx.Stat.ToString(), out var amount)
+                    ? EquipEffect.OfStat(fx.Stat, amount) : fx).ToList();
+                multi = Equipment.Of(e.Id, e.Name, e.Rarity, effects, e.Icon, e.EnemyAllowed, e.Demo, e.Satchel);
+                s_equipCache[e.Id] = multi;
+            }
+            return multi;
+        }
+    }
 
     /// <summary>Équipement utilisable en multi : ni objet de sacoche, ni retiré du multi (pvp.json « excludedEquipment »).</summary>
     public static bool IsAllowed(Equipment e) => !e.Satchel && !PvpConfig.Current.ExcludedEquipment.Contains(e.Id);
@@ -217,7 +248,7 @@ public static class PvpCatalog
         var config = PvpConfig.Current;
         var total = 0;
         foreach (var slot in build.Slots)
-            if (slot.EquipmentId != null && Equipments.ById(slot.EquipmentId) is { } eq)
+            if (FindEquipment(slot.EquipmentId) is { } eq)
                 total += config.CostOf(eq);
         return total;
     }
@@ -242,7 +273,7 @@ public static class PvpCatalog
                 return $"pion non débloqué ({slot.ClassAsset})";
             if (slot.EquipmentId != null)
             {
-                if (Equipments.ById(slot.EquipmentId) is not { } item || !IsAllowed(item))
+                if (FindEquipment(slot.EquipmentId) is not { } item || !IsAllowed(item))
                     return $"équipement inconnu ({slot.EquipmentId})";
                 if (owns != null && !owns(slot.EquipmentId))
                     return $"équipement non débloqué ({slot.EquipmentId})";
@@ -261,7 +292,7 @@ public static class PvpCatalog
     {
         if (FindClass(slot.ClassAsset) is not { } cls)
             return null;
-        var equipment = slot.EquipmentId != null && Equipments.ById(slot.EquipmentId) is { } eq && IsAllowed(eq)
+        var equipment = FindEquipment(slot.EquipmentId) is { } eq && IsAllowed(eq)
             ? new[] { eq }
             : null;
         return new Unit(cls.Domaine, faction, cls.Class, equipment);

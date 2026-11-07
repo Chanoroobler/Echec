@@ -55,7 +55,7 @@ public sealed partial class GameplayScene
         e.ShownRating = e.ShownPoints = int.MinValue;
         e.RankName = "";
         _pvpEndTime = s.Time;
-        RefreshPvpEndValues(e, PvpEndProgress(s.Time));
+        RefreshPvpEndValues(e, s.Time);
     }
 }
 
@@ -115,6 +115,16 @@ internal sealed class PvpEndShots
                 _steps.Add(new($"{tag}-lang-{lang}-ami", canvas, lang, PvpOutcome.Draw, MatchEndReason.MutualDestruction,
                     "BOT ARGENT", true, true, "commandant", "Commandant_fou", 949, 949, 4, 5, 31, 725, 113));
             }
+        // Animation de changement de rang, image par image (filtre « rang-anim ») : temps fort à 1,3 s.
+        foreach (var (canvas, tag) in new[] { (big, "1280"), (small, "960") })
+            foreach (var t in new[] { 0.8f, 1.25f, 1.33f, 1.4f, 1.47f, 1.55f, 1.75f, 2.4f, 5f })
+            {
+                var ms = ((int)(t * 1000)).ToString("D4");
+                _steps.Add(new($"{tag}-rang-anim-promo-{ms}", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.LeaderDown,
+                    "Noémie", true, false, "commandant", "commandant", 998, 1014, 8, 3, 26, 369, 150, Time: t));
+                _steps.Add(new($"{tag}-rang-anim-retro-{ms}", canvas, Language.Francais, PvpOutcome.Loss, MatchEndReason.LeaderDown,
+                    "Vauclair", false, false, "commandant", "Commandant_cavalier", 1006, 989, 3, 9, 14, 310, 106, Time: t));
+            }
     }
 
     public static PvpEndShots? FromArgs(GameContext ctx, Action exit)
@@ -170,8 +180,31 @@ internal sealed class PvpEndShots
             return;
         using (var file = File.Create(Path.Combine(_dir, step.Name + ".png")))
             _canvas!.SaveAsPng(file, _canvas.Width, _canvas.Height);
+        SaveUltrawide(step);
         _frame = 0;
         _index++;
+    }
+
+    /// <summary>
+    /// Même écran composé comme sur un écran 21:9 (3440×1440 → canvas 16:9 au centre, bandes de chaque côté) :
+    /// bandes du letterbox de la scène puis canvas par-dessus, à l'échelle 1. Vérifie le raccord canvas / bandes.
+    /// </summary>
+    private void SaveUltrawide(PvpEndShot step)
+    {
+        var gd = _ctx.GraphicsDevice;
+        var w = step.Canvas.Y * 43 / 18;   // 3440:1440
+        var offset = new Point((w - step.Canvas.X) / 2, 0);
+        using var wide = new RenderTarget2D(gd, w, step.Canvas.Y);
+        gd.SetRenderTarget(wide);
+        gd.Clear(Color.Black);
+        _scene!.DrawLetterboxBackground(new Point(w, step.Canvas.Y), offset, 1);
+        var sb = _ctx.SpriteBatch;
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        sb.Draw(_canvas!, new Vector2(offset.X, offset.Y), Color.White);
+        sb.End();
+        gd.SetRenderTarget(null);
+        using var file = File.Create(Path.Combine(_dir, step.Name + "-21x9.png"));
+        wide.SaveAsPng(file, w, step.Canvas.Y);
     }
 }
 #endif

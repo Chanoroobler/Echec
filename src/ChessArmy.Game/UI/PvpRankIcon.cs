@@ -167,7 +167,19 @@ public sealed class PvpRankIcon
             8 => _large,
             _ => throw new ArgumentOutOfRangeException(nameof(scale), "icône de rang : ×2 ou ×8 seulement"),
         };
-        var r = new Rectangle(at.X, at.Y, v.Width * v.Scale, v.Height * v.Scale);
+        Draw(sb, v, tierId, new Rectangle(at.X, at.Y, v.Width * v.Scale, v.Height * v.Scale));
+    }
+
+    /// <summary>Petite icône DOUBLÉE (×4 logique, 40×48), centrée sur <paramref name="center"/> : le « pop » d'une promotion.</summary>
+    public void DrawPop(SpriteBatch sb, string tierId, Point center)
+    {
+        var v = _small;
+        int w = v.Width * v.Scale * 2, h = v.Height * v.Scale * 2;
+        Draw(sb, v, tierId, new Rectangle(center.X - w / 2, center.Y - h / 2, w, h));
+    }
+
+    private static void Draw(SpriteBatch sb, Variant v, string tierId, Rectangle r)
+    {
         sb.Draw(v.Shade[0], r, DarkColor(tierId));
         sb.Draw(v.Shade[1], r, MidColor(tierId));
         sb.Draw(v.Shade[2], r, BaseColor(tierId));

@@ -6,7 +6,8 @@ using Steamworks;
 namespace ChessArmy.Game.Net;
 
 /// <summary>
-/// Profil multi du joueur sur le disque : <c>%AppData%/Echec/save/pvp_&lt;steamid&gt;.dat</c>, chiffré et signé
+/// Profil multi du joueur sur le disque : <c>%AppData%/Echec/save/pvp_&lt;steamid&gt;.dat</c> (PLAYTEST et Debug) ou
+/// <c>pvpfull_&lt;steamid&gt;.dat</c> (jeu complet, autre clé : cf. <see cref="PvpSaveSlot"/>), chiffré et signé
 /// (cf. <see cref="PvpProfile.Encode"/>), lié au compte Steam. Un fichier retouché ou copié d'un autre compte
 /// est mis de côté (<c>.rejete</c>) et remplacé par un profil neuf. Rien n'est enregistré si une valeur a été
 /// trafiquée en mémoire (<see cref="PvpProfile.Tampered"/>).
@@ -18,8 +19,18 @@ public static class PvpProfileStore
     /// <summary>Vrai si le fichier trouvé au chargement était illisible ou retouché (profil remis à zéro).</summary>
     public static bool WasReset { get; private set; }
 
-    private static string OwnerId =>
+    // Save multi SÉPARÉE du jeu complet, figée à la compilation (cf. PvpSaveSlot) : les playtesteurs repartent de
+    // zéro à la sortie du multi dans le jeu complet. PLAYTEST et Debug gardent le fichier historique pvp_<id>.dat.
+#if PLAYTEST || DEBUG
+    private const bool FullGameSave = false;
+#else
+    private const bool FullGameSave = true;
+#endif
+
+    private static string SteamId =>
         SteamService.IsActive ? SteamUser.GetSteamID().m_SteamID.ToString() : "local";
+
+    private static string OwnerId => PvpSaveSlot.OwnerKey(SteamId, FullGameSave);
 
     private static string FilePath
     {
@@ -27,7 +38,7 @@ public static class PvpProfileStore
         {
             var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Echec", "save");
             Directory.CreateDirectory(dir);
-            return Path.Combine(dir, $"pvp_{OwnerId}.dat");
+            return Path.Combine(dir, PvpSaveSlot.FileName(SteamId, FullGameSave));
         }
     }
 

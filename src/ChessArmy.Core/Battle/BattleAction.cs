@@ -20,6 +20,9 @@ public enum BattleActionKind : byte
     Resign = 6,
     /// <summary>Fin de partie : égalité acceptée par les deux joueurs.</summary>
     AgreeDraw = 7,
+    /// <summary>PvP, pendule basse : une tuile des lignes arrière du camp <c>From.Column</c> (0 = Player,
+    /// 1 = Enemy) s'effondre, avec le pion qui s'y tient (cf. <see cref="Match.CollapseTile"/>).</summary>
+    Collapse = 8,
 }
 
 /// <summary>
@@ -41,6 +44,7 @@ public readonly record struct BattleAction(BattleActionKind Kind, Cell From, Cel
     public static BattleAction SatchelPull(Cell from, Cell satchel) => new(BattleActionKind.SatchelPull, from, satchel);
     public static BattleAction Resign(Faction loser) => new(BattleActionKind.Resign, new Cell((int)loser, 0), default);
     public static BattleAction AgreeDraw => new(BattleActionKind.AgreeDraw, default, default);
+    public static BattleAction Collapse(Faction side) => new(BattleActionKind.Collapse, new Cell((int)side, 0), default);
 
     /// <summary>Écrit le coup sur <see cref="SerializedSize"/> octets (sans allocation). Les plateaux tiennent
     /// largement sur un octet par coordonnée.</summary>

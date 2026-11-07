@@ -122,6 +122,7 @@ public sealed partial class PvpArmyScene
             "chests" => Loc.T("pvp.tuto.chests.text", c.StartPoints),
             "launch" => Loc.T("pvp.tuto.launch.text", (int)c.BotAfterSeconds),
             "clock" => Loc.T("pvp.tuto.clock.text", (int)(c.ReserveSeconds / 60f), (int)c.MoveSeconds),
+            "collapse" => Loc.T("pvp.tuto.collapse.text", (int)(c.CollapseBelowSeconds / 60f)),
             "rules" => Loc.T("pvp.tuto.rules.text", (int)c.ReconnectSeconds),
             _ => Loc.T($"pvp.tuto.{id}.text"),
         };

@@ -135,6 +135,27 @@ public sealed class PvpConfig
         return copy;
     }
 
+    /// <summary>
+    /// Bonus de stats d'équipement propres au multi (pvp.json « equipmentStats ») : par id, stat → montant, qui
+    /// remplace le bonus de cette stat d'equipment.json en multi seulement (traits inchangés). Sert à affaiblir un
+    /// objet trop fort pour le plafond de coût sans toucher au solo.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>> EquipmentStats
+    {
+        get => _equipmentStats;
+        init => _equipmentStats = value;
+    }
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>> _equipmentStats =
+        new Dictionary<string, IReadOnlyDictionary<string, int>>();
+
+    /// <summary>Copie du barème avec d'autres stats d'équipement multi (tests, essais de l'outil).</summary>
+    public PvpConfig WithEquipmentStats(IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>> stats)
+    {
+        var copy = (PvpConfig)MemberwiseClone();
+        copy._equipmentStats = stats;
+        return copy;
+    }
+
     /// <summary>Équipements RETIRÉS du multi (par id) : ni posables dans une armée, ni dans les coffres multi. Le solo
     /// les garde.</summary>
     public IReadOnlyCollection<string> ExcludedEquipment { get; init; } = new HashSet<string>();
@@ -149,6 +170,9 @@ public sealed class PvpConfig
     public float ReserveSeconds { get; init; } = 600;
     public float MoveSeconds { get; init; } = 60;
     public float ReconnectSeconds { get; init; } = 60;
+    /// <summary>Sous cette réserve, chaque tour joué fait s'effondrer une tuile derrière le joueur
+    /// (cf. <see cref="Battle.PvpSetup.CollapseAfterTurn"/>).</summary>
+    public float CollapseBelowSeconds { get; init; } = 240;
     public float BuildChoiceSeconds { get; init; } = 30;
     public float BotAfterSeconds { get; init; } = 10;
     public int StartRating { get; init; } = 950;
@@ -213,6 +237,9 @@ public sealed class PvpConfig
             ExcludedEquipment = dto.ExcludedEquipment?.ToHashSet() ?? defaults.ExcludedEquipment,
             UnitStats = dto.UnitStats?.ToDictionary(kv => kv.Key, kv => new PvpUnitStats(kv.Value.Hp, kv.Value.Damage,
                 kv.Value.MoveRange, kv.Value.AttackRange, kv.Value.Traits)) ?? defaults.UnitStats,
+            EquipmentStats = dto.EquipmentStats?.ToDictionary(kv => kv.Key,
+                kv => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(kv.Value, StringComparer.OrdinalIgnoreCase))
+                ?? defaults.EquipmentStats,
             UnitChestCost = dto.ChestCost?.GetValueOrDefault("units") ?? defaults.UnitChestCost,
             EquipmentChestCost = dto.ChestCost?.GetValueOrDefault("equipment") ?? defaults.EquipmentChestCost,
             StartPoints = dto.StartPoints ?? defaults.StartPoints,
@@ -222,6 +249,7 @@ public sealed class PvpConfig
             ReserveSeconds = dto.ReserveSeconds ?? defaults.ReserveSeconds,
             MoveSeconds = dto.MoveSeconds ?? defaults.MoveSeconds,
             ReconnectSeconds = dto.ReconnectSeconds ?? defaults.ReconnectSeconds,
+            CollapseBelowSeconds = dto.CollapseBelowSeconds ?? defaults.CollapseBelowSeconds,
             BuildChoiceSeconds = dto.BuildChoiceSeconds ?? defaults.BuildChoiceSeconds,
             BotAfterSeconds = dto.BotAfterSeconds ?? defaults.BotAfterSeconds,
             StartRating = dto.StartRating ?? defaults.StartRating,
@@ -264,6 +292,7 @@ public sealed class PvpConfig
         public Dictionary<string, int>? EquipmentCost { get; set; }
         public Dictionary<string, int>? CommanderCost { get; set; }
         public Dictionary<string, UnitStatsDto>? UnitStats { get; set; }
+        public Dictionary<string, Dictionary<string, int>>? EquipmentStats { get; set; }
         public List<string>? ExcludedEquipment { get; set; }
         public Dictionary<string, int>? ChestCost { get; set; }
         public int? StartPoints { get; set; }
@@ -273,6 +302,7 @@ public sealed class PvpConfig
         public float? ReserveSeconds { get; set; }
         public float? MoveSeconds { get; set; }
         public float? ReconnectSeconds { get; set; }
+        public float? CollapseBelowSeconds { get; set; }
         public float? BuildChoiceSeconds { get; set; }
         public float? BotAfterSeconds { get; set; }
         public int? StartRating { get; set; }
