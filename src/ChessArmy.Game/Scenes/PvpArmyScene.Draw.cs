@@ -46,6 +46,8 @@ public sealed partial class PvpArmyScene
             DrawReveal(sb);   // par-dessus la barre du haut, voilée elle aussi
         if (_view == View.Build && _held.Active && !Context.Input.UsingGamepad)
             DrawHeldAtPointer(sb);
+        if (_view == View.Build && _trainingOpen)
+            DrawTraining(sb);   // par-dessus la barre du haut, voilée elle aussi
         if (_tutorialOpen)
             DrawTutorial(sb);
         if (_error != null)
@@ -206,7 +208,7 @@ public sealed partial class PvpArmyScene
 
     private void DrawBuild(SpriteBatch sb)
     {
-        _overlayDim = _tutorialOpen || _error != null ? 1f : 0f;
+        _overlayDim = _tutorialOpen || _trainingOpen || _error != null ? 1f : 0f;
         DrawArmyTabs(sb);
         DrawCommander(sb);
         DrawBoard(sb);
@@ -1103,6 +1105,10 @@ public sealed partial class PvpArmyScene
         PvpArt.Button(sb, Px, L.Friend, friendOn, friendEnabled && Hovered(L.Friend) && !friendOn, friendEnabled || friendOn);
         Font.DrawCentered(sb, PvpArt.Fit(Font, Loc.T("pvp.challenge"), L.Friend.Width - 8, 1), L.Friend, 1,
             friendOn ? Palette.Yellow2 : friendEnabled ? Palette.White : Palette.Grey);
+        var trainingOn = _botMatch is { Training: true };   // entraînement en cours de lancement
+        PvpArt.Button(sb, Px, L.Training, trainingOn, friendEnabled && Hovered(L.Training), friendEnabled || trainingOn);
+        Font.DrawCentered(sb, PvpArt.Fit(Font, Loc.T("pvp.training"), L.Training.Width - 8, 1), L.Training, 1,
+            trainingOn ? Palette.Yellow2 : friendEnabled ? Palette.White : Palette.Grey);
 
         var c = L.Center;
         if (Locked)
@@ -1236,7 +1242,8 @@ public sealed partial class PvpArmyScene
         var full = _lay.Full;
         var name = _session?.OpponentName ?? _botMatch?.DisplayName ?? "";
         var rating = _session?.OpponentRating ?? _botMatch?.OpponentRating ?? Profile.Rating;
-        var pill = Loc.T("pvp.opponent", name) + "  " + PvpUi.RankName(rating);
+        var pill = Loc.T("pvp.opponent", name) + "  "
+                   + (_botMatch is { Tutorial: true } ? Loc.T("pvp.training_tuto") : PvpUi.RankName(rating));
         var top = c.Y + (full ? 14 : 8);
         var ph = Font.LineHeight(1) + (full ? 12 : 8);
         var pw = Math.Min(c.Width, Font.Measure(pill, 1) + 20);

@@ -74,11 +74,23 @@ if (args.Contains("--ai-ladder"))
 if (args.Contains("--ai-pair"))
 {
     // Duel de deux réglages écrits en ligne : --a "forceAttack=1,killChance=0.3,caution=0,depth=0,accuracy=0.5" --b "...".
-    var x = new AiLab.Brain("A", ParseBot(ArgString("--a")), PvpConfig.Current.BotWeights);
-    var y = new AiLab.Brain("B", ParseBot(ArgString("--b")), PvpConfig.Current.BotWeights);
+    // Poids d'évaluation retouchés par camp : --wa "pieceCost=0" / --wb "pieceCost=1.5" (sinon ceux de pvp.json).
+    var x = new AiLab.Brain("A", ParseBot(ArgString("--a")), Weights(ArgString("--wa")));
+    var y = new AiLab.Brain("B", ParseBot(ArgString("--b")), Weights(ArgString("--wb")));
     var score = AiLab.Duel(x, y, PvpConfig.Current.BotArmies, ArgInt("--games", 200), ArgInt("--seed", 1));
     Console.WriteLine($"A contre B : {score * 100:0.0} %");
     return;
+}
+
+static PvpAiWeights Weights(string spec)
+{
+    var values = PvpConfig.Current.BotWeights.ToDictionary();
+    foreach (var part in (spec ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var kv = part.Split('=');
+        values[kv[0]] = double.Parse(kv[1], System.Globalization.CultureInfo.InvariantCulture);
+    }
+    return PvpAiWeights.FromDictionary(values);
 }
 
 static PvpBotDef ParseBot(string spec)

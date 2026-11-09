@@ -86,6 +86,33 @@ public static class PvpRanks
         }
     }
 
+    /// <summary>
+    /// Cote d'entrée de la division <paramref name="botKey"/> (« or-2 », « master ») : <c>FromRating</c> de cette
+    /// cote redonne exactement la même division. Sert au mode ENTRAÎNEMENT (bot d'un rang choisi). Clé inconnue :
+    /// null.
+    /// </summary>
+    public static int? RatingFor(string botKey)
+    {
+        var ranks = PvpConfig.Current.Ranks;
+        for (var i = 0; i < ranks.Count; i++)
+        {
+            var rank = ranks[i];
+            if (rank.Divisions <= 1 || rank.Span <= 0)
+            {
+                if (rank.Id == botKey)
+                    return rank.From;
+                continue;
+            }
+            var end = i + 1 < ranks.Count ? ranks[i + 1].From : rank.From + rank.Span;
+            var start = end - rank.Span;
+            var step = Math.Max(1, rank.Span / rank.Divisions);
+            for (var d = rank.Divisions; d >= 1; d--)
+                if ($"{rank.Id}-{d}" == botKey)
+                    return start + (rank.Divisions - d) * step;
+        }
+        return null;
+    }
+
     /// <summary>Niveau de bot pour cette cote : celui de la division, sinon celui du palier, sinon un défaut.</summary>
     public static PvpBotDef BotFor(int rating)
     {
@@ -102,6 +129,7 @@ public static class PvpRanks
     public static int Updated(int rating, int opponentRating, double score)
     {
         var expected = 1.0 / (1.0 + Math.Pow(10, (opponentRating - rating) / 400.0));
-        return Math.Max(0, (int)Math.Round(rating + PvpConfig.Current.EloK * (score - expected)));
+        var max = Math.Max(rating, PvpConfig.Current.MaxRating);   // une cote déjà au-dessus (ancien profil) ne remonte plus
+        return Math.Clamp((int)Math.Round(rating + PvpConfig.Current.EloK * (score - expected)), 0, max);
     }
 }

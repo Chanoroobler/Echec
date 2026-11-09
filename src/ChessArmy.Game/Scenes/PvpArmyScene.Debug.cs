@@ -21,6 +21,18 @@ public sealed partial class PvpArmyScene
 
     internal void DebugLayout() => ComputeLayout();
 
+    /// <summary>Fenêtre d'entraînement ouverte ; renvoie le centre de la case n° <paramref name="hover"/>.</summary>
+    internal Point DebugTraining(int hover)
+    {
+        ComputeLayout();
+        _trainingOpen = true;
+        LayoutTraining();
+        return hover >= 0 && hover < _trainingCells.Count ? _trainingCells[hover].Center : new Point(-100, -100);
+    }
+
+    /// <summary>Entraînement lancé (bot de la division <paramref name="key"/>), compte à rebours en cours.</summary>
+    internal void DebugStartTraining(string key) => StartTraining(key);
+
     /// <summary>Une fiche est ouverte sur le plateau à cette frame.</summary>
     internal bool DebugSheetShown => _view == View.Build && (_sheetSubject.Cls != null || _sheetSubject.Lone != null);
 
@@ -264,6 +276,15 @@ internal sealed class PvpShots
             {
                 s.DebugSearching(2.4f, friend: false);
                 s.DebugMessage("pvp.err_king");
+                s.DebugPointer = new Point(-100, -100);
+            }));
+            _steps.Add(new Step($"{tag}-5b-entrainement", canvas, Language.Francais, s =>
+                s.DebugPointer = s.DebugTraining(hover: 9)));   // survol : Or I
+            _steps.Add(new Step($"{tag}-5c-entrainement-de", canvas, Language.Deutsch, s =>
+                s.DebugPointer = s.DebugTraining(hover: 12)));   // textes longs, survol : Master
+            _steps.Add(new Step($"{tag}-5d-entrainement-lance", canvas, Language.Francais, s =>
+            {
+                s.DebugStartTraining("or-2");
                 s.DebugPointer = new Point(-100, -100);
             }));
             _steps.Add(new Step($"{tag}-5-adversaire-trouve", canvas, Language.Francais, s =>

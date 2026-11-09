@@ -146,6 +146,7 @@ public sealed partial class GameplayScene
             MatchEndReason.Disconnect => "pvp.end.reason_disconnect",
             MatchEndReason.AgreedDraw => "pvp.end.reason_agreed",
             MatchEndReason.DeadPosition => "pvp.end.reason_dead",
+            MatchEndReason.OnlyCommanders => "pvp.end.reason_only_commanders",
             MatchEndReason.MutualDestruction => "pvp.end.reason_mutual",
             MatchEndReason.Morale => won ? "pvp.end.reason_morale_win" : "pvp.end.reason_morale_loss",
             _ => won ? "pvp.end.reason_leader_win" : "pvp.end.reason_leader_loss",
@@ -160,7 +161,7 @@ public sealed partial class GameplayScene
         e.Bot = info.IsBot;
         e.BotTag = Loc.T("pvp.bot_tag");
         e.Vs = Loc.T("pvp.end.vs");
-        e.Friendly = info.Friendly;
+        e.Friendly = info.Friendly || info.Training || info.Tutorial;   // non classée : le bloc CLASSEMENT laisse place à un encart
 
         // Gains : seulement si la partie est validée (rejeu, empreintes) et le profil sain.
         e.Rewarded = _pvpValid && _pvpReward != null;
@@ -180,11 +181,12 @@ public sealed partial class GameplayScene
         var config = PvpConfig.Current;
         var kills = KillsByPlayer();
         e.KillsLine = Loc.T("pvp.end.kills", kills, config.PointsPerKill);
-        e.KillsValue = "+" + kills * config.PointsPerKill;
+        var factor = info.PointsFactor;   // entraînement ÷2, défi 0 : chaque ligne est réduite comme dans le profil
+        e.KillsValue = "+" + PvpProfile.ScaledPoints(kills * config.PointsPerKill, factor);
         if (outcome != PvpOutcome.Loss)
         {
             e.BonusLine = outcome == PvpOutcome.Win ? Loc.T("pvp.victory") : Loc.T("pvp.draw");
-            e.BonusValue = "+" + (outcome == PvpOutcome.Win ? config.PointsForWin : config.PointsForDraw);
+            e.BonusValue = "+" + PvpProfile.ScaledPoints(outcome == PvpOutcome.Win ? config.PointsForWin : config.PointsForDraw, factor);
         }
         e.PointsAfter = PvpProfileStore.Current.Points;
         e.PointsBefore = e.Rewarded ? e.PointsAfter - reward.Points : e.PointsAfter;
@@ -200,12 +202,13 @@ public sealed partial class GameplayScene
         e.StatLabel[3] = Loc.T("pvp.end.lost");
 
         e.Ranking = Loc.T("pvp.ranking");
-        e.Points = Loc.T("pvp.end.points");
+        e.Points = factor > 0f && factor < 1f ? Loc.T("pvp.end.points_mod", FactorText(factor)) : Loc.T("pvp.end.points");
         e.Rating = Loc.T("pvp.end.rating");
         e.Total = Loc.T("pvp.end.total");
         e.Chest = Loc.T("pvp.end.chest");
-        e.FriendlyTitle = Loc.T("pvp.end.friendly");
-        e.FriendlySub = Loc.T("pvp.end.friendly_sub");
+        e.FriendlyTitle = Loc.T(info.Tutorial ? "pvp.end.tutorial" : info.Training ? "pvp.end.training" : "pvp.end.friendly");
+        e.FriendlySub = info.Tutorial ? Loc.T("pvp.end.tutorial_sub")
+            : info.Training ? Loc.T("pvp.end.training_sub", PvpUi.RankName(info.OpponentRating)) : Loc.T("pvp.end.friendly_sub");
         e.Back = Loc.T("pvp.end.back");
         e.Replay = Loc.T("pvp.end.replay");
 
@@ -219,6 +222,16 @@ public sealed partial class GameplayScene
     /// Détecte un changement de rang (promotion ou rétrogradation) entre la cote d'avant et celle d'après, et repère
     /// la frontière franchie. Le nom du nouveau rang est découpé lettre par lettre ici, une seule fois.
     /// </summary>
+    /// <summary>Facteur de points lisible : « ÷2 » pour 0.5, sinon « ×0.3 ».</summary>
+    private static string FactorText(float factor)
+    {
+        var inverse = 1f / factor;
+        var whole = (int)MathF.Round(inverse);
+        return MathF.Abs(inverse - whole) < 0.01f
+            ? "÷" + whole
+            : "×" + factor.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private static void PreparePvpRankChange(PvpEndScreen e, bool ranked)
     {
         e.Change = 0;
@@ -345,7 +358,8 @@ public sealed partial class GameplayScene
 
         PvpArmyScene.Entry? go = null;
         if (confirm || (click && hover == 2))
-            go = _pvpInfo!.Friendly ? PvpArmyScene.Entry.ReplayFriend : PvpArmyScene.Entry.Replay;
+            go = _pvpInfo!.Training || _pvpInfo.Tutorial ? PvpArmyScene.Entry.ReplayTraining
+                : _pvpInfo.Friendly ? PvpArmyScene.Entry.ReplayFriend : PvpArmyScene.Entry.Replay;
         else if (cancel || (click && hover == 1))
             go = PvpArmyScene.Entry.Build;
         else if (click && hover == 3)
@@ -353,7 +367,8 @@ public sealed partial class GameplayScene
         if (go is not { } entry)
             return;
         Context.Sounds.Play("menu_click");
-        Context.Scenes.Change(new PvpArmyScene(Context, entry));   // Unload libère la session (on quitte le lobby)
+        Context.Scenes.Change(new PvpArmyScene(Context, entry,
+            _pvpInfo!.Tutorial ? PvpMatchInfo.TutorialKey : _pvpInfo.TrainingKey));   // Unload libère la session (on quitte le lobby)
     }
 
     // ── Dessin ───────────────────────────────────────────────────────────────────

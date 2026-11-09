@@ -123,6 +123,10 @@
   "pointsPerKill": 5,
   "pointsForWin": 30,
   "pointsForDraw": 5,
+  // Part des points selon le mode (la cote ne bouge qu'en partie classée) :
+  // entraînement contre un bot de rang choisi = moitié, défi entre amis = rien.
+  "trainingPointsFactor": 0.5,
+  "friendlyPointsFactor": 0,
 
   // Temps (secondes).
   "reserveSeconds": 600,
@@ -136,6 +140,9 @@
   // Balance du MORAL : chaque pion tombé (commandant exclu) la fait pencher de son prix (« unitCost ») vers
   // l'adversaire. Balance à ±moraleToWin = victoire du camp vers qui elle penche. 0 = désactivé.
   "moraleToWin": 15,
+  // Camp réduit à son commandant (Basile compris) : à chaque fin de SON tour, la balance penche d'autant vers
+  // l'adversaire. Le roi isolé ne peut plus fuir sans fin.
+  "loneCommanderMorale": 1,
   // Recherche classée : personne au bout de « botAfterSeconds » → bot du niveau du joueur (partie classée).
   // S'il y a d'AUTRES joueurs sur le jeu (compte Steam des joueurs en jeu, ou un lobby multi visible), on attend
   // « botAfterBusySeconds » à la place : un humain a des chances d'arriver.
@@ -146,6 +153,8 @@
   // tranches égales (la division III est la plus basse). Master n'a pas de division.
   "startRating": 950,
   "eloK": 50,
+  // Plafond de la cote (bonus de série compris).
+  "maxRating": 3000,
   // Série de victoires classées : à partir de la « winStreakFrom »e victoire d'affilée, +« winStreakBonus » de cote.
   "winStreakFrom": 3,
   "winStreakBonus": 15,
@@ -201,6 +210,10 @@
   // Armée de DÉPART (écrite par l'outil d'équilibrage) : premier build de tout nouveau profil.
   "startingArmy": { "commander": "commandant",
     "back":  [ "", "cavalier", "lancier", "mage", "*", "mage", "lancier", "cavalier" ],
+    "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
+  // Bot TUTO (première partie, puis case TUTO de l'entraînement) : commandant et 4 soldats, joue le bot « tuto ».
+  "tutorialArmy": { "commander": "commandant",
+    "back":  [ "", "", "", "", "*", "", "", "" ],
     "front": [ "", "", "soldat", "soldat", "soldat", "soldat", "", "" ] },
   "startingCommanders": [ "commandant", "Commandant_lancier", "Commandant_cavalier" ],
   "commanders": {
@@ -436,6 +449,8 @@
   //   le vrai calcul se fait pendant ce temps, et le rang le plus haut joue plus vite.
   // Échelle MESURÉE par l'outil (--ai-ladder) : chaque niveau doit battre le précédent.
   "bots": {
+    // Bot TUTO (hors classement) : joue presque au hasard, attaque rarement ; le joueur voit chaque règle se produire.
+    "tuto":     { "equipment": false, "forceAttack": false, "caution": 0, "recklessness": 1.0, "accuracy": 0.15, "minDelaySeconds": 1.5, "maxDelaySeconds": 3 },
     "bronze-3": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.25, "caution": 0.3, "recklessness": 1.0, "accuracy": 0.45, "minDelaySeconds": 3, "maxDelaySeconds": 8 },
     "bronze-2": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.45, "caution": 0.35, "recklessness": 0.7, "accuracy": 0.55, "minDelaySeconds": 3, "maxDelaySeconds": 8 },
     "bronze-1": { "beginnerArmies": true, "equipment": false, "forceAttack": true, "killChance": 0.55, "caution": 0.4, "recklessness": 0.5, "accuracy": 0.65, "minDelaySeconds": 3, "maxDelaySeconds": 7.5 },
@@ -445,9 +460,13 @@
     "argent-3": { "depth": 1, "breadth": 4, "replyBreadth": 3, "accuracy": 0.8, "minDelaySeconds": 2.5, "maxDelaySeconds": 6.5 },
     "argent-2": { "depth": 1, "breadth": 7, "replyBreadth": 5, "accuracy": 0.94, "minDelaySeconds": 2.5, "maxDelaySeconds": 6.5 },
     "argent-1": { "depth": 2, "breadth": 5, "replyBreadth": 4, "accuracy": 0.85, "minDelaySeconds": 2.5, "maxDelaySeconds": 6 },
-    "or-3":     { "smartEquipment": true, "depth": 2, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
-    "or-2":     { "smartEquipment": true, "depth": 3, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
-    "or-1":     { "smartEquipment": true, "depth": 3, "breadth": 9, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5.5 },
-    "master":   { "smartEquipment": true, "depth": 4, "breadth": 10, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5 }
+    // pieceCost (Or III et plus) : le coût multi MESURÉ des pièces (traits compris) entre dans leur valeur ; sans lui,
+    // un Maître d'armes « valait » moins qu'un Mage. Mesuré : Or I avec 1 bat Or I sans 58,6 % (200 parties).
+    "or-3":     { "pieceCost": 1, "smartEquipment": true, "depth": 2, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
+    "or-2":     { "pieceCost": 1, "smartEquipment": true, "depth": 3, "breadth": 6, "replyBreadth": 5, "accuracy": 0.9, "minDelaySeconds": 2, "maxDelaySeconds": 6 },
+    "or-1":     { "pieceCost": 1, "smartEquipment": true, "depth": 3, "breadth": 9, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5.5 },
+    // Master : profondeur 6 (≈ 0,5 s par coup, mesuré) au lieu de 4 (48 ms : il n'utilisait pas 2 % de sa réflexion) ;
+    // bat l'ancien Master 74 % (--ai-pair, 24 parties). En jeu, l'approfondissement s'arrête de toute façon au temps.
+    "master":   { "pieceCost": 1, "smartEquipment": true, "depth": 6, "breadth": 10, "replyBreadth": 7, "accuracy": 1.0, "minDelaySeconds": 2, "maxDelaySeconds": 5 }
   }
 }

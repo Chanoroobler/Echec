@@ -230,6 +230,8 @@ public static class PvpBotAi
         PvpAiWeights weights, Random rng, double maxSeconds = 0, bool collapse = false)
     {
         weights = def.Style?.Apply(weights) ?? weights;   // style du bot nommé
+        if (def.PieceCost is { } pieceCost)
+            weights = weights.With(PvpAiWeights.PieceCost, pieceCost);   // valeur mesurée des pièces (Or III et plus)
         var root = forker.Fork(log, log.Count);
         if (root is null || root.IsOver || root.CurrentTurn != side)
             return null;
@@ -688,9 +690,14 @@ public static class PvpBotAi
     }
 
     /// <summary>Valeur d'une pièce (hors commandant) pour l'évaluation : poids entraînés.</summary>
+    /// <summary>Valeur d'une pièce pour l'évaluation : ses stats (PV restants : une pièce blessée vaut moins) plus son
+    /// coût multi MESURÉ en batailles réelles (« unitCost »), seul à refléter ses TRAITS (Duelliste, Interception…) :
+    /// sans lui, un Maître d'armes « valait » moins qu'un Mage. L'outil d'équilibrage mesure ces coûts avec des bots
+    /// sans recherche, qui n'utilisent pas cette évaluation : pas de boucle.</summary>
     private static double PieceValue(Unit u, PvpAiWeights w) =>
         w[PvpAiWeights.PieceBase] + w[PvpAiWeights.PieceHp] * u.Hp + w[PvpAiWeights.PieceDamage] * u.Damage
-        + w[PvpAiWeights.PieceRange] * u.AttackRange + w[PvpAiWeights.PieceMove] * u.MoveRange;
+        + w[PvpAiWeights.PieceRange] * u.AttackRange + w[PvpAiWeights.PieceMove] * u.MoveRange
+        + (w[PvpAiWeights.PieceCost] == 0 ? 0 : w[PvpAiWeights.PieceCost] * PvpConfig.Current.CostOf(u.Class));
 
     /// <summary>Perte de valeur d'une pièce qui encaisse <paramref name="damage"/> : toute sa valeur si elle meurt.</summary>
     private static double Loss(Unit u, int damage, PvpAiWeights w) =>
@@ -723,16 +730,17 @@ public static class PvpBotAi
 public sealed class PvpAiWeights
 {
     public const int PieceBase = 0, PieceHp = 1, PieceDamage = 2, PieceRange = 3, PieceMove = 4, Tempo = 5, Hanging = 6,
-        KingDanger = 7, Advance = 8, Mobility = 9, Support = 10, Guard = 11;
+        KingDanger = 7, Advance = 8, Mobility = 9, Support = 10, Guard = 11, PieceCost = 12;
 
     public static readonly string[] Names =
     {
         "pieceBase", "pieceHp", "pieceDamage", "pieceRange", "pieceMove", "tempo", "hanging", "kingDanger", "advance",
-        "mobility", "support", "guard",
+        "mobility", "support", "guard", "pieceCost",
     };
 
-    /// <summary>Poids de départ (avant entraînement), à l'échelle de l'heuristique rapide.</summary>
-    public static readonly double[] Defaults = { 2.0, 0.3, 0.4, 0.5, 0.3, 0.8, 0.3, 30.0, 0.15, 0.03, 0.2, 0.0 };
+    /// <summary>Poids de départ (avant entraînement), à l'échelle de l'heuristique rapide. « pieceCost » (coût multi
+    /// MESURÉ de la classe, traits compris) vaut 0 par défaut : un ancien jeu de poids garde son comportement.</summary>
+    public static readonly double[] Defaults = { 2.0, 0.3, 0.4, 0.5, 0.3, 0.8, 0.3, 30.0, 0.15, 0.03, 0.2, 0.0, 0.0 };
 
     private readonly double[] _values;
 
@@ -749,6 +757,14 @@ public sealed class PvpAiWeights
     public double this[int index] => _values[index];
 
     public double[] ToArray() => (double[])_values.Clone();
+
+    /// <summary>Copie avec un seul poids changé.</summary>
+    public PvpAiWeights With(int index, double value)
+    {
+        var values = ToArray();
+        values[index] = value;
+        return new PvpAiWeights(values);
+    }
 
     public static PvpAiWeights FromDictionary(IReadOnlyDictionary<string, double> values)
     {

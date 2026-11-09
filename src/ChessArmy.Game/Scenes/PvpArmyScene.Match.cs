@@ -64,6 +64,11 @@ public sealed partial class PvpArmyScene
             Say(problem, error: true);
             return;
         }
+        if (!_friend && !Profile.TutorialMatchDone)
+        {
+            StartTutorialMatch();   // toute première partie : le bot tuto explique les règles en jouant
+            return;
+        }
         CancelHeld();   // un pion en main retourne à sa place : l'armée est figée pendant la recherche
         Context.Sounds.Play("menu_click");
         StopMatchmaking();
@@ -94,6 +99,7 @@ public sealed partial class PvpArmyScene
     {
         StopMatchmaking();
         CancelHeld();
+        _trainingOpen = false;
         _view = View.Build;
         _mode = SearchMode.Join;
         _friend = true;

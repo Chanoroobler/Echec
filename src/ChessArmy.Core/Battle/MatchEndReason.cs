@@ -29,4 +29,7 @@ public enum MatchEndReason : byte
 
     /// <summary>Balance du moral totalement d'un côté (multi, cf. <see cref="Match.Morale"/>).</summary>
     Morale,
+
+    /// <summary>Il ne reste que des commandants (Basile compris) des deux côtés : égalité (multi).</summary>
+    OnlyCommanders,
 }

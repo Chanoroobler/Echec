@@ -6949,7 +6949,7 @@ public sealed partial class GameplayScene : Scene
             return;
         if (_pvpInfo != null)    // multi : issue, gains et panneau de fin (cf. GameplayScene.Pvp.cs)
         {
-            if (_match.IsOver)
+            if (_match.IsOver && !HoldOnlyCommandersDraw())   // plus que des commandants : bandeau d'égalité d'abord
                 OnPvpBattleEnd();
             return;
         }
@@ -10300,6 +10300,8 @@ public sealed partial class GameplayScene : Scene
                 DrawAmbientAir(sb, board);        // papillon d'ambiance : vole au-dessus des pions
                 _damagePopups.Draw(sb, Context.Font, board);   // chiffres de dégâts, par-dessus
 
+                if (_pvpInfo != null)
+                    DrawPvpHudUnder(sb, viewport);   // panneaux et boutons multi SOUS les fiches de pion
                 if (_battleIntroTimer > 0)
                     DrawSlidingPanel(sb);          // panneau de placement qui sort par la droite
                 else
@@ -10518,6 +10520,7 @@ public sealed partial class GameplayScene : Scene
         else   // Battle
         {
             DrawAmbientAir(sb, hit);   // papillons sur la couche UI : la couche plateau natif est rognée au plateau
+            if (_pvpInfo != null) DrawPvpHudUnder(sb, viewport);   // panneaux et boutons multi SOUS les fiches de pion
             sb.Begin(samplerState: SamplerState.PointClamp);
             DrawCombatCards(sb, hit);
             sb.End();

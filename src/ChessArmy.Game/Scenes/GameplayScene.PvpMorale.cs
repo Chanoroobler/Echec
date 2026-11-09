@@ -70,7 +70,16 @@ public sealed partial class GameplayScene
     private int _moraleQueued;                    // morts relevées pas encore lancées (attendent la fin du coup)
 
     /// <summary>Vols d'éclats en cours ou en attente : le combat n'est pas « posé » (cf. BattleSettled).</summary>
-    private bool MoraleFxBusy => _moraleFlightCount > 0 || _moraleQueued > 0 || MoraleBurstActive;
+    private bool MoraleFxBusy => _moraleFlightCount > 0 || _moraleQueued > 0 || _lonePending[0] + _lonePending[1] > 0
+                                 || LoneTicksUnseen || MoraleWinPending || MoraleBurstActive;
+
+    /// <summary>Tour fini en commandant isolé que la barre n'a pas encore relevé (il vient d'arriver dans la frame).</summary>
+    private bool LoneTicksUnseen => _match.MoraleToWin > 0
+        && (_loneSeen[0] != _match.LoneTurns(Faction.Player) || _loneSeen[1] != _match.LoneTurns(Faction.Enemy));
+
+    // Commandant isolé (cf. Match.LoneTurns) : tours déjà relevés, et pertes pas encore lancées vers la barre.
+    private readonly int[] _loneSeen = new int[2];
+    private readonly int[] _lonePending = new int[2];
 
     private void UpdatePvpMorale(float dt)
     {
@@ -88,6 +97,10 @@ public sealed partial class GameplayScene
             else
                 LandMorale(MoraleDeltaOf(log[_moraleDeathsSeen].Unit));   // file pleine (coup énorme) : posé direct
         }
+        // Tours finis en commandant isolé : relevés AVANT le filet du bas (sinon la barre sauterait sans gemme).
+        for (var s = 0; s < 2; s++)
+            for (var lone = _match.LoneTurns((Faction)s); _loneSeen[s] < lone; _loneSeen[s]++)
+                _lonePending[s]++;
 
         // 2. Coup fini de jouer (attaque, dissolution, chute de tuile) : UNE gemme par point de moral, en rafale.
         if (_moraleQueued > 0 && FxSettled && _pendingCollapses.Count == 0)
@@ -118,6 +131,8 @@ public sealed partial class GameplayScene
             }
             _moraleQueued = 0;
         }
+        if (_lonePending[0] + _lonePending[1] > 0 && FxSettled && _pendingCollapses.Count == 0)
+            LaunchLoneMorale();
 
         // 3. Vols : chaque gemme arrivée = un point posé (la barre monte point par point) ; la dernière d'un
         // pion affiche son écart total.
@@ -135,6 +150,7 @@ public sealed partial class GameplayScene
         }
 
         // 4. Barre pleine : elle explose, puis ses éclats reforment la fenêtre de fin (GameplayScene.PvpMoraleBurst.cs).
+        UpdateMoraleFullHold(dt);
         TryStartMoraleBurst();
         UpdateMoraleBurst(dt);
 
@@ -152,6 +168,47 @@ public sealed partial class GameplayScene
         for (var i = 0; i < MoraleDeltaMax; i++)
             if (_moraleDeltas[i].Active && (_moraleDeltas[i].T += dt) >= MoraleDeltaTime)
                 _moraleDeltas[i].Active = false;
+    }
+
+    /// <summary>
+    /// Commandant isolé : chaque tour qu'il a fini seul envoie ses gemmes de SON commandant vers la barre (couleur du
+    /// camp qui les gagne), avec l'écart « -1 » / « +1 » à l'arrivée : la perte se voit partir de lui.
+    /// </summary>
+    private void LaunchLoneMorale()
+    {
+        var layout = BuildLayout();
+        var step = ChessArmy.Core.Pvp.PvpConfig.Current.LoneCommanderMorale;
+        for (var s = 0; s < 2; s++)
+        {
+            var count = _lonePending[s];
+            if (count == 0)
+                continue;
+            _lonePending[s] = 0;
+            var side = (Faction)s;
+            var delta = (side == Faction.Enemy ? step : -step) * count;
+            Vector2? from = null;
+            foreach (var (cell, unit) in _match.Units())
+                if (unit.Faction == side && unit.IsEssential)
+                {
+                    from = layout.CellToScreen(cell.Column, cell.Row) + new Vector2(layout.TileSize / 2f, layout.RowPitch / 2f);
+                    break;
+                }
+            var points = Math.Abs(delta);
+            if (from is not { } start || _moraleBarRect.Width == 0 || _moraleFlightCount + points > MoraleFlightMax)
+            {
+                LandMorale(delta);
+                continue;
+            }
+            for (var j = 0; j < points; j++)
+                _moraleFlights[_moraleFlightCount++] = new MoraleFlight
+                {
+                    From = start + new Vector2(((j % 3) - 1) * 8, 0f),
+                    T = -j * MoraleGemGap,
+                    Sign = Math.Sign(delta),
+                    Rise = MoraleFlightRise + (j % 3) * 14,
+                    Total = j == points - 1 ? delta : 0,
+                };
+        }
     }
 
     /// <summary>Écart de moral d'un pion tombé, vu du joueur local (= règle du moteur, cf. Match.OnUnitDied).</summary>
@@ -212,7 +269,7 @@ public sealed partial class GameplayScene
             return;
         var font = Context.Font;
         // Hauteur : de sous la zone du haut jusqu'au-dessus de notre panneau dans sa taille la plus haute (bond compris).
-        var bottom = column.Bottom - (HeroPanelH + CollapseTagH) - 12 - (int)TurnPopAmp;
+        var bottom = column.Bottom - (HeroPanelH + 2 * CollapseTagH) - 12 - (int)TurnPopAmp;   // 2 lignes d'alerte possibles
         var top = column.Y + MoraleBarTop;
         if (bottom - top < 60)
         {

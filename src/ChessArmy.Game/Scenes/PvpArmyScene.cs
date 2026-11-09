@@ -40,6 +40,7 @@ public sealed partial class PvpArmyScene : Scene
         ToReserve, Friend, Launch, Cancel, Chests, Back, ChestOpen, RevealOk, TutorialOk, ReserveArea, BoardArea,
         Ranking, RankRow, RankTab, RankPrev, RankNext, HistTab,
         Help, TutorialPrev, TutorialSkip,
+        Training, TrainingPick, TrainingClose, TrainingTuto,
     }
 
     private readonly struct Target
@@ -95,8 +96,9 @@ public sealed partial class PvpArmyScene : Scene
     }
 
     /// <summary>Retour depuis l'écran de fin d'une partie : REJOUER relance aussitôt la recherche avec la même armée
-    /// (<paramref name="friend"/> : rouvre un défi entre amis), ou le bandeau coffre ouvre la vue Coffres.</summary>
-    public enum Entry { Build, Replay, ReplayFriend, Chests }
+    /// (<paramref name="friend"/> : rouvre un défi entre amis ; entraînement : même niveau de bot), ou le bandeau
+    /// coffre ouvre la vue Coffres.</summary>
+    public enum Entry { Build, Replay, ReplayFriend, ReplayTraining, Chests }
 
     private readonly Entry _entry;
 
@@ -126,6 +128,8 @@ public sealed partial class PvpArmyScene : Scene
             _friend = _entry == Entry.ReplayFriend;
             OnLaunch();   // même point d'entrée que le bouton LANCER (recherche, ou bot hors ligne)
         }
+        else if (_entry == Entry.ReplayTraining && _trainingReplay != null && !_tutorialOpen)
+            StartTraining(_trainingReplay);
         else if (_entry == Entry.Chests && !_tutorialOpen)
             OpenChests();
     }
@@ -151,6 +155,8 @@ public sealed partial class PvpArmyScene : Scene
                 sb.Draw(Px, full, Color.White * (step == 0 ? 0.75f : 0.35f));
         }
         if (_tutorialOpen)
+            sb.Draw(Px, full, veil);
+        if (_trainingOpen && _view == View.Build)
             sb.Draw(Px, full, veil);
         if (_error != null)
             sb.Draw(Px, full, veil);
@@ -612,6 +618,19 @@ public sealed partial class PvpArmyScene : Scene
                 _friend = !_friend;
                 Context.Sounds.Play("menu_click");
                 break;
+            case Hit.Training:
+                OpenTraining();
+                break;
+            case Hit.TrainingPick:
+                if (t.Index >= 0 && t.Index < _trainingKeys.Count)
+                    StartTraining(_trainingKeys[t.Index]);
+                break;
+            case Hit.TrainingClose:
+                CloseTraining();
+                break;
+            case Hit.TrainingTuto:
+                StartTutorialMatch();
+                break;
             case Hit.Launch:
                 OnLaunch();
                 break;
@@ -668,6 +687,11 @@ public sealed partial class PvpArmyScene : Scene
     {
         if (Locked)
             return;   // combat imminent : on ne quitte plus
+        if (_trainingOpen)
+        {
+            CloseTraining();
+            return;
+        }
         CancelHeld();
         if (_view == View.Chests)
         {
@@ -738,6 +762,11 @@ public sealed partial class PvpArmyScene : Scene
             AddTutorialTargets();
             return;
         }
+        if (_trainingOpen && _view == View.Build)
+        {
+            AddTrainingTargets();   // fenêtre des niveaux : seules ses cases répondent
+            return;
+        }
         AddTopBar();
         if (_view == View.Chests)
         {
@@ -783,6 +812,7 @@ public sealed partial class PvpArmyScene : Scene
             Add(L.Cards[k], Hit.Card, first + k);
 
         Add(L.Friend, Hit.Friend);
+        Add(L.Training, Hit.Training);
         if (_mode != SearchMode.Idle && !Locked)
             Add(L.Cancel, Hit.Cancel);
         Add(L.Launch, Hit.Launch);

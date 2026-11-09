@@ -36,7 +36,7 @@ public sealed partial class PvpArmyScene
         public Rectangle PagePrev, PageNext, PageCounter;
         public Rectangle SheetFrame;         // fiche : panneau posé sur les rangées vides au-dessus des lignes du joueur
         public Rectangle Sheet;              // intérieur de ce panneau
-        public Rectangle Friend, Launch, Cancel, Center;
+        public Rectangle Friend, Training, Launch, Cancel, Center;
         // Coffres
         public Rectangle ChestTitle;
         public readonly Rectangle[] ChestPanels = new Rectangle[2];
@@ -237,13 +237,15 @@ public sealed partial class PvpArmyScene
         var friendW = Math.Max(full ? 146 : 98, font.Measure(Loc.T("pvp.challenge"), 1) + (full ? 28 : 20));
         var friendH = full ? 40 : 32;
         L.Friend = new Rectangle(pad, b.Center.Y - friendH / 2 + 1, friendW, friendH);
+        var trainingW = Math.Max(full ? 146 : 98, font.Measure(Loc.T("pvp.training"), 1) + (full ? 28 : 20));
+        L.Training = new Rectangle(L.Friend.Right + (full ? 10 : 6), L.Friend.Y, trainingW, friendH);
         var launchW = full ? 340 : 240;
         var launchH = full ? 60 : 44;
         L.Launch = new Rectangle(L.W - pad - launchW, b.Y + (b.Height - launchH) / 2 - 2, launchW, launchH);
         var cancelW = Math.Max(full ? 110 : 80, font.Measure(Loc.T("pvp.cancel"), full ? 2 : 1) + 24);
         var cancelH = full ? 50 : 36;
         L.Cancel = new Rectangle(L.Launch.X - (full ? 16 : 10) - cancelW, b.Center.Y - cancelH / 2, cancelW, cancelH);
-        var cx = L.Friend.Right + (full ? 16 : 12);
+        var cx = L.Training.Right + (full ? 16 : 12);
         L.Center = new Rectangle(cx, b.Y, L.Launch.X - (full ? 16 : 12) - cx, b.Height);
     }
 

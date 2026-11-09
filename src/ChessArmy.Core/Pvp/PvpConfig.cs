@@ -75,6 +75,10 @@ public sealed record PvpBotDef
     /// sert à ce que le bot ait l'air d'un vrai joueur (armure devant, portée aux tireurs).</summary>
     public bool SmartEquipment { get; init; }
 
+    /// <summary>Poids du coût multi MESURÉ des pièces (traits compris) dans l'évaluation de CE niveau ; null = celui
+    /// de « botWeights » (0). Donné à partir d'Or III : les rangs bas gardent leur lecture « aux stats ».</summary>
+    public double? PieceCost { get; init; }
+
     /// <summary>L'armée telle que ce bot la joue pour une partie : équipements tirés au hasard, ou retirés.</summary>
     public PvpBuild ArmyFor(PvpBuild army, System.Random rng) =>
         Equipment ? PvpBotEquipment.Equip(army, rng, SmartEquipment) : army.WithoutEquipment();
@@ -167,6 +171,10 @@ public sealed class PvpConfig
     public int PointsPerKill { get; init; } = 5;
     public int PointsForWin { get; init; } = 30;
     public int PointsForDraw { get; init; } = 5;
+    /// <summary>Part des points gagnée en ENTRAÎNEMENT (bot de rang choisi, sans cote) : 0.5 = moitié.</summary>
+    public float TrainingPointsFactor { get; init; } = 0.5f;
+    /// <summary>Part des points gagnée en DÉFI entre amis (0 = aucun point).</summary>
+    public float FriendlyPointsFactor { get; init; }
     public float ReserveSeconds { get; init; } = 600;
     public float MoveSeconds { get; init; } = 60;
     public float ReconnectSeconds { get; init; } = 60;
@@ -180,6 +188,8 @@ public sealed class PvpConfig
     /// <summary>Balance du moral : chaque pion tombé la fait pencher de son prix vers l'adversaire ; à ce seuil,
     /// victoire (cf. <see cref="Battle.Match.Morale"/>). 0 = pas de moral.</summary>
     public int MoraleToWin { get; init; } = 15;
+    /// <summary>Moral perdu à chaque fin de tour par un camp réduit à son commandant (fuite sans fin du roi isolé).</summary>
+    public int LoneCommanderMorale { get; init; } = 1;
     public float BotAfterSeconds { get; init; } = 10;
     /// <summary>Délai avant le bot quand d'AUTRES joueurs sont sur le jeu (un humain a des chances d'arriver).</summary>
     public float BotAfterBusySeconds { get; init; } = 40;
@@ -190,6 +200,8 @@ public sealed class PvpConfig
 
     public int StartRating { get; init; } = 950;
     public int EloK { get; init; } = 50;
+    /// <summary>Plafond de la cote (Elo, bonus de série compris) : on ne monte jamais au-dessus.</summary>
+    public int MaxRating { get; init; } = 3000;
     /// <summary>Série de victoires classées : à partir de la <see cref="WinStreakFrom"/>e victoire d'affilée, chaque
     /// victoire rapporte <see cref="WinStreakBonus"/> de cote en plus de l'Elo.</summary>
     public int WinStreakFrom { get; init; } = 3;
@@ -205,6 +217,9 @@ public sealed class PvpConfig
     /// <summary>Armée de DÉPART (premier build de tout nouveau profil, et référence de l'équilibrage) : pions T1 qui
     /// remplissent le budget, commandant compris. Composée par l'outil d'équilibrage. Null = échiquier classique.</summary>
     public PvpBuild? StartingArmy { get; init; }
+
+    /// <summary>Armée du bot TUTO (« tutorialArmy ») : petite, pour que le joueur gagne en voyant chaque règle.</summary>
+    public PvpBuild? TutorialArmy { get; init; }
 
     public IReadOnlyList<string> StartingCommanders { get; init; } =
         new[] { "commandant", "Commandant_lancier", "Commandant_cavalier" };
@@ -263,6 +278,8 @@ public sealed class PvpConfig
             PointsPerKill = dto.PointsPerKill ?? defaults.PointsPerKill,
             PointsForWin = dto.PointsForWin ?? defaults.PointsForWin,
             PointsForDraw = dto.PointsForDraw ?? defaults.PointsForDraw,
+            TrainingPointsFactor = dto.TrainingPointsFactor ?? defaults.TrainingPointsFactor,
+            FriendlyPointsFactor = dto.FriendlyPointsFactor ?? defaults.FriendlyPointsFactor,
             ReserveSeconds = dto.ReserveSeconds ?? defaults.ReserveSeconds,
             MoveSeconds = dto.MoveSeconds ?? defaults.MoveSeconds,
             ReconnectSeconds = dto.ReconnectSeconds ?? defaults.ReconnectSeconds,
@@ -270,16 +287,19 @@ public sealed class PvpConfig
             BuildChoiceSeconds = dto.BuildChoiceSeconds ?? defaults.BuildChoiceSeconds,
             AnalysisSeconds = dto.AnalysisSeconds ?? defaults.AnalysisSeconds,
             MoraleToWin = dto.MoraleToWin ?? defaults.MoraleToWin,
+            LoneCommanderMorale = dto.LoneCommanderMorale ?? defaults.LoneCommanderMorale,
             BotAfterSeconds = dto.BotAfterSeconds ?? defaults.BotAfterSeconds,
             BotAfterBusySeconds = dto.BotAfterBusySeconds ?? defaults.BotAfterBusySeconds,
             StartRating = dto.StartRating ?? defaults.StartRating,
             EloK = dto.EloK ?? defaults.EloK,
+            MaxRating = dto.MaxRating ?? defaults.MaxRating,
             WinStreakFrom = dto.WinStreakFrom ?? defaults.WinStreakFrom,
             WinStreakBonus = dto.WinStreakBonus ?? defaults.WinStreakBonus,
             Ranks = dto.Ranks?.Select(r => new PvpRankDef(r.Id ?? "", r.From, System.Math.Max(1, r.Divisions), r.Span)).ToList()
                     ?? defaults.Ranks,
             StartingCommanders = dto.StartingCommanders ?? defaults.StartingCommanders,
             StartingArmy = dto.StartingArmy?.ToBuild() ?? defaults.StartingArmy,
+            TutorialArmy = dto.TutorialArmy?.ToBuild() ?? defaults.TutorialArmy,
             Commanders = dto.Commanders?.ToDictionary(kv => kv.Key,
                 kv => new PvpCommanderStats(kv.Value.Hp, kv.Value.Damage, kv.Value.MoveRange, kv.Value.AttackRange,
                     (IReadOnlyList<string>?)kv.Value.Traits ?? System.Array.Empty<string>())) ?? defaults.Commanders,
@@ -297,7 +317,7 @@ public sealed class PvpConfig
                 ReplyBreadth = kv.Value.ReplyBreadth, ThinkSeconds = kv.Value.ThinkSeconds,
                 MinDelaySeconds = kv.Value.MinDelaySeconds, MaxDelaySeconds = kv.Value.MaxDelaySeconds,
                 ObviousMinDelaySeconds = kv.Value.ObviousMinDelaySeconds, ObviousMaxDelaySeconds = kv.Value.ObviousMaxDelaySeconds,
-                Equipment = kv.Value.Equipment, SmartEquipment = kv.Value.SmartEquipment,
+                Equipment = kv.Value.Equipment, SmartEquipment = kv.Value.SmartEquipment, PieceCost = kv.Value.PieceCost,
                 Armies = ((kv.Value.Armies is { Count: > 0 } own ? own
                            : kv.Value.BeginnerArmies ? dto.BotArmiesBeginner : dto.BotArmies) ?? new List<ArmyDto>())
                     .Select(a => a.ToBuild().WithoutEquipment()).ToList(),
@@ -321,6 +341,8 @@ public sealed class PvpConfig
         public int? PointsPerKill { get; set; }
         public int? PointsForWin { get; set; }
         public int? PointsForDraw { get; set; }
+        public float? TrainingPointsFactor { get; set; }
+        public float? FriendlyPointsFactor { get; set; }
         public float? ReserveSeconds { get; set; }
         public float? MoveSeconds { get; set; }
         public float? ReconnectSeconds { get; set; }
@@ -328,15 +350,18 @@ public sealed class PvpConfig
         public float? BuildChoiceSeconds { get; set; }
         public float? AnalysisSeconds { get; set; }
         public int? MoraleToWin { get; set; }
+        public int? LoneCommanderMorale { get; set; }
         public float? BotAfterSeconds { get; set; }
         public float? BotAfterBusySeconds { get; set; }
         public int? StartRating { get; set; }
         public int? EloK { get; set; }
+        public int? MaxRating { get; set; }
         public int? WinStreakFrom { get; set; }
         public int? WinStreakBonus { get; set; }
         public List<RankDto>? Ranks { get; set; }
         public List<string>? StartingCommanders { get; set; }
         public ArmyDto? StartingArmy { get; set; }
+        public ArmyDto? TutorialArmy { get; set; }
         public Dictionary<string, CommanderDto>? Commanders { get; set; }
         public Dictionary<string, BotDto>? Bots { get; set; }
         public List<ArmyDto>? BotArmies { get; set; }
@@ -397,6 +422,7 @@ public sealed class PvpConfig
         public double ObviousMaxDelaySeconds { get; set; } = 1.2;
         public bool Equipment { get; set; } = true;
         public bool SmartEquipment { get; set; }
+        public double? PieceCost { get; set; }
         /// <summary>Joue la réserve « botArmiesBeginner » (Bronze, Fer : pions de base) au lieu de « botArmies ».</summary>
         public bool BeginnerArmies { get; set; }
         public List<ArmyDto>? Armies { get; set; }

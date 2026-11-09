@@ -24,10 +24,28 @@ public sealed class PvpMatchInfo
     /// <summary>Joueur dont le bot a copié l'armée (null = armée par défaut du rang).</summary>
     public string? BotCopiedFrom { get; init; }
 
-    /// <summary>Défi entre amis : rapporte des points, pas de cote.</summary>
+    /// <summary>Défi entre amis : ni cote ni points (« friendlyPointsFactor » de pvp.json).</summary>
     public bool Friendly { get; init; }
 
-    public bool Ranked => !Friendly && !Test;
+    /// <summary>ENTRAÎNEMENT : bot d'un rang choisi (<see cref="TrainingKey"/>), sans cote, points réduits
+    /// (« trainingPointsFactor »), hors du bilan V/D/N.</summary>
+    public bool Training => TrainingKey != null;
+
+    /// <summary>Division du bot d'entraînement (« or-2 », « master »…) ; null hors entraînement.</summary>
+    public string? TrainingKey { get; init; }
+
+    /// <summary>Partie TUTO : bot « tuto » à petite armée, bulles d'explication des règles, rien d'enregistré.</summary>
+    public bool Tutorial { get; init; }
+
+    public bool Ranked => !Friendly && !Test && !Training && !Tutorial;
+
+    /// <summary>La partie compte dans le profil (points, historique) : ni test, ni tuto.</summary>
+    public bool Recorded => !Test && !Tutorial;
+
+    /// <summary>Part des points gagnée selon le mode (1 en partie classée).</summary>
+    public float PointsFactor => Tutorial ? 0f
+        : Training ? PvpConfig.Current.TrainingPointsFactor
+        : Friendly ? PvpConfig.Current.FriendlyPointsFactor : 1f;
 
     /// <summary>Partie de TEST (raccourci Debug <c>-pvpbot</c>) : rien n'est enregistré, ni profil ni classement.</summary>
     public bool Test { get; init; }
@@ -63,7 +81,39 @@ public sealed class PvpMatchInfo
     };
 
     /// <summary>Partie contre un bot du niveau de <paramref name="rating"/> (armée tirée parmi celles de son rang).</summary>
-    public static PvpMatchInfo ForBot(PvpBuild localBuild, int rating, Random rng)
+    public static PvpMatchInfo ForBot(PvpBuild localBuild, int rating, Random rng) =>
+        ForBot(localBuild, rating, rating, null, rng);
+
+    /// <summary>Clé de la case TUTO de l'entraînement (et du REJOUER d'une partie tuto).</summary>
+    public const string TutorialKey = "tuto";
+
+    /// <summary>Partie TUTO : le joueur commence, contre le bot « tuto » et sa petite armée (pvp.json « tutorialArmy »).</summary>
+    public static PvpMatchInfo ForTutorial(PvpBuild localBuild, int localRating, Random rng)
+    {
+        var config = PvpConfig.Current;
+        var bot = config.Bots.TryGetValue(TutorialKey, out var def) ? def
+            : PvpBotDef.Default with { Accuracy = 0.15, Recklessness = 1, Caution = 0, Equipment = false };
+        return new PvpMatchInfo
+        {
+            Bot = bot,
+            Tutorial = true,
+            TrainingKey = null,
+            OpponentName = Loc.T("pvp.tutorial.bot_name"),
+            OpponentRating = 0,
+            LocalRating = localRating,
+            Seed = rng.Next(),
+            LocalStarts = true,
+            ReserveSeconds = 3600,   // aucune pression du temps (la pendule basse n'arrive jamais) : on apprend
+            LocalBuild = localBuild,
+            OpponentBuild = (config.TutorialArmy ?? PvpProfile.DefaultBuild()).WithoutEquipment(),
+        };
+    }
+
+    /// <summary>ENTRAÎNEMENT contre le bot de la division <paramref name="botKey"/> (cote du joueur inchangée).</summary>
+    public static PvpMatchInfo ForTraining(PvpBuild localBuild, string botKey, int localRating, Random rng) =>
+        ForBot(localBuild, PvpRanks.RatingFor(botKey) ?? localRating, localRating, botKey, rng);
+
+    private static PvpMatchInfo ForBot(PvpBuild localBuild, int rating, int localRating, string? trainingKey, Random rng)
     {
         var config = PvpConfig.Current;
         var bot = PvpRanks.BotFor(rating);   // un niveau d'IA par division
@@ -83,7 +133,8 @@ public sealed class PvpMatchInfo
             Bot = bot with { Style = style },
             OpponentName = name,
             OpponentRating = rating,
-            LocalRating = rating,
+            LocalRating = localRating,
+            TrainingKey = trainingKey,
             Seed = rng.Next(),
             LocalStarts = rng.Next(2) == 0,
             LocalBuild = localBuild,
@@ -94,7 +145,8 @@ public sealed class PvpMatchInfo
     /// <summary>Même partie, avec l'armée finalement choisie par le joueur local.</summary>
     public PvpMatchInfo WithLocalBuild(PvpBuild build) => new()
     {
-        Session = Session, Bot = Bot, BotCopiedFrom = BotCopiedFrom, Friendly = Friendly,
+        Session = Session, Bot = Bot, BotCopiedFrom = BotCopiedFrom, Friendly = Friendly, TrainingKey = TrainingKey,
+        Tutorial = Tutorial,
         OpponentName = OpponentName, OpponentRating = OpponentRating, LocalRating = LocalRating,
         Seed = Seed, Mirrored = Mirrored, LocalStarts = LocalStarts, Test = Test, ReserveSeconds = ReserveSeconds,
         LocalBuild = build, OpponentBuild = OpponentBuild,

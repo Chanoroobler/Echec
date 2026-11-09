@@ -32,6 +32,8 @@ public sealed partial class GameplayScene
 
     private void StartPvpAnalysis()
     {
+        if (_pvpInfo is { Tutorial: true })
+            return;   // tuto : on joue tout de suite, les bulles expliquent au fil de la partie
         _pvpAnalysis = 0f;
         _pvpLocalReady = false;
     }

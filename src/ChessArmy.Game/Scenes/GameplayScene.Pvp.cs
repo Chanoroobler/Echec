@@ -78,7 +78,8 @@ public sealed partial class GameplayScene
                 new PvpForker(info.Seed, info.LocalStarts, _battlefield, _bushCells, info.LocalBuild, info.OpponentBuild),
                 _battleLog);
         var config = PvpConfig.Current;
-        _pvpClock = new PvpClock(info.ReserveSeconds ?? config.ReserveSeconds, config.MoveSeconds);
+        // Tuto : ni réserve ni temps par coup qui pressent (on apprend ; perdre au temps n'apprendrait rien).
+        _pvpClock = new PvpClock(info.ReserveSeconds ?? config.ReserveSeconds, info.Tutorial ? 3600f : config.MoveSeconds);
         _pvpClock.BeginTurn(_match.CurrentTurn);
         _pvpTurnStartReserve[0] = _pvpTurnStartReserve[1] = _pvpClock.Reserve(Faction.Player);
         _collapseState[0] = _collapseState[1] = 0;
@@ -216,6 +217,9 @@ public sealed partial class GameplayScene
 
     private bool CollapseTagShown(Faction side) => _collapseState[(int)side] == 2;
 
+    /// <summary>Lignes d'alerte sous la pendule d'un camp : sol qui s'effondre, commandant isolé.</summary>
+    private int TagLines(Faction side) => (CollapseTagShown(side) ? 1 : 0) + (LoneTagShown(side) ? 1 : 0);
+
     private static Rectangle CollapseTagRect(Rectangle panel, bool active, bool hero = false) =>
         new(panel.X, panel.Y + (hero ? HeroTagY : active ? 96 : 56), panel.Width, 7);
 
@@ -337,7 +341,10 @@ public sealed partial class GameplayScene
         session?.Update(dt);
         if (UpdateCoinFlip(dt))
             return true;   // pile ou face en cours : ni coups, ni pendules (le réseau, lui, reste vivant)
+        if (UpdatePvpTutorial(dt))
+            return true;   // partie tuto : bulle d'explication ouverte, tout attend (GameplayScene.PvpTutorial.cs)
         UpdateCollapseBanner(dt);
+        UpdatePvpLone(dt);      // commandant isolé, égalité à commandants (GameplayScene.PvpLone.cs)
         UpdatePvpMorale(dt);    // la barre du moral glisse vers la balance (GameplayScene.PvpMorale.cs)
         UpdatePvpTurnCue(dt);   // la main nous revient : son, barre des tâches, panneau « TOI » (GameplayScene.PvpTurn.cs)
         if (_pvpDrawRefused > 0f)
@@ -512,10 +519,12 @@ public sealed partial class GameplayScene
         else
             _pvpValid = !_pvpDesync;
 
-        if (_pvpValid && !PvpProfile.Tampered && !info.Test)   // partie de test : rien d'enregistré
+        if (info.Tutorial)
+            _pvpReward = new PvpReward(0, info.LocalRating, info.LocalRating, false);   // tuto : rien d'enregistré, fin affichée
+        else if (_pvpValid && !PvpProfile.Tampered && info.Recorded)   // partie de test : rien d'enregistré
         {
             _pvpReward = PvpProfileStore.Current.RecordResult(outcome, KillsByPlayer(), info.OpponentRating, info.Ranked,
-                info.OpponentName, info.IsBot, DateTime.UtcNow);
+                info.OpponentName, info.IsBot, DateTime.UtcNow, info.PointsFactor, info.Training);
             PvpProfileStore.Save();
             if (info.Ranked)
                 PvpLeaderboardService.Upload(PvpProfileStore.Current, info.LocalBuild);   // classement Steam : cote, bilan, formation
@@ -526,16 +535,17 @@ public sealed partial class GameplayScene
 
     private int KillsByPlayer() => _match.DeathLog.Count(d => d.Unit.Faction == Faction.Enemy);
 
-    /// <summary>Sortie de la scène : une partie quittée avant la fin compte comme une défaite (anti rage-quit).</summary>
+    /// <summary>Sortie de la scène : une partie quittée avant la fin compte comme une défaite (anti rage-quit).
+    /// Un entraînement quitté ne compte pas du tout (rien à protéger, et pas de points de kills à empocher).</summary>
     private void UnloadPvp()
     {
         if (_pvpInfo == null)
             return;
-        if (!_pvpRecorded && _match != null && !_match.IsOver && !PvpProfile.Tampered && !_pvpInfo.Test)
+        if (!_pvpRecorded && _match != null && !_match.IsOver && !PvpProfile.Tampered && _pvpInfo.Recorded && !_pvpInfo.Training)
         {
             _pvpRecorded = true;
             PvpProfileStore.Current.RecordResult(PvpOutcome.Loss, KillsByPlayer(), _pvpInfo.OpponentRating, _pvpInfo.Ranked,
-                _pvpInfo.OpponentName, _pvpInfo.IsBot, DateTime.UtcNow);
+                _pvpInfo.OpponentName, _pvpInfo.IsBot, DateTime.UtcNow, _pvpInfo.PointsFactor);
             PvpProfileStore.Save();
             if (_pvpInfo.Ranked)
                 PvpLeaderboardService.Upload(PvpProfileStore.Current, _pvpInfo.LocalBuild);
@@ -546,15 +556,28 @@ public sealed partial class GameplayScene
 
     // ── HUD ──────────────────────────────────────────────────────────────────────
 
-    /// <summary>HUD multi : pendules et tour courant (haut), égalité, déconnexion, désynchronisation, panneau de fin.</summary>
+    /// <summary>HUD multi, couche du DESSOUS : panneaux des camps, pendules, moral, boutons Abandonner / Égalité.
+    /// Dessinée AVANT les fiches de pion, pour qu'une fiche qui déborde passe devant les boutons.</summary>
+    private void DrawPvpHudUnder(SpriteBatch sb, Viewport viewport)
+    {
+        if (_match.IsOver && _pvpRecorded)
+            return;   // fenêtre de fin : tout est dans la couche du dessus
+        sb.Begin(samplerState: SamplerState.PointClamp);
+        DrawPvpTopBar(sb, viewport, _pvpInfo!);
+        sb.End();
+    }
+
+    /// <summary>HUD multi, couche du DESSUS (après les fiches) : éclats de moral, bandeaux, bulles du tuto, fenêtre
+    /// de fin, pile ou face.</summary>
     private void DrawPvpHud(SpriteBatch sb, Viewport viewport)
     {
         var info = _pvpInfo!;
         sb.Begin(samplerState: SamplerState.PointClamp);
         if (!_match.IsOver || !_pvpRecorded)
         {
-            DrawPvpTopBar(sb, viewport, info);
             DrawPvpMoraleFlights(sb);   // éclats des pions tombés, en route vers la barre du moral
+            DrawPvpLoneBanners(sb, viewport);
+            DrawPvpTutorial(sb, viewport);   // bulle du tuto, par-dessus tout le HUD
         }
         else
             DrawPvpEndPanel(sb, viewport, info);
@@ -583,10 +606,10 @@ public sealed partial class GameplayScene
 
         // Notre panneau : en bas à gauche (plus grand quand on a la main, et il bouge) ; l'adversaire : en haut à droite.
         var hero = mine && PvpGameRunning;   // « À TOI DE JOUER » seulement une fois la partie lancée
-        var mePanel = SidePanel(leftCol, mine, fromBottom: true, CollapseTagShown(Faction.Player), hero);
+        var mePanel = SidePanel(leftCol, mine, fromBottom: true, TagLines(Faction.Player), hero);
         mePanel.Y += PvpMyPanelOffset();
         DrawSide(sb, mePanel, Loc.T("pvp.you"), _pvpMyRank, _pvpMyRankName, _pvpClock.Reserve(Faction.Player), mine, Faction.Player);
-        var themPanel = SidePanel(rightCol, !mine, fromBottom: false, CollapseTagShown(Faction.Enemy));
+        var themPanel = SidePanel(rightCol, !mine, fromBottom: false, TagLines(Faction.Enemy));
         DrawSide(sb, themPanel, info.DisplayName, _pvpTheirRank, _pvpTheirRankName, _pvpClock.Reserve(Faction.Enemy), !mine, Faction.Enemy);
         if (_collapseBanner >= 0f)
             DrawCollapseBanner(sb, viewport, _collapseBannerSide == Faction.Player
@@ -656,9 +679,9 @@ public sealed partial class GameplayScene
     }
 
     /// <summary>Panneau d'un camp dans sa colonne (plus haut s'il a la main : il affiche aussi le temps du coup).</summary>
-    private static Rectangle SidePanel(Rectangle column, bool active, bool fromBottom, bool collapseTag, bool hero = false)
+    private static Rectangle SidePanel(Rectangle column, bool active, bool fromBottom, int tagLines, bool hero = false)
     {
-        var height = (hero ? HeroPanelH : active ? 104 : 64) + (collapseTag ? CollapseTagH : 0);
+        var height = (hero ? HeroPanelH : active ? 104 : 64) + tagLines * CollapseTagH;
         var width = Math.Min(column.Width, 220);
         var x = column.X + (column.Width - width) / 2;
         return new Rectangle(x, fromBottom ? column.Bottom - height : column.Y, width, height);
@@ -673,7 +696,7 @@ public sealed partial class GameplayScene
         _pvpMyRank = PvpRanks.FromRating(info.LocalRating);
         _pvpTheirRank = PvpRanks.FromRating(info.OpponentRating);
         _pvpMyRankName = PvpUi.RankName(_pvpMyRank);
-        _pvpTheirRankName = PvpUi.RankName(_pvpTheirRank);
+        _pvpTheirRankName = info.Tutorial ? Loc.T("pvp.training_tuto") : PvpUi.RankName(_pvpTheirRank);
     }
 
     private void DrawSide(SpriteBatch sb, Rectangle panel, string who, PvpRank rank, string rankName, float reserve, bool active,
@@ -690,6 +713,17 @@ public sealed partial class GameplayScene
                 ? MathHelper.Clamp((_collapseBanner - CollapseBannerHold - CollapseBannerSlide * 0.6f) / (CollapseBannerSlide * 0.4f), 0f, 1f)
                 : 1f;
             font.DrawCentered(sb, PvpArt.Fit(font, _collapseTagText, panel.Width - 12, 1), tag, 1, Palette.Purple5 * tagAlpha);
+        }
+        if (LoneTagShown(side))
+        {
+            // Commandant isolé : ligne sous la précédente, violette chez nous (on perd), cyan chez l'adversaire (on gagne).
+            RefreshLoneTexts();
+            var tag = CollapseTagRect(panel, active, hero: active && side == Faction.Player && PvpGameRunning);
+            if (CollapseTagShown(side))
+                tag.Y += CollapseTagH;
+            var tagAlpha = _loneBanner >= 0f && _loneBannerSide == side ? 0f : 1f;   // le bandeau central l'annonce d'abord
+            font.DrawCentered(sb, PvpArt.Fit(font, _loneTag, panel.Width - 12, 1), tag, 1,
+                (side == Faction.Player ? Palette.Purple5 : Palette.Cyan1) * tagAlpha);
         }
 
         // En-tête : blason du rang (20×24), pseudo et nom du rang à sa droite, le tout centré dans le panneau.

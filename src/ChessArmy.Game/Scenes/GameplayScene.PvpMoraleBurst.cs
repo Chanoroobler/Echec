@@ -39,6 +39,37 @@ public sealed partial class GameplayScene
 
     private float ReformEnd => BurstTime + ReformTime + ReformStagger;
 
+    private const float MoraleFullHold = 0.45f;   // barre pleine visible avant qu'elle explose
+    private float _moraleFullHold;                // temps passé barre pleine, tout posé
+
+    /// <summary>Victoire au moral décidée par le moteur mais pas encore montrée (barre qui n'a pas encore explosé) :
+    /// la fin de partie attend (cf. MoraleFxBusy). Sans barre à l'écran, rien à attendre.</summary>
+    private bool MoraleWinPending => _match.IsOver && _match.EndReason == MatchEndReason.Morale && _burstT < 0f
+                                     && _moraleBarRect.Width > 0;
+
+    /// <summary>
+    /// Avance le compteur « barre pleine » : il ne court que quand le dernier coup a fini de se jouer, que toutes
+    /// les gemmes (pions tombés, commandant isolé) ont touché la barre et que celle-ci a fini de glisser jusqu'au
+    /// bout. Sinon il repart de zéro.
+    /// </summary>
+    private void UpdateMoraleFullHold(float dt)
+    {
+        var settled = MoraleWinPending && _moraleFlightCount == 0 && _moraleQueued == 0
+                      && _lonePending[0] + _lonePending[1] == 0 && FxSettled && _pendingCollapses.Count == 0;
+        if (!settled)
+        {
+            _moraleFullHold = 0f;
+            return;
+        }
+        _moraleLanded = _match.Morale;   // tout est posé : la barre rejoint exactement la balance du moteur
+        if (MathF.Abs(_pvpMoraleShown - _moraleLanded) > 0.01f)
+        {
+            _moraleFullHold = 0f;   // la barre glisse encore vers le bout
+            return;
+        }
+        _moraleFullHold += dt;
+    }
+
     /// <summary>Explosion en cours : la fin de partie attend (cf. MoraleFxBusy → BattleSettled).</summary>
     private bool MoraleBurstActive => _burstT >= 0f && _burstT < BurstTime;
 
@@ -49,8 +80,8 @@ public sealed partial class GameplayScene
     private void TryStartMoraleBurst()
     {
         if (_burstT >= 0f || !_match.IsOver || _match.EndReason != MatchEndReason.Morale || _moraleBarRect.Width == 0
-            || _moraleFlightCount > 0 || _moraleQueued > 0)
-            return;
+            || _moraleFlightCount > 0 || _moraleQueued > 0 || _moraleFullHold < MoraleFullHold)
+            return;   // le coup, les gemmes, la barre qui se remplit puis reste pleine un instant : tout se voit avant
         var bar = _moraleBarRect;
         var playerWon = _match.Winner == Faction.Player;
         Color body = playerWon ? Palette.Cyan1 : Palette.Purple5;

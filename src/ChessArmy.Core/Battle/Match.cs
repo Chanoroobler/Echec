@@ -246,6 +246,12 @@ public sealed class Match
     /// </summary>
     public int Morale { get; private set; }
 
+    private readonly int[] _loneTurns = new int[2];
+
+    /// <summary>Tours finis par <paramref name="side"/> réduit à son commandant (chacun lui a coûté du moral, cf.
+    /// « loneCommanderMorale ») : la scène y lit chaque perte pour l'animer.</summary>
+    public int LoneTurns(Faction side) => _loneTurns[(int)side];
+
     /// <summary>Moral à atteindre pour gagner (pvp.json « moraleToWin »). 0 = pas de moral (campagne).</summary>
     public int MoraleToWin { get; init; }
 
@@ -2658,7 +2664,7 @@ public sealed class Match
     /// <summary>Passe le tour sans agir (ennemi passif en tutoriel). Sans effet si la partie est finie.</summary>
     public void PassTurn()
     {
-        if (IsOver)
+        if (IsOver || LoneCommanderLosesMorale())
             return;
         ClearRecentHitsFor(CurrentTurn);   // passer, c'est aussi avoir joué son tour
         CurrentTurn = CurrentTurn.Opponent();
@@ -2783,6 +2789,8 @@ public sealed class Match
         PvpRules = s.PvpRules;
         Morale = s.Morale;
         MoraleToWin = s.MoraleToWin;
+        _loneTurns[0] = s._loneTurns[0];
+        _loneTurns[1] = s._loneTurns[1];
         _lastThrow = s._lastThrow;
         _shieldHits.AddRange(s._shieldHits);
         _shielding = s._shielding;
@@ -2997,6 +3005,9 @@ public sealed class Match
         if (IsOver)
             return;
 
+        if (LoneCommanderLosesMorale())
+            return;
+
         // « Vengeance » : la colère dure UN tour. Le camp qui vient de jouer la perd — sauf si elle vient de
         // naître pendant ce tour-ci (cf. OnUnitDied), auquel cas elle est gardée pour le tour suivant.
         var played = (int)CurrentTurn;
@@ -3084,6 +3095,37 @@ public sealed class Match
         return null;
     }
 
+    /// <summary>
+    /// Moral (multi) : le camp qui finit son tour (joué ou passé) réduit à son commandant (Basile compris pour le
+    /// Duo) fait pencher la balance vers l'adversaire de « loneCommanderMorale » : la fuite sans fin d'un roi isolé
+    /// a une limite visible sur la jauge. Vrai si la partie vient de se terminer ainsi.
+    /// </summary>
+    private bool LoneCommanderLosesMorale()
+    {
+        if (MoraleToWin <= 0 || HasPawns(CurrentTurn))
+            return false;
+        if (!HasPawns(CurrentTurn.Opponent()))
+        {
+            UpdateWinner();   // plus que des commandants des deux côtés : égalité, pas de moral perdu
+            return IsOver;
+        }
+        var step = Pvp.PvpConfig.Current.LoneCommanderMorale;
+        Morale += CurrentTurn == Faction.Enemy ? step : -step;
+        _loneTurns[(int)CurrentTurn]++;
+        UpdateWinner();
+        return IsOver;
+    }
+
+    /// <summary>Vrai s'il reste à <paramref name="side"/> au moins un pion qui n'est pas essentiel (commandant, Basile).</summary>
+    public bool HasPawns(Faction side)
+    {
+        for (var c = 0; c < Width; c++)
+            for (var r = 0; r < Height; r++)
+                if (_units[c, r] is { } u && u.Faction == side && !u.IsEssential)
+                    return true;
+        return false;
+    }
+
     private void UpdateWinner()
     {
         if (IsDraw)
@@ -3129,6 +3171,15 @@ public sealed class Match
         else if ((!hasEnemy && _eliminationEndsGame) || enemyLeaderDown) Winner = Faction.Player;
         if (Winner != null && EndReason == MatchEndReason.None)
             EndReason = MatchEndReason.LeaderDown;
+
+        // Multi : plus que des commandants (Basile compris) des deux côtés = égalité (un commandant tombé passe
+        // avant ; elle passe avant le moral, qui sinon ferait gagner le premier à fuir le plus longtemps).
+        if (Winner == null && PvpRules && !HasPawns(Faction.Player) && !HasPawns(Faction.Enemy))
+        {
+            IsDraw = true;
+            EndReason = MatchEndReason.OnlyCommanders;
+            return;
+        }
 
         // Moral (multi) : balance totalement d'un côté = victoire de ce camp (un commandant tombé passe avant).
         if (Winner == null && MoraleToWin > 0 && System.Math.Abs(Morale) >= MoraleToWin)

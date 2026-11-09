@@ -114,6 +114,10 @@ public sealed class PvpProfile
         TutorialDone = true;
     }
 
+    /// <summary>Partie TUTO (bot qui explique les règles en jouant) lancée au moins une fois : le premier « LANCER UNE
+    /// PARTIE » la lance d'office tant que c'est faux. Un ancien profil qui a déjà joué est considéré comme formé.</summary>
+    public bool TutorialMatchDone { get; set; }
+
     /// <summary>Vrai si une valeur a été trafiquée en mémoire : le profil ne doit plus être enregistré.</summary>
     public static bool Tampered => ObscuredInt.Tampered;
 
@@ -200,19 +204,21 @@ public sealed class PvpProfile
 
     /// <summary>
     /// Enregistre une partie : points (chaque pion tué + bonus de victoire / nulle) et, si elle est classée,
-    /// nouvelle cote (Elo contre <paramref name="opponentRating"/>). Les défis entre amis rapportent des points
-    /// mais ne sont pas classés.
+    /// nouvelle cote (Elo contre <paramref name="opponentRating"/>). Les parties non classées ne touchent pas la cote ;
+    /// <paramref name="pointsFactor"/> réduit leurs points (défi entre amis 0, entraînement moitié : pvp.json).
     /// </summary>
-    public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked) =>
-        RecordResult(outcome, kills, opponentRating, ranked, "", bot: false, DateTime.UtcNow);
+    public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked, float pointsFactor = 1f) =>
+        RecordResult(outcome, kills, opponentRating, ranked, "", bot: false, DateTime.UtcNow, pointsFactor);
 
     /// <summary>Même chose, et la partie entre dans l'historique (classées ou défis), avec la série, la meilleure
-    /// cote et la variation du jour.</summary>
+    /// cote et la variation du jour. <paramref name="training"/> : partie d'ENTRAÎNEMENT, rangée avec les défis et
+    /// hors du bilan V/D/N (celui du classement).</summary>
     public PvpReward RecordResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked, string opponent,
-        bool bot, DateTime nowUtc)
+        bool bot, DateTime nowUtc, float pointsFactor = 1f, bool training = false)
     {
-        var reward = ApplyResult(outcome, kills, opponentRating, ranked);
+        var reward = ApplyResult(outcome, kills, opponentRating, ranked && !training, pointsFactor, countRecord: !training);
         var delta = reward.RatingAfter - reward.RatingBefore;
+        ranked = reward.Ranked;
         var history = ranked ? _ranked : _friendly;
         history.Insert(0, new PvpGameRecord(outcome, opponent, bot, opponentRating, kills, delta,
             new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc)).ToUnixTimeSeconds()));
@@ -243,20 +249,29 @@ public sealed class PvpProfile
             _days.Add((today, delta));
     }
 
-    private PvpReward ApplyResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked)
+    /// <summary>Points d'une ligne de gain réduits par le facteur du mode (arrondi vers le bas) : appliqué ligne par
+    /// ligne, pour que l'écran de fin affiche des lignes qui tombent juste sur le total.</summary>
+    public static int ScaledPoints(int points, float factor) =>
+        factor >= 1f ? points : factor <= 0f ? 0 : (int)Math.Floor(points * (double)factor + 1e-6);
+
+    private PvpReward ApplyResult(PvpOutcome outcome, int kills, int opponentRating, bool ranked, float pointsFactor,
+        bool countRecord)
     {
         var config = PvpConfig.Current;
-        var gained = kills * config.PointsPerKill + outcome switch
+        var gained = ScaledPoints(kills * config.PointsPerKill, pointsFactor) + ScaledPoints(outcome switch
         {
             PvpOutcome.Win => config.PointsForWin,
             PvpOutcome.Draw => config.PointsForDraw,
             _ => 0,
-        };
+        }, pointsFactor);
         _points = Points + gained;
-        _games = Games + 1;
-        if (outcome == PvpOutcome.Win) _wins = Wins + 1;
-        else if (outcome == PvpOutcome.Loss) _losses = Losses + 1;
-        else _draws = Draws + 1;
+        if (countRecord)
+        {
+            _games = Games + 1;
+            if (outcome == PvpOutcome.Win) _wins = Wins + 1;
+            else if (outcome == PvpOutcome.Loss) _losses = Losses + 1;
+            else _draws = Draws + 1;
+        }
 
         var before = Rating;
         int streak = 0, bonus = 0;
@@ -268,7 +283,7 @@ public sealed class PvpProfile
             if (outcome == PvpOutcome.Win && Math.Max(Streak, 0) + 1 >= config.WinStreakFrom)
             {
                 streak = Math.Max(Streak, 0) + 1;
-                bonus = config.WinStreakBonus;
+                bonus = Math.Clamp(config.MaxRating - Rating, 0, config.WinStreakBonus);   // plafond de la cote
                 _rating = Rating + bonus;
             }
         }
@@ -297,6 +312,7 @@ public sealed class PvpProfile
         public List<GameDto>? HF { get; set; }   // défis entre amis
         public List<int[]>? WK { get; set; }     // [jour, variation]
         public int TV { get; set; }              // version du tuto vue (absent d'un ancien fichier : 0)
+        public bool TM { get; set; }             // partie tuto faite (absent d'un ancien fichier : déduit des parties jouées)
     }
 
     private sealed class GameDto
@@ -339,7 +355,7 @@ public sealed class PvpProfile
             V = FormatVersion, BR = BestRating, ST = Streak,
             HR = _ranked.Select(GameDto.From).ToList(), HF = _friendly.Select(GameDto.From).ToList(),
             WK = _days.Select(d => new[] { d.Day, d.Delta }).ToList(),
-            TV = TutorialVersion,
+            TV = TutorialVersion, TM = TutorialMatchDone,
         };
         return Seal(JsonSerializer.SerializeToUtf8Bytes(dto), ownerId);
     }
@@ -387,6 +403,7 @@ public sealed class PvpProfile
                 SelectedBuild = Math.Clamp(dto.S, 0, BuildSlots - 1), TutorialDone = dto.T, TutorialVersion = Math.Max(0, dto.TV),
                 // Format 1 : pas de meilleure cote connue → la cote actuelle ; historique et série vides.
                 _best = Math.Max(dto.BR, dto.R), _streak = dto.ST,
+                TutorialMatchDone = dto.TM || dto.G > 0 || dto.HF is { Count: > 0 },
             };
             foreach (var g in (dto.HR ?? new List<GameDto>()).Take(HistorySize))
                 profile._ranked.Add(g.ToRecord());

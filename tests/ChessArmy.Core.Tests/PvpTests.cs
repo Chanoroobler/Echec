@@ -298,6 +298,49 @@ public class PvpTests : IDisposable
     }
 
     [Fact]
+    public void LoneCommander_LosesMoraleEachOfItsTurns_UntilDefeat()
+    {
+        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: false, seed: 5);   // l'ennemi commence
+        match.Place(new Cell(0, 7), PvpCatalog.SpawnCommander("commandant", Faction.Player)!);
+        match.Place(new Cell(7, 0), PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!);   // seul
+        match.Place(new Cell(0, 6), PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.FrontLine, "soldat", null), Faction.Player)!);
+        var step = PvpConfig.Current.LoneCommanderMorale;
+        Assert.True(step > 0);
+
+        var turns = 0;
+        while (!match.IsOver && turns < 200)
+        {
+            var lone = match.CurrentTurn == Faction.Enemy;
+            var before = match.Morale;
+            Assert.True(PvpForker.Step(match, BattleAction.Pass));
+            Assert.Equal(before + (lone ? step : 0), match.Morale);   // seul le camp sans pion en perd
+            turns++;
+        }
+        Assert.Equal(Faction.Player, match.Winner);
+        Assert.Equal(MatchEndReason.Morale, match.EndReason);
+        Assert.Equal(match.MoraleToWin, match.Morale);
+    }
+
+    [Fact]
+    public void OnlyCommandersLeft_IsADraw()
+    {
+        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: true, seed: 5);
+        // Commandants hors des lignes qui tombent ; le seul pion, sur la ligne de devant du joueur.
+        match.Place(new Cell(3, 3), PvpCatalog.SpawnCommander("commandant", Faction.Player)!);
+        match.Place(new Cell(7, 0), PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!);
+        match.Place(new Cell(0, PvpSetup.Size - 2), PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.FrontLine, "soldat", null), Faction.Player)!);
+        Assert.True(PvpForker.Step(match, BattleAction.Pass));
+        Assert.False(match.IsOver);   // il reste un pion au joueur : la partie continue
+
+        while (match.HasPawns(Faction.Player) && !match.IsOver)
+            match.CollapseTile(Faction.Player);
+        Assert.True(match.IsOver);
+        Assert.True(match.IsDraw);
+        Assert.Null(match.Winner);
+        Assert.Equal(MatchEndReason.OnlyCommanders, match.EndReason);
+    }
+
+    [Fact]
     public void Morale_IsOffOutsideMultiplayer()
     {
         var campaign = new Match(8, 8);
@@ -362,6 +405,9 @@ public class PvpTests : IDisposable
         var m = PvpSetup.CreateMatch(false, true, 1);
         m.Place(new Cell(4, 7), PvpCatalog.SpawnCommander("commandant", Faction.Player)!);
         m.Place(new Cell(4, 0), PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!);
+        // Un pion de chaque côté : avec les seuls commandants, la partie serait aussitôt nulle (OnlyCommanders).
+        m.Place(new Cell(0, 6), PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.FrontLine, "soldat", null), Faction.Player)!);
+        m.Place(new Cell(7, 1), PvpCatalog.Spawn(new PvpBuildSlot(7, PvpBuild.FrontLine, "soldat", null), Faction.Enemy)!);
         Assert.Equal(1, m.Round);
         m.Apply(BattleAction.Pass);
         Assert.Equal(1, m.Round);
@@ -375,6 +421,8 @@ public class PvpTests : IDisposable
         var target = PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!;
         kill.Place(new Cell(4, 6), target);
         kill.Place(new Cell(0, 0), PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!);
+        kill.Place(new Cell(0, 6), PvpCatalog.Spawn(new PvpBuildSlot(0, PvpBuild.FrontLine, "soldat", null), Faction.Player)!);
+        kill.Place(new Cell(7, 1), PvpCatalog.Spawn(new PvpBuildSlot(7, PvpBuild.FrontLine, "soldat", null), Faction.Enemy)!);
         for (var i = 0; i < 50 && !kill.IsOver; i++)
         {
             if (kill.CurrentTurn == Faction.Player) kill.Apply(BattleAction.Attack(new Cell(4, 7), new Cell(4, 6)));
@@ -763,6 +811,91 @@ public class PvpTests : IDisposable
         var forged = (byte[])bytes.Clone();
         forged[forged.Length / 2] ^= 0x40;
         Assert.Null(PvpProfile.Decode(forged, "steam-1"));   // un seul octet retouché
+    }
+
+    [Fact]
+    public void Training_KeepsRatingAndRecord_HalvesPoints_AndGoesToChallenges()
+    {
+        var profile = PvpProfile.CreateNew();
+        var config = PvpConfig.Current;
+        var (rating, points) = (profile.Rating, profile.Points);
+        var t = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var reward = profile.RecordResult(PvpOutcome.Win, kills: 3, opponentRating: 2000, ranked: false, "Aldric",
+            bot: true, t, config.TrainingPointsFactor, training: true);
+
+        Assert.False(reward.Ranked);
+        Assert.Equal(rating, profile.Rating);                     // la cote ne bouge jamais
+        Assert.Equal(PvpProfile.ScaledPoints(3 * config.PointsPerKill, 0.5f) + PvpProfile.ScaledPoints(config.PointsForWin, 0.5f),
+            reward.Points);
+        Assert.Equal(7 + 15, reward.Points);                      // 15 → 7 (arrondi vers le bas), 30 → 15
+        Assert.Equal(points + reward.Points, profile.Points);
+        Assert.Equal(0, profile.Games + profile.Wins);            // hors du bilan V/D/N du classement
+        Assert.Empty(profile.RankedHistory);
+        Assert.Single(profile.FriendlyHistory);
+        Assert.Equal(0, profile.Streak);
+    }
+
+    [Fact]
+    public void Rating_NeverGoesAboveTheCap()
+    {
+        var max = PvpConfig.Current.MaxRating;
+        Assert.Equal(max, PvpRanks.Updated(max - 5, max, 1.0));   // la victoire rapporterait 25 : plafonnée
+        Assert.Equal(max, PvpRanks.Updated(max, max, 1.0));
+        Assert.True(PvpRanks.Updated(max, max, 0.0) < max);       // une défaite fait toujours descendre
+
+        // Série de victoires au plafond : le bonus est rogné, la cote reste au plafond.
+        var profile = PvpProfile.CreateNew();
+        var t = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < 400 && profile.Rating < max; i++)
+            profile.RecordResult(PvpOutcome.Win, 0, max, ranked: true, "a", bot: false, t.AddMinutes(i));
+        Assert.Equal(max, profile.Rating);
+        var reward = profile.RecordResult(PvpOutcome.Win, 0, max, ranked: true, "b", bot: false, t.AddDays(1));
+        Assert.Equal(max, profile.Rating);
+        Assert.Equal(0, reward.StreakBonus);
+    }
+
+    [Fact]
+    public void TutorialMatch_IsPendingForANewPlayer_AndSurvivesTheFile()
+    {
+        var fresh = PvpProfile.CreateNew();
+        Assert.False(fresh.TutorialMatchDone);                       // tout premier LANCER : partie tuto
+        Assert.False(PvpProfile.Decode(fresh.Encode("steam-1"), "steam-1")!.TutorialMatchDone);
+
+        fresh.TutorialMatchDone = true;
+        Assert.True(PvpProfile.Decode(fresh.Encode("steam-1"), "steam-1")!.TutorialMatchDone);
+
+        // Un joueur qui a déjà joué (fichier d'avant le tuto) n'est pas renvoyé au tuto.
+        var veteran = PvpProfile.CreateNew();
+        veteran.RecordResult(PvpOutcome.Win, 0, 1000, ranked: true);
+        Assert.True(PvpProfile.Decode(veteran.Encode("steam-1"), "steam-1")!.TutorialMatchDone);
+
+        Assert.NotNull(PvpConfig.Current.TutorialArmy);
+        Assert.True(PvpConfig.Current.Bots.ContainsKey("tuto"));
+    }
+
+    [Fact]
+    public void FriendlyChallenge_EarnsNoPoints()
+    {
+        var profile = PvpProfile.CreateNew();
+        var points = profile.Points;
+        var reward = profile.RecordResult(PvpOutcome.Win, kills: 4, opponentRating: 1000, ranked: false,
+            PvpConfig.Current.FriendlyPointsFactor);
+        Assert.Equal(0, reward.Points);
+        Assert.Equal(points, profile.Points);
+    }
+
+    [Fact]
+    public void RatingFor_EveryBotLevel_LandsInThatDivision()
+    {
+        var keys = PvpRanks.BotKeys().ToList();
+        Assert.Equal(13, keys.Count);
+        foreach (var key in keys)
+        {
+            var rating = PvpRanks.RatingFor(key);
+            Assert.NotNull(rating);
+            Assert.Equal(key, PvpRanks.BotKey(rating!.Value));
+        }
+        Assert.Null(PvpRanks.RatingFor("inconnu"));
     }
 
     [Fact]
