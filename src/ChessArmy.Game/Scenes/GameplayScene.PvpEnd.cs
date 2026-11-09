@@ -65,6 +65,7 @@ public sealed partial class GameplayScene
         public int RatingBefore, RatingAfter;
         public PvpRank RankBefore;
         public string RatingBeforeText = "", DeltaText = "", Chevron = "›";
+        public string StreakText = "";   // « SÉRIE DE 3 : +15 » (vide sans bonus de série)
         public Color DeltaColor;
 
         public string KillsLine = "", KillsValue = "", BonusLine = "", BonusValue = "";
@@ -146,6 +147,7 @@ public sealed partial class GameplayScene
             MatchEndReason.AgreedDraw => "pvp.end.reason_agreed",
             MatchEndReason.DeadPosition => "pvp.end.reason_dead",
             MatchEndReason.MutualDestruction => "pvp.end.reason_mutual",
+            MatchEndReason.Morale => won ? "pvp.end.reason_morale_win" : "pvp.end.reason_morale_loss",
             _ => won ? "pvp.end.reason_leader_win" : "pvp.end.reason_leader_loss",
         });
 
@@ -173,6 +175,7 @@ public sealed partial class GameplayScene
         var delta = e.RatingAfter - e.RatingBefore;
         e.DeltaText = delta > 0 ? "+" + delta : delta < 0 ? delta.ToString() : "±0";
         e.DeltaColor = delta > 0 ? Palette.Cyan1 : delta < 0 ? Palette.Purple5 : Palette.Grey;
+        e.StreakText = reward.Ranked && reward.StreakBonus > 0 ? Loc.T("pvp.end.streak", reward.Streak, reward.StreakBonus) : "";
 
         var config = PvpConfig.Current;
         var kills = KillsByPlayer();
@@ -358,6 +361,20 @@ public sealed partial class GameplayScene
     /// <summary>Voile du panneau de fin multi, partagé avec <see cref="FullScreenDim"/> (bandes du letterbox).</summary>
     private const float PvpEndDim = 0.72f;
 
+    /// <summary>Cadre de la fenêtre de fin (et le gabarit retenu : complet ou compact selon la place).</summary>
+    private Rectangle PvpEndPanelRect(Viewport viewport, PvpEndScreen e, out PvpEndMetrics m)
+    {
+        var font = Context.Font;
+        var small = font.LineHeight(1);
+        var full = viewport.Width >= 1280 && viewport.Height >= PvpEndFull.Height(font.LineHeight(PvpEndFull.Title), font.LineHeight(2), small) + 8;
+        m = full ? PvpEndFull : PvpEndCompact;
+        var body = font.LineHeight(m.Body);
+        var titleH = font.LineHeight(m.Title);
+        var height = m.Height(titleH, body, small) - (e.ChestReady ? 0 : m.BannerH + m.SectionGap);   // pas de bandeau : la fenêtre raccourcit
+        return new Rectangle((viewport.Width - PvpEndWidth) / 2,
+            Math.Max(4, Math.Min(full ? 36 : int.MaxValue, (viewport.Height - height) / 2)), PvpEndWidth, height);
+    }
+
     private void DrawPvpEndPanel(SpriteBatch sb, Viewport viewport, PvpMatchInfo info)
     {
         if (_pvpEnd is not { } e)
@@ -367,14 +384,14 @@ public sealed partial class GameplayScene
         DrawRect(sb, new Rectangle(0, 0, viewport.Width, viewport.Height), Palette.Black1 * PvpEndDim);   // bandes : FullScreenDim
 
         var small = font.LineHeight(1);
-        var full = viewport.Width >= 1280 && viewport.Height >= PvpEndFull.Height(font.LineHeight(PvpEndFull.Title), font.LineHeight(2), small) + 8;
-        var m = full ? PvpEndFull : PvpEndCompact;
+        var panel = PvpEndPanelRect(viewport, e, out var m);
+        var full = ReferenceEquals(m, PvpEndFull);
         var b = m.Body;
         var body = font.LineHeight(b);
         var titleH = font.LineHeight(m.Title);
-        var height = m.Height(titleH, body, small) - (e.ChestReady ? 0 : m.BannerH + m.SectionGap);   // pas de bandeau : la fenêtre raccourcit
-        var panel = new Rectangle((viewport.Width - PvpEndWidth) / 2,
-            Math.Max(4, Math.Min(full ? 36 : int.MaxValue, (viewport.Height - height) / 2)), PvpEndWidth, height);
+        // Victoire au moral : la barre a explosé, ses éclats reforment la fenêtre ; elle n'apparaît qu'à leur arrivée.
+        if (MoraleReformHidesPanel)
+            return;
         PvpArt.Fill(sb, px, new Rectangle(panel.X - 4, panel.Y - 4, panel.Width + 8, panel.Height + 8), Palette.Black1);
         PvpArt.Panel(sb, px, panel);
         var cx = panel.X + PvpEndInset;
@@ -568,11 +585,20 @@ public sealed partial class GameplayScene
             nameColor = e.Change > 0 ? Color.White : Palette.Purple5;
         if (swapped && e.Change > 0 && e.NamePrefix.Length > 0)
             name = e.NamePrefix[Math.Min(e.NamePrefix.Length - 1, 1 + (int)(since / PvpRankLetter))];
+        // Bonus de série à droite de la ligne du rang ; le nom du rang garde la priorité sur la place.
+        var streakW = 0;
+        if (e.StreakText.Length > 0)
+        {
+            var streak = PvpArt.Fit(font, e.StreakText, Math.Max(0, col.Right - nx - 80), 1);
+            streakW = font.Measure(streak, 1);
+            font.Draw(sb, streak, new Vector2(col.Right - streakW, y + (m.RowH - small) / 2), 1, Palette.Yellow2);
+        }
         if (!live || swapped)
-            font.Draw(sb, PvpArt.Fit(font, name, col.Right - nx, b), new Vector2(nx, y + (m.RowH - body) / 2), b, nameColor);
+            font.Draw(sb, PvpArt.Fit(font, name, col.Right - nx - (streakW > 0 ? streakW + 8 : 0), b),
+                new Vector2(nx, y + (m.RowH - body) / 2), b, nameColor);
         y += m.RowH + 2;
 
-        // Encadré COTE : « 950 › 966  +16 ».
+        // Encadré COTE : « 950 › 975  +25 ».
         var box = new Rectangle(col.X, y, col.Width, m.BoxH);
         PvpArt.Fill(sb, px, box, Palette.Black3);
         PvpArt.Border(sb, px, box, Palette.Black5, 2);

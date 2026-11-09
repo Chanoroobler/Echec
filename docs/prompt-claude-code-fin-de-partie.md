@@ -7,7 +7,7 @@ Ce qu'il faut faire :
 1. Plateau du combat figé en fond, sous un voile, et fenêtre de 600 px de large avec, dans l'ordre :
    - le titre (VICTOIRE / DÉFAITE / ÉGALITÉ) et la raison de fin, toutes celles listées dans le document ;
    - le face-à-face des commandants (`_front` ×2 pour toi, `_ia_front` ×2 pour l'adversaire, perdant assombri, étiquette BOT) ;
-   - le bloc CLASSEMENT : rang, cote animée « 950 › 966 +16 », barre de division avec les segments gagnés en jaune et perdus en rouge, promotion ou rétrogradation. Pour un défi entre amis, affiche « PARTIE AMICALE » à la place ;
+   - le bloc CLASSEMENT : rang, cote animée « 950 › 975 +25 », barre de division avec les segments gagnés en jaune et perdus en rouge, promotion ou rétrogradation. Pour un défi entre amis, affiche « PARTIE AMICALE » à la place ;
    - le bloc POINTS DE COFFRE : détail des gains depuis `pvp.json`, puis le total avec la pièce ;
    - le bandeau « UN COFFRE PEUT ÊTRE OUVERT », cliquable, qui mène à l'écran Coffres ;
    - les 4 stats de la partie : tours, durée, pions tués, pions perdus ;

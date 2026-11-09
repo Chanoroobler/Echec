@@ -65,7 +65,7 @@ Le nom du rang s'écrit dans la couleur claire du palier.
 
 ### Dernières parties
 
-- 4 dernières parties, lignes de 32 : résultat (VICTOIRE `Cyan1` / DÉFAITE `Purple5` / NULLE gris), adversaire (+ étiquette « BOT »), icône + rang + cote de l'adversaire, « 6 PIONS TUÉS », variation de cote (+16 `Cyan1`, −17 `Purple5`, 0 gris), quand (« IL Y A 12 MIN », « HIER »).
+- 4 dernières parties, lignes de 32 : résultat (VICTOIRE `Cyan1` / DÉFAITE `Purple5` / NULLE gris), adversaire (+ étiquette « BOT »), icône + rang + cote de l'adversaire, « 6 PIONS TUÉS », variation de cote (+25 `Cyan1`, −26 `Purple5`, 0 gris), quand (« IL Y A 12 MIN », « HIER »).
 
 ## Données (point à décider)
 

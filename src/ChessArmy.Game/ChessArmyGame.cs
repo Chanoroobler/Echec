@@ -291,6 +291,19 @@ public class ChessArmyGame : Microsoft.Xna.Framework.Game, IDisplayService
 
     protected override void UnloadContent()
     {
+        // Fermeture du jeu (menu « Quitter », croix, Alt+F4) : on décharge les scènes comme lors d'un changement
+        // d'écran. En multi, c'est ce qui enregistre la défaite d'une partie quittée et prévient l'adversaire
+        // (GameplayScene.UnloadPvp) ; sans ça, fermer le jeu en plein combat ne coûtait rien. Steam est encore
+        // actif ici (fermé après Run, cf. Program.cs).
+        try
+        {
+            while (_scenes.Count > 0)
+                _scenes.Pop();
+        }
+        catch (System.Exception e)
+        {
+            Console.WriteLine($"Déchargement des scènes à la fermeture : {e.Message}");
+        }
         _music?.Dispose();
         _sounds?.Dispose();
         _cursor?.Dispose();

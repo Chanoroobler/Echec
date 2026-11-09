@@ -18,6 +18,7 @@ namespace ChessArmy.Game.Net;
 ///   <see cref="MsgBuild"/> [JSON UTF-8]                        l'armée choisie (après la map, avant le combat)
 ///   <see cref="MsgAction"/> [coup 5][empreinte 8][réserve ms 4] un coup, dans le repère de l'ÉMETTEUR
 ///   <see cref="MsgDrawOffer"/> / <see cref="MsgDrawReply"/> [0|1]  proposition d'égalité et réponse
+///   <see cref="MsgReady"/>                                     prêt à jouer (fin de l'analyse de l'armée adverse)
 ///   <see cref="MsgHeartbeat"/>                                 « toujours là », chaque seconde (déconnexion)
 ///   <see cref="MsgLeave"/>                                     l'émetteur quitte (abandon)
 /// </summary>
@@ -31,6 +32,7 @@ public sealed class PvpSession : IDisposable
     private const byte MsgHeartbeat = 6;
     private const byte MsgDrawOffer = 8;
     private const byte MsgDrawReply = 9;
+    private const byte MsgReady = 10;
     private const int Channel = 0;
     private const int BufferSize = 8192;
     private const int ActionSize = 1 + BattleAction.SerializedSize + sizeof(ulong) + sizeof(int);
@@ -98,6 +100,12 @@ public sealed class PvpSession : IDisposable
 
     /// <summary>Réponse de l'adversaire à NOTRE proposition d'égalité (null = pas encore répondu).</summary>
     public bool? DrawAnswer { get; set; }
+
+    /// <summary>L'adversaire a fini d'étudier notre armée (bouton « Prêt » après le pile ou face).</summary>
+    public bool OpponentReady { get; private set; }
+
+    /// <summary>Un coup adverse attend d'être appliqué (il joue déjà : notre phase d'analyse doit finir).</summary>
+    public bool HasPendingAction => _incoming.Count > 0;
 
     /// <summary>Hôte : graine de la partie, envoyée à l'invité dès qu'il s'annonce (<see cref="MsgHello"/>).</summary>
     internal void PrepareAsHost(int seed) => Seed = seed;
@@ -176,6 +184,9 @@ public sealed class PvpSession : IDisposable
             case MsgDrawOffer:
                 DrawOffered = true;
                 break;
+            case MsgReady:
+                OpponentReady = true;
+                break;
             case MsgDrawReply when bytes.Length >= 2:
                 DrawAnswer = bytes[1] != 0;
                 break;
@@ -204,6 +215,21 @@ public sealed class PvpSession : IDisposable
         BitConverter.TryWriteBytes(_sendBuffer.AsSpan(1 + BattleAction.SerializedSize + sizeof(ulong)),
             (int)(reserveSeconds * 1000));
         Send(ActionSize);
+    }
+
+    /// <summary>On abandonne (bouton « Abandonner ») : l'adversaire gagne aussitôt, quel que soit le tour. La
+    /// session reste ouverte (fin de partie), le lobby est quitté plus tard par <see cref="Dispose"/>.</summary>
+    public void SendResign()
+    {
+        _sendBuffer[0] = MsgLeave;
+        Send(1);
+    }
+
+    /// <summary>On a fini d'étudier l'armée adverse.</summary>
+    public void SendReady()
+    {
+        _sendBuffer[0] = MsgReady;
+        Send(1);
     }
 
     public void SendDrawOffer()

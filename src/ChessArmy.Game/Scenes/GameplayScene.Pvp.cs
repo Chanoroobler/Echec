@@ -92,6 +92,7 @@ public sealed partial class GameplayScene
         _aiTimer = AiDelaySeconds;
         MarkLayoutDirty();
         Context.Sounds.Play("battle_start");
+        StartCoinFlip();   // pile ou face : montre qui commence, jeu et pendules gelés le temps de l'animation
     }
 
     /// <summary>
@@ -208,13 +209,15 @@ public sealed partial class GameplayScene
     private const float CollapseBannerHold = 1.8f;    // début du glissement vers le panneau
     private const float CollapseBannerSlide = 0.6f;   // durée du glissement
     private const int CollapseTagH = 14;              // hauteur ajoutée au panneau pour la ligne
+    private const int HeroPanelH = 120;               // notre panneau quand on a la main (temps du coup en ×3)
+    private const int HeroTagY = 112;                 // ligne de pendule basse dans ce panneau
     private Language _collapseTextLang = (Language)(-1);
     private string _collapseBannerText = "", _collapseTagText = "";
 
     private bool CollapseTagShown(Faction side) => _collapseState[(int)side] == 2;
 
-    private static Rectangle CollapseTagRect(Rectangle panel, bool active) =>
-        new(panel.X, panel.Y + (active ? 96 : 56), panel.Width, 7);
+    private static Rectangle CollapseTagRect(Rectangle panel, bool active, bool hero = false) =>
+        new(panel.X, panel.Y + (hero ? HeroTagY : active ? 96 : 56), panel.Width, 7);
 
     private void RefreshCollapseTexts()
     {
@@ -332,7 +335,11 @@ public sealed partial class GameplayScene
     {
         var session = PvpNet;
         session?.Update(dt);
+        if (UpdateCoinFlip(dt))
+            return true;   // pile ou face en cours : ni coups, ni pendules (le réseau, lui, reste vivant)
         UpdateCollapseBanner(dt);
+        UpdatePvpMorale(dt);    // la barre du moral glisse vers la balance (GameplayScene.PvpMorale.cs)
+        UpdatePvpTurnCue(dt);   // la main nous revient : son, barre des tâches, panneau « TOI » (GameplayScene.PvpTurn.cs)
         if (_pvpDrawRefused > 0f)
             _pvpDrawRefused -= dt;
 
@@ -352,6 +359,11 @@ public sealed partial class GameplayScene
                     else _pvpDrawRefused = 3f;
                 }
             }
+            // Analyse de l'armée adverse : pendules gelées, aucun coup ; le reste du combat (survol, caméra) vit.
+            if (PvpAnalysisActive && UpdatePvpAnalysis(dt))
+                return true;
+            if (PvpAnalysisActive)
+                return false;
             if (!_match.IsOver && !PvpOpponentDisconnected && BattleSettled && _pvpClock.Tick(dt))
                 OnClockFlag();
             if (_pvpClock.Flagged == Faction.Enemy && !_match.IsOver)
@@ -370,7 +382,8 @@ public sealed partial class GameplayScene
         _sparks.Update(dt);
         if (_damagePopups.HasActive)
             _damagePopups.Update(dt, BuildLayout(), _sparks);
-        UpdatePvpEndScreen(dt);   // fenêtre de fin (GameplayScene.PvpEnd.cs)
+        if (!MoraleReformHidesPanel)   // victoire au moral : la fenêtre attend que les éclats l'aient reformée
+            UpdatePvpEndScreen(dt);   // fenêtre de fin (GameplayScene.PvpEnd.cs)
         return true;
     }
 
@@ -383,6 +396,26 @@ public sealed partial class GameplayScene
             ExecuteAction(BattleAction.Resign(Faction.Player), out _);
             Context.Sounds.Play("defeat");
         }
+    }
+
+    private bool _pvpResignConfirm;
+    private Rectangle _pvpResignRect, _pvpResignYesRect, _pvpResignNoRect;
+
+    /// <summary>
+    /// Abandon volontaire confirmé : coup « abandon » joué et journalisé (le rejeu de validation contre un bot le
+    /// refait : la défaite compte), et l'adversaire humain prévenu (il gagne aussitôt, même si ce n'est pas notre
+    /// tour). La fin de partie suit son cours normal (CheckBattleEnd → OnPvpBattleEnd).
+    /// </summary>
+    private void ResignPvp()
+    {
+        if (_match.IsOver)
+            return;
+        ClearSelection();
+        _combatDragFrom = null;
+        var resign = BattleAction.Abandon(Faction.Player);
+        if (_match.Apply(resign) != MoveKind.Invalid)
+            _battleLog.Add(resign);
+        PvpNet?.SendResign();
     }
 
     private void ApplyAgreedDraw()
@@ -398,6 +431,29 @@ public sealed partial class GameplayScene
         var input = Context.Input;
         var click = input.WasLeftClicked;
         var mouse = input.MousePosition;
+
+        // Confirmation d'abandon ouverte : OUI / NON (A / B à la manette), le plateau ne réagit plus. Un clic
+        // ailleurs referme la question.
+        if (_pvpResignConfirm)
+        {
+            var yes = (click && _pvpResignYesRect.Contains(mouse)) || (input.UsingGamepad && input.WasConfirmPressed);
+            var no = (click && !yes) || (input.UsingGamepad && input.WasCancelPressed);
+            if (yes || no)
+            {
+                _pvpResignConfirm = false;
+                Context.Sounds.Play("menu_click");
+                if (yes)
+                    ResignPvp();
+            }
+            return true;
+        }
+        // X (manette) ou clic sur « Abandonner » : on demande confirmation.
+        if ((click && _pvpResignRect.Contains(mouse)) || input.WasTertiaryPressed)
+        {
+            _pvpResignConfirm = true;
+            Context.Sounds.Play("menu_click");
+            return true;
+        }
 
         if (PvpNet is { DrawOffered: true } session)
         {
@@ -485,6 +541,7 @@ public sealed partial class GameplayScene
                 PvpLeaderboardService.Upload(PvpProfileStore.Current, _pvpInfo.LocalBuild);
         }
         PvpNet?.Dispose();
+        UnloadMoraleFx();
     }
 
     // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -495,9 +552,14 @@ public sealed partial class GameplayScene
         var info = _pvpInfo!;
         sb.Begin(samplerState: SamplerState.PointClamp);
         if (!_match.IsOver || !_pvpRecorded)
+        {
             DrawPvpTopBar(sb, viewport, info);
+            DrawPvpMoraleFlights(sb);   // éclats des pions tombés, en route vers la barre du moral
+        }
         else
             DrawPvpEndPanel(sb, viewport, info);
+        DrawMoraleBurst(sb);          // victoire au moral : la barre explose et reforme la fenêtre de fin
+        DrawCoinFlip(sb, viewport);   // pile ou face du début de partie (rien s'il est fini)
         sb.End();
     }
 
@@ -519,14 +581,17 @@ public sealed partial class GameplayScene
         var rightCol = new Rectangle(boardRight + pad, pad, Math.Max(40, viewport.Width - boardRight - 2 * pad), viewport.Height - 2 * pad);
         var mine = _match.CurrentTurn == Faction.Player;
 
-        // Notre panneau : en bas à gauche ; celui de l'adversaire : en haut à droite.
-        var mePanel = SidePanel(leftCol, mine, fromBottom: true, CollapseTagShown(Faction.Player));
+        // Notre panneau : en bas à gauche (plus grand quand on a la main, et il bouge) ; l'adversaire : en haut à droite.
+        var hero = mine && PvpGameRunning;   // « À TOI DE JOUER » seulement une fois la partie lancée
+        var mePanel = SidePanel(leftCol, mine, fromBottom: true, CollapseTagShown(Faction.Player), hero);
+        mePanel.Y += PvpMyPanelOffset();
         DrawSide(sb, mePanel, Loc.T("pvp.you"), _pvpMyRank, _pvpMyRankName, _pvpClock.Reserve(Faction.Player), mine, Faction.Player);
         var themPanel = SidePanel(rightCol, !mine, fromBottom: false, CollapseTagShown(Faction.Enemy));
         DrawSide(sb, themPanel, info.DisplayName, _pvpTheirRank, _pvpTheirRankName, _pvpClock.Reserve(Faction.Enemy), !mine, Faction.Enemy);
         if (_collapseBanner >= 0f)
-            DrawCollapseBanner(sb, viewport, CollapseTagRect(_collapseBannerSide == Faction.Player ? mePanel : themPanel,
-                _collapseBannerSide == Faction.Player ? mine : !mine));
+            DrawCollapseBanner(sb, viewport, _collapseBannerSide == Faction.Player
+                ? CollapseTagRect(mePanel, mine, hero)
+                : CollapseTagRect(themPanel, !mine));
 
         var y = themPanel.Bottom + 8;
         if (PvpOpponentDisconnected && PvpNet is { } s)
@@ -536,9 +601,15 @@ public sealed partial class GameplayScene
         }
         if (_pvpDesync)
             y = DrawSideLine(sb, Loc.T("pvp.desync"), rightCol, y);
+        DrawPvpMorale(sb, leftCol);   // balance du moral, entre les deux panneaux
 
         if (_match.IsOver)
             return;
+        if (PvpAnalysisActive)
+        {
+            DrawPvpAnalysis(sb, rightCol);   // en bas à droite, à la place des boutons (masqués pendant l'analyse)
+            return;
+        }
 
         // Proposition d'égalité reçue : dans la colonne de l'adversaire, boutons l'un sous l'autre.
         if (PvpNet is { DrawOffered: true })
@@ -561,12 +632,33 @@ public sealed partial class GameplayScene
         label = PvpArt.Fit(font, label, rightCol.Width - 16, 1);
         _pvpDrawRect = new Rectangle(rightCol.X, rightCol.Bottom - 24, rightCol.Width, 24);
         PvpUi.Button(Context, sb, _pvpDrawRect, label, focused: false, enabled: !_pvpDrawPending && _pvpDrawRefused <= 0f);
+
+        // Abandon, juste au-dessus de l'égalité ; une fois cliqué, la question de confirmation prend sa place.
+        var onPad = Context.Input.UsingGamepad;
+        if (_pvpResignConfirm)
+        {
+            var panel = new Rectangle(rightCol.X, _pvpDrawRect.Y - 6 - 92, rightCol.Width, 92);
+            Context.Style.DrawPanel(sb, panel);
+            font.DrawCentered(sb, PvpArt.Fit(font, Loc.T("pvp.resign_confirm"), panel.Width - 12, 1),
+                new Rectangle(panel.X, panel.Y + 10, panel.Width, 7), 1, Palette.Purple5);
+            _pvpResignYesRect = new Rectangle(panel.X + 10, panel.Y + 28, panel.Width - 20, 24);
+            _pvpResignNoRect = new Rectangle(panel.X + 10, _pvpResignYesRect.Bottom + 6, panel.Width - 20, 24);
+            PvpUi.Button(Context, sb, _pvpResignYesRect, (onPad ? "(A) " : "") + Loc.T("common.yes"), focused: false);
+            PvpUi.Button(Context, sb, _pvpResignNoRect, (onPad ? "(B) " : "") + Loc.T("common.no"), focused: false);
+            _pvpResignRect = Rectangle.Empty;
+        }
+        else
+        {
+            _pvpResignRect = new Rectangle(rightCol.X, _pvpDrawRect.Y - 6 - 24, rightCol.Width, 24);
+            PvpUi.Button(Context, sb, _pvpResignRect,
+                PvpArt.Fit(font, (onPad ? "(X) " : "") + Loc.T("pvp.resign"), rightCol.Width - 16, 1), focused: false);
+        }
     }
 
     /// <summary>Panneau d'un camp dans sa colonne (plus haut s'il a la main : il affiche aussi le temps du coup).</summary>
-    private static Rectangle SidePanel(Rectangle column, bool active, bool fromBottom, bool collapseTag)
+    private static Rectangle SidePanel(Rectangle column, bool active, bool fromBottom, bool collapseTag, bool hero = false)
     {
-        var height = (active ? 104 : 64) + (collapseTag ? CollapseTagH : 0);
+        var height = (hero ? HeroPanelH : active ? 104 : 64) + (collapseTag ? CollapseTagH : 0);
         var width = Math.Min(column.Width, 220);
         var x = column.X + (column.Width - width) / 2;
         return new Rectangle(x, fromBottom ? column.Bottom - height : column.Y, width, height);
@@ -593,7 +685,7 @@ public sealed partial class GameplayScene
         {
             // Pendule basse annoncée : la ligne rouge reste sous la pendule (le bandeau central vient s'y ranger).
             RefreshCollapseTexts();
-            var tag = CollapseTagRect(panel, active);
+            var tag = CollapseTagRect(panel, active, hero: active && side == Faction.Player && PvpGameRunning);
             var tagAlpha = _collapseBanner >= 0f && _collapseBannerSide == side
                 ? MathHelper.Clamp((_collapseBanner - CollapseBannerHold - CollapseBannerSlide * 0.6f) / (CollapseBannerSlide * 0.4f), 0f, 1f)
                 : 1f;
@@ -618,10 +710,26 @@ public sealed partial class GameplayScene
         font.DrawCentered(sb, PvpUi.Clock(reserve), new Rectangle(panel.X, panel.Y + 38, panel.Width, 14), 2, reserveColor);
         if (!active)
             return;
-        // Le camp qui a la main : son tour et le temps qu'il lui reste pour ce coup.
+        var urgent = _pvpClock.MoveLeft < 10f;
+        if (side == Faction.Player && PvpGameRunning)
+        {
+            // C'est à nous : « À TOI DE JOUER » en gros et le temps du coup en très gros (le panneau bondit aussi,
+            // cf. PvpMyPanelOffset).
+            var call = Loc.T("pvp.your_turn");
+            var callScale = font.Measure(call, 2) <= panel.Width - 12 ? 2 : 1;
+            font.DrawCentered(sb, PvpArt.Fit(font, call, panel.Width - 12, callScale),
+                new Rectangle(panel.X, panel.Y + 62, panel.Width, 7 * callScale), callScale, Palette.Yellow2);
+            // Dernières secondes : le chiffre bat à chaque tic (×4 un instant) et tremble sur la fin (cf. PvpTurn).
+            var (scale, dx) = PvpCountdownPose();
+            var left = PvpMyTimeLeft;
+            var h = 7 * scale;
+            font.DrawCentered(sb, PvpUi.Clock(left), new Rectangle(panel.X + dx, panel.Y + 94 - h / 2, panel.Width, h), scale,
+                left < CountdownFrom ? Palette.Purple5 : Palette.Yellow2);
+            return;
+        }
+        // L'adversaire a la main : le temps qu'il lui reste pour ce coup.
         font.DrawCentered(sb, PvpArt.Fit(font, Loc.T("pvp.this_move"), panel.Width - 12, 1),
             new Rectangle(panel.X, panel.Y + 62, panel.Width, 7), 1, Palette.Blue1);
-        var urgent = _pvpClock.MoveLeft < 10f;
         font.DrawCentered(sb, PvpUi.Clock(_pvpClock.MoveLeft), new Rectangle(panel.X, panel.Y + 76, panel.Width, 14), 2,
             urgent ? Palette.Purple5 : Palette.Yellow2);
     }

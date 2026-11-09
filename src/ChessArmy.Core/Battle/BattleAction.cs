@@ -43,6 +43,9 @@ public readonly record struct BattleAction(BattleActionKind Kind, Cell From, Cel
     public static BattleAction Heal(Cell from, Cell target) => new(BattleActionKind.Heal, from, target);
     public static BattleAction SatchelPull(Cell from, Cell satchel) => new(BattleActionKind.SatchelPull, from, satchel);
     public static BattleAction Resign(Faction loser) => new(BattleActionKind.Resign, new Cell((int)loser, 0), default);
+
+    /// <summary>Abandon VOLONTAIRE (bouton « Abandonner ») : même coup que la pendule tombée, rangée 1 = volontaire.</summary>
+    public static BattleAction Abandon(Faction loser) => new(BattleActionKind.Resign, new Cell((int)loser, 1), default);
     public static BattleAction AgreeDraw => new(BattleActionKind.AgreeDraw, default, default);
     public static BattleAction Collapse(Faction side) => new(BattleActionKind.Collapse, new Cell((int)side, 0), default);
 

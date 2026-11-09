@@ -174,9 +174,26 @@ public sealed class PvpConfig
     /// (cf. <see cref="Battle.PvpSetup.CollapseAfterTurn"/>).</summary>
     public float CollapseBelowSeconds { get; init; } = 240;
     public float BuildChoiceSeconds { get; init; } = 30;
+    /// <summary>Après le pile ou face : temps pour étudier l'armée adverse (pendules gelées). Fini plus tôt si
+    /// les deux joueurs sont prêts.</summary>
+    public float AnalysisSeconds { get; init; } = 60;
+    /// <summary>Balance du moral : chaque pion tombé la fait pencher de son prix vers l'adversaire ; à ce seuil,
+    /// victoire (cf. <see cref="Battle.Match.Morale"/>). 0 = pas de moral.</summary>
+    public int MoraleToWin { get; init; } = 15;
     public float BotAfterSeconds { get; init; } = 10;
+    /// <summary>Délai avant le bot quand d'AUTRES joueurs sont sur le jeu (un humain a des chances d'arriver).</summary>
+    public float BotAfterBusySeconds { get; init; } = 40;
+
+    /// <summary>Délai avant le bot : <see cref="BotAfterBusySeconds"/> si d'autres joueurs sont en ligne, sinon
+    /// <see cref="BotAfterSeconds"/>.</summary>
+    public float BotDelay(bool othersOnline) => othersOnline ? BotAfterBusySeconds : BotAfterSeconds;
+
     public int StartRating { get; init; } = 950;
-    public int EloK { get; init; } = 32;
+    public int EloK { get; init; } = 50;
+    /// <summary>Série de victoires classées : à partir de la <see cref="WinStreakFrom"/>e victoire d'affilée, chaque
+    /// victoire rapporte <see cref="WinStreakBonus"/> de cote en plus de l'Elo.</summary>
+    public int WinStreakFrom { get; init; } = 3;
+    public int WinStreakBonus { get; init; } = 15;
 
     public IReadOnlyList<PvpRankDef> Ranks { get; init; } = new[]
     {
@@ -251,9 +268,14 @@ public sealed class PvpConfig
             ReconnectSeconds = dto.ReconnectSeconds ?? defaults.ReconnectSeconds,
             CollapseBelowSeconds = dto.CollapseBelowSeconds ?? defaults.CollapseBelowSeconds,
             BuildChoiceSeconds = dto.BuildChoiceSeconds ?? defaults.BuildChoiceSeconds,
+            AnalysisSeconds = dto.AnalysisSeconds ?? defaults.AnalysisSeconds,
+            MoraleToWin = dto.MoraleToWin ?? defaults.MoraleToWin,
             BotAfterSeconds = dto.BotAfterSeconds ?? defaults.BotAfterSeconds,
+            BotAfterBusySeconds = dto.BotAfterBusySeconds ?? defaults.BotAfterBusySeconds,
             StartRating = dto.StartRating ?? defaults.StartRating,
             EloK = dto.EloK ?? defaults.EloK,
+            WinStreakFrom = dto.WinStreakFrom ?? defaults.WinStreakFrom,
+            WinStreakBonus = dto.WinStreakBonus ?? defaults.WinStreakBonus,
             Ranks = dto.Ranks?.Select(r => new PvpRankDef(r.Id ?? "", r.From, System.Math.Max(1, r.Divisions), r.Span)).ToList()
                     ?? defaults.Ranks,
             StartingCommanders = dto.StartingCommanders ?? defaults.StartingCommanders,
@@ -304,9 +326,14 @@ public sealed class PvpConfig
         public float? ReconnectSeconds { get; set; }
         public float? CollapseBelowSeconds { get; set; }
         public float? BuildChoiceSeconds { get; set; }
+        public float? AnalysisSeconds { get; set; }
+        public int? MoraleToWin { get; set; }
         public float? BotAfterSeconds { get; set; }
+        public float? BotAfterBusySeconds { get; set; }
         public int? StartRating { get; set; }
         public int? EloK { get; set; }
+        public int? WinStreakFrom { get; set; }
+        public int? WinStreakBonus { get; set; }
         public List<RankDto>? Ranks { get; set; }
         public List<string>? StartingCommanders { get; set; }
         public ArmyDto? StartingArmy { get; set; }

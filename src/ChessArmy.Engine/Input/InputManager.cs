@@ -149,6 +149,9 @@ public sealed class InputManager
     /// <summary>Vrai si la manette est le dernier périphérique utilisé (sinon souris/clavier).</summary>
     public bool UsingGamepad => _usingGamepad;
 
+    /// <summary>La fenêtre du jeu est-elle au premier plan (valeur passée au dernier <see cref="Update"/>) ?</summary>
+    public bool HasFocus => _hadFocus;
+
     /// <summary>Navigation directionnelle (front + répétition auto) : croix directionnelle ou stick gauche.</summary>
     public bool Nav(NavDir dir) => _nav[(int)dir] || _nav[(int)dir + 4];
 

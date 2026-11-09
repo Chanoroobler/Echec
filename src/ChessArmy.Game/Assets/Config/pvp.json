@@ -21,11 +21,11 @@
     "mage": 4,   // mesuré : 3.71
     "spadassin": 4,   // mesuré : 4.45
     "archer": 5,   // mesuré : 5.04
-    "archer_monte": 5,   // mesuré : 4.71
-    "barde": 5,   // mesuré : 4.62
+    "archer_monte": 5,   // mesuré : 4.71    
     "cavalier_griffon": 5,   // mesuré : 4.90
     "forteresse": 5,   // mesuré : 4.54
     "garde": 5,   // mesuré : 4.65
+    "barde": 6,   // mesuré : 4.62
     "arbaletrier_monte": 6,   // mesuré : 6.19
     "pretresse": 6,   // mesuré : 6.00
     "sorcier": 6,   // mesuré : 5.62
@@ -38,8 +38,8 @@
     "maitre_arme": 8,   // mesuré : 8.42
     "paladin": 8,   // mesuré : 8.44
     "Dragoon": 8,   // mesuré : 8.66 (plafonné à 8, règle des 3 à 8 points)
-    "arbaletrier": 8,   // mesuré : 9.99 (plafonné à 8, règle des 3 à 8 points)
-    "voltigeur": 8   // mesuré : 10.08 (plafonné à 8, règle des 3 à 8 points)
+    "arbaletrier": 8,   // mesuré : 8.5 (stats multi revues : 12 / 10, avant 11 / 11 → 9.99)
+    "voltigeur": 8   // mesuré : 8.0 (stats multi revues : 11 / 11, avant 12 / 12 → 10.08)
   },
   "equipmentCost": {
     "Balistique": 1,   // mesuré : 1.20
@@ -126,18 +126,29 @@
 
   // Temps (secondes).
   "reserveSeconds": 600,
-  "moveSeconds": 60,
+  "moveSeconds": 120,
   "reconnectSeconds": 60,
   // Réserve sous laquelle chaque tour joué fait tomber une tuile des 2 lignes derrière le joueur.
   "collapseBelowSeconds": 240,
   "buildChoiceSeconds": 30,
+  // Après le pile ou face : temps pour étudier l'armée adverse (pendules gelées), fini plus tôt si les deux sont prêts.
+  "analysisSeconds": 60,
+  // Balance du MORAL : chaque pion tombé (commandant exclu) la fait pencher de son prix (« unitCost ») vers
+  // l'adversaire. Balance à ±moraleToWin = victoire du camp vers qui elle penche. 0 = désactivé.
+  "moraleToWin": 15,
   // Recherche classée : personne au bout de « botAfterSeconds » → bot du niveau du joueur (partie classée).
+  // S'il y a d'AUTRES joueurs sur le jeu (compte Steam des joueurs en jeu, ou un lobby multi visible), on attend
+  // « botAfterBusySeconds » à la place : un humain a des chances d'arriver.
   "botAfterSeconds": 10,
+  "botAfterBusySeconds": 40,
 
   // Cote (Elo) et rangs. Un rang couvre la cote de « from » jusqu'au rang suivant, découpé en « divisions »
   // tranches égales (la division III est la plus basse). Master n'a pas de division.
   "startRating": 950,
-  "eloK": 32,
+  "eloK": 50,
+  // Série de victoires classées : à partir de la « winStreakFrom »e victoire d'affilée, +« winStreakBonus » de cote.
+  "winStreakFrom": 3,
+  "winStreakBonus": 15,
   "ranks": [
     { "id": "bronze", "from": 0, "divisions": 3, "span": 300 },
     { "id": "fer", "from": 1100, "divisions": 3, "span": 300 },
@@ -159,7 +170,7 @@
   // bouge pas). Sert à recadrer une pièce trop forte ou trop faible ; relancer ensuite l'outil d'équilibrage.
   "unitStats": {
     "Dragoon": { "hp": 12, "damage": 10 },   // solo : 20 / 16
-    "arbaletrier": { "hp": 11, "damage": 11 },   // solo : 16 / 16
+    "arbaletrier": { "hp": 12, "damage": 10 },   // solo : 16 / 16
     "arbaletrier_monte": { "hp": 13, "damage": 10 },   // solo : 18 / 15
     "archer": { "hp": 11, "damage": 10 },   // solo : 14 / 13
     "archer_griffon": { "hp": 12, "damage": 9 },   // solo : 16 / 13
@@ -183,7 +194,7 @@
     "rodeur": { "hp": 8, "damage": 8 },   // solo : 16 / 15
     "sorcier": { "hp": 7, "damage": 12 },   // solo : 10 / 18
     "spadassin": { "hp": 12, "damage": 10 },   // solo : 16 / 13
-    "voltigeur": { "hp": 12, "damage": 12 }   // solo : 18 / 18
+    "voltigeur": { "hp": 11, "damage": 11 }   // solo : 18 / 18
   },
 
   // Commandants : stats PROPRES au multi, SANS POUVOIR pour l'instant (ni arbre ni trait) ; l'archétype passe par les stats.
@@ -216,9 +227,9 @@
       "front": [ "", "", "barbare", "barbare", "barbare", "", "", "" ] },
     { "commander": "Commandant_duo",
       "back":  [ "", "", "barde", "", "*", "barde", "barde", "" ],
-      "front": [ "", "soldat", "soldat", "soldat", "barbare", "soldat", "", "" ] },
+      "front": [ "", "soldat", "soldat", "soldat", "lancier", "soldat", "", "" ] },
     { "commander": "Commandant_fou",
-      "back":  [ "", "cavalier", "barde", "barde", "*", "cavalier_lourd", "paladin", "barde" ],
+      "back":  [ "", "cavalier", "barde", "barde", "*", "cavalier_lourd", "cavalier_griffon", "barde" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_lancier",
       "back":  [ "", "", "cavalier_griffon", "mage", "*", "cavalier_griffon", "cavalier_griffon", "" ],
@@ -272,7 +283,7 @@
       "back":  [ "", "sorcier", "cavalier_griffon", "paladin", "*", "garde", "garde", "garde" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_brute",
-      "back":  [ "", "barde", "arbaletrier", "arbaletrier", "*", "sorcier", "barde", "" ],
+      "back":  [ "", "barde", "arbaletrier", "arbaletrier", "*", "mage", "barde", "" ],
       "front": [ "", "", "", "soldat", "", "", "", "" ] },
     { "commander": "Commandant_cavalier",
       "back":  [ "", "", "javelinier", "javelinier", "*", "rodeur", "sorcier", "" ],
@@ -308,7 +319,7 @@
       "back":  [ "", "rodeur", "lancier", "lancier", "*", "lancier", "rodeur", "lancier" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "Commandant_marchand",
-      "back":  [ "", "barde", "mage", "mage", "*", "barde", "barde", "barde" ],
+      "back":  [ "", "lancier", "cavalier", "cavalier", "*", "barde", "barde", "barde" ],
       "front": [ "", "", "", "", "", "", "", "" ] },
     { "commander": "commandant",
       "back":  [ "", "", "archer_monte", "clerc", "*", "mage", "clerc", "" ],
@@ -381,7 +392,7 @@
       "back":  [ "", "lancier", "cavalier", "cavalier", "*", "lancier", "sorcier", "mage" ],
       "front": [ "", "", "", "soldat", "soldat", "", "", "" ] },
     { "commander": "Commandant_lancier",
-      "back":  [ "barde", "cavalier", "mage", "mage", "*", "cavalier", "cavalier", "mage" ],
+      "back":  [ "archer", "cavalier", "mage", "mage", "*", "cavalier", "cavalier", "mage" ],
       "front": [ "", "", "", "mage", "", "", "", "" ] },
     { "commander": "Commandant_marchand",
       "back":  [ "", "cavalier", "cavalier", "demoniste", "*", "cavalier", "mage", "lancier" ],

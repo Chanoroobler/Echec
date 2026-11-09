@@ -1,6 +1,6 @@
 # Multijoueur : écran de FIN DE PARTIE
 
-Maquette validée le 2026-11-06. Il remplace le panneau de fin actuel de `GameplayScene.Pvp.cs`, qui affiche « VICTOIRE », « +70 POINTS (TOTAL 70) », « COTE 950 > 966 BRONZE II », RETOUR AU MULTI et « CLIC POUR REVENIR AU MENU ».
+Maquette validée le 2026-11-06. Il remplace le panneau de fin actuel de `GameplayScene.Pvp.cs`, qui affiche « VICTOIRE », « +70 POINTS (TOTAL 70) », « COTE 950 > 975 BRONZE II », RETOUR AU MULTI et « CLIC POUR REVENIR AU MENU ».
 Captures à l'échelle 1 (1280×720) dans `docs/maquettes/` : `multi-11-fin-victoire.png`, `multi-12-fin-defaite.png`, `multi-13-fin-egalite.png`. Les pseudos et les chiffres sont simulés.
 
 ## Fond
@@ -24,7 +24,7 @@ Habillage des panneaux : fond `Black4`, bordure 3 px `Brown2`, liseré 2 px `Bro
    - le perdant est assombri (luminosité 55 %) ; en égalité, aucun des deux.
 4. Filet de 2 px `Black5`.
 5. **Deux colonnes** :
-   - **CLASSEMENT** : icône de rang ×2 + nom du rang (couleur claire du palier) ; encadré « COTE  950 › 966  +16 » (variation en `Cyan1` si gain, `Purple5` si perte, gris si 0) ; « VERS BRONZE I » + « 66 / 100 » ; barre de 10 segments : la base dans la couleur claire du palier, **les segments gagnés en `Yellow2` encadrés `Brown2`**, **les segments perdus en `Purple5`**.
+   - **CLASSEMENT** : icône de rang ×2 + nom du rang (couleur claire du palier) ; encadré « COTE  950 › 975  +25 » (variation en `Cyan1` si gain, `Purple5` si perte, gris si 0) ; « VERS BRONZE I » + « 75 / 100 » ; barre de 10 segments : la base dans la couleur claire du palier, **les segments gagnés en `Yellow2` encadrés `Brown2`**, **les segments perdus en `Purple5`**.
      En cas de montée ou de descente de division ou de palier, afficher « PROMU BRONZE I ! » en `Yellow2` (ou « RÉTROGRADÉ BRONZE III » en `Purple5`) à la place de « VERS … ».
      Défi entre amis : remplacer ce bloc par « PARTIE AMICALE · SANS EFFET SUR LE RANG ».
    - **POINTS DE COFFRE** : une ligne par gain (fond `Black3`, valeur en `Yellow2` à droite), par exemple « 6 PIONS TUÉS × 5 : +30 », puis « VICTOIRE : +30 » ou « ÉGALITÉ : +5 » (barème actuel 5 / 30 / 5, validé le 2026-11-06 ; les maquettes montrent l'ancien 2 / 15) (`PointsPerKill`, `PointsForWin`, `PointsForDraw` de `pvp.json`), puis l'encadré « TOTAL [pièce] 127 » (bordure `Brown1`, pièce 10×10 affichée ×2).

@@ -9,6 +9,16 @@ public class PvpBotFallbackTests
     public void DefaultDelayIsTenSeconds() => Assert.Equal(10f, new PvpConfig().BotAfterSeconds);
 
     [Fact]
+    public void DelayIsFortySecondsWhenOtherPlayersAreOnline()
+    {
+        var config = new PvpConfig();
+        Assert.Equal(10f, config.BotDelay(othersOnline: false));
+        Assert.Equal(40f, config.BotDelay(othersOnline: true));
+        Assert.False(PvpBotFallback.ShouldUseBot(39f, config.BotDelay(true), failed: false, hasOpponent: false, joining: false));
+        Assert.True(PvpBotFallback.ShouldUseBot(40f, config.BotDelay(true), failed: false, hasOpponent: false, joining: false));
+    }
+
+    [Fact]
     public void NoBotBeforeTheDelay() =>
         Assert.False(PvpBotFallback.ShouldUseBot(9.9f, 10f, failed: false, hasOpponent: false, joining: false));
 

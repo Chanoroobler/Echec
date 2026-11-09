@@ -7,6 +7,14 @@
   "unit_pick":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort A.wav",
   "unit_place":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Gather Plop Lower A.wav",
   "battle_start":"Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification A.wav",
+  // Multi : la main nous revient (coup adverse fini de se jouer). Cf. GameplayScene.PvpTurn.
+  "your_turn":   "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Notification/Notification C.wav",
+  // Multi : décompte des 10 dernières secondes de NOTRE coup, une fois par seconde. Cf. GameplayScene.PvpTurn.
+  // Multi : l'éclat d'un pion tombé touche la barre du moral. Cf. GameplayScene.PvpMorale.
+  "morale_hit": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/UI/Cozy UI D.wav",
+  // Multi : barre du moral pleine, elle explose avant la fenêtre de fin. Cf. GameplayScene.PvpMoraleBurst.
+  "morale_burst": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Wood and Stone/Stone Break A.wav",
+  "countdown_tick": "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Buttons/Pick Button E.wav",
 
   // ── Combat ───────────────────────────────────────────────────
   "unit_select":  "Cozy Casual Sound FX Pack Vol. 1/Cozy Casual Sound FX Pack Vol. 1/Inventory/Inventory Sort C.wav",

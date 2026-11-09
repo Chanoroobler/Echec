@@ -269,6 +269,42 @@ public class PvpTests : IDisposable
     }
 
     [Fact]
+    public void Morale_TiltsByThePriceOfEachFallenPawn_AndWinsAtTheThreshold()
+    {
+        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: true, seed: 5);
+        Assert.Equal(_config.MoraleToWin, match.MoraleToWin);
+        var back = PvpSetup.Size - 1;
+        // Commandants au milieu (hors des lignes qui tombent), pions du joueur sur toute sa ligne du fond.
+        match.Place(new Cell(4, 4), PvpCatalog.SpawnCommander("commandant", Faction.Player)!);
+        match.Place(new Cell(4, 2), PvpCatalog.SpawnCommander("commandant", Faction.Enemy)!);
+        var soldier = PvpCatalog.AllUnitClasses().First(c => c.Class.Asset == "soldat").Class;
+        for (var c = 0; c < PvpSetup.Size; c++)
+            match.Place(new Cell(c, back), PvpCatalog.Spawn(new PvpBuildSlot(c, PvpBuild.BackLine, "soldat", null), Faction.Player)!);
+        var price = PvpConfig.Current.CostOf(soldier);   // pvp.json chargé (le champ _config est lu avant)
+        Assert.True(price > 0);
+
+        var expected = 0;
+        while (!match.IsOver)
+        {
+            Assert.True(-expected < match.MoraleToWin, "la partie aurait dû finir au seuil");
+            match.CollapseTile(Faction.Player);   // un pion du joueur tombe : la balance penche vers l'ennemi
+            expected -= price;
+            Assert.Equal(expected, match.Morale);
+        }
+        Assert.Equal(Faction.Enemy, match.Winner);
+        Assert.Equal(MatchEndReason.Morale, match.EndReason);
+        Assert.True(-match.Morale >= match.MoraleToWin);
+        Assert.Equal(match.Morale, match.Clone().Morale);   // copiée pour les bots et le rejeu
+    }
+
+    [Fact]
+    public void Morale_IsOffOutsideMultiplayer()
+    {
+        var campaign = new Match(8, 8);
+        Assert.Equal(0, campaign.MoraleToWin);
+    }
+
+    [Fact]
     public void Collapse_UnderTheCommander_LosesTheGame()
     {
         var match = PvpSetup.CreateMatch(mirrored: false, localStarts: true, seed: 11);
@@ -305,6 +341,12 @@ public class PvpTests : IDisposable
         Assert.Equal(MatchEndReason.None, timeout.EndReason);
         timeout.Apply(BattleAction.Resign(Faction.Enemy));
         Assert.Equal(MatchEndReason.Timeout, timeout.EndReason);
+
+        // Abandon volontaire (bouton « Abandonner ») : raison « abandon », conservée par le miroir.
+        var abandon = PvpSetup.CreateMatch(false, true, 1);
+        abandon.Apply(PvpSetup.Mirror(BattleAction.Abandon(Faction.Player)));
+        Assert.Equal(MatchEndReason.Resign, abandon.EndReason);
+        Assert.Equal(Faction.Player, abandon.Winner);
 
         var left = PvpSetup.CreateMatch(false, true, 1);
         left.Concede(Faction.Enemy, MatchEndReason.Disconnect);
@@ -696,7 +738,8 @@ public class PvpTests : IDisposable
         var win = PvpRanks.Updated(1000, 1000, 1.0) - 1000;
         var loss = PvpRanks.Updated(1000, 1000, 0.0) - 1000;
         Assert.Equal(win, -loss);
-        Assert.True(win > 0);
+        Assert.Equal(25, win);                                         // cotes égales : K / 2 (K = 50)
+        Assert.Equal(0, PvpRanks.Updated(1000, 1000, 0.5) - 1000);     // nulle à cotes égales
     }
 
     // ── Profil ───────────────────────────────────────────────────────────────────
@@ -763,6 +806,26 @@ public class PvpTests : IDisposable
         Assert.Equal(25, back.Streak);
         Assert.Equal(profile.BestRating, back.BestRating);
         Assert.Equal(profile.WeekDelta(t0), back.WeekDelta(t0));
+    }
+
+    [Fact]
+    public void WinStreak_GivesBonusFromTheThirdWin()
+    {
+        var profile = PvpProfile.CreateNew();
+        var day = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        int Win(string who)
+        {
+            var r = profile.RecordResult(PvpOutcome.Win, 0, profile.Rating, true, who, false, day);
+            return r.RatingAfter - r.RatingBefore;
+        }
+        Assert.Equal(25, Win("a"));                                    // cotes égales : Elo seul
+        Assert.Equal(25, Win("b"));
+        Assert.Equal(25 + 15, Win("c"));                               // 3e victoire d'affilée : +15
+        Assert.Equal(25 + 15, Win("d"));
+        profile.RecordResult(PvpOutcome.Win, 0, profile.Rating, false, "ami", false, day);   // amical : hors série
+        Assert.Equal(25 + 15, Win("e"));
+        profile.RecordResult(PvpOutcome.Loss, 0, profile.Rating, true, "f", false, day);
+        Assert.Equal(25, Win("g"));                                    // série cassée : on repart de 1
     }
 
     [Fact]

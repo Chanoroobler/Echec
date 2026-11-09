@@ -239,6 +239,16 @@ public sealed class Match
     /// défaite du joueur comme en campagne).</summary>
     public bool PvpRules { get; }
 
+    /// <summary>
+    /// Multi : balance du MORAL entre les deux armées, vue du joueur local (positif = penche vers lui). Chaque
+    /// pion tombé (commandant exclu) la fait pencher vers le camp adverse de son prix multi (pvp.json « unitCost ») ;
+    /// à ±<see cref="MoraleToWin"/>, le camp vers qui elle penche gagne (<see cref="MatchEndReason.Morale"/>).
+    /// </summary>
+    public int Morale { get; private set; }
+
+    /// <summary>Moral à atteindre pour gagner (pvp.json « moraleToWin »). 0 = pas de moral (campagne).</summary>
+    public int MoraleToWin { get; init; }
+
     /// <summary>Termine la partie sur une nulle (égalité acceptée, position morte). Sans effet si elle est finie.</summary>
     public void EndInDraw(MatchEndReason reason = MatchEndReason.AgreedDraw)
     {
@@ -2465,6 +2475,13 @@ public sealed class Match
     private void OnUnitDied(Unit dead, Cell where)
     {
         _deathLog.Add((where, dead));   // journal des morts du combat (cf. DeathLog) : ce hook est le seul passage obligé
+        // Moral (multi) : l'armée qui perd un pion perd du moral, la balance penche vers l'autre camp. Le
+        // commandant n'y entre pas (sa chute décide déjà la partie). Victoire au seuil : cf. UpdateWinner.
+        if (MoraleToWin > 0 && !dead.IsEssential)
+        {
+            var price = Pvp.PvpConfig.Current.CostOf(dead.Class);
+            Morale += dead.Faction == Faction.Enemy ? price : -price;
+        }
         foreach (var (_, u) in Units())
         {
             if (u.Faction != dead.Faction)
@@ -2672,8 +2689,9 @@ public sealed class Match
             case BattleActionKind.Resign:
                 if (IsOver || action.From.Column is not (0 or 1))
                     return MoveKind.Invalid;
-                // Le coup « Resign » n'est envoyé aujourd'hui que par une pendule tombée (cf. GameplayScene.OnClockFlag).
-                Concede((Faction)action.From.Column, MatchEndReason.Timeout);
+                // Rangée 0 : pendule tombée (cf. GameplayScene.OnClockFlag) ; rangée 1 : abandon volontaire
+                // (BattleAction.Abandon, bouton « Abandonner »).
+                Concede((Faction)action.From.Column, action.From.Row == 1 ? MatchEndReason.Resign : MatchEndReason.Timeout);
                 return MoveKind.Moved;
             case BattleActionKind.AgreeDraw:
                 if (IsOver)
@@ -2763,6 +2781,8 @@ public sealed class Match
         Handovers = s.Handovers;
         _mirrorRows = s._mirrorRows;
         PvpRules = s.PvpRules;
+        Morale = s.Morale;
+        MoraleToWin = s.MoraleToWin;
         _lastThrow = s._lastThrow;
         _shieldHits.AddRange(s._shieldHits);
         _shielding = s._shielding;
@@ -2810,6 +2830,7 @@ public sealed class Match
         h = Mix(h, (int)Canon(CurrentTurn, mirrored));
         h = Mix(h, Winner is { } w ? (int)Canon(w, mirrored) + 1 : 0);
         h = Mix(h, (_extraTurnUsed ? 1 : 0) | (IsDraw ? 2 : 0));
+        h = Mix(h, mirrored ? -Morale : Morale);   // balance du moral, dans le repère de l'hôte
         for (var c = 0; c < Width; c++)
             for (var r = 0; r < Height; r++)
             {
@@ -3108,5 +3129,12 @@ public sealed class Match
         else if ((!hasEnemy && _eliminationEndsGame) || enemyLeaderDown) Winner = Faction.Player;
         if (Winner != null && EndReason == MatchEndReason.None)
             EndReason = MatchEndReason.LeaderDown;
+
+        // Moral (multi) : balance totalement d'un côté = victoire de ce camp (un commandant tombé passe avant).
+        if (Winner == null && MoraleToWin > 0 && System.Math.Abs(Morale) >= MoraleToWin)
+        {
+            Winner = Morale > 0 ? Faction.Player : Faction.Enemy;
+            EndReason = MatchEndReason.Morale;
+        }
     }
 }

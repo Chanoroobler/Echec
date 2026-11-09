@@ -23,7 +23,10 @@ public static class PvpSetup
     public static Match CreateMatch(bool mirrored, bool localStarts, int seed, Battlefield? terrain = null,
         IEnumerable<Cell>? cover = null) =>
         new(Size, Size, terrain, cover, rng: new SeededRandom(seed),
-            firstTurn: localStarts ? Faction.Player : Faction.Enemy, mirrorRows: mirrored, pvpRules: true);
+            firstTurn: localStarts ? Faction.Player : Faction.Enemy, mirrorRows: mirrored, pvpRules: true)
+        {
+            MoraleToWin = Pvp.PvpConfig.Current.MoraleToWin,   // balance du moral : victoire à ±15 (pvp.json)
+        };
 
     /// <summary>Tirage au sort du premier joueur, dérivé de la graine de l'hôte (les deux clients le connaissent).</summary>
     public static bool HostStarts(int seed) => (seed & 0x10) == 0;
@@ -196,7 +199,8 @@ public static class PvpSetup
     /// (abandon) changent aussi de camp : « Player » chez l'un est « Enemy » chez l'autre.</summary>
     public static BattleAction Mirror(in BattleAction action) => action.Kind switch
     {
-        BattleActionKind.Resign => BattleAction.Resign(((Faction)action.From.Column).Opponent()),
+        BattleActionKind.Resign => new(BattleActionKind.Resign,
+            new Cell((int)((Faction)action.From.Column).Opponent(), action.From.Row), default),   // rangée = volontaire ou pendule
         BattleActionKind.Collapse => BattleAction.Collapse(((Faction)action.From.Column).Opponent()),
         BattleActionKind.AgreeDraw or BattleActionKind.Pass => action,
         _ => new(action.Kind, Mirror(action.From), Mirror(action.Target)),

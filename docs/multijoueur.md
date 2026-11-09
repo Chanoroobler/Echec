@@ -81,7 +81,7 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
 - Barème (budget, coûts, prix des coffres, gains) : proposé par Claude dans un JSON, réglé ensuite.
 
 **En partie**
-- Réserve de **10 min** par joueur + **1 min max par coup** ; dépasser l'un ou l'autre = défaite.
+- Réserve de **10 min** par joueur + **2 min max par coup** ; dépasser l'un ou l'autre = défaite.
 - **Pendule basse** (ajout 2026-11-07) : sous **4 min** de réserve, chaque tour joué fait tomber une tuile des
   **2 lignes derrière le joueur** (ligne du fond d'abord, case au hasard). Le pion dessus (quel que soit son camp)
   tombe et meurt ; le roi emporté = défaite. Les deux lignes parties, plus rien ne tombe. Seuil : `collapseBelowSeconds`.
@@ -90,6 +90,13 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
   pièce ne peut en atteindre une autre.
 - Premier joueur **tiré au sort**.
 - Déconnexion : **60 s** pour revenir, puis défaite.
+- **Analyse** (ajout 2026-11-09) : après le pile ou face, **60 s** pour étudier l'armée adverse, pendules gelées ;
+  bouton **Prêt**, la partie démarre dès que les deux le sont (`analysisSeconds`).
+- **Abandon** (ajout 2026-11-09) : bouton avec confirmation, à tout moment. Fermer le jeu en partie = défaite.
+- **Moral** (ajout 2026-11-09) : balance entre les deux armées, à 0 au départ. Chaque pion tombé (commandant
+  exclu, chute de tuile comprise) la fait pencher vers l'adversaire de son **prix multi** (`unitCost`, sans
+  l'équipement). À **±15** (`moraleToWin`), le camp vers qui elle penche gagne. Barre verticale entre les deux
+  panneaux (adversaire en haut, toi en bas).
 
 ## Implémentation (2026-11-05)
 
@@ -142,7 +149,7 @@ profil n'est ni lu ni écrit), puis ferme le jeu.
 | `Pvp/PvpRanks` | Cote Elo, rangs à divisions |
 | `Pvp/PvpProfile` | Profil multi : points, cote, bilan, déblocages, 3 armées ; fichier chiffré (AES) et signé (HMAC), lié au compte Steam |
 | `Pvp/Obscured` | `ObscuredInt` / `ObscuredSet` : valeurs jamais en clair en mémoire, toute retouche détectée |
-| `Pvp/PvpClock` | Réserve 10 min + 1 min par coup |
+| `Pvp/PvpClock` | Réserve 10 min + 2 min par coup |
 | `Pvp/PvpBotAi` | IA des bots par rang : heuristique rapide (rangs bas), recherche alpha-bêta sur des copies de la partie (rangs hauts), évaluation aux poids entraînés |
 | `Pvp/PvpForker` | Copies exactes d'une partie (rejouée depuis graine + armées + journal) pour que le bot essaie des coups |
 | `Pvp/PvpLeaderboard` | Classement : bilan + formation encodés dans les détails d'une entrée Steam ; choix d'une formation de joueur pour un bot |

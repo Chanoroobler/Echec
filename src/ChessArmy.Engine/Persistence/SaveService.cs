@@ -499,12 +499,24 @@ public sealed class SaveService
         }
     }
 
+    /// <summary>
+    /// Écriture ATOMIQUE : sérialise dans <c>path.tmp</c>, force le vidage disque, puis remplace le fichier final
+    /// par un renommage. Un crash ou une fermeture en pleine écriture laisse donc l'ancienne version intacte
+    /// (au pire un <c>.tmp</c> orphelin, écrasé à la prochaine sauvegarde) : jamais de save tronquée, que
+    /// Steam Cloud propagerait ensuite à tous les PC du joueur.
+    /// </summary>
     private static void TryWrite<T>(string path, T value)
     {
         try
         {
             TryEnsureDir(Path.GetDirectoryName(path));
-            File.WriteAllText(path, JsonSerializer.Serialize(value, Json));
+            var temp = path + ".tmp";
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, value, Json);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temp, path, overwrite: true);
         }
         catch (Exception ex)
         {

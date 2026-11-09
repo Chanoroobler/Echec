@@ -12,8 +12,11 @@ namespace ChessArmy.Core.Pvp;
 /// <summary>Issue d'une partie multi, vue du joueur local.</summary>
 public enum PvpOutcome { Win, Loss, Draw }
 
-/// <summary>Ce qu'une partie a rapporté (affiché sur le panneau de fin).</summary>
-public readonly record struct PvpReward(int Points, int RatingBefore, int RatingAfter, bool Ranked);
+/// <summary>Ce qu'une partie a rapporté (affiché sur le panneau de fin). <paramref name="StreakBonus"/> : cote de
+/// bonus de série (déjà comprise dans <paramref name="RatingAfter"/>), <paramref name="Streak"/> : victoires
+/// d'affilée qui l'ont déclenché.</summary>
+public readonly record struct PvpReward(int Points, int RatingBefore, int RatingAfter, bool Ranked, int Streak = 0,
+    int StreakBonus = 0);
 
 /// <summary>Une partie de l'historique (DERNIÈRES PARTIES) : issue, adversaire (bot ou non, cote), pions tués,
 /// variation de cote et date (secondes Unix UTC).</summary>
@@ -256,10 +259,20 @@ public sealed class PvpProfile
         else _draws = Draws + 1;
 
         var before = Rating;
+        int streak = 0, bonus = 0;
         if (ranked)
+        {
             _rating = PvpRanks.Updated(before, opponentRating,
                 outcome switch { PvpOutcome.Win => 1.0, PvpOutcome.Draw => 0.5, _ => 0.0 });
-        return new PvpReward(gained, before, Rating, ranked);
+            // Série : cette victoire est la (Streak + 1)e d'affilée (Streak est mis à jour après, dans RecordResult).
+            if (outcome == PvpOutcome.Win && Math.Max(Streak, 0) + 1 >= config.WinStreakFrom)
+            {
+                streak = Math.Max(Streak, 0) + 1;
+                bonus = config.WinStreakBonus;
+                _rating = Rating + bonus;
+            }
+        }
+        return new PvpReward(gained, before, Rating, ranked, streak, bonus);
     }
 
     // ── Fichier chiffré et signé ─────────────────────────────────────────────────

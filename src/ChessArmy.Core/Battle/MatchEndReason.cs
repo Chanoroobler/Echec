@@ -26,4 +26,7 @@ public enum MatchEndReason : byte
 
     /// <summary>Les deux camps tombent dans le même coup.</summary>
     MutualDestruction,
+
+    /// <summary>Balance du moral totalement d'un côté (multi, cf. <see cref="Match.Morale"/>).</summary>
+    Morale,
 }

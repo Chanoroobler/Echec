@@ -334,7 +334,7 @@ public sealed class PixelFont : ITextFont
         // Point médian (séparateur « A · B ») et points de suspension (troncature « … »), sur un seul glyphe.
         ['·'] = G(".....", ".....", ".....", "..#..", ".....", ".....", "....."),
         ['…'] = G(".....", ".....", ".....", ".....", ".....", ".....", "#.#.#"),
-        // Multiplication (« 6 PIONS TUÉS × 2 »), chevron (« 950 › 966 ») et plus-ou-moins (« ±0 »).
+        // Multiplication (« 6 PIONS TUÉS × 2 »), chevron (« 950 › 975 ») et plus-ou-moins (« ±0 »).
         ['×'] = G(".....", ".....", "#...#", ".#.#.", "..#..", ".#.#.", "#...#"),
         ['›'] = G(".....", ".#...", "..#..", "...#.", "..#..", ".#...", "....."),
         ['±'] = G(".....", "..#..", "..#..", "#####", "..#..", "..#..", "#####"),

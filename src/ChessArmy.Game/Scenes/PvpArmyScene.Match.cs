@@ -9,7 +9,8 @@ namespace ChessArmy.Game.Scenes;
 /// <summary>
 /// Lancement depuis l'écran Armée, SANS en sortir : tout est classé (sauf DÉFIER UN AMI, partie privée).
 ///  • LANCER UNE PARTIE : recherche par cote (<see cref="PvpMatchmaker.Start"/>) ; personne au bout de
-///    <c>BotAfterSeconds</c> (ou pas de Steam) → bot du niveau du joueur. L'armée reste modifiable pendant ce temps.
+///    <c>BotAfterSeconds</c>, ou <c>BotAfterBusySeconds</c> si d'autres joueurs sont en ligne (ou pas de Steam) → bot
+///    du niveau du joueur. L'armée reste modifiable pendant ce temps.
 ///  • DÉFIER UN AMI activé : lobby privé + overlay Steam (le bouton réinvite pendant l'attente). Une invitation
 ///    acceptée (<see cref="PvpInvites"/>) bascule directement en connexion.
 ///  • Adversaire trouvé : l'armée sélectionnée est VERROUILLÉE (copie envoyée tout de suite), 5 s, puis le combat
@@ -145,7 +146,7 @@ public sealed partial class PvpArmyScene
         _searchTime += dt;
         mm.Update(dt);
         if (_mode == SearchMode.Search
-            && PvpBotFallback.ShouldUseBot(mm.SearchTime, PvpConfig.Current.BotAfterSeconds, mm.Failed,
+            && PvpBotFallback.ShouldUseBot(mm.SearchTime, PvpConfig.Current.BotDelay(mm.OthersOnline), mm.Failed,
                 hasOpponent: mm.Session != null, joining: mm.Joining))
         {
             FoundBot();   // personne à notre niveau (ou Steam indisponible) : un bot prend le relais

@@ -1218,7 +1218,8 @@ public sealed partial class PvpArmyScene
                 break;
             default:
                 line1 = Loc.T("pvp.searching_s");
-                var left = PvpBotFallback.SecondsLeft(_mm?.SearchTime ?? _searchTime, PvpConfig.Current.BotAfterSeconds);
+                var left = PvpBotFallback.SecondsLeft(_mm?.SearchTime ?? _searchTime,
+                    PvpConfig.Current.BotDelay(_mm?.OthersOnline ?? false));   // 40 s s'il y a du monde, sinon 10 s
                 line2 = Loc.T("pvp.bot_in_s", left);
                 break;
         }

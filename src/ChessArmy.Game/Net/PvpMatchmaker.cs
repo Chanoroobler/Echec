@@ -11,7 +11,8 @@ namespace ChessArmy.Game.Net;
 /// de son niveau et qu'avec peu on finit par trouver n'importe qui. Sans lobby à rejoindre, on crée le sien et on
 /// attend (on est l'HÔTE). Deux hôtes qui s'attendent se retrouvent grâce au balayage régulier : celui dont le
 /// lobby a le plus GRAND identifiant abandonne le sien et rejoint l'autre. C'est l'écran qui bascule sur un bot
-/// au bout de <c>BotAfterSeconds</c>.
+/// au bout de <c>BotAfterSeconds</c>, ou <c>BotAfterBusySeconds</c> si d'autres joueurs sont en ligne
+/// (<see cref="OthersOnline"/>).
 ///
 /// DÉFI ENTRE AMIS (<see cref="StartFriendLobby"/> / <see cref="JoinInvite"/>) : lobby privé + invitation Steam.
 ///
@@ -36,6 +37,7 @@ public sealed class PvpMatchmaker : IDisposable
     private readonly CallResult<LobbyCreated_t> _createResult;
     private readonly CallResult<LobbyEnter_t> _enterResult;
     private readonly Callback<LobbyChatUpdate_t> _chatUpdate;
+    private readonly CallResult<NumberOfCurrentPlayers_t> _playersResult;
     private readonly Random _seeds = new();
     private readonly int _rating;
 
@@ -55,6 +57,7 @@ public sealed class PvpMatchmaker : IDisposable
         _createResult = CallResult<LobbyCreated_t>.Create(OnLobbyCreated);
         _enterResult = CallResult<LobbyEnter_t>.Create(OnLobbyEntered);
         _chatUpdate = Callback<LobbyChatUpdate_t>.Create(OnChatUpdate);
+        _playersResult = CallResult<NumberOfCurrentPlayers_t>.Create(OnPlayerCount);
         s_sessionRequest ??= Callback<SteamNetworkingMessagesSessionRequest_t>.Create(OnSessionRequest);
     }
 
@@ -81,7 +84,18 @@ public sealed class PvpMatchmaker : IDisposable
             Failed = true;
             return;
         }
+        _playersResult.Set(SteamUserStats.GetNumberOfCurrentPlayers());   // y a-t-il du monde ? (délai du bot)
         RequestList();
+    }
+
+    /// <summary>D'autres joueurs sont sur le jeu (compte Steam des joueurs en jeu, nous exclu, ou un lobby multi
+    /// d'un autre joueur vu au balayage) : le bot attend alors plus longtemps (<see cref="PvpConfig.BotDelay"/>).</summary>
+    public bool OthersOnline { get; private set; }
+
+    private void OnPlayerCount(NumberOfCurrentPlayers_t result, bool ioFailure)
+    {
+        if (!_disposed && !ioFailure && result.m_bSuccess != 0 && result.m_cPlayers > 1)
+            OthersOnline = true;   // le compte nous inclut
     }
 
     /// <summary>
@@ -177,6 +191,8 @@ public sealed class PvpMatchmaker : IDisposable
             for (var i = 0; i < result.m_nLobbiesMatching; i++)
             {
                 var lobby = SteamMatchmaking.GetLobbyByIndex(i);
+                if (lobby != _ownLobby)
+                    OthersOnline = true;   // un autre joueur cherche (même trop loin en cote pour l'instant)
                 if (lobby == _ownLobby || !RatingFits(lobby))
                     continue;
                 if (_ownLobby != CSteamID.Nil)
@@ -305,5 +321,6 @@ public sealed class PvpMatchmaker : IDisposable
         _listResult.Dispose();
         _createResult.Dispose();
         _enterResult.Dispose();
+        _playersResult.Dispose();
     }
 }

@@ -16,7 +16,8 @@ namespace ChessArmy.Game.Scenes;
 /// <summary>Données SIMULÉES d'un écran de fin multi (captures Debug).</summary>
 internal sealed record PvpEndShot(string Name, Point Canvas, Language Lang, PvpOutcome Outcome, MatchEndReason Reason,
     string Opponent, bool Bot, bool Friendly, string Mine, string Theirs, int Before, int After, int Kills, int Lost,
-    int Rounds, int Seconds, int Total, bool Valid = true, bool Desync = false, float Time = 5f, bool Chest = true);
+    int Rounds, int Seconds, int Total, bool Valid = true, bool Desync = false, float Time = 5f, bool Chest = true,
+    int Streak = 0);
 
 public sealed partial class GameplayScene
 {
@@ -33,7 +34,9 @@ public sealed partial class GameplayScene
         _pvpRecorded = true;
         _pvpValid = s.Valid;
         _pvpDesync = s.Desync;
-        _pvpReward = s.Valid ? new PvpReward(points, s.Before, s.After, !s.Friendly) : null;
+        _pvpReward = s.Valid
+            ? new PvpReward(points, s.Before, s.After, !s.Friendly, s.Streak, s.Streak > 0 ? config.WinStreakBonus : 0)
+            : null;
         BeginPvpEndScreen(s.Outcome);
         var e = _pvpEnd!;
         e.Opponent = s.Opponent;
@@ -86,23 +89,25 @@ internal sealed class PvpEndShots
         foreach (var (canvas, tag) in new[] { (big, "1280"), (small, "960") })
         {
             _steps.Add(new($"{tag}-11-victoire", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.LeaderDown,
-                "Minos", false, false, "commandant", "Commandant_lancier", 950, 966, 6, 3, 18, 462, 127));
+                "Minos", false, false, "commandant", "Commandant_lancier", 950, 975, 6, 3, 18, 462, 127));
             _steps.Add(new($"{tag}-12-defaite", canvas, Language.Francais, PvpOutcome.Loss, MatchEndReason.LeaderDown,
-                "Vauclair", false, false, "commandant", "Commandant_cavalier", 966, 949, 3, 9, 14, 310, 106));
+                "Vauclair", false, false, "commandant", "Commandant_cavalier", 966, 940, 3, 9, 14, 310, 106));
             _steps.Add(new($"{tag}-13-egalite-bot", canvas, Language.Francais, PvpOutcome.Draw, MatchEndReason.DeadPosition,
                 "BOT FER", true, false, "commandant", "Commandant_fou", 949, 949, 4, 5, 31, 725, 113));
             _steps.Add(new($"{tag}-14-bot-victoire", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.Timeout,
-                "Corwin", true, false, "commandant", "Commandant_brute", 1180, 1194, 5, 2, 22, 540, 88, Chest: false));
+                "Corwin", true, false, "commandant", "Commandant_brute", 1180, 1202, 5, 2, 22, 540, 88, Chest: false));
             _steps.Add(new($"{tag}-15-defi-ami", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.Resign,
                 "Rougegorge_Le_Magnifique_Du_Nord", false, true, "commandant", "Commandant_marchand", 966, 966, 7, 4, 20, 498, 131));
             _steps.Add(new($"{tag}-16-promotion", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.Disconnect,
-                "Tonnelier", false, false, "Commandant_duo", "commandant", 990, 1006, 2, 1, 9, 201, 74));
+                "Tonnelier", false, false, "Commandant_duo", "commandant", 990, 1015, 2, 1, 9, 201, 74));
             _steps.Add(new($"{tag}-17-desynchro", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.LeaderDown,
                 "Minos", false, false, "commandant", "Commandant_lancier", 950, 950, 6, 3, 18, 462, 67, Valid: false, Desync: true));
             _steps.Add(new($"{tag}-18-animation", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.LeaderDown,
-                "Minos", false, false, "commandant", "Commandant_lancier", 950, 966, 6, 3, 18, 462, 127, Time: 0.9f));
+                "Minos", false, false, "commandant", "Commandant_lancier", 950, 975, 6, 3, 18, 462, 127, Time: 0.9f));
             _steps.Add(new($"{tag}-19-egalite-acceptee", canvas, Language.Francais, PvpOutcome.Draw, MatchEndReason.AgreedDraw,
-                "Minos", false, false, "commandant", "Commandant_lancier", 1010, 1004, 1, 1, 12, 300, 52));
+                "Minos", false, false, "commandant", "Commandant_lancier", 1010, 1001, 1, 1, 12, 300, 52));
+            _steps.Add(new($"{tag}-20-serie", canvas, Language.Francais, PvpOutcome.Win, MatchEndReason.LeaderDown,
+                "Minos", false, false, "commandant", "Commandant_lancier", 950, 990, 6, 3, 18, 462, 127, Streak: 4));
         }
         // Langues verbeuses et chinois, au format le plus serré et au grand.
         foreach (var lang in new[] { Language.Deutsch, Language.Polski, Language.Turkce, Language.English, Language.Italiano,

@@ -1042,6 +1042,7 @@ public sealed partial class GameplayScene : Scene
         _snow.Unload();
         _chuteSprite?.Dispose();
         _chuteSprite = null;
+        UnloadCoinFlip();
         _equipSlotBg?.Dispose();
         _equipSlotBg = null;
         foreach (var sprite in _equipSprites.Values)
@@ -6149,7 +6150,13 @@ public sealed partial class GameplayScene : Scene
             }
         }
 
-        if (_match.CurrentTurn == Faction.Enemy)
+        if (_pvpInfo != null && PvpAnalysisActive)
+        {
+            // Multi, analyse de l'armée adverse : personne ne joue ; la manette garde son curseur (cartes des pions).
+            if (Context.Input.UsingGamepad)
+                MoveCursor(CombatSnapTargets);
+        }
+        else if (_match.CurrentTurn == Faction.Enemy)
         {
             if (_tutorial != null)
                 TutorialEnemyTurn(gameTime);   // ennemi qui AVANCE (alternance visible), jamais d'attaque
@@ -6200,7 +6207,7 @@ public sealed partial class GameplayScene : Scene
     /// est le seul moyen de ne pas conclure sur un coup que le joueur n'a pas encore vu. Sert à la fin de
     /// combat comme aux découvertes de terrain (coffres, tuiles recrue).
     /// </summary>
-    private bool BattleSettled => FxSettled && _pendingCollapses.Count == 0;
+    private bool BattleSettled => FxSettled && _pendingCollapses.Count == 0 && !MoraleFxBusy;   // multi : éclats de moral en vol
 
     /// <summary><see cref="BattleSettled"/> sans les tuiles de pendule basse en attente (multi) : c'est le moment
     /// où elles commencent à tomber (cf. <see cref="StartPendingCollapses"/>).</summary>
