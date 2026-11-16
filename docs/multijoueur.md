@@ -63,7 +63,7 @@ Réponses de l'auteur au questionnaire de cadrage. Elles font référence pour t
 - Limites : la force mesurée est celle que la même IA tire de chaque pièce ; le modèle additionne les valeurs (les
   synergies et le placement ne sont pas pris en compte séparément).
 - Cases vides permises, doublons permis : seul le budget limite. Deux lignes de 8 cases.
-- Commandant obligatoire et **payant** : le plus faible coûte 0, chacun coûte son écart de force mesuré avec lui. Leurs stats multi sont resserrées pour que l'écart reste petit (0 à 6 points). Le **DUO vient avec Basile** (case réservée à gauche du commandant ; la mort de l'un OU de l'autre fait perdre), compté dans son coût. Sa case est **fixe au placement** (centre de la ligne du
+- Commandant obligatoire et **payant** : le plus faible coûte 0, chacun coûte son écart de force mesuré avec lui. Leurs stats multi sont resserrées pour que l'écart reste petit (0 à 6 points). Le DUO du solo donne en multi **deux commandants distincts** (2026-11-16) : l'artisan meurtrier et Basile, chacun seul sur la case du commandant, débloqués séparément. La case du commandant est **fixe au placement** (centre de la ligne du
   fond) ; il bouge normalement en combat. Sa mort = défaite.
 - **1 équipement par pion, commandant exclu.**
 - 3 builds sauvegardables ; la map est montrée, puis **30 s** pour choisir son build. Le build adverse reste caché.

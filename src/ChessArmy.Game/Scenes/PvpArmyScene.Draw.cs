@@ -252,7 +252,109 @@ public sealed partial class PvpArmyScene
     private string _cmdName = "", _cmdCostLabel = "", _cmdMove = "", _cmdDomIcon = "";
     private int _cmdNameScale = 1;
     private readonly string[] _cmdValues = new string[4];
-    private readonly List<string> _cmdTraits = new();
+
+    // ── Cartes de trait du commandant : icône + nom + description complète (une carte par trait) ──
+    private sealed class CmdTraitCard
+    {
+        public string Name = "";
+        public Texture2D? Icon;
+        public readonly List<(string Text, int X, int Y)> Lines = new();   // description, coordonnées dans le contenu
+        public int Height;                                                  // hauteur de la carte, cadre compris
+    }
+
+    private readonly List<CmdTraitCard> _cmdTraitCards = new();
+    private (string Id, Language Lang, int Width) _cmdTraitKey;
+    private int _cmdTraitsH;
+
+    private const int TraitCardInset = 6;    // cadre (2) + marge intérieure
+    private const int TraitIconSize = 32;
+    private const int TraitIconGap = 6;
+    private const int TraitNameGap = 4;      // entre le nom et la première ligne de description
+    private const int TraitLineGap = 3;      // interligne de la description
+    private const int TraitCardGap = 4;      // entre deux cartes
+
+    /// <summary>Icône d'une carte de trait (arbre de commandement, à défaut l'équipement) ; null = texte seul.</summary>
+    private static readonly Dictionary<string, string> TraitIconPaths = new(StringComparer.Ordinal)
+    {
+        [ChessArmy.Core.Battle.Trait.Duelliste] = "CommandTree/cmd_Duelliste",
+        [ChessArmy.Core.Battle.Trait.Rempart] = "CommandTree/lan_cmd_rempart",
+        [ChessArmy.Core.Battle.Trait.Formation] = "CommandTree/brute_formation",
+        [ChessArmy.Core.Battle.Trait.TraverseAllie] = "CommandTree/fou_unit_traverse",
+        [ChessArmy.Core.Battle.Trait.Esquive] = "CommandTree/cmd_Esquive",
+        [ChessArmy.Core.Battle.Trait.LoupSolitaire] = "CommandTree/cav_cmd_loup",
+        [ChessArmy.Core.Battle.Trait.Recule] = "CommandTree/duo_bas_recule",
+        [ChessArmy.Core.Battle.Trait.Transpercement] = "Equipment/TranspercerRare",
+    };
+
+    /// <summary>Hauteur des cartes de trait du commandant courant pour une largeur de panneau donnée (0 sans
+    /// trait), écart au-dessus compris. Sert à la mise en page (taille du portrait) et au dessin.</summary>
+    private int CommanderTraitsHeight(int width)
+    {
+        RefreshCommanderTraits(width);
+        return _cmdTraitsH;
+    }
+
+    private void RefreshCommanderTraits(int width)
+    {
+        var key = (Build.CommanderId, Loc.Current, width);
+        if (key == _cmdTraitKey)
+            return;
+        _cmdTraitKey = key;
+        _cmdTraitCards.Clear();
+        _cmdTraitsH = 0;
+        var cls = PvpCatalog.CommanderClass(Build.CommanderId)?.Class;
+        if (cls == null)
+            return;
+        var lh = Font.LineHeight(1);
+        var step = lh + TraitLineGap;
+        foreach (var (kw, trait, _) in TraitEntries(cls, null))
+        {
+            var card = new CmdTraitCard { Name = PvpArt.Fit(Font, kw.Label, width - 2 * TraitCardInset, 1) };
+            var iconPath = trait.Length > 0 ? (TraitIconPaths.TryGetValue(trait, out var ip) ? ip : null)
+                : kw.Label == UnitKeywords.PiercesAllies.Label ? TraitIconPaths[ChessArmy.Core.Battle.Trait.TraverseAllie] : null;
+            card.Icon = iconPath != null ? Tex(iconPath) : null;
+            var contentW = width - 2 * TraitCardInset;
+            var besideX = card.Icon != null ? TraitIconSize + TraitIconGap : 0;
+            var iconBottom = card.Icon != null ? TraitIconSize + 2 : 0;
+            if (card.Icon != null)
+                card.Name = PvpArt.Fit(Font, kw.Label, contentW - besideX, 1);
+            // Le texte longe l'icône, puis reprend toute la largeur sous elle.
+            var desc = kw.Description.Length > 0 ? PvpUi.SentenceCase(TraitDescription(kw, trait)) : "";
+            var y = lh + TraitNameGap;
+            var line = "";
+            int X(int ly) => ly < iconBottom ? besideX : 0;
+            int W(int ly) => contentW - X(ly);
+            foreach (var word in desc.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var candidate = line.Length == 0 ? word : line + " " + word;
+                if (Font.Measure(candidate, 1) <= W(y))
+                {
+                    line = candidate;
+                    continue;
+                }
+                if (line.Length > 0)
+                {
+                    card.Lines.Add((line, X(y), y));
+                    y += step;
+                }
+                line = PvpArt.Fit(Font, word, W(y), 1);
+            }
+            if (line.Length > 0)
+            {
+                card.Lines.Add((line, X(y), y));
+                y += step;
+            }
+            var textBottom = card.Lines.Count > 0 ? y - TraitLineGap : lh;
+            card.Height = 2 * TraitCardInset + Math.Max(textBottom, card.Icon != null ? TraitIconSize : 0);
+            _cmdTraitCards.Add(card);
+            _cmdTraitsH += card.Height + (_cmdTraitCards.Count > 1 ? TraitCardGap : 0);
+        }
+        if (_cmdTraitsH > 0)
+            _cmdTraitsH += TraitCardsTop;
+    }
+
+    /// <summary>Écart entre les barres de stats et la première carte de trait.</summary>
+    private int TraitCardsTop => _lay.Full ? 10 : 6;
 
     private void RefreshCommander(CommandeDef? def, UnitClass? cls)
     {
@@ -275,10 +377,6 @@ public sealed partial class PvpArmyScene
             _cmdValues[2] = Num(cls.MoveRange);
             _cmdValues[3] = Num(cls.AttackRange);
         }
-        _cmdTraits.Clear();
-        if (cls != null)
-            foreach (var label in TraitLabels(cls, null))
-                _cmdTraits.Add(PvpArt.Fit(Font, label, inner.Width - 10, 1));
     }
 
     private static readonly int[] BarMax = { 40, 20, 3, 3 };
@@ -353,16 +451,33 @@ public sealed partial class PvpArmyScene
             }
         }
 
-        // 5. Déplacement : plateau 7×7 ANIMÉ (le commandant y parcourt ses cases, comme sur la fiche des pions),
-        //    avec à sa droite l'icône du domaine + le libellé quand la place le permet. Repli : icône + libellé seuls.
+        // 5. Trait(s) du commandant : une carte par trait (icône, nom, description complète), sous les stats.
         var domY = L.BarsY + 4 * L.BarStep + (L.Full ? 4 : 2);
+        RefreshCommanderTraits(inner.Width);
+        if (_cmdTraitCards.Count > 0)
+        {
+            var cy = L.BarsY + 4 * L.BarStep + TraitCardsTop;
+            foreach (var card in _cmdTraitCards)
+            {
+                if (cy + card.Height > inner.Bottom)
+                    break;
+                DrawTraitCard(sb, card, new Rectangle(inner.X, cy, inner.Width, card.Height));
+                cy += card.Height + TraitCardGap;
+            }
+            domY = cy - TraitCardGap + (L.Full ? 8 : 6);
+        }
+
+        // 6. Déplacement : plateau 7×7 ANIMÉ (le commandant y parcourt ses cases, comme sur la fiche des pions),
+        //    calé en bas du panneau, avec à sa droite l'icône du domaine + le libellé quand la place le permet
+        //    (sinon le motif dessous). Repli : icône + libellé seuls.
+        var sideX = inner.X + MoveAttackGrid.BoardOuter + (L.Full ? 12 : 8);
+        var side = inner.Right - sideX >= 90;   // assez large pour l'icône et le libellé à côté
+        domY = Math.Max(domY, inner.Bottom - CommanderMoveBlockHeight(side));
         if (def != null && cls != null && PvpCatalog.CommanderClass(Build.CommanderId) is { } kc
             && domY + MoveAttackGrid.BoardOuter <= inner.Bottom)
         {
             var (kdom, kcls) = kc;
             bool Has(string t) => kcls.Traits.Contains(t);
-            var sideX = inner.X + MoveAttackGrid.BoardOuter + (L.Full ? 12 : 8);
-            var side = inner.Right - sideX >= 90;   // assez large pour l'icône et le libellé à côté
             var gx = side ? inner.X : inner.Center.X - MoveAttackGrid.BoardOuter / 2;
             var grid = new Rectangle(gx, domY, MoveAttackGrid.BoardOuter, MoveAttackGrid.BoardOuter);
             MoveAttackGrid.DrawBoardWithPawn(sb, Px, grid, UnitFront(cls.Asset), revealed: true, kdom, cls.MoveRange,
@@ -433,27 +548,29 @@ public sealed partial class PvpArmyScene
                 moveScale, Palette.White);
             domY += Math.Max(39, 6 + Font.LineHeight(1) + 6 + Font.LineHeight(moveScale)) + (L.Full ? 8 : 6);
         }
+    }
 
-        // 6. Traits en étiquettes (retour à la ligne automatique, jamais hors du panneau).
-        var tagH = Font.LineHeight(1) + (L.Full ? 10 : 6);
-        var tx2 = inner.X;
-        var ty2 = domY;
-        foreach (var t in _cmdTraits)
+    /// <summary>Hauteur du bloc déplacement (plateau + motif dessous quand il n'est pas à côté).</summary>
+    private int CommanderMoveBlockHeight(bool side) =>
+        MoveAttackGrid.BoardOuter + (side ? 0 : 4 + Font.LineHeight(1));
+
+    /// <summary>Carte d'un trait : fond sombre, liseré, icône en haut à gauche, nom en cyan (couleur d'un trait
+    /// porté, comme sur la fiche des pions), description en casse de phrase qui longe l'icône puis passe dessous.</summary>
+    private void DrawTraitCard(SpriteBatch sb, CmdTraitCard card, Rectangle r)
+    {
+        PvpArt.Fill(sb, Px, r, Palette.Black3);
+        PvpArt.Border(sb, Px, r, Palette.Black5, 2);
+        var x0 = r.X + TraitCardInset;
+        var y0 = r.Y + TraitCardInset;
+        var nameX = x0;
+        if (card.Icon is { } icon)
         {
-            var w = Font.Measure(t, 1) + 10;
-            if (tx2 > inner.X && tx2 + w > inner.Right)
-            {
-                tx2 = inner.X;
-                ty2 += tagH + 4;
-            }
-            if (ty2 + tagH > L.Cmd.Bottom - PvpArt.PanelFrame)
-                break;
-            var tag = new Rectangle(tx2, ty2, w, tagH);
-            PvpArt.Fill(sb, Px, tag, Palette.Black3);
-            PvpArt.Border(sb, Px, tag, Palette.Black5, 2);
-            Font.DrawCentered(sb, t, tag, 1, Palette.White);
-            tx2 += w + 4;
+            sb.Draw(icon, new Rectangle(x0, y0, TraitIconSize, TraitIconSize), Color.White);
+            nameX += TraitIconSize + TraitIconGap;
         }
+        Font.Draw(sb, card.Name, new Vector2(nameX, y0), 1, Palette.Cyan1);
+        foreach (var (text, lx, ly) in card.Lines)
+            Font.Draw(sb, text, new Vector2(x0 + lx, y0 + ly), 1, Palette.White, preserveCase: true);
     }
 
     private static readonly Color[] BarColors = { Palette.White, Palette.Brown3, Palette.Cyan1, Palette.Yellow2 };

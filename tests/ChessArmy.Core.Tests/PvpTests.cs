@@ -692,33 +692,66 @@ public class PvpTests : IDisposable
     }
 
     [Fact]
-    public void Duo_ComesWithBasile_AndLosingEitherLosesTheGame()
+    public void ArtisanAndBasile_AreTwoSeparateCommanders()
     {
-        var build = new PvpBuild { CommanderId = "Commandant_duo" };
-        Assert.True(build.HasCompanion);
-        // La case de Basile (à gauche du commandant) est réservée : aucun pion ne peut y aller.
-        Assert.False(build.Set(PvpBuild.CompanionColumn, PvpBuild.BackLine, Domaines.Dame.BaseClass.Asset));
+        var ids = PvpCatalog.Commanders().Select(c => c.Id).ToList();
+        Assert.Contains("Commandant_duo", ids);
+        Assert.Contains("Basile", ids);
+        Assert.Equal(ids.Count, ids.Distinct().Count());
 
-        var match = PvpSetup.CreateMatch(mirrored: false, localStarts: false, seed: 1);
-        PvpSetup.PlaceArmy(match, build, Faction.Player);
-        PvpSetup.PlaceArmy(match, new PvpBuild { CommanderId = "commandant" }, Faction.Enemy);
-        var basile = match.UnitAt(new Cell(PvpBuild.CompanionColumn, PvpSetup.Size - 1))!;
-        Assert.True(basile.IsEssential && basile.IsCompanion);
-        Assert.True(match.UnitAt(new Cell(PvpBuild.KingColumn, PvpSetup.Size - 1))!.IsEssential);
+        foreach (var id in new[] { "Commandant_duo", "Basile" })
+        {
+            // Seul sur sa case : la case à sa gauche est libre, et aucun second meneur n'arrive avec lui.
+            var build = new PvpBuild { CommanderId = id };
+            Assert.True(build.Set(PvpBuild.KingColumn - 1, PvpBuild.BackLine, Domaines.Dame.BaseClass.Asset));
+            Assert.Null(PvpCatalog.Problem(build));
 
-        // Basile tombe sous une attaque ennemie (son commandant est indemne) : la partie est perdue.
-        basile.TakeDamage(basile.Hp - 1);
-        var attackerCell = new Cell(PvpBuild.CompanionColumn, PvpSetup.Size - 2);
-        match.Place(attackerCell, PvpCatalog.Spawn(new PvpBuildSlot(0, 0, Domaines.Dame.BaseClass.Asset, null), Faction.Enemy)!);
-        Assert.NotEqual(MoveKind.Invalid,
-            match.Apply(BattleAction.Attack(attackerCell, new Cell(PvpBuild.CompanionColumn, PvpSetup.Size - 1))));
-        Assert.Equal(Faction.Enemy, match.Winner);
+            var match = PvpSetup.CreateMatch(mirrored: false, localStarts: false, seed: 1);
+            PvpSetup.PlaceArmy(match, build, Faction.Player);
+            PvpSetup.PlaceArmy(match, new PvpBuild { CommanderId = "commandant" }, Faction.Enemy);
+            var leaders = match.Units().Where(u => u.Unit.Faction == Faction.Player && u.Unit.IsEssential).ToList();
+            Assert.Single(leaders);
+            Assert.Equal(new Cell(PvpBuild.KingColumn, PvpSetup.Size - 1), leaders[0].Cell);
+            Assert.Equal(PvpCatalog.CommanderClass(id)!.Value.Class.Asset, leaders[0].Unit.Class.Asset);
+            Assert.False(leaders[0].Unit.IsCompanion);
+        }
+        Assert.NotEqual(PvpCatalog.CommanderClass("Commandant_duo")!.Value.Class.Asset,
+            PvpCatalog.CommanderClass("Basile")!.Value.Class.Asset);
+    }
 
-        // Un pion resté sur la case de Basile (commandant changé après coup) rend l'armée invalide.
-        var stale = new PvpBuild { CommanderId = "commandant" };
-        stale.Set(PvpBuild.CompanionColumn, PvpBuild.BackLine, Domaines.Dame.BaseClass.Asset);
-        stale.CommanderId = "Commandant_duo";
-        Assert.NotNull(PvpCatalog.Problem(stale));
+    [Theory]
+    [InlineData("commandant", Trait.Duelliste)]
+    [InlineData("Commandant_lancier", Trait.Rempart)]
+    [InlineData("Commandant_cavalier", Trait.Formation)]
+    [InlineData("Commandant_fou", Trait.TraverseAllie)]
+    [InlineData("Commandant_marchand", Trait.Esquive)]
+    [InlineData("Commandant_brute", Trait.Recule)]
+    [InlineData("Commandant_duo", Trait.LoupSolitaire)]
+    [InlineData("Basile", Trait.Transpercement)]
+    public void EachCommander_HasItsMultiTrait_AndOnlyInMulti(string id, string trait)
+    {
+        var unit = PvpCatalog.SpawnCommander(id, Faction.Player)!;
+        Assert.True(unit.HasTrait(trait), $"{id} sans {trait}");
+        // Le solo ne bouge pas : la fiche du commandant dans units.json ne gagne pas ce trait.
+        var solo = PvpCatalog.CommanderDef(id)!.BaseClass;
+        Assert.False(new Unit(Domaine.Dame, Faction.Player, solo).HasTrait(trait), $"{id} a {trait} en solo");
+    }
+
+    [Fact]
+    public void Profile_OwningTheOldDuo_KeepsBothCommanders()
+    {
+        // Basile se débloque à part…
+        var fresh = PvpProfile.CreateNew();
+        Assert.False(fresh.Owns("Basile"));
+        Assert.Contains("Basile", fresh.LockedUnits());
+        // …sauf pour qui possédait le duo avant la séparation : il garde l'artisan ET Basile.
+        var owner = PvpProfile.Decode(PvpProfile.EncodeLegacyV2("moi", "c:commandant", "c:Commandant_duo"), "moi")!;
+        Assert.True(owner.Owns("Commandant_duo") && owner.Owns("Basile"));
+        var other = PvpProfile.Decode(PvpProfile.EncodeLegacyV2("moi", "c:commandant"), "moi")!;
+        Assert.False(other.Owns("Basile"));
+        // Une fois réenregistré au format actuel, plus de cadeau : le duo tiré d'un coffre ne donne que l'artisan.
+        var resaved = PvpProfile.Decode(other.Encode("moi"), "moi")!;
+        Assert.False(resaved.Owns("Basile"));
     }
 
     [Fact]
@@ -768,7 +801,7 @@ public class PvpTests : IDisposable
         var bastion = PvpCatalog.SpawnCommander("Commandant_lancier", Faction.Player)!;
         Assert.True(bastion.IsEssential);
         Assert.Equal(PvpConfig.Current.Commanders["Commandant_lancier"].Hp, bastion.MaxHp);
-        Assert.Empty(bastion.Class.Traits);   // en multi, les commandants n'ont pas de pouvoir (pour l'instant)
+        Assert.Equal(new[] { Trait.Rempart }, bastion.Class.Traits);   // en multi : pas d'arbre, un seul trait
     }
 
     // ── Rangs et cote ────────────────────────────────────────────────────────────
@@ -1353,7 +1386,7 @@ public class PvpTests : IDisposable
         {
             var def = PvpConfig.Current.Bots[rank] with { Accuracy = 1 };
             var a = armies[1];
-            var b = armies[2];
+            var b = armies[3];   // une partie assez longue pour être sondée 3 fois (celle contre armies[2] finit trop tôt)
             var forker = new PvpForker(9, playerStarts: false, null, null, a, b);   // PlayLive : graine impaire = Enemy commence
             var plies = 0;
             PlayLive(a, b, 9, new PvpBotDef { Caution = 0.5 }, 60, (live, log) =>

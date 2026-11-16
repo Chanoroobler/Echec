@@ -733,8 +733,6 @@ public sealed partial class PvpArmyScene
                 string? asset = null;
                 if (PvpBuild.IsKingCell(c, lineIndex))
                     asset = PvpCatalog.CommanderClass(build.CommanderId)?.Class.Asset;
-                else if (build.IsReserved(c, lineIndex))
-                    asset = PvpCatalog.CompanionClass(build.CommanderId)?.Class.Asset;
                 else if (build.SlotAt(c, lineIndex) is { } slot)
                     asset = slot.ClassAsset;
                 if (asset != null)

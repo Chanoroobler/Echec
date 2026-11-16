@@ -1,0 +1,59 @@
+[h1]Multijoueur : entraînement, tuto, bots plus forts et fins de partie[/h1]
+
+[h2]Nouveau : mode Entraînement[/h2]
+Un bouton [b]ENTRAÎNEMENT[/b] rejoint [b]DÉFIER UN AMI[/b] en bas de l'écran Armée.
+[list]
+[*]Il ouvre la liste des [b]13 niveaux de bot[/b] : Bronze, Fer, Argent et Or (chacun en trois divisions) et Master. Ton rang actuel est encadré en jaune.
+[*]Choisis un niveau : la partie se lance aussitôt contre ce bot, avec l'armée sélectionnée.
+[*][b]Ta cote ne bouge jamais[/b] en entraînement.
+[*]Les points de coffre sont [b]divisés par 2[/b] (arrondis vers le bas).
+[*]Les parties d'entraînement n'entrent pas dans ton bilan Victoires / Défaites / Nulles du classement ; elles apparaissent dans l'historique, onglet [b]DÉFIS[/b].
+[*]Quitter un entraînement en cours ne compte pas comme une défaite.
+[*][b]REJOUER[/b] en fin de partie relance un entraînement au même niveau.
+[/list]
+
+[h2]Nouveau : partie Tuto[/h2]
+Les nouveaux joueurs apprennent les règles en jouant.
+[list]
+[*]Ton [b]tout premier « LANCER UNE PARTIE »[/b] lance une partie tuto. Les joueurs qui ont déjà joué n'y sont pas renvoyés.
+[*]Elle reste disponible à tout moment via le bouton [b]TUTO[/b] de la fenêtre Entraînement.
+[*]L'[b]Instructeur[/b] joue avec une petite armée (son commandant et 4 soldats) et presque au hasard : de quoi voir chaque règle sans pression.
+[*]Tu joues en premier, et le temps ne compte pas (aucune limite par coup).
+[*]Des [b]bulles d'explication[/b] apparaissent au bon moment, au début de ton tour : le but du jeu, un pion par tour, les fiches de pion, les zones de danger, le moral au premier pion tombé, la pendule, l'abandon et l'égalité, et le commandant seul. Clic (ou A à la manette) pour continuer.
+[*]Les touches indiquées suivent ton périphérique (clavier et souris, ou manette).
+[*]Rien n'est enregistré : ni cote, ni points, ni historique.
+[/list]
+
+[h2]Bots plus intelligents[/h2]
+[list]
+[*][b]Master[/b] calcule désormais [b]6 coups à l'avance[/b] au lieu de 4. Il utilise enfin son temps de réflexion et bat l'ancien Master environ 3 parties sur 4.
+[*]À partir d'[b]Or III[/b], les bots tiennent compte de la [b]vraie valeur des pièces[/b], traits compris. Ils n'échangent plus un Maître d'armes contre un Mage. Les rangs inférieurs gardent leur façon de jouer.
+[/list]
+
+[h2]Nouvelles règles de fin de partie[/h2]
+[list]
+[*][b]Commandant seul[/b] : un camp qui n'a plus que son commandant (Basile compris pour le Duo) perd [b]1 point de moral à chaque fin de son tour[/b], même s'il passe. Un roi isolé ne peut plus fuir indéfiniment : la barre finit par donner la victoire à l'adversaire.
+[*][b]Plus que des commandants[/b] : s'il ne reste que des commandants des deux côtés, la partie s'arrête aussitôt sur une [b]égalité[/b].
+[/list]
+Ces deux situations sont bien mises en évidence :
+[list]
+[*]un bandeau au centre de l'écran annonce le commandant seul, puis une ligne reste affichée dans le panneau du camp concerné ;
+[*]à chaque tour, une gemme part du commandant isolé vers la barre du moral, avec « -1 » ou « +1 » ;
+[*]un grand bandeau [b]ÉGALITÉ, IL NE RESTE QUE LES COMMANDANTS[/b] précède l'écran de fin.
+[/list]
+
+[h2]Classement[/h2]
+[list]
+[*]La cote est désormais [b]plafonnée à 3000[/b]. Une victoire ou une série ne la fait plus dépasser ce plafond ; une défaite la fait toujours baisser.
+[/list]
+
+[h2]Défi entre amis[/h2]
+[list]
+[*]Les parties entre amis [b]ne rapportent plus de points[/b] de coffre (et toujours pas de cote). Le tutoriel de l'écran Armée et l'écran de fin le précisent.
+[/list]
+
+[h2]Affichage et corrections[/h2]
+[list]
+[*]En combat, la [b]fiche d'un pion passe devant[/b] les boutons Abandonner et Proposer l'égalité.
+[*][b]Victoire au moral[/b] plus lisible : on voit le dernier coup se terminer, les gemmes toucher la barre et la barre se remplir et rester pleine un instant, avant qu'elle explose et que l'écran de fin apparaisse.
+[/list]

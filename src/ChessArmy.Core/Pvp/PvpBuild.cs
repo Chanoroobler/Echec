@@ -28,15 +28,8 @@ public sealed class PvpBuild
 
     public static bool IsKingCell(int column, int line) => line == BackLine && column == KingColumn;
 
-    /// <summary>Case FIXE du compagnon d'un commandant DUO (Basile) : sur la ligne du fond, à gauche du commandant.</summary>
-    public const int CompanionColumn = KingColumn - 1;
-
-    /// <summary>Le commandant de ce build arrive avec un compagnon (DUO + Basile).</summary>
-    public bool HasCompanion => PvpCatalog.CompanionClass(CommanderId) != null;
-
-    /// <summary>Case occupée d'office : celle du commandant, et celle de son compagnon s'il en a un. Aucun pion n'y va.</summary>
-    public bool IsReserved(int column, int line) =>
-        IsKingCell(column, line) || (line == BackLine && column == CompanionColumn && HasCompanion);
+    /// <summary>Case occupée d'office : celle du commandant. Aucun pion n'y va.</summary>
+    public bool IsReserved(int column, int line) => IsKingCell(column, line);
 
     public PvpBuildSlot? SlotAt(int column, int line) =>
         Slots.FirstOrDefault(s => s.Column == column && s.Line == line);
@@ -174,9 +167,25 @@ public static class PvpCatalog
         return null;
     }
 
-    /// <summary>Commandants jouables en multi (ceux du solo, sans compagnon).</summary>
-    public static IEnumerable<CommandeDef> Commanders() =>
-        Commandes.All.Where(c => c.Role == CommandeRole.Commander);
+    /// <summary>
+    /// Commandants jouables en multi : ceux du solo, plus les COMPAGNONS du solo, qui sont ici des commandants à
+    /// part entière (le DUO du solo donne deux commandants distincts : l'artisan meurtrier, et Basile juste après).
+    /// </summary>
+    public static IEnumerable<CommandeDef> Commanders()
+    {
+        foreach (var c in Commandes.All)
+        {
+            if (c.Role != CommandeRole.Commander)
+                continue;
+            yield return c;
+            if (Commandes.CompanionById(c.CompanionId) is { } companion)
+                yield return companion;
+        }
+    }
+
+    /// <summary>Définition d'un commandant du multi par son id (commandant ou compagnon du solo). Null si inconnu.</summary>
+    public static CommandeDef? CommanderDef(string? commanderId) =>
+        Commandes.ById(commanderId) ?? Commandes.CompanionById(commanderId);
 
     /// <summary>Équipements utilisables en multi (hors objets de sacoche du DUO), avec leurs stats MULTI.</summary>
     public static IEnumerable<Equipment> AllEquipment() => Equipments.All.Where(IsAllowed).Select(WithMultiStats);
@@ -218,14 +227,34 @@ public static class PvpCatalog
     /// <summary>Le commandant avec ses stats MULTI (pvp.json), à défaut ses stats de solo. Null si inconnu.</summary>
     public static (Domaine Domaine, UnitClass Class)? CommanderClass(string commanderId)
     {
-        if (Commandes.ById(commanderId) is not { Role: CommandeRole.Commander } def)
+        if (CommanderDef(commanderId) is not { } def)
             return null;
         var b = def.BaseClass;
         if (!PvpConfig.Current.Commanders.TryGetValue(def.Id, out var s))
             return (def.Movement, b);
-        return (def.Movement, new UnitClass(b.Name, b.Asset, b.Tier, s.Hp, s.Damage, s.MoveRange, s.AttackRange,
-            b.PiercesAllies, b.MinAttackRange, s.Traits, b.AttackDomaine));
+        lock (s_statsLock)
+        {
+            if (!ReferenceEquals(s_commandersFor, PvpConfig.Current))
+            {
+                s_commanderCache = new Dictionary<string, UnitClass>();
+                s_commandersFor = PvpConfig.Current;
+            }
+            if (!s_commanderCache.TryGetValue(def.Id, out var multi))
+            {
+                // « Traverse allié » n'est pas lu dans la liste de traits mais par PiercesAllies (cf. Unit.HasTrait) :
+                // écrit comme un trait dans pvp.json, il est converti ici.
+                var pierces = b.PiercesAllies || s.Traits.Contains(Trait.TraverseAllie);
+                var traits = s.Traits.Where(t => t != Trait.TraverseAllie).ToList();
+                multi = new UnitClass(b.Name, b.Asset, b.Tier, s.Hp, s.Damage, s.MoveRange, s.AttackRange,
+                    pierces, b.MinAttackRange, traits, b.AttackDomaine);
+                s_commanderCache[def.Id] = multi;
+            }
+            return (def.Movement, multi);
+        }
     }
+
+    private static PvpConfig? s_commandersFor;
+    private static Dictionary<string, UnitClass> s_commanderCache = new();
 
     /// <summary>Coût d'ARMÉE d'un build : commandant et pions (les équipements ont leur propre budget, cf.
     /// <see cref="EquipmentCost(PvpBuild)"/>). Éléments inconnus : coût par défaut.</summary>
@@ -266,7 +295,7 @@ public static class PvpCatalog
         foreach (var slot in build.Slots)
         {
             if (build.IsReserved(slot.Column, slot.Line))
-                return "case réservée au commandant ou à son compagnon";
+                return "case réservée au commandant";
             if (FindClass(slot.ClassAsset) == null)
                 return $"pion inconnu ({slot.ClassAsset})";
             if (owns != null && !owns(slot.ClassAsset))
@@ -301,27 +330,5 @@ public static class PvpCatalog
     public static Unit? SpawnCommander(string commanderId, Faction faction) =>
         CommanderClass(commanderId) is { } c
             ? new Unit(c.Domaine, faction, c.Class) { IsEssential = true }
-            : null;
-
-    /// <summary>
-    /// Compagnon d'un commandant (Basile pour le DUO) avec ses stats MULTI (pvp.json « commanders », sinon celles du
-    /// solo), sans pouvoir. Null si le commandant n'en a pas.
-    /// </summary>
-    public static (Domaine Domaine, UnitClass Class)? CompanionClass(string commanderId)
-    {
-        if (Commandes.ById(commanderId) is not { Role: CommandeRole.Commander, CompanionId: { } companionId }
-            || Commandes.CompanionById(companionId) is not { } def)
-            return null;
-        var b = def.BaseClass;
-        if (!PvpConfig.Current.Commanders.TryGetValue(def.Id, out var s))
-            return (def.Movement, b);
-        return (def.Movement, new UnitClass(b.Name, b.Asset, b.Tier, s.Hp, s.Damage, s.MoveRange, s.AttackRange,
-            b.PiercesAllies, b.MinAttackRange, s.Traits, b.AttackDomaine));
-    }
-
-    /// <summary>Le compagnon est ESSENTIEL comme le commandant : la mort de l'un OU de l'autre fait perdre.</summary>
-    public static Unit? SpawnCompanion(string commanderId, Faction faction) =>
-        CompanionClass(commanderId) is { } c
-            ? new Unit(c.Domaine, faction, c.Class) { IsEssential = true, IsCompanion = true }
             : null;
 }

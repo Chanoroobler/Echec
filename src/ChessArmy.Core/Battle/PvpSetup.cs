@@ -41,8 +41,6 @@ public static class PvpSetup
         var front = faction == Faction.Player ? Size - 2 : 1;
         if (PvpCatalog.SpawnCommander(build.CommanderId, faction) is { } king)
             match.Place(new Cell(PvpBuild.KingColumn, back), king);
-        if (PvpCatalog.SpawnCompanion(build.CommanderId, faction) is { } companion)
-            match.Place(new Cell(PvpBuild.CompanionColumn, back), companion);   // DUO : Basile, à côté du commandant
         foreach (var slot in build.Slots)
         {
             if (build.IsReserved(slot.Column, slot.Line) || slot.Column is < 0 or >= Size)

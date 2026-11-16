@@ -28,7 +28,7 @@ static class AiLab
             var commander = commanders[result.Count % commanders.Count];
             var build = new PvpBuild { CommanderId = commander };
             var points = config.Budget - config.CommanderCostOf(commander);
-            var cells = 2 * PvpBuild.Columns - 1 - (build.HasCompanion ? 1 : 0);
+            var cells = 2 * PvpBuild.Columns - 1;
             var kinds = units.OrderBy(_ => rng.Next()).Take(rng.Next(2, 6)).ToList();
             if (Fill(kinds.Select(k => k.Cost).ToList(), points, cells, rng) is not { } picks)
                 continue;
@@ -67,7 +67,7 @@ static class AiLab
             var commander = commanders[result.Count % commanders.Count];
             var build = new PvpBuild { CommanderId = commander };
             var points = config.Budget - config.CommanderCostOf(commander);
-            var cells = 2 * PvpBuild.Columns - 1 - (build.HasCompanion ? 1 : 0);
+            var cells = 2 * PvpBuild.Columns - 1;
             var pieces = new List<(string Asset, int Cost, int AttackRange)>();
             if (rng.Next(4) > 0)   // trois armées sur quatre ont leur pièce différente
             {

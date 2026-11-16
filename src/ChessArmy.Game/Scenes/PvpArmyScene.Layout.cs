@@ -145,9 +145,13 @@ public sealed partial class PvpArmyScene
         var nameH = Context.Font.LineHeight(full ? 3 : 2);
         L.BarStep = full ? 31 : 15;
         L.BarH = full ? 12 : 7;
-        // Portrait ×3 (×2 en compact), réduit d'un cran si le plateau animé du déplacement ne tient plus dessous.
+        // Portrait ×3 (×2 en compact), réduit d'un cran si les cartes de trait et le plateau animé du déplacement
+        // (motif compris quand il passe dessous) ne tiennent plus en dessous.
+        var side = inner.Width - MoveAttackGrid.BoardOuter - (full ? 12 : 8) >= 90;
+        var traitsH = CommanderTraitsHeight(inner.Width);
         int Needed(int scale) => headerH + (full ? 8 : 4) + 64 * scale + (full ? 6 : 4) + nameH + (full ? 8 : 6) + 4
-                                 + (full ? 16 : 10) + 4 * L.BarStep + (full ? 4 : 2) + MoveAttackGrid.BoardOuter;
+                                 + (full ? 16 : 10) + 4 * L.BarStep + Math.Max(full ? 4 : 2, traitsH)
+                                 + (traitsH > 0 ? (full ? 8 : 6) : 0) + CommanderMoveBlockHeight(side);
         L.PortraitScale = full ? 3 : 2;
         if (Needed(L.PortraitScale) > inner.Height)
             L.PortraitScale--;

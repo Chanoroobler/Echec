@@ -231,6 +231,12 @@ if (args.Contains("--tune-stats"))
     return;
 }
 
+if (args.Contains("--tune-commanders"))
+{
+    TuneCommanders();
+    return;
+}
+
 if (!args.Contains("--skirmish"))
 {
     RunBattles();
@@ -674,6 +680,155 @@ Dictionary<string, double> MeasureUnits(int budget, int minCost, int battles, in
     return classes.ToDictionary(a => a, a => w[classes.IndexOf(a)] * scale);
 }
 
+// ── Ajustement des COMMANDANTS (multi) ───────────────────────────────────────
+//
+// Resserre les commandants dans une fourchette de coûts (0 à --max-cost, 3 par défaut) en modifiant leurs PV et
+// dégâts MULTI (pvp.json « commanders ») ; déplacement, portée et TRAIT ne bougent pas, mais comptent dans la
+// mesure : ce sont de vraies batailles. Un commandant ne se mesure que par rapport aux autres : l'étalon est celui
+// du MILIEU du classement (il ne bouge pas), les plus forts sont affaiblis, les plus faibles renforcés, l'ordre de
+// force est gardé. Même dichotomie que --tune-stats. Écrit ensuite « commanders », « commanderCost » et l'armée de
+// départ ; relancer --bot-armies et --beginner-armies derrière (les armées des bots ne tombent plus pile).
+void TuneCommanders()
+{
+    var minCost = ArgInt("--min-cost", 3);
+    var maxCost = ArgInt("--max-cost", 3);
+    var budget = ArgInt("--budget", 35);
+    var battles = ArgInt("--battles", 60000);
+    var rounds = ArgInt("--rounds", 6);
+
+    var baseConfig = PvpConfig.Current;
+    var ids = PvpCatalog.Commanders().Select(c => c.Id).ToList();
+    var start = ids.ToDictionary(c => c, c =>
+    {
+        var cls = PvpCatalog.CommanderClass(c)!.Value.Class;
+        var traits = baseConfig.Commanders.TryGetValue(c, out var s) ? s.Traits : cls.Traits;
+        return new PvpCommanderStats(cls.MaxHp, cls.Damage, cls.MoveRange, cls.AttackRange, traits);
+    });
+    var factor = ids.ToDictionary(c => c, _ => 1.0);
+    var lo = new Dictionary<string, double>();
+    var hi = new Dictionary<string, double>();
+    var best = new Dictionary<string, (PvpCommanderStats Stats, double Value, double Gap)>();
+    Dictionary<string, double>? target = null;
+    var anchor = "";
+    PvpCommanderStats StatsOf(string c) => start[c] with
+    {
+        Hp = Math.Max(8, (int)Math.Round(start[c].Hp * factor[c])),
+        Damage = Math.Max(4, (int)Math.Round(start[c].Damage * factor[c])),
+    };
+
+    for (var round = 1; round <= rounds; round++)
+    {
+        var stats = ids.ToDictionary(c => c, StatsOf);
+        PvpConfig.Load(baseConfig.WithCommanders(stats));
+        var raw = MeasureCommanders(budget, minCost, battles, 100 + round);
+        if (target == null)
+        {
+            // Étalon : le commandant du milieu. Cibles : les écarts à l'étalon, compressés pour tenir dans maxCost.
+            var sorted = ids.OrderBy(c => raw[c]).ToList();
+            anchor = sorted[sorted.Count / 2];
+            var spread = raw[sorted[^1]] - raw[sorted[0]];
+            var k = spread > maxCost ? maxCost / spread : 1.0;
+            target = ids.ToDictionary(c => c, c => (raw[c] - raw[anchor]) * k);
+        }
+        var values = ids.ToDictionary(c => c, c => raw[c] - raw[anchor]);
+        Console.WriteLine($"Tour {round} : mesure, écart à {anchor} en points ({clock.Elapsed:mm\\:ss})");
+        foreach (var c in ids.OrderBy(c => target[c]))
+            Console.WriteLine($"  {c,-22} PV {stats[c].Hp,3}  dégâts {stats[c].Damage,3}  dépl. {stats[c].MoveRange}  portée {stats[c].AttackRange}   mesuré {values[c],5:+0.0;-0.0}   cible {target[c],5:+0.0;-0.0}");
+
+        foreach (var c in ids)
+        {
+            var gap = Math.Abs(values[c] - target[c]);
+            if (!best.TryGetValue(c, out var b) || gap < b.Gap)
+                best[c] = (stats[c], values[c], gap);
+            if (c == anchor || gap < 0.3)
+                continue;
+            if (values[c] > target[c]) hi[c] = factor[c];
+            else lo[c] = factor[c];
+            factor[c] = lo.ContainsKey(c) && hi.ContainsKey(c)
+                ? (lo[c] + hi[c]) / 2
+                : Math.Clamp(factor[c] * (values[c] > target[c] ? 0.85 : 1.18), 0.4, 2.0);
+        }
+    }
+
+    // Réglage retenu : le plus proche de sa cible parmi ceux mesurés ; puis une dernière mesure, tous ensemble, pour les coûts.
+    var kept = ids.ToDictionary(c => c, c => best[c].Stats);
+    PvpConfig.Load(baseConfig.WithCommanders(kept));
+    var final = MeasureCommanders(budget, minCost, battles * 2, 999);
+    var weakest = final.Values.Min();
+    var costs = ids.ToDictionary(c => c, c => Math.Clamp((int)Math.Round(final[c] - weakest, MidpointRounding.AwayFromZero), 0, maxCost));
+    Console.WriteLine();
+    Console.WriteLine("RETENU (mesure finale, le plus faible à 0)");
+    foreach (var c in ids.OrderBy(c => final[c]))
+        Console.WriteLine($"  {c,-22} PV {kept[c].Hp,3} (avant {start[c].Hp,2})  dégâts {kept[c].Damage,3} (avant {start[c].Damage,2})   mesuré {final[c] - weakest,4:0.0}  ->  {costs[c]} pt");
+    Console.WriteLine($"Durée : {clock.Elapsed:mm\\:ss}");
+    if (dryRun)
+        return;
+
+    var text = File.ReadAllText(pvpPath);
+    var block = text.IndexOf("\"commanders\"", StringComparison.Ordinal);
+    foreach (var c in ids)
+    {
+        var at = text.IndexOf($"\"{c}\":", block, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            Console.WriteLine($"  ATTENTION : {c} absent de « commanders », stats non écrites.");
+            continue;
+        }
+        var end = text.IndexOf('}', at);
+        var line = text[at..end];
+        line = System.Text.RegularExpressions.Regex.Replace(line, "\"hp\": *\\d+", $"\"hp\": {kept[c].Hp}");
+        line = System.Text.RegularExpressions.Regex.Replace(line, "\"damage\": *\\d+", $"\"damage\": {kept[c].Damage}");
+        text = text[..at] + line + text[end..];
+    }
+    text = ReplaceObject(text, "commanderCost", costs, ids.ToDictionary(c => c, c => final[c] - weakest));
+    var startCommander = baseConfig.StartingCommanders.FirstOrDefault() ?? "commandant";
+    var unitCost = PvpCatalog.AllUnitClasses().ToDictionary(u => u.Class.Asset, u => baseConfig.CostOf(u.Class));
+    text = ReplaceStartingArmy(text, ComposeStartingArmy(startCommander, budget - costs[startCommander], unitCost));
+    File.WriteAllText(pvpPath, text, new UTF8Encoding(false));
+    Console.WriteLine($"pvp.json mis à jour : {pvpPath}. Relancez --bot-armies puis --beginner-armies.");
+}
+
+// Une passe de vraies batailles ; valeur de chaque COMMANDANT en points (Soldat = minCost), à une constante près :
+// seuls les écarts entre commandants ont un sens.
+Dictionary<string, double> MeasureCommanders(int budget, int minCost, int battles, int seed)
+{
+    var classes = PvpCatalog.AllUnitClasses().Select(c => c.Class.Asset).ToList();
+    var equipment = PvpCatalog.AllEquipment().Select(e => e.Id).ToList();
+    var commanders = PvpCatalog.Commanders().Select(c => c.Id).ToList();
+    var featureCount = classes.Count + equipment.Count + commanders.Count + 1;
+    var units = classes.Select(a => (a, Math.Max(minCost, PvpConfig.Current.UnitCost.GetValueOrDefault(a, minCost)))).ToList();
+    var items = equipment.Select(e => (e, PvpConfig.Current.EquipmentCost.GetValueOrDefault(e, 1))).ToList();
+    var cmds = commanders.Select(c => (c, 0)).ToList();   // tous gratuits : même armée autour de chacun
+    var samples = new (double[] X, double Y)[battles];
+    Parallel.For(0, battles, i =>
+    {
+        var rng = new Random(seed * 1_000_003 + i * 7919);
+        var a = PvpBalance.RandomArmy(rng, rng.Next(budget * 2 / 3, budget * 4 / 3 + 1), cmds, units, items, 0.35);
+        var b = PvpBalance.RandomArmy(rng, rng.Next(budget * 2 / 3, budget * 4 / 3 + 1), cmds, units, items, 0.35);
+        var aStarts = i % 2 == 0;
+        var y = PvpBalance.PlayBattle(a, b, rng.Next(), aStarts);
+        var x = new double[featureCount];
+        void Add(PvpBuild army, int sign)
+        {
+            foreach (var slot in army.Slots)
+            {
+                x[classes.IndexOf(slot.ClassAsset)] += sign;
+                if (slot.EquipmentId != null)
+                    x[classes.Count + equipment.IndexOf(slot.EquipmentId)] += sign;
+            }
+            x[classes.Count + equipment.Count + commanders.IndexOf(army.CommanderId)] += sign;
+        }
+        Add(a, +1);
+        Add(b, -1);
+        x[^1] = aStarts ? 1 : -1;
+        samples[i] = (x, y);
+    });
+    var w = PvpBalance.FitLogistic(samples, featureCount);
+    var soldierWeight = w[classes.IndexOf(Domaines.Dame.BaseClass.Asset)];
+    var scale = soldierWeight > 0 ? minCost / soldierWeight : 1;
+    return commanders.ToDictionary(c => c, c => w[classes.Count + equipment.Count + commanders.IndexOf(c)] * scale);
+}
+
 // ── Outils ───────────────────────────────────────────────────────────────────
 
 static int UnitCost(double value) => Math.Max(1, (int)Math.Round(value, MidpointRounding.AwayFromZero));
@@ -848,7 +1003,7 @@ static (Faction? Winner, bool Draw, int Plies, int[] CommanderMoves, int[] Left)
     }
     var left = new int[2];
     foreach (var (_, u) in match.Units())
-        if (!u.IsEssential && u.Class.Asset != "Basile")
+        if (!u.IsEssential)
             left[u.Faction == Faction.Player ? 0 : 1]++;
     return (match.Winner, match.IsDraw, ply, cmd, left);
 }

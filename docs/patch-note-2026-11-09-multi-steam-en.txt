@@ -1,0 +1,59 @@
+[h1]Multiplayer: training, tutorial, stronger bots and endgames[/h1]
+
+[h2]New: Training mode[/h2]
+A [b]TRAINING[/b] button now sits next to [b]CHALLENGE A FRIEND[/b] at the bottom of the Army screen.
+[list]
+[*]It opens the list of the [b]13 bot levels[/b]: Bronze, Iron, Silver and Gold (three divisions each) and Master. Your current rank is outlined in yellow.
+[*]Pick a level and the match starts right away against that bot, with your selected army.
+[*][b]Your rating never changes[/b] in training.
+[*]Chest points are [b]halved[/b] (rounded down).
+[*]Training matches do not count in your ranked Wins / Losses / Draws record; they show up in the match history, [b]CHALLENGES[/b] tab.
+[*]Leaving a training match early does not count as a loss.
+[*][b]PLAY AGAIN[/b] at the end restarts a training match at the same level.
+[/list]
+
+[h2]New: Tutorial match[/h2]
+New players now learn the rules by playing.
+[list]
+[*]Your [b]very first "START A MATCH"[/b] launches a tutorial match. Players who have already played are not sent back to it.
+[*]You can replay it anytime with the [b]TUTORIAL[/b] button in the Training window.
+[*]The [b]Instructor[/b] plays a small army (its commander and 4 soldiers) and moves almost at random, so you can see every rule without pressure.
+[*]You move first, and time does not matter (no per-move limit).
+[*][b]Tips[/b] pop up at the right moment, at the start of your turn: the goal, one pawn per turn, unit cards, danger zones, morale when the first pawn falls, the clock, resigning and draws, and the lone commander. Click (or press A on a controller) to continue.
+[*]The keys shown match your device (keyboard and mouse, or controller).
+[*]Nothing is saved: no rating, no points, no history.
+[/list]
+
+[h2]Smarter bots[/h2]
+[list]
+[*][b]Master[/b] now looks [b]6 moves ahead[/b] instead of 4. It finally uses its thinking time and beats the old Master about 3 games out of 4.
+[*]From [b]Gold III[/b] up, bots weigh the [b]true value of each piece[/b], traits included. They no longer trade a Weapon Master for a Mage. Lower ranks keep their current play style.
+[/list]
+
+[h2]New endgame rules[/h2]
+[list]
+[*][b]Lone commander[/b]: a side left with only its commander (Basile included for the Duo) loses [b]1 morale at the end of each of its turns[/b], even when passing. A lone king can no longer run forever: the morale bar eventually hands the win to the opponent.
+[*][b]Only commanders left[/b]: if only commanders remain on both sides, the match ends immediately in a [b]draw[/b].
+[/list]
+Both cases are clearly shown:
+[list]
+[*]a banner in the middle of the screen announces the lone commander, then a line stays in that side's panel;
+[*]every turn, a gem flies from the lone commander to the morale bar, showing "-1" or "+1";
+[*]a large [b]DRAW, ONLY THE COMMANDERS REMAIN[/b] banner comes before the end screen.
+[/list]
+
+[h2]Ranking[/h2]
+[list]
+[*]Rating is now [b]capped at 3000[/b]. A win or a win streak can no longer push it past the cap; a loss still lowers it.
+[/list]
+
+[h2]Challenge a friend[/h2]
+[list]
+[*]Friendly matches [b]no longer award chest points[/b] (and still no rating). The Army screen tutorial and the end screen now say so.
+[/list]
+
+[h2]Display and fixes[/h2]
+[list]
+[*]In battle, a [b]unit card now appears in front of[/b] the Resign and Offer draw buttons.
+[*][b]Morale victories[/b] are easier to follow: you see the last move finish, the gems hit the bar, and the bar fill up and stay full for a moment, before it bursts and the end screen appears.
+[/list]

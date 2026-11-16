@@ -224,8 +224,16 @@ public sealed class PvpConfig
     public IReadOnlyList<string> StartingCommanders { get; init; } =
         new[] { "commandant", "Commandant_lancier", "Commandant_cavalier" };
 
-    public IReadOnlyDictionary<string, PvpCommanderStats> Commanders { get; init; } =
-        new Dictionary<string, PvpCommanderStats>();
+    public IReadOnlyDictionary<string, PvpCommanderStats> Commanders { get => _commanders; init => _commanders = value; }
+    private IReadOnlyDictionary<string, PvpCommanderStats> _commanders = new Dictionary<string, PvpCommanderStats>();
+
+    /// <summary>Copie du barème avec d'autres stats de commandants (outil d'équilibrage : essais successifs).</summary>
+    public PvpConfig WithCommanders(IReadOnlyDictionary<string, PvpCommanderStats> stats)
+    {
+        var copy = (PvpConfig)MemberwiseClone();
+        copy._commanders = stats;
+        return copy;
+    }
 
     public IReadOnlyDictionary<string, PvpBotDef> Bots { get; init; } = new Dictionary<string, PvpBotDef>();
 

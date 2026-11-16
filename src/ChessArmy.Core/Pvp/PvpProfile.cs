@@ -39,7 +39,7 @@ public sealed class PvpProfile
     public const int WeekDays = 7;
 
     /// <summary>Version du contenu du fichier : 1 = sans historique (migré à la lecture), 2 = actuel.</summary>
-    private const int FormatVersion = 2;
+    private const int FormatVersion = 3;   // 3 : l'artisan meurtrier et Basile sont deux commandants distincts
 
     private ObscuredInt _points;
     private ObscuredInt _best;
@@ -162,7 +162,7 @@ public sealed class PvpProfile
     {
         if (PvpCatalog.FindClass(id) is { } cls)
             return cls.Class.Tier <= 1 || _unlocked.Contains("u:" + id);
-        if (PvpCatalog.CommanderClass(id) != null && Commandes.ById(id) != null)
+        if (PvpCatalog.CommanderClass(id) != null)
             return _unlocked.Contains("c:" + id);
         return _unlocked.Contains("e:" + id);
     }
@@ -336,6 +336,10 @@ public sealed class PvpProfile
     internal static byte[] EncodeLegacyV1(string ownerId, int points, int rating, int games, int wins) =>
         Seal(JsonSerializer.SerializeToUtf8Bytes(new { P = points, R = rating, G = games, W = wins, L = games - wins, D = 0, S = 0, T = true }), ownerId);
 
+    /// <summary>Tests : profil au format 2 (avant la séparation artisan / Basile) avec ces déblocages.</summary>
+    internal static byte[] EncodeLegacyV2(string ownerId, params string[] unlocked) =>
+        Seal(JsonSerializer.SerializeToUtf8Bytes(new { P = 0, R = 950, G = 1, W = 1, L = 0, D = 0, S = 0, T = true, V = 2, U = unlocked }), ownerId);
+
     // Secret embarqué : ce n'est PAS une sécurité absolue (tout ce qui est sur le PC du joueur finit par être lisible),
     // seulement de quoi rendre le fichier illisible et toute retouche détectable.
     private static readonly byte[] Secret = Encoding.UTF8.GetBytes("ChessArmy/pvp/7f3c9a1e-profile-seal");
@@ -414,6 +418,9 @@ public sealed class PvpProfile
                     profile._days.Add((d[0], d[1]));
             foreach (var id in dto.U ?? new List<string>())
                 profile._unlocked.Add(id);
+            // Avant le format 3, « Commandant_duo » amenait Basile avec lui : qui possédait le duo garde les deux.
+            if (dto.V < 3 && profile._unlocked.Contains("c:Commandant_duo"))
+                profile._unlocked.Add("c:Basile");
             for (var i = 0; i < BuildSlots; i++)
                 profile.Builds[i] = (dto.B != null && i < dto.B.Count ? PvpBuild.FromJson(dto.B[i]) : null) ?? DefaultBuild();
             return profile;
