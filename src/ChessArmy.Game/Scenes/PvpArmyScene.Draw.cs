@@ -451,28 +451,28 @@ public sealed partial class PvpArmyScene
             }
         }
 
-        // 5. Trait(s) du commandant : une carte par trait (icône, nom, description complète), sous les stats.
-        var domY = L.BarsY + 4 * L.BarStep + (L.Full ? 4 : 2);
+        // 5. Déplacement TOUJOURS calé en bas du panneau (plateau 7×7 animé + motif) : on réserve sa place d'abord.
+        var sideX = inner.X + MoveAttackGrid.BoardOuter + (L.Full ? 12 : 8);
+        var side = false;   // plateau centré, motif sur une ligne dessous (sobre, même rendu compact et grand écran)
+        var domY = inner.Bottom - CommanderMoveBlockHeight(side);
+
+        // 6. Trait(s) du commandant : une carte par trait (icône, nom, description complète), entre les stats et
+        //    le déplacement. La mise en page réduit portrait / barres pour qu'elles tiennent ; une carte qui ne
+        //    tiendrait quand même pas est omise plutôt que de chasser le plateau.
         RefreshCommanderTraits(inner.Width);
-        if (_cmdTraitCards.Count > 0)
+        var cy = L.BarsY + 4 * L.BarStep + TraitCardsTop;
+        var cardsLimit = domY - (L.Full ? 8 : 6);
+        foreach (var card in _cmdTraitCards)
         {
-            var cy = L.BarsY + 4 * L.BarStep + TraitCardsTop;
-            foreach (var card in _cmdTraitCards)
-            {
-                if (cy + card.Height > inner.Bottom)
-                    break;
-                DrawTraitCard(sb, card, new Rectangle(inner.X, cy, inner.Width, card.Height));
-                cy += card.Height + TraitCardGap;
-            }
-            domY = cy - TraitCardGap + (L.Full ? 8 : 6);
+            if (cy + card.Height > cardsLimit)
+                break;
+            DrawTraitCard(sb, card, new Rectangle(inner.X, cy, inner.Width, card.Height));
+            cy += card.Height + TraitCardGap;
         }
 
-        // 6. Déplacement : plateau 7×7 ANIMÉ (le commandant y parcourt ses cases, comme sur la fiche des pions),
-        //    calé en bas du panneau, avec à sa droite l'icône du domaine + le libellé quand la place le permet
-        //    (sinon le motif dessous). Repli : icône + libellé seuls.
-        var sideX = inner.X + MoveAttackGrid.BoardOuter + (L.Full ? 12 : 8);
-        var side = inner.Right - sideX >= 90;   // assez large pour l'icône et le libellé à côté
-        domY = Math.Max(domY, inner.Bottom - CommanderMoveBlockHeight(side));
+        // 7. Plateau ANIMÉ (le commandant y parcourt ses cases, comme sur la fiche des pions), avec à sa droite
+        //    l'icône du domaine + le libellé quand la place le permet (sinon le motif dessous).
+        //    Repli (pas de classe) : icône + libellé seuls.
         if (def != null && cls != null && PvpCatalog.CommanderClass(Build.CommanderId) is { } kc
             && domY + MoveAttackGrid.BoardOuter <= inner.Bottom)
         {
@@ -488,12 +488,7 @@ public sealed partial class PvpArmyScene
             if (side)
             {
                 var tw = inner.Right - sideX;
-                var y = domY;
-                if (Tex(_cmdDomIcon) is { } dIcon)
-                {
-                    sb.Draw(dIcon, new Vector2(sideX, y), Color.White);
-                    y += dIcon.Height + 6;
-                }
+                var y = domY;   // pas d'icône de domaine ici : le plateau animé montre déjà le motif
                 Font.Draw(sb, PvpArt.Fit(Font, Loc.T("pvp.movement"), tw, 1), new Vector2(sideX, y), 1, Palette.Blue1);
                 y += Font.LineHeight(1) + 6;
                 var mScale = L.Full ? 2 : 1;

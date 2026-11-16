@@ -143,18 +143,28 @@ public sealed partial class PvpArmyScene
         var inner = L.CmdInner;
         var headerH = Context.Font.LineHeight(1);
         var nameH = Context.Font.LineHeight(full ? 3 : 2);
-        L.BarStep = full ? 31 : 15;
         L.BarH = full ? 12 : 7;
-        // Portrait ×3 (×2 en compact), réduit d'un cran si les cartes de trait et le plateau animé du déplacement
-        // (motif compris quand il passe dessous) ne tiennent plus en dessous.
-        var side = inner.Width - MoveAttackGrid.BoardOuter - (full ? 12 : 8) >= 90;
+        // Le plateau de déplacement (motif compris quand il passe dessous) doit TOUJOURS tenir en bas, sous les
+        // cartes de trait. On garde le plus grand portrait possible : ×3 (×2 en compact), barres de stats aérées ;
+        // sinon barres resserrées ; sinon portrait réduit d'un cran, et ainsi de suite jusqu'à ×1.
+        var side = false;   // plateau centré, motif dessous (cf. DrawCommander)
         var traitsH = CommanderTraitsHeight(inner.Width);
-        int Needed(int scale) => headerH + (full ? 8 : 4) + 64 * scale + (full ? 6 : 4) + nameH + (full ? 8 : 6) + 4
-                                 + (full ? 16 : 10) + 4 * L.BarStep + Math.Max(full ? 4 : 2, traitsH)
+        int Needed(int scale, int barStep) => headerH + (full ? 8 : 4) + 64 * scale + (full ? 6 : 4) + nameH + (full ? 8 : 6) + 4
+                                 + (full ? 16 : 10) + 4 * barStep + Math.Max(full ? 4 : 2, traitsH)
                                  + (traitsH > 0 ? (full ? 8 : 6) : 0) + CommanderMoveBlockHeight(side);
-        L.PortraitScale = full ? 3 : 2;
-        if (Needed(L.PortraitScale) > inner.Height)
-            L.PortraitScale--;
+        int[] steps = full ? new[] { 31, 22 } : new[] { 15, 11 };
+        L.PortraitScale = 1;
+        L.BarStep = steps[^1];
+        var found = false;
+        for (var scale = full ? 3 : 2; scale >= 1 && !found; scale--)
+            foreach (var step in steps)
+                if (Needed(scale, step) <= inner.Height)
+                {
+                    L.PortraitScale = scale;
+                    L.BarStep = step;
+                    found = true;
+                    break;
+                }
         var size = 64 * L.PortraitScale;
         var py = inner.Y + headerH + (full ? 8 : 4);
         L.Portrait = new Rectangle(inner.Center.X - size / 2, py, size, size);
